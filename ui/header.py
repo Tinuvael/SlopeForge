@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from ui.settings_dialog import SettingsDialog
 from ui.add_dialog import AddDialog
-from database import db
+from database import get_legacy_database
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QWidget,
@@ -95,7 +95,7 @@ class Header(QWidget):
 
             if item_type == "Deposit":
 
-                db.add_deposit(
+                get_legacy_database().add_deposit(
                     dialog.name.text(),
                     dialog.description.toPlainText()
                 )
