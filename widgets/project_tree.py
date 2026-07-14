@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QLabel
 )
 
-from database import db
+from database import get_legacy_database
 
 class ProjectTree(QWidget):
 
@@ -15,7 +15,7 @@ class ProjectTree(QWidget):
 
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel("Проект"))
+        layout.addWidget(QLabel("Project"))
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
@@ -29,7 +29,7 @@ class ProjectTree(QWidget):
 
         self.tree.clear()
 
-        for deposit in db.get_deposits():
+        for deposit in get_legacy_database().get_deposits():
 
             self.tree.addTopLevelItem(
                 QTreeWidgetItem([deposit["name"]]))

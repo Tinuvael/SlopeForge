@@ -1,7 +1,8 @@
 from PySide6.QtCore import Qt
 from ui.settings_dialog import SettingsDialog
 from ui.add_dialog import AddDialog
-from database import db
+from ui.about_dialog import AboutDialog
+from database import get_legacy_database
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QWidget,
@@ -66,6 +67,9 @@ class Header(QWidget):
         # Settings
         #
 
+        self.about = QPushButton("About")
+        self.about.clicked.connect(self.open_about)
+
         self.settings = QPushButton("Settings")
         self.settings.clicked.connect(self.open_settings)
 
@@ -75,6 +79,7 @@ class Header(QWidget):
         layout.addStretch()
 
         layout.addWidget(self.export)
+        layout.addWidget(self.about)
         layout.addWidget(self.settings)
 
 
@@ -87,6 +92,13 @@ class Header(QWidget):
         dialog.exec()
 
 
+    def open_about(self):
+
+        dialog = AboutDialog(self)
+
+        dialog.exec()
+
+
     def add_item(self, item_type):
 
         dialog = AddDialog(item_type)
@@ -95,7 +107,7 @@ class Header(QWidget):
 
             if item_type == "Deposit":
 
-                db.add_deposit(
+                get_legacy_database().add_deposit(
                     dialog.name.text(),
                     dialog.description.toPlainText()
                 )

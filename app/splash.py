@@ -1,108 +1,53 @@
-import tkinter as tk
-from pathlib import Path
-import sys
-from app.config import APP_NAME, APP_VERSION
+from __future__ import annotations
 
-def resource_path(relative_path: str) -> Path:
-    """
-    Works both in normal Python run and PyInstaller onefile build.
-    """
-    if hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / relative_path
+import logging
 
-    return Path(__file__).resolve().parent.parent / relative_path
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
+from PySide6.QtWidgets import QApplication, QSplashScreen
 
+from .config import APP_AUTHOR, APP_NAME, APP_SPLASH_PATH, APP_VERSION
+from .qt import apply_window_icon
+from .resources import resource_path
 
-def show_splash(duration_ms: int = 1200, fade_ms: int = 500):
-    splash = tk.Tk()
-    splash.overrideredirect(True)
-    splash.configure(bg="white")
-
-    width = 512
-    height = 512
-
-    screen_width = splash.winfo_screenwidth()
-    screen_height = splash.winfo_screenheight()
-
-    x = int((screen_width - width) / 2)
-    y = int((screen_height - height) / 2)
-
-    splash.geometry(f"{width}x{height}+{x}+{y}")
-    splash.attributes("-alpha", 1.0)
-
-    icon_path = resource_path("assets/icons/stopeforge_icon_512x512.png")
-
-    try:
-        icon_image = tk.PhotoImage(file=str(icon_path))
-        label = tk.Label(splash, image=icon_image, bg="white")
-        label.image = icon_image
-        label.pack(expand=True)
-    except Exception:
-        label = tk.Label(
-            splash,
-            text="StopeForge",
-            font=("Segoe UI", 30, "bold"),
-            bg="white",
-            fg="black",
-        )
-        label.pack(expand=True)
-
-    version_label = tk.Label(
-        splash,
-        text=f"version {APP_VERSION}",
-        font=("Segoe UI", 9),
-        bg="black",
-        fg="#FFFFFF",
-    )
-    version_label.place(
-        x=5, 
-        y=height - 0,
-        anchor="sw"
-    )
-
-    app_name_label = tk.Label(
-        splash,
-        text=APP_NAME,
-        font=("Segoe UI", 10, "bold"),
-        bg="black",
-        fg="#FFFAFA",
-        anchor="e",
-        justify="right",
-    )
-
-    app_name_label.place(
-        x=width - 0,
-        y=height - 20,
-        anchor="se",
-    )
-
-    copyright_label = tk.Label(
-        splash,
-        text="© 2026 Емшанов Евгений. All rights reserved.",
-        font=("Segoe UI", 8),
-        bg="black",
-        fg="#FFFFFF",
-        anchor="e",
-        justify="right",
-    )
-
-    copyright_label.place(
-        x=width - 0,
-        y=height - 0,
-        anchor="se",
-    )
+logger = logging.getLogger(__name__)
 
 
-    def fade_out(step: int = 0):
-        steps = 20
-        alpha = max(0.0, 1.0 - step / steps)
-        splash.attributes("-alpha", alpha)
+class SlopeForgeSplash(QSplashScreen):
+    def __init__(self) -> None:
+        pixmap = self._load_pixmap()
+        super().__init__(pixmap, Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
+        apply_window_icon(self)
+        self._status = ""
+        self.setFont(QFont("Segoe UI", 10))
 
-        if step < steps:
-            splash.after(int(fade_ms / steps), lambda: fade_out(step + 1))
-        else:
-            splash.destroy()
+    def _load_pixmap(self) -> QPixmap:
+        splash_path = resource_path(APP_SPLASH_PATH)
+        if splash_path is not None:
+            pixmap = QPixmap(str(splash_path))
+            if not pixmap.isNull():
+                return pixmap.scaled(512, 512, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            logger.warning("Splash image could not be loaded: %s", splash_path)
+        fallback = QPixmap(512, 512)
+        fallback.fill(QColor("white"))
+        return fallback
 
-    splash.after(duration_ms, fade_out)
-    splash.mainloop()
+    def show_status(self, message: str) -> None:
+        self._status = message
+        self.showMessage(message, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom, QColor("white"))
+        QApplication.processEvents()
 
+    def drawContents(self, painter: QPainter) -> None:  # noqa: N802 - Qt override
+        super().drawContents(painter)
+        rect = self.rect()
+        painter.fillRect(0, rect.height() - 96, rect.width(), 96, QColor(0, 0, 0, 185))
+        painter.setPen(QColor("white"))
+        title_font = QFont("Segoe UI", 18, QFont.Weight.Bold)
+        painter.setFont(title_font)
+        painter.drawText(14, rect.height() - 68, APP_NAME)
+        painter.setFont(QFont("Segoe UI", 10))
+        painter.drawText(14, rect.height() - 43, f"version {APP_VERSION}")
+        painter.drawText(14, rect.height() - 20, APP_AUTHOR)
+        if self._status:
+            painter.setPen(QColor("#d8eefc"))
+            painter.drawText(rect.width() - 250, rect.height() - 20, 236, 18, Qt.AlignmentFlag.AlignRight, self._status)

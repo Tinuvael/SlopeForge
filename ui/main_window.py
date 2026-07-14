@@ -2,26 +2,32 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
     QHBoxLayout,
-    QVBoxLayout
+    QVBoxLayout,
+    QLabel
 )
 
+from app.config import APP_NAME, APP_VERSION
+from app.qt import apply_window_icon
 from widgets.project_tree import ProjectTree
-from ui.pages.block_page import BlockPage
+from ui.pages.block_list_page import BlockListPage
 from ui.header import Header
+from database.app_context import AppContext
 
 
 class MainWindow(QMainWindow):
 
-    def __init__(self):
+    def __init__(self, context: AppContext):
         super().__init__()
+        self.context = context
 
-        self.setWindowTitle("SlopeForge")
+        self.setWindowTitle(f"{APP_NAME} — {APP_VERSION}")
+        apply_window_icon(self)
         self.resize(1600, 900)
 
         self.tree = ProjectTree()
         self.tree.setMaximumWidth(320)
 
-        self.page = BlockPage()
+        self.page = BlockListPage(context)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -30,6 +36,11 @@ class MainWindow(QMainWindow):
 
         header = Header()
         main_layout.addWidget(header)
+
+        if context.db_mode == "sqlite-dev":
+            warning = QLabel("SQLite development mode — do not use for production data")
+            warning.setStyleSheet("background:#8B0000;color:white;font-weight:bold;padding:8px;")
+            main_layout.addWidget(warning)
 
         content = QWidget()
         content_layout = QHBoxLayout(content)
