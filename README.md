@@ -38,3 +38,10 @@ Planned features include:
 SlopeForge is an engineering data management and decision-support tool.
 
 The software is intended to assist engineers in collecting, organizing, and analyzing empirical blasting data. It does not replace professional engineering judgement, site-specific investigations, or engineering design. Users are responsible for verifying all engineering decisions and ensuring that the selected blasting parameters are appropriate for their specific conditions.
+
+## PostgreSQL database foundation
+
+The MVP database foundation uses PostgreSQL, SQLAlchemy 2.x, psycopg 3, Alembic, environment variables, and Argon2 password hashing.
+
+See the setup guide: [docs/database_setup.md](docs/database_setup.md).
+
