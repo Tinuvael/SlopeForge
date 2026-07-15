@@ -13,7 +13,7 @@ class BlockPage(QWidget):
 
         layout = QVBoxLayout(self)
 
-        title = QLabel("Блок 24-017")
+        title = QLabel("Block 24-017")
 
         title.setStyleSheet("""
             font-size:24px;
@@ -24,11 +24,11 @@ class BlockPage(QWidget):
 
         tabs = QTabWidget()
 
-        tabs.addTab(QWidget(), "Общая информация")
-        tabs.addTab(QWidget(), "Геомеханика")
-        tabs.addTab(QWidget(), "Проект БВР")
-        tabs.addTab(QWidget(), "Факт отработки")
-        tabs.addTab(QWidget(), "Документы")
-        tabs.addTab(QWidget(), "История")
+        tabs.addTab(QWidget(), "General information")
+        tabs.addTab(QWidget(), "Geomechanics")
+        tabs.addTab(QWidget(), "Blast design")
+        tabs.addTab(QWidget(), "Blast execution")
+        tabs.addTab(QWidget(), "Documents")
+        tabs.addTab(QWidget(), "History")
 
         layout.addWidget(tabs)
