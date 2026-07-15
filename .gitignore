@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local SQLite development database
+slopeforge_dev.db
+slopeforge_dev.db-*

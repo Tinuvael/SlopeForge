@@ -2,34 +2,49 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
     QHBoxLayout,
-    QVBoxLayout
+    QVBoxLayout,
+    QLabel
 )
 
+from app.config import APP_NAME, APP_VERSION
+from app.qt import apply_window_icon
 from widgets.project_tree import ProjectTree
-from ui.pages.block_page import BlockPage
+from ui.pages.block_list_page import BlockListPage
 from ui.header import Header
+from database.app_context import AppContext
 
 
 class MainWindow(QMainWindow):
 
-    def __init__(self):
+    def __init__(self, context: AppContext):
         super().__init__()
+        self.context = context
 
-        self.setWindowTitle("SlopeForge")
+        self.setWindowTitle(f"{APP_NAME} — {APP_VERSION}")
+        apply_window_icon(self)
         self.resize(1600, 900)
 
-        self.tree = ProjectTree()
+        self.tree = ProjectTree(context)
         self.tree.setMaximumWidth(320)
 
-        self.page = BlockPage()
+        self.page = BlockListPage(context)
+        self.tree.filters_changed.connect(self.page.set_filters)
+        self.page.data_changed.connect(self.refresh_project_data)
 
         central = QWidget()
         self.setCentralWidget(central)
 
         main_layout = QVBoxLayout(central)
 
-        header = Header()
+        header = Header(context)
+        header.create_block_requested.connect(self.page.create_block)
+        header.directories_requested.connect(self.page.open_directories)
         main_layout.addWidget(header)
+
+        if context.db_mode == "sqlite-dev":
+            warning = QLabel("SQLite development mode — do not use for production data")
+            warning.setStyleSheet("background:#8B0000;color:white;font-weight:bold;padding:8px;")
+            main_layout.addWidget(warning)
 
         content = QWidget()
         content_layout = QHBoxLayout(content)
@@ -39,3 +54,7 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(content)
 
+
+    def refresh_project_data(self) -> None:
+        self.tree.reload_filters()
+        self.tree.load_data()
