@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+<<<<<<< HEAD
 from PySide6.QtWidgets import QCheckBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout
+=======
+from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout
+>>>>>>> origin/main
 
 from app.config import APP_NAME
 from app.qt import apply_window_icon
@@ -53,7 +57,10 @@ class LoginDialog(QDialog):
         self.auth_service = auth_service
         apply_window_icon(self)
         self.current_user = None
+<<<<<<< HEAD
         self.remember_requested = False
+=======
+>>>>>>> origin/main
         self.setWindowTitle(f"Sign in to {APP_NAME}")
         self.setFixedWidth(360)
         layout = QVBoxLayout(self)
@@ -62,9 +69,13 @@ class LoginDialog(QDialog):
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow("Username", self.username)
         form.addRow("Password", self.password)
+<<<<<<< HEAD
         self.remember = QCheckBox("Remember me on this computer")
         layout.addLayout(form)
         layout.addWidget(self.remember)
+=======
+        layout.addLayout(form)
+>>>>>>> origin/main
         buttons = QHBoxLayout(); buttons.addStretch()
         login = QPushButton("Sign in")
         login.clicked.connect(self._login)
@@ -74,7 +85,10 @@ class LoginDialog(QDialog):
     def _login(self) -> None:
         try:
             self.current_user = self.auth_service.authenticate(self.username.text(), self.password.text())
+<<<<<<< HEAD
             self.remember_requested = self.remember.isChecked()
+=======
+>>>>>>> origin/main
             self.accept()
         except AuthError as exc:
             QMessageBox.warning(self, "Sign in failed", str(exc))

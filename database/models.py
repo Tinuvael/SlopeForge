@@ -5,7 +5,11 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
+<<<<<<< HEAD
     BigInteger, Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Index, func,
+=======
+    BigInteger, Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Index,
+>>>>>>> origin/main
     Integer, Numeric, String, Text, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,12 +33,15 @@ class User(TimestampMixin, Base):
     full_name: Mapped[Optional[str]] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(user_role_enum, nullable=False, default="viewer")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+<<<<<<< HEAD
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     updated_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     password_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+=======
+>>>>>>> origin/main
 
 
 class Mine(TimestampMixin, Base):
@@ -233,6 +240,7 @@ class Attachment(TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     uploaded_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     uploaded_by_user: Mapped[Optional[User]] = relationship()
+<<<<<<< HEAD
 
 
 class AuditLogEntry(Base):
@@ -267,3 +275,5 @@ class RememberToken(Base):
     last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     user: Mapped[User] = relationship()
+=======
+>>>>>>> origin/main

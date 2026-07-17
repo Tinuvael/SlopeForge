@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from PySide6.QtCore import QDate
+<<<<<<< HEAD
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -29,12 +30,22 @@ from repositories.site_repository import SiteRepository
 from services.blast_block_service import AUDIT_FIELD_LABELS, BlastBlockInput, BlastBlockService, PermissionDenied, STATUS_LABELS, ValidationError
 
 ACTION_LABELS = {"create": "Создание", "update": "Изменение", "delete": "Удаление", "attach": "Прикрепление", "detach": "Открепление"}
+=======
+from PySide6.QtWidgets import QComboBox, QDateEdit, QDialog, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QTextEdit, QVBoxLayout
+
+from database.app_context import CurrentUser
+from repositories.blast_block_repository import BlastBlockRow
+from repositories.mine_repository import MineRepository
+from repositories.site_repository import SiteRepository
+from services.blast_block_service import BlastBlockInput, BlastBlockService, PermissionDenied, STATUS_LABELS, ValidationError
+>>>>>>> origin/main
 
 
 class BlockDialog(QDialog):
     def __init__(self, service: BlastBlockService, mine_repo: MineRepository, site_repo: SiteRepository, user: CurrentUser, block: BlastBlockRow | None = None, read_only: bool = False):
         super().__init__()
         self.service = service; self.mine_repo = mine_repo; self.site_repo = site_repo; self.user = user; self.block = block; self.saved_block_id = None
+<<<<<<< HEAD
         self.audit_repo = AuditLogRepository(service.session_factory)
         self.read_only = read_only or not user.can_edit
         self.setWindowTitle("Block card" if block else "New block")
@@ -52,6 +63,12 @@ class BlockDialog(QDialog):
 
     def _general_tab(self) -> QWidget:
         widget = QWidget(); form = QFormLayout(widget)
+=======
+        self.read_only = read_only or not user.can_edit
+        self.setWindowTitle("Block card" if block else "New block")
+        self.resize(520, 430)
+        layout = QVBoxLayout(self); form = QFormLayout()
+>>>>>>> origin/main
         self.block_number = QLineEdit(); self.mine = QComboBox(); self.site = QComboBox(); self.horizon = QLineEdit()
         self.planned_date = QDateEdit(); self.planned_date.setCalendarPopup(True); self.planned_date.setSpecialValueText(" "); self.planned_date.setMinimumDate(QDate(1900,1,1))
         self.status = QComboBox(); self.comment = QTextEdit()
@@ -59,6 +76,7 @@ class BlockDialog(QDialog):
         self.mine.currentIndexChanged.connect(self._load_sites)
         form.addRow("Block number *", self.block_number); form.addRow("Mine *", self.mine); form.addRow("Site *", self.site)
         form.addRow("Horizon, m", self.horizon); form.addRow("Planned blast date", self.planned_date); form.addRow("Status", self.status); form.addRow("Comment", self.comment)
+<<<<<<< HEAD
         return widget
 
     def _history_tab(self) -> QWidget:
@@ -70,6 +88,12 @@ class BlockDialog(QDialog):
         layout.addWidget(self.empty_history)
         layout.addWidget(self.history_table)
         return widget
+=======
+        layout.addLayout(form)
+        buttons = QHBoxLayout(); buttons.addStretch(); cancel = QPushButton("Close" if self.read_only else "Cancel"); cancel.clicked.connect(self.reject); buttons.addWidget(cancel)
+        self.save_button = QPushButton("Save"); self.save_button.clicked.connect(self._save); self.save_button.setVisible(not self.read_only); buttons.addWidget(self.save_button); layout.addLayout(buttons)
+        self._load_mines(); self._fill_from_block(); self._set_read_only()
+>>>>>>> origin/main
 
     def _load_mines(self) -> None:
         self.mine.clear()
@@ -98,6 +122,7 @@ class BlockDialog(QDialog):
         qdate = self.planned_date.date(); planned = None if qdate == self.planned_date.minimumDate() else date(qdate.year(), qdate.month(), qdate.day())
         return BlastBlockInput(self.block_number.text(), self.mine.currentData(), self.site.currentData(), self.horizon.text(), planned, self.status.currentData(), self.comment.toPlainText())
 
+<<<<<<< HEAD
     def load_history(self) -> None:
         if self.block is None:
             self.history_table.setRowCount(0); self.empty_history.setVisible(True); return
@@ -117,6 +142,8 @@ class BlockDialog(QDialog):
             for col, value in enumerate(values):
                 self.history_table.setItem(row, col, QTableWidgetItem(value))
 
+=======
+>>>>>>> origin/main
     def _save(self) -> None:
         try:
             if self.block:

@@ -7,13 +7,17 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.app_context import CurrentUser
+<<<<<<< HEAD
 from database.models import BlastBlock, Site
 from repositories.audit_log_repository import AuditLogRepository
+=======
+>>>>>>> origin/main
 from repositories.blast_block_repository import BlastBlockRepository, BlastBlockRow
 from repositories.site_repository import SiteRepository
 
 VALID_STATUSES = {"planned", "blasted", "assessed"}
 STATUS_LABELS = {"planned": "Planned", "blasted": "Blasted", "assessed": "Assessed"}
+<<<<<<< HEAD
 AUDIT_STATUS_LABELS = {"planned": "Запланирован", "blasted": "Взорван", "assessed": "Оценён"}
 AUDIT_FIELD_LABELS = {
     "block_number": "Номер блока",
@@ -24,6 +28,8 @@ AUDIT_FIELD_LABELS = {
     "comment": "Комментарий",
 }
 AUDITED_FIELDS = ("block_number", "site_id", "horizon_m", "planned_blast_date", "status", "comment")
+=======
+>>>>>>> origin/main
 
 
 class PermissionDenied(ValueError):
@@ -46,11 +52,17 @@ class BlastBlockInput:
 
 
 class BlastBlockService:
+<<<<<<< HEAD
     def __init__(self, block_repository: BlastBlockRepository, site_repository: SiteRepository, audit_repository: AuditLogRepository | None = None):
         self.block_repository = block_repository
         self.site_repository = site_repository
         self.session_factory = getattr(block_repository, "session_factory", None)
         self.audit_repository = audit_repository or (AuditLogRepository(self.session_factory) if self.session_factory else None)
+=======
+    def __init__(self, block_repository: BlastBlockRepository, site_repository: SiteRepository):
+        self.block_repository = block_repository
+        self.site_repository = site_repository
+>>>>>>> origin/main
 
     def list_blocks(self, **filters) -> list[BlastBlockRow]:
         return self.block_repository.list_blocks(**filters)
@@ -61,7 +73,11 @@ class BlastBlockService:
     def create_block(self, data: BlastBlockInput, user: CurrentUser) -> int:
         self._check_can_edit(user)
         horizon = self._validate(data)
+<<<<<<< HEAD
         if self.session_factory is None:
+=======
+        try:
+>>>>>>> origin/main
             block = self.block_repository.create_block(
                 site_id=data.site_id,
                 block_number=data.block_number,
@@ -72,6 +88,7 @@ class BlastBlockService:
                 created_by_user_id=user.id,
             )
             return block.id
+<<<<<<< HEAD
         try:
             with self.session_factory() as session:
                 try:
@@ -100,13 +117,19 @@ class BlastBlockService:
                 except Exception:
                     session.rollback()
                     raise
+=======
+>>>>>>> origin/main
         except SQLAlchemyError as exc:
             raise ValidationError("Could not save the block in PostgreSQL. Check the data and database migrations.") from exc
 
     def update_block(self, block_id: int, data: BlastBlockInput, user: CurrentUser) -> int:
         self._check_can_edit(user)
         horizon = self._validate(data)
+<<<<<<< HEAD
         if self.session_factory is None:
+=======
+        try:
+>>>>>>> origin/main
             self.block_repository.update_block(
                 block_id=block_id,
                 site_id=data.site_id,
@@ -117,6 +140,7 @@ class BlastBlockService:
                 comment=data.comment,
             )
             return block_id
+<<<<<<< HEAD
         try:
             with self.session_factory() as session:
                 try:
@@ -154,6 +178,8 @@ class BlastBlockService:
                 except Exception:
                     session.rollback()
                     raise
+=======
+>>>>>>> origin/main
         except SQLAlchemyError as exc:
             raise ValidationError("Could not update the block in PostgreSQL. Check the data and database migrations.") from exc
 
@@ -179,6 +205,7 @@ class BlastBlockService:
             return Decimal(data.horizon_text.replace(",", "."))
         except InvalidOperation as exc:
             raise ValidationError("Horizon must be a number") from exc
+<<<<<<< HEAD
 
     @staticmethod
     def _site_names_for_audit(session, old_site_id: int | None, new_site_id: int | None) -> dict[int, str]:
@@ -210,3 +237,5 @@ def format_audit_value(field_name: str, value, site_names: dict[int, str] | None
     if field_name == "site_id":
         return (site_names or {}).get(int(value), str(value))
     return str(value)
+=======
+>>>>>>> origin/main

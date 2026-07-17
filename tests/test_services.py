@@ -144,6 +144,7 @@ def test_repository_rolls_back_when_save_fails() -> None:
     with pytest.raises(RuntimeError):
         repo.create_mine("Mine", None)
     assert session.rolled_back
+<<<<<<< HEAD
 
 
 def test_audit_value_formatting_and_changed_fields() -> None:
@@ -160,3 +161,5 @@ def test_audit_value_formatting_and_changed_fields() -> None:
         {1: "Old site", 2: "New site"},
     )
     assert changes == [("site_id", "Old site", "New site"), ("status", "Запланирован", "Взорван")]
+=======
+>>>>>>> origin/main

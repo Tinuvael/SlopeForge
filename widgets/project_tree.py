@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+<<<<<<< HEAD
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, Signal
+=======
+from PySide6.QtCore import Signal
+>>>>>>> origin/main
 from PySide6.QtWidgets import (
     QComboBox,
     QLabel,
@@ -21,6 +25,7 @@ from repositories.site_repository import SiteRepository
 from services.blast_block_service import BlastBlockService, STATUS_LABELS
 
 
+<<<<<<< HEAD
 def _horizon_label(horizon: Decimal | None) -> str:
     if horizon is None:
         return "No horizon"
@@ -32,6 +37,10 @@ def _horizon_label(horizon: Decimal | None) -> str:
 class ProjectTree(QWidget):
     filters_changed = Signal(dict)
     block_selected = Signal(int)
+=======
+class ProjectTree(QWidget):
+    filters_changed = Signal(dict)
+>>>>>>> origin/main
 
     def __init__(self, context: AppContext):
         super().__init__()
@@ -41,13 +50,19 @@ class ProjectTree(QWidget):
         self.block_service = BlastBlockService(BlastBlockRepository(context.session_factory), self.site_repo)
 
         layout = QVBoxLayout(self)
+<<<<<<< HEAD
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
+=======
+>>>>>>> origin/main
         layout.addWidget(QLabel("Project"))
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
+<<<<<<< HEAD
         self.tree.itemClicked.connect(self._item_clicked)
+=======
+>>>>>>> origin/main
         layout.addWidget(self.tree, 1)
 
         layout.addWidget(QLabel("Filters"))
@@ -130,13 +145,19 @@ class ProjectTree(QWidget):
         self.tree.clear()
         mine_items: dict[int, QTreeWidgetItem] = {}
         site_items: dict[int, QTreeWidgetItem] = {}
+<<<<<<< HEAD
         horizon_items: dict[tuple[int, str], QTreeWidgetItem] = {}
+=======
+>>>>>>> origin/main
 
         for mine in self.mine_repo.list_mines():
             if filters.get("mine_id") is not None and mine.id != filters["mine_id"]:
                 continue
             mine_item = QTreeWidgetItem([mine.name])
+<<<<<<< HEAD
             mine_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "mine", "id": mine.id})
+=======
+>>>>>>> origin/main
             self.tree.addTopLevelItem(mine_item)
             mine_items[mine.id] = mine_item
 
@@ -147,12 +168,16 @@ class ProjectTree(QWidget):
             if mine_item is None:
                 continue
             site_item = QTreeWidgetItem([site.name])
+<<<<<<< HEAD
             site_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "site", "id": site.id})
+=======
+>>>>>>> origin/main
             mine_item.addChild(site_item)
             site_items[site.id] = site_item
 
         for block in self.block_service.list_blocks(**filters):
             site_item = site_items.get(block.site_id)
+<<<<<<< HEAD
             if site_item is None:
                 continue
             horizon = _horizon_label(block.horizon_m)
@@ -174,6 +199,13 @@ class ProjectTree(QWidget):
         if payload.get("type") == "block":
             self.block_selected.emit(int(payload["id"]))
 
+=======
+            if site_item is not None:
+                site_item.addChild(QTreeWidgetItem([f"Block {block.block_number}"]))
+
+        self.tree.expandAll()
+
+>>>>>>> origin/main
     @staticmethod
     def _restore_combo_value(combo: QComboBox, value) -> None:
         index = combo.findData(value)

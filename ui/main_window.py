@@ -28,7 +28,10 @@ class MainWindow(QMainWindow):
 
         self.page = BlockListPage(context)
         self.tree.filters_changed.connect(self.page.set_filters)
+<<<<<<< HEAD
         self.tree.block_selected.connect(self.page.open_block_id)
+=======
+>>>>>>> origin/main
         self.page.data_changed.connect(self.refresh_project_data)
 
         central = QWidget()
