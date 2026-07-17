@@ -1,104 +1,61 @@
-from PySide6.QtCore import Qt
-from ui.settings_dialog import SettingsDialog
-from ui.add_dialog import AddDialog
-from database import db
+from __future__ import annotations
+
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (
-    QWidget,
-    QPushButton,
-    QLineEdit,
-    QHBoxLayout,
-    QMenu,
-    QMessageBox,
-)
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMenu, QPushButton, QWidget
+
+from database.app_context import AppContext
+from ui.settings_dialog import SettingsDialog
 
 
 class Header(QWidget):
+    create_project_requested = Signal()
+    create_block_requested = Signal()
+    directories_requested = Signal()
+    delete_requested = Signal()
 
-    def __init__(self):
+    def __init__(self, context: AppContext):
         super().__init__()
-
+        self.context = context
         self.setFixedHeight(60)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(10)
 
-        #
-        # Add
-        #
+        self.create_project = QPushButton("Create project")
+        self.create_project.clicked.connect(self.directories_requested.emit)
+        self.create_project.setEnabled(context.current_user.can_edit)
 
         self.add_button = QPushButton("Add ▼")
-
         menu = QMenu(self)
-
-        for item in (
-            "Deposit",
-            "Domain",
-            "Bench",
-            "Block",
-        ):
-
-            action = menu.addAction(f"Add {item}")
-            action.triggered.connect(
-                lambda checked=False, name=item: self.add_item(name)
-            )
-
-
+        mine_action = menu.addAction("Mine")
+        site_action = menu.addAction("Site")
+        block_action = menu.addAction("Blast block")
+        mine_action.triggered.connect(self.directories_requested.emit)
+        site_action.triggered.connect(self.directories_requested.emit)
+        block_action.triggered.connect(self.create_block_requested.emit)
         self.add_button.setMenu(menu)
+        self.add_button.setEnabled(context.current_user.can_edit)
 
-        #
-        # Search
-        #
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.setEnabled(False)
+        self.delete_button.setToolTip("Delete will be added later")
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search (Ctrl+F)")
         self.search.setMaximumWidth(350)
 
-        #
-        # Export
-        #
-
-        self.export = QPushButton("Export")
-        self.export.clicked.connect(lambda: self.clicked("Export"))
-
-        #
-        # Settings
-        #
-
         self.settings = QPushButton("Settings")
         self.settings.clicked.connect(self.open_settings)
 
+        layout.addWidget(self.create_project)
         layout.addWidget(self.add_button)
-        layout.addWidget(self.search)
-
+        layout.addWidget(self.delete_button)
         layout.addStretch()
-
-        layout.addWidget(self.export)
+        layout.addWidget(self.search)
+        layout.addStretch()
         layout.addWidget(self.settings)
 
-
-        
-
-    def open_settings(self):
-
-        dialog = SettingsDialog()
-
+    def open_settings(self) -> None:
+        dialog = SettingsDialog(self.context, self)
         dialog.exec()
-
-
-    def add_item(self, item_type):
-
-        dialog = AddDialog(item_type)
-
-        if dialog.exec():
-
-            if item_type == "Deposit":
-
-                db.add_deposit(
-                    dialog.name.text(),
-                    dialog.description.toPlainText()
-                )
-
-                print("Deposit created")
-
