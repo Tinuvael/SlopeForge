@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+<<<<<<< HEAD
+from datetime import datetime, timezone
+
+=======
+>>>>>>> origin/main
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -28,7 +33,13 @@ class AuthService:
                     user = create_first_admin_with_lock(session, username=username.strip(), password=password, full_name=full_name)
                 except FirstAdminAlreadyExistsError as exc:
                     raise AuthError(str(exc)) from exc
+<<<<<<< HEAD
+                user.last_login_at = datetime.now(timezone.utc)
+                if hasattr(session, "commit"):
+                    session.commit()
+=======
                 session.commit()
+>>>>>>> origin/main
                 return CurrentUser(id=user.id, username=user.username, full_name=user.full_name, role=user.role)
             except Exception:
                 session.rollback()
@@ -40,4 +51,10 @@ class AuthService:
             from database.security import verify_password
             if user is None or not verify_password(password, user.password_hash):
                 raise AuthError("Invalid username or password")
+<<<<<<< HEAD
+            user.last_login_at = datetime.now(timezone.utc)
+            if hasattr(session, "commit"):
+                session.commit()
+=======
+>>>>>>> origin/main
             return CurrentUser(id=user.id, username=user.username, full_name=user.full_name, role=user.role)

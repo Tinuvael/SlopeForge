@@ -144,3 +144,22 @@ def test_repository_rolls_back_when_save_fails() -> None:
     with pytest.raises(RuntimeError):
         repo.create_mine("Mine", None)
     assert session.rolled_back
+<<<<<<< HEAD
+
+
+def test_audit_value_formatting_and_changed_fields() -> None:
+    from datetime import date
+    from decimal import Decimal
+    from services.blast_block_service import build_audit_changes, format_audit_value
+
+    assert format_audit_value("status", "planned") == "Запланирован"
+    assert format_audit_value("planned_blast_date", date(2026, 7, 15)) == "15.07.2026"
+    assert format_audit_value("horizon_m", Decimal("760.5000")) == "760.5"
+    changes = build_audit_changes(
+        {"block_number": "A", "site_id": 1, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "planned", "comment": None},
+        {"block_number": "A", "site_id": 2, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "blasted", "comment": None},
+        {1: "Old site", 2: "New site"},
+    )
+    assert changes == [("site_id", "Old site", "New site"), ("status", "Запланирован", "Взорван")]
+=======
+>>>>>>> origin/main

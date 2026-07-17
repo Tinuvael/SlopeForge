@@ -9,6 +9,10 @@ from app.splash import SlopeForgeSplash
 from database.app_context import AppContext
 from database.startup import StartupError, initialize_database_runtime
 from services.auth_service import AuthService
+<<<<<<< HEAD
+from services.session_service import RememberTokenService
+=======
+>>>>>>> origin/main
 from ui.auth_dialogs import FirstAdminDialog, LoginDialog
 from ui.main_window import MainWindow
 
@@ -39,6 +43,26 @@ def main():
         _settings, _engine, session_factory = initialize_database_runtime()
         splash.show_status("Checking database schema…")
         auth_service = AuthService(session_factory)
+<<<<<<< HEAD
+        remember_service = RememberTokenService(session_factory)
+        remembered = remember_service.authenticate_local() if auth_service.has_users() else None
+        current_user = remembered.current_user if remembered else None
+        if current_user is None:
+            if auth_service.has_users():
+                dialog = LoginDialog(auth_service)
+            else:
+                dialog = FirstAdminDialog(auth_service)
+            splash.close_with_fade()
+            if dialog.exec() != dialog.DialogCode.Accepted or dialog.current_user is None:
+                return 0
+            current_user = dialog.current_user
+            if isinstance(dialog, LoginDialog) and dialog.remember_requested:
+                remember_service.create_for_user(current_user.id, current_user.username)
+        else:
+            splash.close_with_fade()
+        splash.show_status("Initializing interface…") if splash.isVisible() else None
+        window = MainWindow(AppContext(session_factory=session_factory, current_user=current_user))
+=======
         if auth_service.has_users():
             dialog = LoginDialog(auth_service)
         else:
@@ -48,6 +72,7 @@ def main():
             return 0
         splash.show_status("Initializing interface…") if splash.isVisible() else None
         window = MainWindow(AppContext(session_factory=session_factory, current_user=dialog.current_user))
+>>>>>>> origin/main
         window.showMaximized()
         return app.exec()
     except StartupError as exc:

@@ -5,7 +5,11 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
+<<<<<<< HEAD
+    BigInteger, Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Index, func,
+=======
     BigInteger, Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Index,
+>>>>>>> origin/main
     Integer, Numeric, String, Text, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,6 +33,15 @@ class User(TimestampMixin, Base):
     full_name: Mapped[Optional[str]] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(user_role_enum, nullable=False, default="viewer")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+<<<<<<< HEAD
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    updated_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    password_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+=======
+>>>>>>> origin/main
 
 
 class Mine(TimestampMixin, Base):
@@ -227,3 +240,40 @@ class Attachment(TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     uploaded_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     uploaded_by_user: Mapped[Optional[User]] = relationship()
+<<<<<<< HEAD
+
+
+class AuditLogEntry(Base):
+    __tablename__ = "audit_log_entries"
+    __table_args__ = (
+        CheckConstraint("action IN ('create', 'update', 'delete', 'attach', 'detach')", name="ck_audit_log_entries_action"),
+        CheckConstraint("entity_type IN ('blast_block', 'attachment', 'rock_mass_profile', 'rock_structure', 'blast_design', 'drilling_pattern', 'wall_assessment')", name="ck_audit_log_entries_entity_type"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    blast_block_id: Mapped[int] = mapped_column(ForeignKey("blast_blocks.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    action: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_id: Mapped[Optional[int]] = mapped_column(Integer)
+    field_name: Mapped[Optional[str]] = mapped_column(String(80))
+    old_value: Mapped[Optional[str]] = mapped_column(Text)
+    new_value: Mapped[Optional[str]] = mapped_column(Text)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    user: Mapped[Optional[User]] = relationship()
+    blast_block: Mapped[BlastBlock] = relationship()
+
+
+class RememberToken(Base):
+    __tablename__ = "remember_tokens"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    device_name: Mapped[Optional[str]] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    user: Mapped[User] = relationship()
+=======
+>>>>>>> origin/main
