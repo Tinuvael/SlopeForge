@@ -2,7 +2,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
     QHBoxLayout,
-    QVBoxLayout
+    QVBoxLayout,
+    QPushButton
 )
 
 from app.config import APP_NAME, APP_VERSION
@@ -10,6 +11,7 @@ from app.qt import apply_window_icon
 from widgets.project_tree import ProjectTree
 from ui.pages.block_list_page import BlockListPage
 from ui.header import Header
+from ui.prototype_2d.prototype_page import Prototype2DPage
 from database.app_context import AppContext
 
 
@@ -39,7 +41,12 @@ class MainWindow(QMainWindow):
         header = Header(context)
         header.create_block_requested.connect(self.page.create_block)
         header.directories_requested.connect(self.page.open_directories)
-        main_layout.addWidget(header)
+        prototype_button = QPushButton("2D Plan Prototype")
+        prototype_button.clicked.connect(self.open_2d_plan_prototype)
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(header, 1)
+        header_layout.addWidget(prototype_button)
+        main_layout.addLayout(header_layout)
 
         content = QWidget()
         content_layout = QHBoxLayout(content)
@@ -53,3 +60,8 @@ class MainWindow(QMainWindow):
     def refresh_project_data(self) -> None:
         self.tree.reload_filters()
         self.tree.load_data()
+
+
+    def open_2d_plan_prototype(self) -> None:
+        self.prototype_2d_window = Prototype2DPage(self)
+        self.prototype_2d_window.show()
