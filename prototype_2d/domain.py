@@ -11,12 +11,21 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _require_timezone(value: datetime, field_name: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field_name} must include timezone information")
+
+
 def _datetime_to_text(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
 def _datetime_from_text(value: str | None) -> datetime | None:
-    return datetime.fromisoformat(value) if value else None
+    if value is None:
+        return None
+    parsed = datetime.fromisoformat(value)
+    _require_timezone(parsed, "serialized datetime")
+    return parsed
 
 
 @dataclass(frozen=True)
@@ -110,6 +119,9 @@ class ProjectLinesDataset:
     is_active: bool
     lines: list[DatamineLine] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        _require_timezone(self.imported_at, "ProjectLinesDataset.imported_at")
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -143,6 +155,15 @@ class BlastEventGeometryRevision:
     plan_geometry: PlanGeometry
     elevation: float
     is_active: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            raise ValueError("BlastEventGeometryRevision id is required")
+        if not self.blast_event_id:
+            raise ValueError("BlastEventGeometryRevision blast_event_id is required")
+        if self.revision_number < 1:
+            raise ValueError("BlastEventGeometryRevision revision_number must be positive")
+        _require_timezone(self.imported_at, "BlastEventGeometryRevision.imported_at")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -191,6 +212,32 @@ class BlastEvent:
     def __post_init__(self) -> None:
         if self.event_type not in {"production", "contour"}:
             raise ValueError(f"Unsupported BlastEvent type: {self.event_type!r}")
+        if self.archived_at is not None:
+            _require_timezone(self.archived_at, "BlastEvent.archived_at")
+        self._validate_geometry_revisions()
+
+    def _validate_geometry_revisions(self) -> None:
+        if not self.geometry_revisions:
+            if self.active_geometry_revision_id is not None:
+                raise ValueError("BlastEvent has an active revision id but no geometry revisions")
+            return
+
+        revision_ids = [revision.id for revision in self.geometry_revisions]
+        if len(revision_ids) != len(set(revision_ids)):
+            raise ValueError("BlastEvent geometry revision ids must be unique")
+        if any(revision.blast_event_id != self.id for revision in self.geometry_revisions):
+            raise ValueError("BlastEvent geometry revision belongs to another BlastEvent")
+        expected_geometry_type = PlanPolygon if self.event_type == "production" else PlanMultiPoint
+        if any(not isinstance(revision.plan_geometry, expected_geometry_type) for revision in self.geometry_revisions):
+            raise ValueError(f"{self.event_type} BlastEvent geometry revisions have an invalid plan geometry type")
+        numbers = sorted(revision.revision_number for revision in self.geometry_revisions)
+        if numbers != list(range(1, len(self.geometry_revisions) + 1)):
+            raise ValueError("BlastEvent revision numbers must be unique and consecutive starting at 1")
+        active_revisions = [revision for revision in self.geometry_revisions if revision.is_active]
+        if len(active_revisions) != 1:
+            raise ValueError("BlastEvent must have exactly one active geometry revision")
+        if self.active_geometry_revision_id != active_revisions[0].id:
+            raise ValueError("BlastEvent active_geometry_revision_id must identify the active revision")
 
     def add_geometry_revision(
         self,
@@ -201,6 +248,10 @@ class BlastEvent:
         elevation: float,
         imported_at: datetime | None = None,
     ) -> BlastEventGeometryRevision:
+        self._validate_geometry_revisions()
+        expected_geometry_type = PlanPolygon if self.event_type == "production" else PlanMultiPoint
+        if not isinstance(plan_geometry, expected_geometry_type):
+            raise ValueError(f"{self.event_type} BlastEvent requires {expected_geometry_type.__name__} plan geometry")
         for revision in self.geometry_revisions:
             revision.is_active = False
         number = max((revision.revision_number for revision in self.geometry_revisions), default=0) + 1
@@ -228,6 +279,7 @@ class BlastEvent:
     def archive(self, reason: str | None = None, archived_at: datetime | None = None) -> None:
         self.is_archived = True
         self.archived_at = archived_at or utc_now()
+        _require_timezone(self.archived_at, "BlastEvent.archived_at")
         self.archive_reason = reason
 
     def restore(self) -> None:
@@ -308,6 +360,10 @@ class AssessmentEventLink:
     frozen_intersection_geometry: PlanGeometry | None = None
 
     def __post_init__(self) -> None:
+        if not self.blast_event_id:
+            raise ValueError("AssessmentEventLink blast_event_id is required")
+        if not self.geometry_revision_id:
+            raise ValueError("AssessmentEventLink geometry_revision_id is required")
         if self.status not in {"suggested", "confirmed", "excluded"}:
             raise ValueError(f"Unsupported link status: {self.status!r}")
         if self.source not in {"automatic", "manual"}:
@@ -355,10 +411,13 @@ class AssessmentArea:
     def __post_init__(self) -> None:
         if self.lower_elevation >= self.upper_elevation:
             raise ValueError("AssessmentArea lower_elevation must be below upper_elevation")
+        if self.archived_at is not None:
+            _require_timezone(self.archived_at, "AssessmentArea.archived_at")
 
     def archive(self, reason: str | None = None, archived_at: datetime | None = None) -> None:
         self.is_archived = True
         self.archived_at = archived_at or utc_now()
+        _require_timezone(self.archived_at, "AssessmentArea.archived_at")
         self.archive_reason = reason
 
     def restore(self) -> None:
@@ -412,6 +471,13 @@ class AssessmentDomainState:
     blast_events: list[BlastEvent] = field(default_factory=list)
     assessment_areas: list[AssessmentArea] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        dataset_ids = [dataset.id for dataset in self.datasets]
+        if len(dataset_ids) != len(set(dataset_ids)):
+            raise ValueError("ProjectLinesDataset ids must be unique")
+        if len([dataset for dataset in self.datasets if dataset.is_active]) > 1:
+            raise ValueError("AssessmentDomainState can have only one active ProjectLinesDataset")
+
     def add_dataset(self, dataset: ProjectLinesDataset, make_active: bool = True) -> None:
         if any(item.id == dataset.id for item in self.datasets):
             raise ValueError(f"Dataset {dataset.id!r} already exists")
@@ -419,6 +485,8 @@ class AssessmentDomainState:
             for item in self.datasets:
                 item.is_active = False
             dataset.is_active = True
+        elif dataset.is_active and self.active_dataset() is not None:
+            raise ValueError("AssessmentDomainState can have only one active ProjectLinesDataset")
         self.datasets.append(dataset)
 
     def active_dataset(self) -> ProjectLinesDataset | None:
