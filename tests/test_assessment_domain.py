@@ -135,3 +135,61 @@ def test_domain_state_round_trip_includes_assessment_area_stub():
     state = AssessmentDomainState(assessment_areas=[area])
     restored = AssessmentDomainState.from_dict(json.loads(json.dumps(state.to_dict())))
     assert restored.to_dict() == state.to_dict()
+
+
+def test_real_format_contour_filters_flat_marker_strings():
+    from pathlib import Path
+    from prototype_2d.csv_importer import import_datamine_csv
+
+    imported = import_datamine_csv(Path("tests/fixtures/contour_drillholes_with_markers.csv"))
+    assert imported.summary.column_mapping["LINE_ID"] == "SID"
+    assert imported.summary.column_mapping["POINT_ORDER"] == "PID"
+    assert imported.summary.line_count == 6
+
+    result = build_contour_geometry(imported.lines)
+    assert result.imported_line_count == 6
+    assert result.accepted_drillhole_count == 3
+    assert result.ignored_flat_line_count == 3
+    assert len(result.plan_geometry.points) == 3
+    assert [line.source_id for line in result.source_lines] == ["1", "3", "5"]
+    assert [point.z for point in result.collar_points] == [630.5, 630.3, 630.4]
+    assert all(point.z > 624.7 for point in result.collar_points)
+
+
+def test_contour_equal_maximum_uses_earliest_source_row():
+    drillhole = DatamineLine("7", [
+        point(1, 1, 630, row=9), point(2, 2, 620, row=10), point(3, 3, 630, row=4)
+    ])
+    result = build_contour_geometry([drillhole])
+    assert result.collar_points[0].source_row_number == 4
+    assert result.plan_geometry.points == (PlanPoint(3, 3),)
+
+
+def test_production_fixture_keeps_highest_closed_line():
+    from pathlib import Path
+    from prototype_2d.csv_importer import import_datamine_csv
+
+    imported = import_datamine_csv(Path("tests/fixtures/production_two_closed_levels.csv"))
+    result = build_production_geometry(imported.lines)
+    assert imported.summary.line_count == 2
+    assert result.source_line.source_id == "2"
+    assert result.elevation == 630
+    assert len(result.plan_geometry.ring) == 5
+
+
+def test_unsorted_contour_rows_select_same_collars(tmp_path):
+    from pathlib import Path
+    from prototype_2d.csv_importer import import_datamine_csv
+
+    fixture = Path("tests/fixtures/contour_drillholes_with_markers.csv")
+    rows = fixture.read_text(encoding="utf-8").splitlines()
+    sorted_csv = tmp_path / "sorted.csv"
+    sorted_csv.write_text(rows[0] + "\n" + "\n".join(sorted(rows[1:], key=lambda row: int(row.split(",")[0]))) + "\n")
+    unsorted_result = build_contour_geometry(import_datamine_csv(fixture).lines)
+    sorted_result = build_contour_geometry(import_datamine_csv(sorted_csv).lines)
+    collars = lambda result: {
+        line.source_id: (collar.x, collar.y, collar.z)
+        for line, collar in zip(result.source_lines, result.collar_points)
+    }
+    assert collars(unsorted_result) == collars(sorted_result)
+    assert unsorted_result.accepted_drillhole_count == len(unsorted_result.collar_points)

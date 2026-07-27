@@ -24,6 +24,9 @@ class ContourGeometryResult:
     source_lines: tuple[DatamineLine, ...]
     collar_points: tuple[DataminePoint, ...]
     plan_geometry: PlanMultiPoint
+    imported_line_count: int
+    accepted_drillhole_count: int
+    ignored_flat_line_count: int
 
 
 def _line_max_z(line: DatamineLine) -> float:
@@ -67,16 +70,25 @@ def build_production_geometry(
     return ProductionGeometryResult(selected, polygon, _line_max_z(selected))
 
 
-def build_contour_geometry(imported_lines: Sequence[DatamineLine]) -> ContourGeometryResult:
-    """Build a plan MultiPoint from the maximum-Z collar of every drillhole line."""
+def build_contour_geometry(
+    imported_lines: Sequence[DatamineLine], vertical_tolerance: float = 1e-6
+) -> ContourGeometryResult:
+    """Build collars from non-flat Datamine strings that represent drillholes."""
     if not imported_lines:
         raise BlastGeometryError("Contour geometry import contains no drillhole lines")
+    if vertical_tolerance < 0:
+        raise ValueError("vertical_tolerance must be non-negative")
 
     collars: list[DataminePoint] = []
     frozen_lines: list[DatamineLine] = []
+    ignored_flat_line_count = 0
     for line in imported_lines:
-        if not line.points:
-            raise BlastGeometryError(f"Drillhole line {line.source_id!r} has no points")
+        if len(line.points) < 2:
+            continue
+        vertical_extent = max(point.z for point in line.points) - min(point.z for point in line.points)
+        if vertical_extent <= vertical_tolerance:
+            ignored_flat_line_count += 1
+            continue
         # Point order can differ from file order. For equal maxima the first
         # physical CSV row wins, so repeated imports stay deterministic.
         collar = min(line.points, key=lambda point: (-point.z, point.source_row_number))
@@ -86,5 +98,9 @@ def build_contour_geometry(imported_lines: Sequence[DatamineLine]) -> ContourGeo
     if not collars:
         raise BlastGeometryError("Contour geometry import contains no valid drillhole collars")
     multipoint = PlanMultiPoint(tuple(PlanPoint(point.x, point.y) for point in collars))
-    assert len(imported_lines) == len(collars) == len(multipoint.points)
-    return ContourGeometryResult(tuple(frozen_lines), tuple(collars), multipoint)
+    accepted_count = len(frozen_lines)
+    assert accepted_count == len(collars) == len(multipoint.points)
+    return ContourGeometryResult(
+        tuple(frozen_lines), tuple(collars), multipoint, len(imported_lines),
+        accepted_count, ignored_flat_line_count,
+    )
