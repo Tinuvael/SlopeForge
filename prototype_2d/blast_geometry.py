@@ -77,9 +77,14 @@ def build_contour_geometry(imported_lines: Sequence[DatamineLine]) -> ContourGeo
     for line in imported_lines:
         if not line.points:
             raise BlastGeometryError(f"Drillhole line {line.source_id!r} has no points")
-        collar = max(line.points, key=lambda point: point.z)
+        # Point order can differ from file order. For equal maxima the first
+        # physical CSV row wins, so repeated imports stay deterministic.
+        collar = min(line.points, key=lambda point: (-point.z, point.source_row_number))
         collars.append(DataminePoint.from_dict(collar.to_dict()))
         frozen_lines.append(DatamineLine.from_dict(line.to_dict()))
 
+    if not collars:
+        raise BlastGeometryError("Contour geometry import contains no valid drillhole collars")
     multipoint = PlanMultiPoint(tuple(PlanPoint(point.x, point.y) for point in collars))
+    assert len(imported_lines) == len(collars) == len(multipoint.points)
     return ContourGeometryResult(tuple(frozen_lines), tuple(collars), multipoint)

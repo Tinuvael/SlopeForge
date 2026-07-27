@@ -42,7 +42,9 @@ class BlastEventService:
         except DatamineCsvError as exc:
             raise BlastEventValidationError(f"Не удалось импортировать CSV: {exc}") from exc
         if not result.lines:
-            raise BlastEventValidationError("CSV не содержит подходящих линий")
+            message = ("CSV не содержит валидных контурных скважин" if event.event_type == "contour"
+                       else "CSV не содержит подходящих линий")
+            raise BlastEventValidationError(message)
         try:
             if event.event_type == "production":
                 geometry = build_production_geometry(result.lines)

@@ -1,0 +1,78 @@
+"""Версионные наборы проектных линий для Blast Events Prototype."""
+from __future__ import annotations
+
+from datetime import datetime
+from pathlib import Path
+
+from .csv_importer import ImportResult, import_datamine_csv
+from .domain import AssessmentDomainState, ProjectLinesDataset, utc_now
+from .models import DatamineLine
+
+
+class ProjectLinesDatasetService:
+    """Создаёт наборы, хранит историю и управляет активной версией."""
+
+    def __init__(self, state: AssessmentDomainState):
+        self.state = state
+
+    def import_dataset(
+        self,
+        csv_path: str | Path,
+        *,
+        name: str | None = None,
+        column_mapping: dict[str, str] | None = None,
+        delimiter_choice: str = "Auto",
+        imported_at: datetime | None = None,
+    ) -> tuple[ProjectLinesDataset, ImportResult]:
+        path = Path(csv_path)
+        result = import_datamine_csv(path, column_mapping, delimiter_choice)
+        dataset = self.create_dataset(
+            name=name or path.stem,
+            source_file_name=path.name,
+            lines=result.lines,
+            imported_at=imported_at,
+        )
+        return dataset, result
+
+    def create_dataset(
+        self,
+        *,
+        name: str,
+        source_file_name: str,
+        lines: list[DatamineLine],
+        imported_at: datetime | None = None,
+    ) -> ProjectLinesDataset:
+        dataset = ProjectLinesDataset(
+            id=self._next_id(),
+            name=name.strip() or source_file_name,
+            imported_at=imported_at or utc_now(),
+            source_file_name=source_file_name,
+            is_active=False,
+            lines=[DatamineLine.from_dict(line.to_dict()) for line in lines],
+        )
+        self.state.add_dataset(dataset)
+        return dataset
+
+    def set_active(self, dataset_id: str) -> ProjectLinesDataset:
+        selected = next((item for item in self.state.datasets if item.id == dataset_id), None)
+        if selected is None:
+            raise ValueError(f"Dataset {dataset_id!r} не найден")
+        for dataset in self.state.datasets:
+            dataset.is_active = dataset is selected
+        return selected
+
+    def active_dataset(self) -> ProjectLinesDataset | None:
+        return self.state.active_dataset()
+
+    def available_elevations(self) -> list[float]:
+        dataset = self.active_dataset()
+        if dataset is None:
+            return []
+        return sorted({float(line.elevation) for line in dataset.lines if line.is_horizontal and line.elevation is not None})
+
+    def _next_id(self) -> str:
+        used = {dataset.id for dataset in self.state.datasets}
+        number = 1
+        while f"D-{number:03d}" in used:
+            number += 1
+        return f"D-{number:03d}"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -104,6 +105,21 @@ def detect_columns(headers: list[str]) -> dict[str, str]:
     return mapping
 
 
+def _normalized_line_id(value: Any) -> str:
+    """Normalize numeric-looking SID values without changing textual identifiers."""
+    text = str(value).strip()
+    if not text:
+        return ""
+    try:
+        number = Decimal(text)
+    except InvalidOperation:
+        return text
+    if not number.is_finite():
+        return text
+    normalized = format(number.normalize(), "f")
+    return "0" if normalized in {"-0", ""} else normalized
+
+
 def missing_required(mapping: dict[str, str]) -> list[str]:
     return [field for field in REQUIRED_FIELDS if not mapping.get(field)]
 
@@ -131,7 +147,12 @@ def import_datamine_csv(
     delimiter = sniff_delimiter(text, delimiter_choice)
     reader = csv.DictReader(text.splitlines(), delimiter=delimiter)
     headers = reader.fieldnames or []
-    mapping = column_mapping or detect_columns(headers)
+    mapping = dict(column_mapping or detect_columns(headers))
+    # SID has domain meaning: one SID is one string/drillhole. PTN only orders
+    # points and must never split a SID into separate imported lines.
+    sid_header = next((header for header in headers if header.strip().upper() == "SID"), None)
+    if sid_header is not None:
+        mapping["LINE_ID"] = sid_header
     missing = missing_required(mapping)
     if missing:
         labels = [FIELD_LABELS[field] for field in missing]
@@ -146,7 +167,7 @@ def import_datamine_csv(
             summary.skipped_rows += 1
             continue
         try:
-            line_id = str(row[mapping["LINE_ID"]]).strip()
+            line_id = _normalized_line_id(row[mapping["LINE_ID"]])
             if not line_id:
                 raise ValueError("empty line id")
             point = DataminePoint(
