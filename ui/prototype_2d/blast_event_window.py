@@ -3,43 +3,32 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from PySide6.QtCore import QDate, Qt, Signal
+from PySide6.QtCore import QDate, Qt, Signal, QPointF
 from PySide6.QtGui import QBrush, QColor, QGuiApplication, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFileDialog, QFormLayout, QGraphicsEllipseItem, QGraphicsItem, QGraphicsPathItem,
-    QGraphicsScene, QGraphicsTextItem, QGraphicsView, QHBoxLayout, QLabel, QLineEdit,
+    QGraphicsScene, QGraphicsTextItem, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QMainWindow, QMessageBox, QPushButton, QSplitter, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy,
+    QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QTabWidget,
 )
 
 from app.qt import apply_window_icon
 from prototype_2d.blast_event_service import BlastEventService
 from prototype_2d.blast_event_storage import load_blast_event_state, save_blast_event_state
 from prototype_2d.csv_importer import DatamineCsvError, detect_columns, missing_required, read_text, sniff_delimiter
-from prototype_2d.domain import BlastEvent, PlanMultiPoint, PlanPolygon
+from prototype_2d.domain import BlastEvent, PlanMultiPoint, PlanPoint, PlanPolygon
+from prototype_2d.assessment_area_service import AssessmentAreaService
+from prototype_2d.geometry import validate_simple_polygon
 from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
 from ui.prototype_2d.dialogs import ColumnMappingDialog
+from ui.prototype_2d.plan_view import PrototypePlanView
 
 PROJECT_LINE_ROLE = 1001
 BLAST_GEOMETRY_ROLE = 1002
 
 
-class BlastEventPlanView(QGraphicsView):
-    def __init__(self, scene):
-        super().__init__(scene)
-        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-
-    def wheelEvent(self, event):
-        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
-        self.scale(factor, factor)
-
-    def fit_to_extent(self):
-        # itemsBoundingRect учитывает только находящиеся в сцене видимые слои.
-        rect = self.scene().itemsBoundingRect()
-        if not rect.isNull() and rect.isValid():
-            margin = max(min(max(rect.width(), rect.height()) * 0.03, 100.0), 1.0)
-            self.fitInView(rect.adjusted(-margin, -margin, margin, margin), Qt.AspectRatioMode.KeepAspectRatio)
+BlastEventPlanView = PrototypePlanView  # совместимость для прежних импортов и тестов
 
 
 class DatasetHistoryDialog(QDialog):
@@ -83,14 +72,20 @@ class BlastEventWindow(QMainWindow):
         self.state = load_blast_event_state(storage_path)
         self.service = BlastEventService(self.state)
         self.dataset_service = ProjectLinesDatasetService(self.state)
+        self.area_service = AssessmentAreaService(self.state)
         self.selected_event: BlastEvent | None = None
-        self.setWindowTitle("Blast Events Prototype")
+        self.selected_area = None
+        self._drawing_vertices: list[PlanPoint] = []
+        self._drawing_cursor: PlanPoint | None = None
+        self._candidate_preview = []
+        self.setWindowTitle("SlopeForge — 2D Assessment Workspace")
         self.resize(1300, 800)
         self.setMinimumSize(1000, 650)
         apply_window_icon(self)
         self._build_ui()
         self.refresh_datasets()
         self.refresh_events()
+        self.refresh_areas()
 
     def _build_ui(self):
         root_widget = QWidget()
@@ -119,6 +114,13 @@ class BlastEventWindow(QMainWindow):
         outer.addWidget(root, 1)
         left = QWidget()
         left_layout = QVBoxLayout(left)
+        self.mode_tabs = QTabWidget()
+        events_page = QWidget(); events_layout = QVBoxLayout(events_page)
+        areas_page = QWidget(); areas_layout = QVBoxLayout(areas_page)
+        self.mode_tabs.addTab(events_page, "Blast Events")
+        self.mode_tabs.addTab(areas_page, "Assessment Areas")
+        self.mode_tabs.currentChanged.connect(self._mode_changed)
+        left_layout.addWidget(self.mode_tabs, 1)
         self.filter_combo = QComboBox()
         self.filter_combo.addItems(["Активные", "Архив"])
         self.filter_combo.currentIndexChanged.connect(self.refresh_events)
@@ -126,9 +128,14 @@ class BlastEventWindow(QMainWindow):
         self.event_list.currentRowChanged.connect(self._select_event)
         create = QPushButton("+ Создать событие")
         create.clicked.connect(self.create_event)
-        left_layout.addWidget(self.filter_combo)
-        left_layout.addWidget(self.event_list, 1)
-        left_layout.addWidget(create)
+        events_layout.addWidget(self.filter_combo)
+        events_layout.addWidget(self.event_list, 1)
+        events_layout.addWidget(create)
+        self.area_filter_combo = QComboBox(); self.area_filter_combo.addItems(["Активные", "Архив"])
+        self.area_filter_combo.currentIndexChanged.connect(self.refresh_areas)
+        self.area_list = QListWidget(); self.area_list.currentRowChanged.connect(self._select_area)
+        create_area = QPushButton("+ Создать Assessment Area"); create_area.clicked.connect(self.start_area_drawing)
+        areas_layout.addWidget(self.area_filter_combo); areas_layout.addWidget(self.area_list, 1); areas_layout.addWidget(create_area)
         root.addWidget(left)
 
         centre = QWidget()
@@ -146,6 +153,11 @@ class BlastEventWindow(QMainWindow):
         centre_layout.addLayout(actions)
         self.scene = QGraphicsScene(self)
         self.plan_view = BlastEventPlanView(self.scene)
+        self.plan_view.scene_clicked.connect(self._drawing_click)
+        self.plan_view.scene_double_clicked.connect(lambda _x, _y: self.finish_area_drawing())
+        self.plan_view.cursor_moved.connect(self._drawing_move)
+        self.plan_view.escape_requested.connect(self.cancel_area_drawing)
+        self.plan_view.workflow_key_requested.connect(self._drawing_key)
         centre_layout.addWidget(self.plan_view, 1)
         root.addWidget(centre)
 
@@ -164,6 +176,27 @@ class BlastEventWindow(QMainWindow):
     def _events(self):
         return [event for event in self.state.blast_events
                 if event.is_archived == (self.filter_combo.currentIndex() == 1)]
+
+    def _areas(self):
+        return [area for area in self.state.assessment_areas
+                if area.is_archived == (self.area_filter_combo.currentIndex() == 1)]
+
+    def refresh_areas(self):
+        prior = self.selected_area.id if self.selected_area else None
+        self.area_list.blockSignals(True); self.area_list.clear()
+        for area in self._areas(): self.area_list.addItem(f"{area.name} ({area.lower_elevation:g}–{area.upper_elevation:g})")
+        self.area_list.blockSignals(False)
+        row = next((i for i, area in enumerate(self._areas()) if area.id == prior), -1)
+        self.area_list.setCurrentRow(row)
+        if row < 0: self.selected_area = None
+        if self.mode_tabs.currentIndex() == 1: self._render_card(); self.draw_geometry()
+
+    def _select_area(self, row):
+        areas = self._areas(); self.selected_area = areas[row] if 0 <= row < len(areas) else None
+        self._render_card(); self.draw_geometry()
+
+    def _mode_changed(self):
+        self._render_card(); self.draw_geometry()
 
     def refresh_events(self):
         prior = self.selected_event.id if self.selected_event else None
@@ -206,6 +239,21 @@ class BlastEventWindow(QMainWindow):
 
     def _render_card(self):
         self._clear_card()
+        if self.mode_tabs.currentIndex() == 1:
+            area = self.selected_area
+            if not area:
+                self.card_layout.addWidget(QLabel("Выберите Assessment Area")); self.card_layout.addStretch(); return
+            dataset = next((item for item in self.state.datasets if item.id == area.source_dataset_id), None)
+            details = [("ID", area.id), ("Название", area.name), ("Дата оценки", area.assessment_date.isoformat()),
+                       ("Dataset", f"{area.source_dataset_id} — {dataset.name}" if dataset else area.source_dataset_id),
+                       ("Нижняя отметка", f"{area.lower_elevation:g}"), ("Верхняя отметка", f"{area.upper_elevation:g}"),
+                       ("Горизонтов", str(len(area.horizon_slices))), ("Связей событий", str(len(area.event_links))),
+                       ("Статус", "Архив" if area.is_archived else "Активно")]
+            form = QFormLayout()
+            for caption, value in details: form.addRow(caption, self._detail_value_label(value))
+            self.card_layout.addLayout(form)
+            archive = QPushButton("Восстановить" if area.is_archived else "Архивировать")
+            archive.clicked.connect(self.toggle_area_archive); self.card_layout.addWidget(archive); self.card_layout.addStretch(); return
         event = self.selected_event
         if not event:
             self.card_layout.addWidget(QLabel("Выберите событие"))
@@ -250,7 +298,11 @@ class BlastEventWindow(QMainWindow):
     def draw_geometry(self):
         self.scene.clear()
         self._draw_project_lines()
-        self._draw_blast_event()
+        if self.mode_tabs.currentIndex() == 0: self._draw_blast_event()
+        else: self._draw_assessment_area()
+        self._draw_polygon_preview()
+        for candidate in self._candidate_preview:
+            self._path_item(candidate.geometry, QPen(QColor(255, 120, 0), 4), z=75)
         if self.grid_button.isChecked():
             self._add_grid()
 
@@ -276,6 +328,33 @@ class BlastEventWindow(QMainWindow):
             item.setData(PROJECT_LINE_ROLE, True)
             item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self.scene.addItem(item)
+
+    def _path_item(self, geometry, pen, brush=None, z=20):
+        points = geometry.ring if isinstance(geometry, PlanPolygon) else geometry.points
+        path = QPainterPath(QPointF(points[0].x, -points[0].y))
+        for point in points[1:]: path.lineTo(point.x, -point.y)
+        item = QGraphicsPathItem(path); item.setPen(pen)
+        if brush is not None: item.setBrush(brush)
+        item.setZValue(z); self.scene.addItem(item); return item
+
+    def _draw_assessment_area(self):
+        area = self.selected_area
+        if not area: return
+        self._path_item(area.selection_polygon_frozen, QPen(QColor(100, 140, 170), 1, Qt.PenStyle.DashLine), z=18)
+        self._path_item(area.final_geometry_frozen, QPen(QColor(20, 120, 200), 3), QBrush(QColor(30, 140, 220, 55)), 22)
+        colors = {"lower_boundary": QColor(20, 160, 80), "upper_boundary": QColor(190, 70, 220), "internal_horizon": QColor(245, 150, 20)}
+        for horizon in area.horizon_slices:
+            self._path_item(horizon.frozen_geometry, QPen(colors[horizon.role], 3), z=25)
+
+    def _draw_polygon_preview(self):
+        if not self._drawing_vertices: return
+        points = self._drawing_vertices + ([self._drawing_cursor] if self._drawing_cursor else [])
+        path = QPainterPath(QPointF(points[0].x, -points[0].y))
+        for point in points[1:]: path.lineTo(point.x, -point.y)
+        if len(self._drawing_vertices) >= 3: path.lineTo(points[0].x, -points[0].y)
+        item = QGraphicsPathItem(path); item.setPen(QPen(QColor(0, 130, 230), 2, Qt.PenStyle.DashLine)); item.setBrush(QColor(0, 130, 230, 35)); item.setZValue(80); self.scene.addItem(item)
+        for point in self._drawing_vertices:
+            marker = QGraphicsEllipseItem(-4, -4, 8, 8); marker.setPos(point.x, -point.y); marker.setBrush(QColor(0, 130, 230)); marker.setZValue(81); self.scene.addItem(marker)
 
     def _draw_blast_event(self):
         event = self.selected_event
@@ -402,6 +481,62 @@ class BlastEventWindow(QMainWindow):
         self._save()
         self.refresh_events()
 
+    def toggle_area_archive(self):
+        if not self.selected_area: return
+        self.selected_area.restore() if self.selected_area.is_archived else self.selected_area.archive()
+        self._save(); self.refresh_areas()
+
+    def start_area_drawing(self):
+        if self.state.active_dataset() is None:
+            QMessageBox.warning(self, "Assessment Area", "Сначала загрузите или выберите активный Dataset")
+            return
+        self._drawing_vertices = []; self._drawing_cursor = None
+        self.plan_view.set_polygon_drawing_mode(True)
+        self.statusBar().showMessage("ЛКМ — вершина; Enter/двойной клик — завершить; Backspace — назад; Esc — отмена")
+
+    def _drawing_click(self, x, y):
+        if not self.plan_view._drawing_mode: return
+        point = PlanPoint(x, y)
+        if self._drawing_vertices and len(self._drawing_vertices) >= 3:
+            first = self._drawing_vertices[0]
+            if ((point.x-first.x) ** 2 + (point.y-first.y) ** 2) ** .5 <= 8 / max(self.plan_view.transform().m11(), 1e-9):
+                self.finish_area_drawing(); return
+        self._drawing_vertices.append(point); self.draw_geometry()
+
+    def _drawing_move(self, x, y):
+        if self.plan_view._drawing_mode and self._drawing_vertices:
+            self._drawing_cursor = PlanPoint(x, y); self.draw_geometry()
+
+    def _drawing_key(self, key):
+        if not self.plan_view._drawing_mode: return
+        if key == "back":
+            if self._drawing_vertices: self._drawing_vertices.pop()
+            self.draw_geometry()
+        elif key == "enter": self.finish_area_drawing()
+
+    def cancel_area_drawing(self):
+        if not self.plan_view._drawing_mode: return
+        self.plan_view.set_polygon_drawing_mode(False); self._drawing_vertices = []; self._drawing_cursor = None
+        self._candidate_preview = []
+        self.statusBar().clearMessage(); self.draw_geometry()
+
+    def finish_area_drawing(self):
+        if not self.plan_view._drawing_mode: return
+        try:
+            polygon = PlanPolygon(tuple(self._drawing_vertices + [self._drawing_vertices[0]]))
+            validate_simple_polygon(polygon)
+            candidates = self.area_service.generate_candidates(polygon)
+            if not candidates: raise ValueError("Внутри полигона нет подходящих горизонтальных линий")
+            self._candidate_preview = candidates; self.draw_geometry()
+            dialog = AssessmentCandidateDialog(candidates, self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                self._candidate_preview = []; self.draw_geometry(); return
+            area = self.area_service.create_area(name=dialog.area_name.text(), assessment_date=dialog.area_date.date().toPython(),
+                                                 selection_polygon=polygon, selected_fragments=dialog.selected_candidates())
+            self.selected_area = area; self._save(); self.cancel_area_drawing(); self.refresh_areas()
+        except (ValueError, IndexError) as exc:
+            QMessageBox.warning(self, "Некорректная Assessment Area", str(exc))
+
     def _save(self):
         save_blast_event_state(self.state, self.storage_path)
 
@@ -409,6 +544,38 @@ class BlastEventWindow(QMainWindow):
         self._save()
         self.closed.emit()
         super().closeEvent(event)
+
+
+class AssessmentCandidateDialog(QDialog):
+    def __init__(self, candidates, parent=None):
+        super().__init__(parent); self.candidates = candidates
+        self.setWindowTitle("Подтвердите горизонты Assessment Area"); self.resize(760, 480)
+        layout = QVBoxLayout(self); form = QFormLayout()
+        self.area_name = QLineEdit(); self.area_name.setPlaceholderText("Например: Участок 600–620")
+        self.area_date = QDateEdit(QDate.currentDate()); self.area_date.setCalendarPopup(True)
+        form.addRow("Название", self.area_name); form.addRow("Дата оценки", self.area_date); layout.addLayout(form)
+        layout.addWidget(QLabel("Выберите не более одного фрагмента на отметке и минимум две отметки:"))
+        self.table = QTableWidget(len(candidates), 6)
+        self.table.setHorizontalHeaderLabels(["Включить", "Отметка", "SID", "Фрагмент", "Длина", "Точек"])
+        counts = {}; [counts.__setitem__(item.elevation, counts.get(item.elevation, 0) + 1) for item in candidates]
+        for row, candidate in enumerate(candidates):
+            check = QCheckBox(); check.setChecked(counts[candidate.elevation] == 1)
+            self.table.setCellWidget(row, 0, check)
+            for column, value in enumerate((f"{candidate.elevation:g}", candidate.source_line_id,
+                                            str(candidate.fragment_number), f"{candidate.length:.2f}",
+                                            str(len(candidate.geometry.points))), 1):
+                self.table.setItem(row, column, QTableWidgetItem(value))
+        self.table.horizontalHeader().setStretchLastSection(True); layout.addWidget(self.table)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self._accept_checked); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
+
+    def selected_candidates(self):
+        return [candidate for row, candidate in enumerate(self.candidates) if self.table.cellWidget(row, 0).isChecked()]
+
+    def _accept_checked(self):
+        try: AssessmentAreaService.validate_selection(self.selected_candidates())
+        except ValueError as exc: QMessageBox.warning(self, "Выбор горизонтов", str(exc)); return
+        self.accept()
 
 
 class BlastEventDialog(QDialog):
