@@ -196,3 +196,70 @@ def test_blast_details_source_declares_responsive_labels():
     assert "setWordWrap(True)" in source
     assert "setToolTip(value)" in source
     assert "WrapLongRows" in source
+
+
+def test_assessment_mode_renders_only_active_blast_events_as_context(tmp_path):
+    QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
+    from ui.prototype_2d.blast_event_window import BLAST_CONTEXT_ROLE, BlastEventWindow
+    app = QApplication.instance() or QApplication([])
+    project = tmp_path / "project.csv"; block = tmp_path / "block.csv"; collars = tmp_path / "collars.csv"
+    write_csv(project, [(0, 0, 600, "lo", 1), (10, 0, 600, "lo", 2),
+                        (0, 10, 620, "hi", 1), (10, 10, 620, "hi", 2)])
+    production_csv(block)
+    write_csv(collars, [(2, 2, 640, "h1", 1), (2, 2, 600, "h1", 2),
+                        (8, 8, 645, "h2", 1), (8, 8, 600, "h2", 2)])
+    state = AssessmentDomainState(); ProjectLinesDatasetService(state).import_dataset(project)
+    production = BlastEventService(state).create_event(name="Production", event_type="production", event_date=None, elevation=620, csv_path=block)
+    contour = BlastEventService(state).create_event(name="Contour", event_type="contour", event_date=None, elevation=640, csv_path=collars)
+    archived = BlastEventService(state).create_event(name="Archived", event_type="production", event_date=None, elevation=620, csv_path=block); archived.archive()
+    window = BlastEventWindow(storage_path=save_blast_event_state(state, tmp_path / "context.json"))
+    window.mode_tabs.setCurrentIndex(1); window.draw_geometry()
+    context_ids = [item.data(BLAST_CONTEXT_ROLE) for item in window.scene.items() if item.data(BLAST_CONTEXT_ROLE)]
+    assert production.id in context_ids and contour.id in context_ids and archived.id not in context_ids
+    window.close(); assert app
+
+
+def test_assessment_drawing_enters_refinement_before_confirmation_and_cancel_is_clean(tmp_path):
+    QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
+    from ui.prototype_2d.blast_event_window import ASSESSMENT_HANDLE_ROLE, ASSESSMENT_SELECTION_ROLE, BlastEventWindow
+    app = QApplication.instance() or QApplication([])
+    project = tmp_path / "project.csv"
+    write_csv(project, [(0, 2, 600, "lo", 1), (10, 2, 600, "lo", 2),
+                        (0, 8, 620, "hi", 1), (10, 8, 620, "hi", 2)])
+    state = AssessmentDomainState(); ProjectLinesDatasetService(state).import_dataset(project)
+    window = BlastEventWindow(storage_path=save_blast_event_state(state, tmp_path / "workflow.json"))
+    window.mode_tabs.setCurrentIndex(1); window.start_area_drawing()
+    for point in ((0, 0), (10, 0), (10, 10), (0, 10)): window._drawing_click(*point)
+    window._drawing_key("enter")
+    assert window.workflow_state == "REFINING" and len(window.state.assessment_areas) == 0
+    assert [item for item in window.scene.items() if item.data(ASSESSMENT_SELECTION_ROLE)]
+    assert len([item for item in window.scene.items() if item.data(ASSESSMENT_HANDLE_ROLE)]) == 4
+    window._handle_moved(1, 9, -1)
+    assert window._drawing_vertices[1] == PlanPoint(9, -1)
+    window.cancel_area_drawing()
+    assert window.workflow_state == "IDLE" and len(window.state.assessment_areas) == 0
+    assert not [item for item in window.scene.items() if item.data(ASSESSMENT_HANDLE_ROLE)]
+    window.close(); assert app
+
+
+def test_saved_assessment_hides_selection_polygon_and_archived_area_cannot_edit(tmp_path):
+    QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
+    from prototype_2d.assessment_area_service import AssessmentAreaService
+    from prototype_2d.domain import PlanPolygon
+    from ui.prototype_2d.blast_event_window import ASSESSMENT_HANDLE_ROLE, ASSESSMENT_SELECTION_ROLE, BlastEventWindow
+    app = QApplication.instance() or QApplication([])
+    project = tmp_path / "project.csv"
+    write_csv(project, [(0, 2, 600, "lo", 1), (10, 2, 600, "lo", 2),
+                        (0, 8, 620, "hi", 1), (10, 8, 620, "hi", 2)])
+    state = AssessmentDomainState(); ProjectLinesDatasetService(state).import_dataset(project)
+    selection = PlanPolygon((PlanPoint(0, 0), PlanPoint(10, 0), PlanPoint(10, 10), PlanPoint(0, 10), PlanPoint(0, 0)))
+    service = AssessmentAreaService(state)
+    area = service.create_area(name="Area", assessment_date=date.today(), selection_polygon=selection,
+                               selected_fragments=service.generate_candidates(selection))
+    window = BlastEventWindow(storage_path=save_blast_event_state(state, tmp_path / "saved-area.json"))
+    window.mode_tabs.setCurrentIndex(1); window.selected_area = window.state.assessment_areas[0]; window.draw_geometry()
+    assert not [item for item in window.scene.items() if item.data(ASSESSMENT_SELECTION_ROLE)]
+    area = window.selected_area; area.archive(); window.edit_area_boundaries()
+    assert window.workflow_state == "IDLE"
+    assert not [item for item in window.scene.items() if item.data(ASSESSMENT_HANDLE_ROLE)]
+    window.close(); assert app
