@@ -19,6 +19,7 @@ from prototype_2d.blast_event_storage import load_blast_event_state, save_blast_
 from prototype_2d.csv_importer import DatamineCsvError, detect_columns, missing_required, read_text, sniff_delimiter
 from prototype_2d.domain import BlastEvent, PlanMultiPoint, PlanPoint, PlanPolygon
 from prototype_2d.assessment_area_service import AssessmentAreaService
+from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
 from prototype_2d.geometry import validate_simple_polygon
 from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
 from ui.prototype_2d.dialogs import ColumnMappingDialog
@@ -94,6 +95,7 @@ class BlastEventWindow(QMainWindow):
         self.service = BlastEventService(self.state)
         self.dataset_service = ProjectLinesDatasetService(self.state)
         self.area_service = AssessmentAreaService(self.state)
+        self.link_service = AssessmentEventLinkService(self.state)
         self.selected_event: BlastEvent | None = None
         self.selected_area = None
         self._drawing_vertices: list[PlanPoint] = []
@@ -103,6 +105,7 @@ class BlastEventWindow(QMainWindow):
         self._editing_area = None
         self._previous_selected_area = None
         self._refinement_path_item = None
+        self._highlighted_link = None
         self._vertex_handles = []
         self.setWindowTitle("SlopeForge — 2D Assessment Workspace")
         self.resize(1300, 800)
@@ -283,14 +286,24 @@ class BlastEventWindow(QMainWindow):
                        ("Дата ревизии", revision.created_at.isoformat(sep=" ", timespec="minutes")),
                        ("Dataset", f"{revision.source_dataset_id} — {dataset.name}" if dataset else revision.source_dataset_id),
                        ("Нижняя отметка", f"{area.lower_elevation:g}"), ("Верхняя отметка", f"{area.upper_elevation:g}"),
-                       ("Горизонтов", str(len(area.horizon_slices))), ("Связей событий", str(len(area.event_links))),
+                       ("Горизонтов", str(len(area.horizon_slices))),
                        ("Статус", "Архив" if area.is_archived else "Активно")]
+            links = area.links_for_revision()
+            details[10:10] = [("Связи", str(len(links))),
+                ("Предложено", str(sum(x.status == "suggested" for x in links))),
+                ("Подтверждено", str(sum(x.status == "confirmed" for x in links))),
+                ("Исключено", str(sum(x.status == "excluded" for x in links))),
+                ("Устаревшие ревизии", str(sum(self.link_service.is_stale(x) for x in links)))]
             form = QFormLayout()
             form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
             form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
             for caption, value in details: form.addRow(caption, self._detail_value_label(value))
             self.card_layout.addLayout(form)
+            linked = QPushButton("Связанные Blast Events"); linked.clicked.connect(self.show_area_links)
+            self.card_layout.addWidget(linked)
             if not area.is_archived:
+                refresh = QPushButton("Найти / пересчитать связи"); refresh.clicked.connect(self.refresh_area_links)
+                self.card_layout.addWidget(refresh)
                 edit = QPushButton("Редактировать границы")
                 edit.clicked.connect(self.edit_area_boundaries); self.card_layout.addWidget(edit)
             archive = QPushButton("Восстановить" if area.is_archived else "Архивировать")
@@ -395,18 +408,30 @@ class BlastEventWindow(QMainWindow):
             self._path_item(horizon.frozen_geometry, QPen(color, width), z=25)
 
     def _draw_blast_event_context(self):
-        for event in self.state.active_blast_events():
-            revision = event.active_geometry_revision()
+        events = list(self.state.active_blast_events())
+        if self._highlighted_link:
+            highlighted = next((e for e in self.state.blast_events if e.id == self._highlighted_link.blast_event_id), None)
+            if highlighted and highlighted not in events: events.append(highlighted)
+        for event in events:
+            link = next((x for x in (self.selected_area.links_for_revision() if self.selected_area else [])
+                         if x.blast_event_id == event.id and x.status != "excluded"), None)
+            revision = (self.link_service.linked_revision(event, self._highlighted_link)
+                        if self._highlighted_link and self._highlighted_link.blast_event_id == event.id
+                        else event.active_geometry_revision())
             if revision is None: continue
             geometry = revision.plan_geometry
+            strong = bool(link and link.status == "confirmed") or (self._highlighted_link is link)
+            suggested = bool(link and link.status == "suggested")
             if isinstance(geometry, PlanPolygon):
-                item = self._path_item(geometry, QPen(QColor(150, 95, 60, 150), 1.2),
-                                       QBrush(QColor(190, 120, 70, 25)), 12)
+                color = QColor(20, 170, 90) if strong else QColor(240, 155, 20) if suggested else QColor(150, 95, 60, 110)
+                item = self._path_item(geometry, QPen(color, 3 if strong else 2 if suggested else 1.2),
+                                       QBrush(QColor(color.red(), color.green(), color.blue(), 45 if link else 20)), 12)
                 item.setData(BLAST_CONTEXT_ROLE, event.id)
             elif isinstance(geometry, PlanMultiPoint):
                 for point in geometry.points:
                     item = QGraphicsEllipseItem(-3, -3, 6, 6); item.setPos(point.x, -point.y)
-                    item.setBrush(QColor(80, 110, 160, 130)); item.setPen(QPen(Qt.PenStyle.NoPen))
+                    color = QColor(20, 170, 90) if strong else QColor(240, 155, 20) if suggested else QColor(80, 110, 160, 100)
+                    item.setBrush(color); item.setPen(QPen(Qt.PenStyle.NoPen))
                     item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
                     item.setData(BLAST_CONTEXT_ROLE, event.id); item.setZValue(12); self.scene.addItem(item)
 
@@ -556,6 +581,28 @@ class BlastEventWindow(QMainWindow):
         self.selected_area.restore() if self.selected_area.is_archived else self.selected_area.archive()
         self._save(); self.refresh_areas()
 
+    def refresh_area_links(self):
+        if not self.selected_area: return
+        try:
+            result = self.link_service.refresh_suggestions(self.selected_area)
+            self._save(); self._render_card(); self.draw_geometry()
+            QMessageBox.information(self, "Связи Assessment Area",
+                f"Production: {result.production_candidates}\nContour: {result.contour_candidates}"
+                f"\nДобавлено предложений: {result.suggestions_added}")
+        except ValueError as exc:
+            QMessageBox.warning(self, "Связи Assessment Area", str(exc))
+
+    def show_area_links(self):
+        if not self.selected_area: return
+        dialog = AssessmentEventLinksDialog(self.selected_area, self.state, self.link_service, self)
+        dialog.highlight_requested.connect(self.highlight_area_link)
+        dialog.exec(); self._save(); self._render_card(); self.draw_geometry()
+
+    def highlight_area_link(self, link):
+        self._highlighted_link = link
+        self.draw_geometry(); self.statusBar().showMessage(
+            "Показана точная ревизия связи. Выберите другую Assessment Area для обычного режима.")
+
     def start_area_drawing(self):
         if self.state.active_dataset() is None:
             QMessageBox.warning(self, "Assessment Area", "Сначала загрузите или выберите активный Dataset")
@@ -655,8 +702,15 @@ class BlastEventWindow(QMainWindow):
             else:
                 area = self.area_service.create_area(name=dialog.area_name.text(), assessment_date=dialog.area_date.date().toPython(),
                                                      selection_polygon=polygon, selected_fragments=dialog.selected_candidates())
+            try:
+                scan = self.link_service.refresh_suggestions(area)
+                scan_text = (f"Production: {scan.production_candidates}; Contour: {scan.contour_candidates}; "
+                             f"предложений: {scan.suggestions_added}")
+            except Exception as exc:
+                scan_text = f"Ревизия сохранена, но поиск связей не выполнен: {exc}"
             self.selected_area = area; self._previous_selected_area = area
             self._save(); self.cancel_area_drawing(); self.refresh_areas()
+            QMessageBox.information(self, "Поиск связей", scan_text)
         except (ValueError, IndexError) as exc:
             self.workflow_state = "REFINING"
             QMessageBox.warning(self, "Некорректная Assessment Area", str(exc))
@@ -680,6 +734,102 @@ class BlastEventWindow(QMainWindow):
         self._save()
         self.closed.emit()
         super().closeEvent(event)
+
+
+class AssessmentEventLinksDialog(QDialog):
+    """Focused, revision-aware link manager; archived areas are read-only."""
+    highlight_requested = Signal(object)
+    FILTERS = {"Все": None, "Предложено": "suggested", "Подтверждено": "confirmed", "Исключено": "excluded"}
+
+    def __init__(self, area, state, service, parent=None):
+        super().__init__(parent); self.area = area; self.state = state; self.service = service
+        self.setWindowTitle(f"Связанные Blast Events — {area.name}"); self.resize(1050, 520)
+        layout = QVBoxLayout(self); self.filter = QComboBox(); self.filter.addItems(self.FILTERS)
+        self.filter.currentIndexChanged.connect(self.refresh); layout.addWidget(self.filter)
+        self.table = QTableWidget(0, 8); self.table.setHorizontalHeaderLabels([
+            "Статус", "Источник", "BlastEvent", "Тип", "Отметка", "Ревизия", "Состояние", "Пространственное совпадение"])
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.horizontalHeader().setStretchLastSection(True); layout.addWidget(self.table, 1)
+        row = QHBoxLayout()
+        for text, slot in (("Подтвердить", self.confirm), ("Исключить", self.exclude),
+                           ("Вернуть в предложенные", self.restore), ("Добавить вручную", self.manual),
+                           ("Показать на плане", self.highlight)):
+            button = QPushButton(text); button.clicked.connect(slot); row.addWidget(button)
+            if area.is_archived and text != "Показать на плане": button.setEnabled(False)
+        close = QPushButton("Закрыть"); close.clicked.connect(self.accept); row.addWidget(close)
+        layout.addLayout(row); self.refresh()
+
+    def refresh(self):
+        status = self.FILTERS[self.filter.currentText()]
+        self.links = [x for x in self.area.links_for_revision() if status is None or x.status == status]
+        self.table.setRowCount(len(self.links))
+        labels = {"suggested": "Предложено", "confirmed": "Подтверждено", "excluded": "Исключено",
+                  "automatic": "Автоматически", "manual": "Вручную"}
+        for row, link in enumerate(self.links):
+            event = next((e for e in self.state.blast_events if e.id == link.blast_event_id), None)
+            revision = self.service.linked_revision(event, link) if event else None
+            state = "событие не найдено" if not event else "событие в архиве" if event.is_archived else "устаревшая ревизия" if self.service.is_stale(link) else "текущая"
+            spatial = "совпавшие устья: " + str(len(link.frozen_intersection_geometry.points)) if isinstance(link.frozen_intersection_geometry, PlanMultiPoint) else "пересечение полигонов" if event and event.event_type == "production" else "—"
+            values = (labels[link.status], labels[link.source], event.name if event else link.blast_event_id,
+                      event.event_type if event else "—", f"{event.elevation:g}" if event else "—",
+                      f"{revision.revision_number} ({link.geometry_revision_id})" if revision else link.geometry_revision_id,
+                      state, spatial)
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value); item.setToolTip(value); self.table.setItem(row, column, item)
+
+    def selected_link(self):
+        row = self.table.currentRow(); return self.links[row] if 0 <= row < len(self.links) else None
+
+    def _change(self, action):
+        link = self.selected_link()
+        if link:
+            try: action(self.area, link.id); self.refresh()
+            except ValueError as exc: QMessageBox.warning(self, "Связи", str(exc))
+    def confirm(self): self._change(self.service.confirm_link)
+    def exclude(self): self._change(self.service.exclude_link)
+    def restore(self): self._change(self.service.restore_suggestion)
+
+    def manual(self):
+        dialog = ManualAssessmentEventLinkDialog(self.area, self.state, self.service, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted: self.refresh()
+
+    def highlight(self):
+        link = self.selected_link()
+        if link: self.highlight_requested.emit(link); self.accept()
+
+
+class ManualAssessmentEventLinkDialog(QDialog):
+    def __init__(self, area, state, service, parent=None):
+        super().__init__(parent); self.area = area; self.service = service
+        linked = {x.blast_event_id for x in area.links_for_revision()}
+        self.events = [e for e in state.blast_events if not e.is_archived and e.id not in linked
+                       and e.active_geometry_revision() is not None]
+        self.setWindowTitle("Добавить BlastEvent вручную"); self.resize(820, 420)
+        layout = QVBoxLayout(self); self.table = QTableWidget(len(self.events), 6)
+        self.table.setHorizontalHeaderLabels(["BlastEvent", "Тип", "Отметка", "Ревизия", "Отметка подходит", "Геометрия подходит"])
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        for row, event in enumerate(self.events):
+            candidate = service.evaluate_event(area, event)
+            values = (event.name, event.event_type, f"{event.elevation:g}", event.active_geometry_revision_id,
+                      "Да" if candidate.elevation_matches else "Нет", "Да" if candidate.spatial_matches else "Нет")
+            for column, value in enumerate(values): self.table.setItem(row, column, QTableWidgetItem(value))
+        self.table.horizontalHeader().setStretchLastSection(True); layout.addWidget(self.table)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.add); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
+
+    def add(self):
+        row = self.table.currentRow()
+        if row < 0: return
+        event = self.events[row]; candidate = self.service.evaluate_event(self.area, event)
+        failures = []
+        if not candidate.elevation_matches: failures.append("отметка вне диапазона")
+        if not candidate.spatial_matches: failures.append("нет пространственного совпадения")
+        if failures and QMessageBox.warning(self, "Ручная связь",
+                "Автоматические условия не выполнены: " + ", ".join(failures) + ". Добавить всё равно?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes: return
+        try: self.service.add_manual_link(self.area, event.id); self.accept()
+        except ValueError as exc: QMessageBox.warning(self, "Ручная связь", str(exc))
 
 
 class AssessmentCandidateDialog(QDialog):

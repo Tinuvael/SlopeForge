@@ -4,7 +4,7 @@ from dataclasses import replace
 from math import hypot
 
 from .models import DatamineLine, DataminePoint
-from .domain import PlanLineString, PlanPoint, PlanPolygon
+from .domain import PlanLineString, PlanMultiPoint, PlanPoint, PlanPolygon
 
 GEOMETRY_TOLERANCE = 1e-9
 
@@ -56,6 +56,37 @@ def point_in_polygon(point: PlanPoint, polygon: PlanPolygon,
             if crossing_x >= point.x - tolerance:
                 inside = not inside
     return inside
+
+
+def polygon_intersection_evidence(first: PlanPolygon, second: PlanPolygon,
+                                  tolerance: float = GEOMETRY_TOLERANCE) -> tuple[PlanPoint, ...]:
+    """Return deterministic copied witness points, not a fabricated clipped polygon."""
+    evidence: list[PlanPoint] = []
+    for a, b in zip(first.ring, first.ring[1:]):
+        for c, d in zip(second.ring, second.ring[1:]):
+            point = segment_intersection(a, b, c, d, tolerance)
+            if point is not None:
+                evidence.append(PlanPoint(point.x, point.y))
+    evidence.extend(PlanPoint(p.x, p.y) for p in first.ring[:-1] if point_in_polygon(p, second, tolerance))
+    evidence.extend(PlanPoint(p.x, p.y) for p in second.ring[:-1] if point_in_polygon(p, first, tolerance))
+    unique: list[PlanPoint] = []
+    for point in evidence:
+        if not any(hypot(point.x-other.x, point.y-other.y) <= tolerance for other in unique):
+            unique.append(point)
+    return tuple(sorted(unique, key=lambda p: (p.x, p.y)))
+
+
+def polygon_intersects_polygon(first: PlanPolygon, second: PlanPolygon,
+                               tolerance: float = GEOMETRY_TOLERANCE) -> bool:
+    """Simple-polygon intersection including containment and boundary contact."""
+    return bool(polygon_intersection_evidence(first, second, tolerance))
+
+
+def points_from_multipoint_inside_polygon(multipoint: PlanMultiPoint, polygon: PlanPolygon,
+                                          tolerance: float = GEOMETRY_TOLERANCE) -> tuple[PlanPoint, ...]:
+    """Copy collars inside or on the selection boundary."""
+    return tuple(PlanPoint(point.x, point.y) for point in multipoint.points
+                 if point_in_polygon(point, polygon, tolerance))
 
 
 def polygon_self_intersects(polygon: PlanPolygon, tolerance: float = GEOMETRY_TOLERANCE) -> bool:

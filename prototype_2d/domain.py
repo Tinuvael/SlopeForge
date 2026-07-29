@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from uuid import NAMESPACE_URL, uuid5
 from typing import Any, Literal, TypeAlias
 
 from .models import DatamineLine
@@ -306,33 +307,52 @@ class AssessmentEventLink:
     status: LinkStatus = "suggested"
     source: LinkSource = "automatic"
     frozen_intersection_geometry: PlanGeometry | None = None
+    id: str | None = None
+    assessment_area_geometry_revision_id: str | None = None
+    created_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {"suggested", "confirmed", "excluded"}:
             raise ValueError(f"Unsupported link status: {self.status!r}")
         if self.source not in {"automatic", "manual"}:
             raise ValueError(f"Unsupported link source: {self.source!r}")
+        if self.created_at is not None and self.created_at.tzinfo is None:
+            self.created_at = self.created_at.replace(tzinfo=timezone.utc)
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "id": self.id,
+            "assessment_area_geometry_revision_id": self.assessment_area_geometry_revision_id,
             "blast_event_id": self.blast_event_id,
             "geometry_revision_id": self.geometry_revision_id,
             "status": self.status,
             "source": self.source,
+            "created_at": _datetime_to_text(self.created_at),
             "frozen_intersection_geometry": (
                 self.frozen_intersection_geometry.to_dict() if self.frozen_intersection_geometry else None
             ),
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "AssessmentEventLink":
+    def from_dict(cls, data: dict[str, Any], *, area_revision_id: str | None = None,
+                  fallback_created_at: datetime | None = None) -> "AssessmentEventLink":
         geometry_data = data.get("frozen_intersection_geometry")
+        revision_id = data.get("assessment_area_geometry_revision_id") or area_revision_id
+        link_id = data.get("id") or str(uuid5(
+            NAMESPACE_URL,
+            "slopeforge-link:" + ":".join((revision_id or "legacy", data["blast_event_id"],
+                                           data["geometry_revision_id"], data.get("source", "automatic"))),
+        ))
+        created_at = _datetime_from_text(data.get("created_at")) or fallback_created_at or datetime(1970, 1, 1, tzinfo=timezone.utc)
         return cls(
             blast_event_id=data["blast_event_id"],
             geometry_revision_id=data["geometry_revision_id"],
             status=data.get("status", "suggested"),
             source=data.get("source", "automatic"),
             frozen_intersection_geometry=plan_geometry_from_dict(geometry_data) if geometry_data else None,
+            id=link_id,
+            assessment_area_geometry_revision_id=revision_id,
+            created_at=created_at,
         )
 
 
@@ -396,12 +416,25 @@ class AssessmentArea:
     def __post_init__(self) -> None:
         if self.geometry_revisions and self.active_geometry_revision_id is None:
             self.active_geometry_revision_id = self.geometry_revisions[-1].id
+        active = next((r for r in self.geometry_revisions if r.id == self.active_geometry_revision_id), None)
+        for link in self.event_links:
+            link.assessment_area_geometry_revision_id = link.assessment_area_geometry_revision_id or self.active_geometry_revision_id
+            link.id = link.id or str(uuid5(NAMESPACE_URL, "slopeforge-link:" + ":".join((
+                link.assessment_area_geometry_revision_id or "legacy", link.blast_event_id,
+                link.geometry_revision_id, link.source))))
+            link.created_at = link.created_at or (active.created_at if active else datetime(1970, 1, 1, tzinfo=timezone.utc))
 
     def active_geometry_revision(self) -> AssessmentAreaGeometryRevision:
         revision = next((item for item in self.geometry_revisions if item.id == self.active_geometry_revision_id), None)
         if revision is None:
             raise ValueError(f"Assessment Area {self.id!r} has no active geometry revision")
         return revision
+
+    def links_for_revision(self, revision_id: str | None = None) -> list[AssessmentEventLink]:
+        """Links are revision-scoped; historical links remain on the area."""
+        target = revision_id or self.active_geometry_revision_id
+        return [link for link in self.event_links
+                if link.assessment_area_geometry_revision_id == target]
 
     @property
     def source_dataset_id(self): return self.active_geometry_revision().source_dataset_id
@@ -461,7 +494,10 @@ class AssessmentArea:
             assessment_date=date.fromisoformat(data["assessment_date"]),
             geometry_revisions=revisions,
             active_geometry_revision_id=active_id,
-            event_links=[AssessmentEventLink.from_dict(item) for item in data.get("event_links", [])],
+            event_links=[AssessmentEventLink.from_dict(
+                item, area_revision_id=active_id,
+                fallback_created_at=next((r.created_at for r in revisions if r.id == active_id), revisions[-1].created_at),
+            ) for item in data.get("event_links", [])],
             is_archived=bool(data.get("is_archived", False)),
             archived_at=_datetime_from_text(data.get("archived_at")),
             archive_reason=data.get("archive_reason"),
