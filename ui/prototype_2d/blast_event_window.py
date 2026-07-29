@@ -26,9 +26,30 @@ from ui.prototype_2d.plan_view import PrototypePlanView
 
 PROJECT_LINE_ROLE = 1001
 BLAST_GEOMETRY_ROLE = 1002
+ASSESSMENT_SELECTION_ROLE = 1003
+ASSESSMENT_HANDLE_ROLE = 1004
+BLAST_CONTEXT_ROLE = 1005
 
 
 BlastEventPlanView = PrototypePlanView  # совместимость для прежних импортов и тестов
+
+
+class PolygonVertexHandle(QGraphicsEllipseItem):
+    def __init__(self, index, point, moved, released):
+        super().__init__(-6, -6, 12, 12); self.index = index; self._moved = moved; self._released = released
+        self.setPos(point.x, -point.y); self.setBrush(QColor(255, 210, 0)); self.setPen(QPen(QColor(20, 80, 130), 2))
+        self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                      QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges |
+                      QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        self.setData(ASSESSMENT_HANDLE_ROLE, True); self.setZValue(90)
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            self._moved(self.index, value.x(), -value.y())
+        return super().itemChange(change, value)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event); self._released(self.index)
 
 
 class DatasetHistoryDialog(QDialog):
@@ -78,6 +99,11 @@ class BlastEventWindow(QMainWindow):
         self._drawing_vertices: list[PlanPoint] = []
         self._drawing_cursor: PlanPoint | None = None
         self._candidate_preview = []
+        self.workflow_state = "IDLE"
+        self._editing_area = None
+        self._previous_selected_area = None
+        self._refinement_path_item = None
+        self._vertex_handles = []
         self.setWindowTitle("SlopeForge — 2D Assessment Workspace")
         self.resize(1300, 800)
         self.setMinimumSize(1000, 650)
@@ -149,6 +175,12 @@ class BlastEventWindow(QMainWindow):
         self.grid_button.toggled.connect(self.draw_geometry)
         actions.addWidget(fit)
         actions.addWidget(self.grid_button)
+        self.confirm_boundaries_button = QPushButton("Подтвердить границы")
+        self.confirm_boundaries_button.clicked.connect(self.confirm_refined_polygon)
+        self.cancel_workflow_button = QPushButton("Отменить создание")
+        self.cancel_workflow_button.clicked.connect(self.cancel_area_drawing)
+        actions.addWidget(self.confirm_boundaries_button); actions.addWidget(self.cancel_workflow_button)
+        self.confirm_boundaries_button.hide(); self.cancel_workflow_button.hide()
         actions.addStretch()
         centre_layout.addLayout(actions)
         self.scene = QGraphicsScene(self)
@@ -243,15 +275,24 @@ class BlastEventWindow(QMainWindow):
             area = self.selected_area
             if not area:
                 self.card_layout.addWidget(QLabel("Выберите Assessment Area")); self.card_layout.addStretch(); return
-            dataset = next((item for item in self.state.datasets if item.id == area.source_dataset_id), None)
+            revision = area.active_geometry_revision()
+            dataset = next((item for item in self.state.datasets if item.id == revision.source_dataset_id), None)
             details = [("ID", area.id), ("Название", area.name), ("Дата оценки", area.assessment_date.isoformat()),
-                       ("Dataset", f"{area.source_dataset_id} — {dataset.name}" if dataset else area.source_dataset_id),
+                       ("Активная ревизия", str(revision.revision_number)),
+                       ("Всего ревизий", str(len(area.geometry_revisions))),
+                       ("Дата ревизии", revision.created_at.isoformat(sep=" ", timespec="minutes")),
+                       ("Dataset", f"{revision.source_dataset_id} — {dataset.name}" if dataset else revision.source_dataset_id),
                        ("Нижняя отметка", f"{area.lower_elevation:g}"), ("Верхняя отметка", f"{area.upper_elevation:g}"),
                        ("Горизонтов", str(len(area.horizon_slices))), ("Связей событий", str(len(area.event_links))),
                        ("Статус", "Архив" if area.is_archived else "Активно")]
             form = QFormLayout()
+            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+            form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
             for caption, value in details: form.addRow(caption, self._detail_value_label(value))
             self.card_layout.addLayout(form)
+            if not area.is_archived:
+                edit = QPushButton("Редактировать границы")
+                edit.clicked.connect(self.edit_area_boundaries); self.card_layout.addWidget(edit)
             archive = QPushButton("Восстановить" if area.is_archived else "Архивировать")
             archive.clicked.connect(self.toggle_area_archive); self.card_layout.addWidget(archive); self.card_layout.addStretch(); return
         event = self.selected_event
@@ -296,10 +337,13 @@ class BlastEventWindow(QMainWindow):
         return label
 
     def draw_geometry(self):
+        self._vertex_handles = []; self._refinement_path_item = None
         self.scene.clear()
         self._draw_project_lines()
         if self.mode_tabs.currentIndex() == 0: self._draw_blast_event()
-        else: self._draw_assessment_area()
+        else:
+            self._draw_blast_event_context()
+            self._draw_assessment_area()
         self._draw_polygon_preview()
         for candidate in self._candidate_preview:
             self._path_item(candidate.geometry, QPen(QColor(255, 120, 0), 4), z=75)
@@ -340,11 +384,31 @@ class BlastEventWindow(QMainWindow):
     def _draw_assessment_area(self):
         area = self.selected_area
         if not area: return
-        self._path_item(area.selection_polygon_frozen, QPen(QColor(100, 140, 170), 1, Qt.PenStyle.DashLine), z=18)
-        self._path_item(area.final_geometry_frozen, QPen(QColor(20, 120, 200), 3), QBrush(QColor(30, 140, 220, 55)), 22)
+        editing_reference = self.workflow_state == "REFINING" and self._editing_area is area
+        self._path_item(area.final_geometry_frozen,
+                        QPen(QColor(90, 120, 140), 1.5) if editing_reference else QPen(QColor(20, 120, 200), 3),
+                        QBrush(QColor(70, 100, 120, 20)) if editing_reference else QBrush(QColor(30, 140, 220, 55)), 22)
         colors = {"lower_boundary": QColor(20, 160, 80), "upper_boundary": QColor(190, 70, 220), "internal_horizon": QColor(245, 150, 20)}
         for horizon in area.horizon_slices:
-            self._path_item(horizon.frozen_geometry, QPen(colors[horizon.role], 3), z=25)
+            color = QColor(110, 125, 135, 120) if editing_reference else colors[horizon.role]
+            width = 1.2 if editing_reference else (2 if horizon.role == "internal_horizon" else 3)
+            self._path_item(horizon.frozen_geometry, QPen(color, width), z=25)
+
+    def _draw_blast_event_context(self):
+        for event in self.state.active_blast_events():
+            revision = event.active_geometry_revision()
+            if revision is None: continue
+            geometry = revision.plan_geometry
+            if isinstance(geometry, PlanPolygon):
+                item = self._path_item(geometry, QPen(QColor(150, 95, 60, 150), 1.2),
+                                       QBrush(QColor(190, 120, 70, 25)), 12)
+                item.setData(BLAST_CONTEXT_ROLE, event.id)
+            elif isinstance(geometry, PlanMultiPoint):
+                for point in geometry.points:
+                    item = QGraphicsEllipseItem(-3, -3, 6, 6); item.setPos(point.x, -point.y)
+                    item.setBrush(QColor(80, 110, 160, 130)); item.setPen(QPen(Qt.PenStyle.NoPen))
+                    item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
+                    item.setData(BLAST_CONTEXT_ROLE, event.id); item.setZValue(12); self.scene.addItem(item)
 
     def _draw_polygon_preview(self):
         if not self._drawing_vertices: return
@@ -352,9 +416,15 @@ class BlastEventWindow(QMainWindow):
         path = QPainterPath(QPointF(points[0].x, -points[0].y))
         for point in points[1:]: path.lineTo(point.x, -point.y)
         if len(self._drawing_vertices) >= 3: path.lineTo(points[0].x, -points[0].y)
-        item = QGraphicsPathItem(path); item.setPen(QPen(QColor(0, 130, 230), 2, Qt.PenStyle.DashLine)); item.setBrush(QColor(0, 130, 230, 35)); item.setZValue(80); self.scene.addItem(item)
-        for point in self._drawing_vertices:
-            marker = QGraphicsEllipseItem(-4, -4, 8, 8); marker.setPos(point.x, -point.y); marker.setBrush(QColor(0, 130, 230)); marker.setZValue(81); self.scene.addItem(marker)
+        item = QGraphicsPathItem(path); item.setPen(QPen(QColor(0, 130, 230), 2, Qt.PenStyle.DashLine)); item.setBrush(QColor(0, 130, 230, 35)); item.setZValue(80); item.setData(ASSESSMENT_SELECTION_ROLE, True); self.scene.addItem(item)
+        self._refinement_path_item = item
+        if self.workflow_state == "REFINING":
+            for index, point in enumerate(self._drawing_vertices):
+                handle = PolygonVertexHandle(index, point, self._handle_moved, self._handle_released)
+                self.scene.addItem(handle); self._vertex_handles.append(handle)
+        else:
+            for point in self._drawing_vertices:
+                marker = QGraphicsEllipseItem(-4, -4, 8, 8); marker.setPos(point.x, -point.y); marker.setBrush(QColor(0, 130, 230)); marker.setZValue(81); self.scene.addItem(marker)
 
     def _draw_blast_event(self):
         event = self.selected_event
@@ -490,52 +560,118 @@ class BlastEventWindow(QMainWindow):
         if self.state.active_dataset() is None:
             QMessageBox.warning(self, "Assessment Area", "Сначала загрузите или выберите активный Dataset")
             return
-        self._drawing_vertices = []; self._drawing_cursor = None
+        self._previous_selected_area = self.selected_area; self._editing_area = None
+        self.workflow_state = "DRAWING"; self._drawing_vertices = []; self._drawing_cursor = None
         self.plan_view.set_polygon_drawing_mode(True)
+        self.cancel_workflow_button.setText("Отменить создание"); self.cancel_workflow_button.show()
+        self.confirm_boundaries_button.hide()
         self.statusBar().showMessage("ЛКМ — вершина; Enter/двойной клик — завершить; Backspace — назад; Esc — отмена")
 
     def _drawing_click(self, x, y):
-        if not self.plan_view._drawing_mode: return
+        if self.workflow_state != "DRAWING": return
         point = PlanPoint(x, y)
         if self._drawing_vertices and len(self._drawing_vertices) >= 3:
             first = self._drawing_vertices[0]
             if ((point.x-first.x) ** 2 + (point.y-first.y) ** 2) ** .5 <= 8 / max(self.plan_view.transform().m11(), 1e-9):
-                self.finish_area_drawing(); return
+                self.enter_refinement(); return
         self._drawing_vertices.append(point); self.draw_geometry()
 
     def _drawing_move(self, x, y):
-        if self.plan_view._drawing_mode and self._drawing_vertices:
+        if self.workflow_state == "DRAWING" and self._drawing_vertices:
             self._drawing_cursor = PlanPoint(x, y); self.draw_geometry()
 
     def _drawing_key(self, key):
-        if not self.plan_view._drawing_mode: return
-        if key == "back":
+        if self.workflow_state == "DRAWING" and key == "back":
             if self._drawing_vertices: self._drawing_vertices.pop()
             self.draw_geometry()
-        elif key == "enter": self.finish_area_drawing()
+        elif self.workflow_state == "DRAWING" and key == "enter": self.enter_refinement()
+        elif self.workflow_state == "REFINING" and key == "enter": self.confirm_refined_polygon()
 
     def cancel_area_drawing(self):
-        if not self.plan_view._drawing_mode: return
+        if self.workflow_state == "IDLE": return
         self.plan_view.set_polygon_drawing_mode(False); self._drawing_vertices = []; self._drawing_cursor = None
         self._candidate_preview = []
+        self.workflow_state = "IDLE"; self._editing_area = None
+        self.selected_area = self._previous_selected_area; self._previous_selected_area = None
+        self.confirm_boundaries_button.hide(); self.cancel_workflow_button.hide()
         self.statusBar().clearMessage(); self.draw_geometry()
 
-    def finish_area_drawing(self):
-        if not self.plan_view._drawing_mode: return
+    def enter_refinement(self):
+        if self.workflow_state != "DRAWING": return
         try:
             polygon = PlanPolygon(tuple(self._drawing_vertices + [self._drawing_vertices[0]]))
             validate_simple_polygon(polygon)
-            candidates = self.area_service.generate_candidates(polygon)
-            if not candidates: raise ValueError("Внутри полигона нет подходящих горизонтальных линий")
-            self._candidate_preview = candidates; self.draw_geometry()
-            dialog = AssessmentCandidateDialog(candidates, self)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                self._candidate_preview = []; self.draw_geometry(); return
-            area = self.area_service.create_area(name=dialog.area_name.text(), assessment_date=dialog.area_date.date().toPython(),
-                                                 selection_polygon=polygon, selected_fragments=dialog.selected_candidates())
-            self.selected_area = area; self._save(); self.cancel_area_drawing(); self.refresh_areas()
+            self.workflow_state = "REFINING"; self._drawing_cursor = None
+            self.plan_view.set_polygon_refinement_mode()
+            self.confirm_boundaries_button.show(); self.cancel_workflow_button.show()
+            self._refresh_refinement_candidates(); self.draw_geometry()
+            self.statusBar().showMessage("Перетащите вершины. Enter или «Подтвердить границы» — продолжить; Esc — отменить")
         except (ValueError, IndexError) as exc:
             QMessageBox.warning(self, "Некорректная Assessment Area", str(exc))
+
+    def _current_draft_polygon(self):
+        return PlanPolygon(tuple(self._drawing_vertices + [self._drawing_vertices[0]]))
+
+    def _refresh_refinement_candidates(self):
+        try:
+            polygon = self._current_draft_polygon(); validate_simple_polygon(polygon)
+            self._candidate_preview = self.area_service.generate_candidates(polygon)
+            self.confirm_boundaries_button.setEnabled(bool(self._candidate_preview))
+        except (ValueError, IndexError):
+            self._candidate_preview = []; self.confirm_boundaries_button.setEnabled(False)
+
+    def _update_refinement_path(self, valid=True):
+        if self._refinement_path_item is None or not self._drawing_vertices: return
+        path = QPainterPath(QPointF(self._drawing_vertices[0].x, -self._drawing_vertices[0].y))
+        for point in self._drawing_vertices[1:]: path.lineTo(point.x, -point.y)
+        path.closeSubpath(); self._refinement_path_item.setPath(path)
+        self._refinement_path_item.setPen(QPen(QColor(0, 130, 230) if valid else QColor(210, 40, 40), 2, Qt.PenStyle.DashLine))
+
+    def _handle_moved(self, index, x, y):
+        if self.workflow_state != "REFINING" or index >= len(self._drawing_vertices): return
+        self._drawing_vertices[index] = PlanPoint(x, y)
+        try: validate_simple_polygon(self._current_draft_polygon()); valid = True
+        except ValueError: valid = False
+        self.confirm_boundaries_button.setEnabled(valid); self._update_refinement_path(valid)
+
+    def _handle_released(self, _index):
+        self._refresh_refinement_candidates(); self.draw_geometry()
+
+    def confirm_refined_polygon(self):
+        if self.workflow_state != "REFINING": return
+        try:
+            polygon = self._current_draft_polygon(); validate_simple_polygon(polygon)
+            candidates = self.area_service.generate_candidates(polygon)
+            if not candidates: raise ValueError("Внутри полигона нет подходящих горизонтальных линий")
+            self.workflow_state = "CANDIDATE_CONFIRMATION"
+            dialog = AssessmentCandidateDialog(candidates, self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                self.workflow_state = "REFINING"; self._candidate_preview = []
+                self._refresh_refinement_candidates(); self.draw_geometry(); return
+            if self._editing_area:
+                area = self._editing_area
+                self.area_service.revise_area(area, selection_polygon=polygon,
+                                              selected_fragments=dialog.selected_candidates())
+            else:
+                area = self.area_service.create_area(name=dialog.area_name.text(), assessment_date=dialog.area_date.date().toPython(),
+                                                     selection_polygon=polygon, selected_fragments=dialog.selected_candidates())
+            self.selected_area = area; self._previous_selected_area = area
+            self._save(); self.cancel_area_drawing(); self.refresh_areas()
+        except (ValueError, IndexError) as exc:
+            self.workflow_state = "REFINING"
+            QMessageBox.warning(self, "Некорректная Assessment Area", str(exc))
+
+    finish_area_drawing = enter_refinement  # compatibility for older tests
+
+    def edit_area_boundaries(self):
+        area = self.selected_area
+        if area is None or area.is_archived: return
+        self._previous_selected_area = area; self._editing_area = area; self.workflow_state = "REFINING"
+        self._drawing_vertices = list(area.selection_polygon_frozen.ring[:-1]); self._drawing_cursor = None
+        self.cancel_workflow_button.setText("Отменить редактирование")
+        self.confirm_boundaries_button.show(); self.cancel_workflow_button.show()
+        self.plan_view.set_polygon_refinement_mode()
+        self._refresh_refinement_candidates(); self.draw_geometry()
 
     def _save(self):
         save_blast_event_state(self.state, self.storage_path)

@@ -6,6 +6,7 @@ import pytest
 from prototype_2d.blast_geometry import BlastGeometryError, build_contour_geometry, build_production_geometry
 from prototype_2d.domain import (
     AssessmentArea,
+    AssessmentAreaGeometryRevision,
     AssessmentDomainState,
     AssessmentEventLink,
     AssessmentHorizonSlice,
@@ -120,16 +121,18 @@ def test_archive_filters_active_blast_events_without_deleting_revisions():
 def test_domain_state_round_trip_includes_assessment_area_stub():
     ring = PlanPolygon((PlanPoint(0, 0), PlanPoint(10, 0), PlanPoint(10, 10), PlanPoint(0, 0)))
     slice_geometry = PlanLineString((PlanPoint(0, 0), PlanPoint(10, 0)))
+    revision = AssessmentAreaGeometryRevision(
+        id="AA-001-R001", assessment_area_id="AA-001", revision_number=1,
+        created_at=datetime(2026, 7, 21, tzinfo=timezone.utc), source_dataset_id="D-001",
+        selection_polygon_frozen=ring, final_geometry_frozen=ring,
+        lower_elevation=600, upper_elevation=620,
+        horizon_slices=(AssessmentHorizonSlice("HS-001", "L-600", 600, "lower_boundary", slice_geometry),),
+    )
     area = AssessmentArea(
         id="AA-001",
         name="Area 600-620",
         assessment_date=date(2026, 7, 21),
-        source_dataset_id="D-001",
-        selection_polygon_frozen=ring,
-        final_geometry_frozen=ring,
-        lower_elevation=600,
-        upper_elevation=620,
-        horizon_slices=[AssessmentHorizonSlice("HS-001", "L-600", 600, "lower_boundary", slice_geometry)],
+        geometry_revisions=[revision], active_geometry_revision_id=revision.id,
         event_links=[AssessmentEventLink("BE-001", "BE-001-R001", "confirmed", "automatic")],
     )
     state = AssessmentDomainState(assessment_areas=[area])

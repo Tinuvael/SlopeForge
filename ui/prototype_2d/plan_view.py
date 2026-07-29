@@ -24,6 +24,12 @@ class PrototypePlanView(QGraphicsView):
         if enabled:
             self.setFocus()
 
+    def set_polygon_refinement_mode(self):
+        """Disable viewport panning while movable scene handles are active."""
+        self._drawing_mode = False
+        self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        self.setFocus()
+
     @staticmethod
     def scene_to_domain(point):
         return PlanPoint(point.x(), -point.y())

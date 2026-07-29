@@ -336,25 +336,85 @@ class AssessmentEventLink:
         )
 
 
-@dataclass
-class AssessmentArea:
+@dataclass(frozen=True)
+class AssessmentAreaGeometryRevision:
     id: str
-    name: str
-    assessment_date: date
+    assessment_area_id: str
+    revision_number: int
+    created_at: datetime
     source_dataset_id: str
     selection_polygon_frozen: PlanPolygon
     final_geometry_frozen: PlanPolygon
     lower_elevation: float
     upper_elevation: float
-    horizon_slices: list[AssessmentHorizonSlice] = field(default_factory=list)
+    horizon_slices: tuple[AssessmentHorizonSlice, ...]
+    change_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.revision_number < 1:
+            raise ValueError("Geometry revision number must be positive")
+        if self.lower_elevation >= self.upper_elevation:
+            raise ValueError("AssessmentArea lower_elevation must be below upper_elevation")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id, "assessment_area_id": self.assessment_area_id,
+            "revision_number": self.revision_number, "created_at": self.created_at.isoformat(),
+            "source_dataset_id": self.source_dataset_id,
+            "selection_polygon_frozen": self.selection_polygon_frozen.to_dict(),
+            "final_geometry_frozen": self.final_geometry_frozen.to_dict(),
+            "lower_elevation": self.lower_elevation, "upper_elevation": self.upper_elevation,
+            "horizon_slices": [item.to_dict() for item in self.horizon_slices],
+            "change_reason": self.change_reason,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AssessmentAreaGeometryRevision":
+        selection = plan_geometry_from_dict(data["selection_polygon_frozen"])
+        final = plan_geometry_from_dict(data["final_geometry_frozen"])
+        if not isinstance(selection, PlanPolygon) or not isinstance(final, PlanPolygon):
+            raise ValueError("AssessmentArea frozen geometries must be Polygons")
+        return cls(data["id"], data["assessment_area_id"], int(data["revision_number"]),
+                   datetime.fromisoformat(data["created_at"]), data["source_dataset_id"], selection, final,
+                   float(data["lower_elevation"]), float(data["upper_elevation"]),
+                   tuple(AssessmentHorizonSlice.from_dict(item) for item in data.get("horizon_slices", [])),
+                   data.get("change_reason"))
+
+
+@dataclass
+class AssessmentArea:
+    id: str
+    name: str
+    assessment_date: date
+    geometry_revisions: list[AssessmentAreaGeometryRevision] = field(default_factory=list)
+    active_geometry_revision_id: str | None = None
     event_links: list[AssessmentEventLink] = field(default_factory=list)
     is_archived: bool = False
     archived_at: datetime | None = None
     archive_reason: str | None = None
 
     def __post_init__(self) -> None:
-        if self.lower_elevation >= self.upper_elevation:
-            raise ValueError("AssessmentArea lower_elevation must be below upper_elevation")
+        if self.geometry_revisions and self.active_geometry_revision_id is None:
+            self.active_geometry_revision_id = self.geometry_revisions[-1].id
+
+    def active_geometry_revision(self) -> AssessmentAreaGeometryRevision:
+        revision = next((item for item in self.geometry_revisions if item.id == self.active_geometry_revision_id), None)
+        if revision is None:
+            raise ValueError(f"Assessment Area {self.id!r} has no active geometry revision")
+        return revision
+
+    @property
+    def source_dataset_id(self): return self.active_geometry_revision().source_dataset_id
+    @property
+    def selection_polygon_frozen(self): return self.active_geometry_revision().selection_polygon_frozen
+    @property
+    def final_geometry_frozen(self): return self.active_geometry_revision().final_geometry_frozen
+    @property
+    def lower_elevation(self): return self.active_geometry_revision().lower_elevation
+    @property
+    def upper_elevation(self): return self.active_geometry_revision().upper_elevation
+    @property
+    def horizon_slices(self): return self.active_geometry_revision().horizon_slices
 
     def archive(self, reason: str | None = None, archived_at: datetime | None = None) -> None:
         self.is_archived = True
@@ -371,12 +431,8 @@ class AssessmentArea:
             "id": self.id,
             "name": self.name,
             "assessment_date": self.assessment_date.isoformat(),
-            "source_dataset_id": self.source_dataset_id,
-            "selection_polygon_frozen": self.selection_polygon_frozen.to_dict(),
-            "final_geometry_frozen": self.final_geometry_frozen.to_dict(),
-            "lower_elevation": self.lower_elevation,
-            "upper_elevation": self.upper_elevation,
-            "horizon_slices": [item.to_dict() for item in self.horizon_slices],
+            "geometry_revisions": [item.to_dict() for item in self.geometry_revisions],
+            "active_geometry_revision_id": self.active_geometry_revision_id,
             "event_links": [item.to_dict() for item in self.event_links],
             "is_archived": self.is_archived,
             "archived_at": _datetime_to_text(self.archived_at),
@@ -385,20 +441,26 @@ class AssessmentArea:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AssessmentArea":
-        selection = plan_geometry_from_dict(data["selection_polygon_frozen"])
-        final = plan_geometry_from_dict(data["final_geometry_frozen"])
-        if not isinstance(selection, PlanPolygon) or not isinstance(final, PlanPolygon):
-            raise ValueError("AssessmentArea frozen geometries must be Polygons")
+        revisions = [AssessmentAreaGeometryRevision.from_dict(item) for item in data.get("geometry_revisions", [])]
+        active_id = data.get("active_geometry_revision_id")
+        if not revisions:  # migration of PR #28 / existing local prototype JSON
+            revision_data = {
+                "id": f"{data['id']}-R001", "assessment_area_id": data["id"], "revision_number": 1,
+                "created_at": data.get("created_at") or f"{data['assessment_date']}T00:00:00+00:00",
+                "source_dataset_id": data["source_dataset_id"],
+                "selection_polygon_frozen": data["selection_polygon_frozen"],
+                "final_geometry_frozen": data["final_geometry_frozen"],
+                "lower_elevation": data["lower_elevation"], "upper_elevation": data["upper_elevation"],
+                "horizon_slices": data.get("horizon_slices", []), "change_reason": "Миграция старого формата",
+            }
+            revisions = [AssessmentAreaGeometryRevision.from_dict(revision_data)]
+            active_id = revisions[0].id
         return cls(
             id=data["id"],
             name=data["name"],
             assessment_date=date.fromisoformat(data["assessment_date"]),
-            source_dataset_id=data["source_dataset_id"],
-            selection_polygon_frozen=selection,
-            final_geometry_frozen=final,
-            lower_elevation=float(data["lower_elevation"]),
-            upper_elevation=float(data["upper_elevation"]),
-            horizon_slices=[AssessmentHorizonSlice.from_dict(item) for item in data.get("horizon_slices", [])],
+            geometry_revisions=revisions,
+            active_geometry_revision_id=active_id,
             event_links=[AssessmentEventLink.from_dict(item) for item in data.get("event_links", [])],
             is_archived=bool(data.get("is_archived", False)),
             archived_at=_datetime_from_text(data.get("archived_at")),

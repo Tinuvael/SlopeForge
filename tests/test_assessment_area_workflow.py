@@ -69,6 +69,14 @@ def test_selection_constraints_and_final_endpoint_orientation():
     assert final.ring == (PlanPoint(0, 0), PlanPoint(10, 0), PlanPoint(10, 10), PlanPoint(0, 10), PlanPoint(0, 0))
 
 
+def test_final_geometry_normalizes_shared_fragment_endpoint():
+    lower = PlanLineString((PlanPoint(0, 0), PlanPoint(10, 0)))
+    upper = PlanLineString((PlanPoint(10, 0), PlanPoint(4, 8)))
+    final = AssessmentAreaService.build_final_geometry(lower, upper)
+    assert final.ring == (PlanPoint(0, 0), PlanPoint(10, 0), PlanPoint(4, 8), PlanPoint(0, 0))
+    assert all(a != b for a, b in zip(final.ring, final.ring[1:]))
+
+
 def test_area_json_round_trip_and_archive_restore():
     dataset = ProjectLinesDataset("D-001", "Main", datetime.now(timezone.utc), "a.csv", True,
                                   [line("lo", 1, (0, 1), (10, 1)), line("hi", 2, (0, 9), (10, 9))])
@@ -79,3 +87,30 @@ def test_area_json_round_trip_and_archive_restore():
     area.archive("done"); restored = AssessmentDomainState.from_dict(json.loads(json.dumps(state.to_dict())))
     assert restored.assessment_areas[0].to_dict() == area.to_dict()
     restored.assessment_areas[0].restore(); assert not restored.assessment_areas[0].is_archived
+
+
+def test_geometry_edit_adds_revision_without_mutating_revision_one():
+    dataset = ProjectLinesDataset("D-001", "Main", datetime.now(timezone.utc), "a.csv", True,
+                                  [line("lo", 1, (-1, 1), (11, 1)), line("hi", 2, (-1, 9), (11, 9))])
+    state = AssessmentDomainState(datasets=[dataset]); service = AssessmentAreaService(state)
+    first_polygon = polygon((0, 0), (10, 0), (10, 10), (0, 10))
+    area = service.create_area(name="A", assessment_date=date.today(), selection_polygon=first_polygon,
+                               selected_fragments=service.generate_candidates(first_polygon))
+    first = area.geometry_revisions[0]; first_snapshot = first.to_dict()
+    second_polygon = polygon((1, 0), (9, 0), (9, 10), (1, 10))
+    service.revise_area(area, selection_polygon=second_polygon,
+                        selected_fragments=service.generate_candidates(second_polygon))
+    assert area.id == "AA-001" and area.active_geometry_revision().revision_number == 2
+    assert len(area.geometry_revisions) == 2 and first.to_dict() == first_snapshot
+
+
+def test_old_area_json_migrates_to_revision_one():
+    selection = polygon((0, 0), (10, 0), (10, 10), (0, 10))
+    old = {"id": "AA-007", "name": "Old", "assessment_date": "2026-07-28",
+           "source_dataset_id": "D-003", "selection_polygon_frozen": selection.to_dict(),
+           "final_geometry_frozen": selection.to_dict(), "lower_elevation": 100,
+           "upper_elevation": 110, "horizon_slices": [], "event_links": [], "is_archived": False}
+    restored = __import__("prototype_2d.domain", fromlist=["AssessmentArea"]).AssessmentArea.from_dict(old)
+    assert restored.id == "AA-007" and restored.active_geometry_revision().revision_number == 1
+    assert restored.source_dataset_id == "D-003"
+    assert "geometry_revisions" in restored.to_dict() and "selection_polygon_frozen" not in restored.to_dict()
