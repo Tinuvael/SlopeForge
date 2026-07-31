@@ -17,6 +17,14 @@ class ProductionGeometryResult:
     source_line: DatamineLine
     plan_geometry: PlanPolygon
     elevation: float
+    closed_polygon_count: int = 1
+
+    @property
+    def multiple_polygons_warning(self) -> str | None:
+        if self.closed_polygon_count <= 1:
+            return None
+        return (f"CSV contains {self.closed_polygon_count} production polygons. One BlastEvent currently "
+                "supports one polygon. Import the blocks as separate BlastEvents.")
 
 
 @dataclass(frozen=True)
@@ -49,6 +57,10 @@ def build_production_geometry(
     if closure_tolerance < 0:
         raise ValueError("closure_tolerance must be non-negative")
 
+    closed_polygon_count = sum(
+        len(line.points) >= 4 and _endpoint_distance(line.points[0], line.points[-1]) <= closure_tolerance
+        for line in imported_lines
+    )
     indexed_lines = list(enumerate(imported_lines))
     _, selected = max(indexed_lines, key=lambda item: (_line_max_z(item[1]), -item[0]))
     if len(selected.points) < 4:
@@ -67,7 +79,7 @@ def build_production_geometry(
     ring = [PlanPoint(point.x, point.y) for point in selected.points]
     ring[-1] = ring[0]
     polygon = PlanPolygon(tuple(ring))
-    return ProductionGeometryResult(selected, polygon, _line_max_z(selected))
+    return ProductionGeometryResult(selected, polygon, _line_max_z(selected), closed_polygon_count)
 
 
 def build_contour_geometry(

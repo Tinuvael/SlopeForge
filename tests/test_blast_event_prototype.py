@@ -195,10 +195,11 @@ def test_blast_details_source_declares_responsive_labels():
     source = __import__('pathlib').Path('ui/prototype_2d/blast_event_window.py').read_text(encoding='utf-8')
     assert "setWordWrap(True)" in source
     assert "setToolTip(value)" in source
-    assert "WrapLongRows" in source
+    assert "QScrollArea" in source
+    assert "ScrollBarAlwaysOff" in source
 
 
-def test_assessment_mode_renders_only_active_blast_events_as_context(tmp_path):
+def test_assessment_mode_does_not_render_blast_events_without_explicit_link_highlight(tmp_path):
     QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
     from ui.prototype_2d.blast_event_window import BLAST_CONTEXT_ROLE, BlastEventWindow
     app = QApplication.instance() or QApplication([])
@@ -215,7 +216,7 @@ def test_assessment_mode_renders_only_active_blast_events_as_context(tmp_path):
     window = BlastEventWindow(storage_path=save_blast_event_state(state, tmp_path / "context.json"))
     window.mode_tabs.setCurrentIndex(1); window.draw_geometry()
     context_ids = [item.data(BLAST_CONTEXT_ROLE) for item in window.scene.items() if item.data(BLAST_CONTEXT_ROLE)]
-    assert production.id in context_ids and contour.id in context_ids and archived.id not in context_ids
+    assert context_ids == []
     window.close(); assert app
 
 

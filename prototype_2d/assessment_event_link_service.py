@@ -7,6 +7,7 @@ freeze copied matching collar points as a :class:`PlanMultiPoint`.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 from uuid import uuid4
 
 from .domain import (AssessmentArea, AssessmentDomainState, AssessmentEventLink,
@@ -23,28 +24,54 @@ class AssessmentEventLinkCandidate:
     elevation_matches: bool
     spatial_matches: bool
     frozen_intersection_geometry: PlanMultiPoint | None = None
+    reason: Literal["matched", "archived", "no_active_geometry", "elevation_outside", "spatial_outside"] = "matched"
 
 
 @dataclass(frozen=True)
 class LinkRefreshResult:
-    production_candidates: int
-    contour_candidates: int
+    active_events_scanned: int
+    events_without_active_geometry: int
+    events_rejected_by_elevation: int
+    events_rejected_by_spatial_match: int
+    production_matches: int
+    contour_matches: int
+    protected_existing_links: int
     suggestions_added: int
+    total_links_for_active_area_revision: int
+    evaluations: tuple[tuple[str, str], ...]
+
+    @property
+    def production_candidates(self) -> int: return self.production_matches
+
+    @property
+    def contour_candidates(self) -> int: return self.contour_matches
 
     @property
     def total_suggestions(self) -> int:
         return self.suggestions_added
+
+    @property
+    def elevation_matches(self) -> int:
+        return self.active_events_scanned - self.events_without_active_geometry - self.events_rejected_by_elevation
+
+    @property
+    def spatial_matches(self) -> int:
+        return self.production_matches + self.contour_matches
 
 
 class AssessmentEventLinkService:
     def __init__(self, state: AssessmentDomainState):
         self.state = state
 
-    def evaluate_event(self, area: AssessmentArea, event: BlastEvent) -> AssessmentEventLinkCandidate | None:
+    def evaluate_event(self, area: AssessmentArea, event: BlastEvent) -> AssessmentEventLinkCandidate:
         area_revision = area.active_geometry_revision()
         event_revision = event.active_geometry_revision()
-        if event.is_archived or event_revision is None:
-            return None
+        if event.is_archived:
+            return AssessmentEventLinkCandidate(event.id, event.active_geometry_revision_id or "", event.event_type,
+                                                False, False, reason="archived")
+        if event_revision is None:
+            return AssessmentEventLinkCandidate(event.id, "", event.event_type, False, False,
+                                                reason="no_active_geometry")
         elevation = area_revision.lower_elevation < event.elevation <= area_revision.upper_elevation
         geometry = event_revision.plan_geometry
         matched = None
@@ -56,25 +83,44 @@ class AssessmentEventLinkService:
             spatial = bool(points)
             if points:
                 matched = PlanMultiPoint(points)
+        reason = "elevation_outside" if not elevation else "matched" if spatial else "spatial_outside"
         return AssessmentEventLinkCandidate(event.id, event_revision.id, event.event_type,
-                                            elevation, spatial, matched)
+                                            elevation, spatial, matched, reason)
 
     def find_candidates(self, area: AssessmentArea) -> list[AssessmentEventLinkCandidate]:
         return [candidate for event in self.state.blast_events
-                if (candidate := self.evaluate_event(area, event)) is not None
-                and candidate.elevation_matches and candidate.spatial_matches]
+                if (candidate := self.evaluate_event(area, event)).reason == "matched"]
 
     def refresh_suggestions(self, area: AssessmentArea) -> LinkRefreshResult:
         self._ensure_editable(area)
         revision_id = area.active_geometry_revision_id
+        # Repair legacy/corrupt duplicates using the required composite identity.
+        # Prefer a user's manual/decided link over a disposable suggestion.
+        current_by_event: dict[str, AssessmentEventLink] = {}
+        historical: list[AssessmentEventLink] = []
+        priority = lambda link: (3 if link.source == "manual" else 2 if link.status != "suggested" else 1)
+        for link in area.event_links:
+            if link.assessment_area_geometry_revision_id != revision_id:
+                historical.append(link); continue
+            existing = current_by_event.get(link.blast_event_id)
+            if existing is None or priority(link) > priority(existing):
+                current_by_event[link.blast_event_id] = link
+        area.event_links[:] = historical + list(current_by_event.values())
         # Only disposable automatic suggestions for this area revision are rebuilt.
         area.event_links[:] = [link for link in area.event_links if not (
             link.assessment_area_geometry_revision_id == revision_id
             and link.source == "automatic" and link.status == "suggested")]
-        protected_event_ids = {link.blast_event_id for link in area.links_for_revision()
-                               if link.status != "suggested" or link.source == "manual"}
+        protected = {link.blast_event_id: link for link in area.links_for_revision()
+                     if link.status != "suggested" or link.source == "manual"}
+        # Identity is strictly (area geometry revision, BlastEvent ID), never name/elevation/type/CSV.
+        protected_event_ids = set(protected)
         production = contour = added = 0
-        for candidate in self.find_candidates(area):
+        evaluated = [self.evaluate_event(area, event) for event in self.state.blast_events]
+        reasons = [(candidate.blast_event_id, candidate.reason) for candidate in evaluated]
+        for event_id, link in protected.items():
+            reason = "already_manual" if link.source == "manual" else f"already_{link.status}"
+            reasons.append((event_id, reason))
+        for candidate in (item for item in evaluated if item.reason == "matched"):
             if candidate.event_type == "production": production += 1
             else: contour += 1
             if candidate.blast_event_id in protected_event_ids:
@@ -83,7 +129,14 @@ class AssessmentEventLinkService:
                 candidate.geometry_revision_id, "suggested", "automatic",
                 candidate.frozen_intersection_geometry))
             added += 1
-        return LinkRefreshResult(production, contour, added)
+        return LinkRefreshResult(
+            active_events_scanned=sum(item.reason != "archived" for item in evaluated),
+            events_without_active_geometry=sum(item.reason == "no_active_geometry" for item in evaluated),
+            events_rejected_by_elevation=sum(item.reason == "elevation_outside" for item in evaluated),
+            events_rejected_by_spatial_match=sum(item.reason == "spatial_outside" for item in evaluated),
+            production_matches=production, contour_matches=contour,
+            protected_existing_links=len(protected), suggestions_added=added,
+            total_links_for_active_area_revision=len(area.links_for_revision()), evaluations=tuple(reasons))
 
     def confirm_link(self, area: AssessmentArea, link_id: str) -> AssessmentEventLink:
         self._ensure_editable(area); link = self._link(area, link_id); link.status = "confirmed"; return link

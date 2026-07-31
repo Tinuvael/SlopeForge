@@ -17,6 +17,7 @@ class BlastEventValidationError(ValueError):
 class BlastEventService:
     def __init__(self, state: AssessmentDomainState):
         self.state = state
+        self.last_import_warning: str | None = None
 
     def create_event(self, *, name: str, event_type: str, event_date: date | None,
                      elevation: float | None, csv_path: str | Path) -> BlastEvent:
@@ -34,8 +35,8 @@ class BlastEventService:
     def reimport_geometry(self, event: BlastEvent, csv_path: str | Path) -> BlastEventGeometryRevision:
         return self._add_imported_geometry(event, csv_path)
 
-    @staticmethod
-    def _add_imported_geometry(event: BlastEvent, csv_path: str | Path) -> BlastEventGeometryRevision:
+    def _add_imported_geometry(self, event: BlastEvent, csv_path: str | Path) -> BlastEventGeometryRevision:
+        self.last_import_warning = None
         path = Path(csv_path)
         try:
             result = import_datamine_csv(path)
@@ -48,6 +49,7 @@ class BlastEventService:
         try:
             if event.event_type == "production":
                 geometry = build_production_geometry(result.lines)
+                self.last_import_warning = geometry.multiple_polygons_warning
                 source_geometry = [geometry.source_line]
                 plan_geometry, geometry_elevation = geometry.plan_geometry, geometry.elevation
             else:

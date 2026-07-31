@@ -22,9 +22,9 @@ def area(selection=None):
     return AssessmentArea("AA-1", "Area", date(2026, 1, 1), [revision], revision.id)
 
 
-def event(event_id, elevation, geometry, event_type="production"):
-    value = BlastEvent(event_id, event_id, event_type, None, elevation)
-    value.add_geometry_revision(source_file_name="x.csv", source_geometry=[],
+def event(event_id, elevation, geometry, event_type="production", name=None, source="x.csv"):
+    value = BlastEvent(event_id, name or event_id, event_type, None, elevation)
+    value.add_geometry_revision(source_file_name=source, source_geometry=[],
                                 plan_geometry=geometry, elevation=elevation)
     return value
 
@@ -74,3 +74,82 @@ def test_manual_outside_criteria_duplicate_archive_guards():
     with pytest.raises(ValueError): service.add_manual_link(assessment, blast.id)
     assessment.archive()
     with pytest.raises(ValueError): service.exclude_link(assessment, link.id)
+
+
+def matching_events(production=0, contour=0):
+    events = [event(f"BE-P-{index:03}", 610, polygon((1, 1), (4, 1), (4, 4), (1, 4)),
+                    name="Одинаковое имя", source="same.csv") for index in range(production)]
+    events += [event(f"BE-C-{index:03}", 610, PlanMultiPoint((PlanPoint(2, 2), PlanPoint(20, 20))),
+                     "contour", name="Одинаковое имя", source="same.csv") for index in range(contour)]
+    return events
+
+
+@pytest.mark.parametrize("production,contour", [(10, 0), (0, 6), (10, 6)])
+def test_all_distinct_event_ids_link_even_with_same_elevation_name_and_csv(production, contour):
+    assessment = area(); events = matching_events(production, contour)
+    result = AssessmentEventLinkService(AssessmentDomainState(blast_events=events)).refresh_suggestions(assessment)
+    assert (result.production_matches, result.contour_matches) == (production, contour)
+    assert len(assessment.links_for_revision()) == production + contour
+    assert len({link.blast_event_id for link in assessment.links_for_revision()}) == production + contour
+
+
+def test_combined_scan_links_exactly_sixteen_and_reports_rejections():
+    events = matching_events(10, 6)
+    events += [event(f"HIGH-{i}", 700, polygon((1, 1), (2, 1), (2, 2), (1, 2))) for i in range(3)]
+    events += [event(f"OUT-{i}", 610, polygon((20, 20), (22, 20), (22, 22), (20, 22))) for i in range(2)]
+    archived = event("ARCHIVED", 610, polygon((1, 1), (2, 1), (2, 2), (1, 2))); archived.archive(); events.append(archived)
+    assessment = area(); result = AssessmentEventLinkService(AssessmentDomainState(blast_events=events)).refresh_suggestions(assessment)
+    assert len(assessment.links_for_revision()) == 16
+    assert (result.events_rejected_by_elevation, result.events_rejected_by_spatial_match) == (3, 2)
+    assert result.active_events_scanned == 21 and result.total_links_for_active_area_revision == 16
+
+
+def test_repeated_refresh_and_individual_decisions_never_hide_other_events():
+    assessment = area(); service = AssessmentEventLinkService(AssessmentDomainState(blast_events=matching_events(10, 6)))
+    service.refresh_suggestions(assessment)
+    service.confirm_link(assessment, assessment.event_links[0].id)
+    service.exclude_link(assessment, assessment.event_links[1].id)
+    result = service.refresh_suggestions(assessment)
+    assert len(assessment.links_for_revision()) == 16
+    assert len({(link.assessment_area_geometry_revision_id, link.blast_event_id)
+                for link in assessment.links_for_revision()}) == 16
+    assert result.protected_existing_links == 2 and result.suggestions_added == 14
+
+
+def test_hundred_events_and_json_round_trip_preserve_every_link():
+    assessment = area(); state = AssessmentDomainState(blast_events=matching_events(75, 25), assessment_areas=[assessment])
+    AssessmentEventLinkService(state).refresh_suggestions(assessment)
+    restored = AssessmentDomainState.from_dict(state.to_dict())
+    links = restored.assessment_areas[0].links_for_revision()
+    assert len(links) == 100 and len({link.blast_event_id for link in links}) == 100
+
+
+def test_linking_is_independent_of_visual_layer_state():
+    events = matching_events(10, 6)
+    ids_by_visual_state = []
+    for blast_layers_visible in (True, False):
+        # The flag deliberately belongs to the presentation scenario and is never passed
+        # to the pure service: visible QGraphics layers cannot affect domain matching.
+        assert isinstance(blast_layers_visible, bool)
+        assessment = area(); service = AssessmentEventLinkService(AssessmentDomainState(blast_events=events))
+        service.refresh_suggestions(assessment)
+        ids_by_visual_state.append({link.blast_event_id for link in assessment.links_for_revision()})
+    assert ids_by_visual_state[0] == ids_by_visual_state[1]
+
+
+def test_link_dialog_has_every_row_and_sorting_keeps_stable_link_identity():
+    QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
+    from PySide6.QtCore import Qt
+    from ui.prototype_2d.blast_event_window import AssessmentEventLinksDialog
+    app = QApplication.instance() or QApplication([])
+    assessment = area(); state = AssessmentDomainState(blast_events=matching_events(75, 25))
+    service = AssessmentEventLinkService(state); service.refresh_suggestions(assessment)
+    dialog = AssessmentEventLinksDialog(assessment, state, service)
+    assert dialog.table.rowCount() == 100 and dialog.row_count_label.text() == "Показано: 100"
+    dialog.table.sortItems(2, Qt.SortOrder.DescendingOrder)
+    dialog.table.selectRow(0)
+    selected = dialog.selected_link()
+    assert selected.id == dialog.table.item(0, 0).data(Qt.ItemDataRole.UserRole)
+    dialog.confirm()
+    assert next(link for link in assessment.event_links if link.id == selected.id).status == "confirmed"
+    dialog.close(); assert app
