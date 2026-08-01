@@ -37,6 +37,18 @@ def test_production_uses_highest_closed_line_only():
     result = build_production_geometry([lower, upper])
     assert result.source_line.source_id == "upper"
     assert result.elevation == 620
+    assert result.selected_source_line_id == "upper"
+    assert result.representative_elevation == 620
+    assert result.maximum_elevation == 620
+
+
+def test_production_multiple_closed_polygons_reports_clear_import_warning():
+    result = build_production_geometry([square(610, source_id="block-1"), square(620, source_id="block-2")])
+    assert result.closed_polygon_count == 2
+    assert result.multiple_polygons_warning == (
+        "CSV contains 2 production polygons. One BlastEvent currently supports one polygon. "
+        "Import the blocks as separate BlastEvents."
+    )
     assert result.plan_geometry.ring[0] == result.plan_geometry.ring[-1]
     assert len(result.plan_geometry.ring) == 5
 

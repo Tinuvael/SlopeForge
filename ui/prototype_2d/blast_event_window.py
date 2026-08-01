@@ -9,16 +9,17 @@ from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFileDialog, QFormLayout, QGraphicsEllipseItem, QGraphicsItem, QGraphicsPathItem,
     QGraphicsScene, QGraphicsTextItem, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QMainWindow, QMessageBox, QPushButton, QSplitter, QTableWidget,
+    QListWidget, QMainWindow, QMessageBox, QPushButton, QScrollArea, QSplitter, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QTabWidget,
 )
 
 from app.qt import apply_window_icon
-from prototype_2d.blast_event_service import BlastEventService
+from prototype_2d.blast_event_service import BlastEventService, BlastEventValidationError
 from prototype_2d.blast_event_storage import load_blast_event_state, save_blast_event_state
 from prototype_2d.csv_importer import DatamineCsvError, detect_columns, missing_required, read_text, sniff_delimiter
-from prototype_2d.domain import BlastEvent, PlanMultiPoint, PlanPoint, PlanPolygon
+from prototype_2d.domain import AssessmentDomainState, BlastEvent, PlanMultiPoint, PlanPoint, PlanPolygon
 from prototype_2d.assessment_area_service import AssessmentAreaService
+from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
 from prototype_2d.geometry import validate_simple_polygon
 from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
 from ui.prototype_2d.dialogs import ColumnMappingDialog
@@ -94,6 +95,7 @@ class BlastEventWindow(QMainWindow):
         self.service = BlastEventService(self.state)
         self.dataset_service = ProjectLinesDatasetService(self.state)
         self.area_service = AssessmentAreaService(self.state)
+        self.link_service = AssessmentEventLinkService(self.state)
         self.selected_event: BlastEvent | None = None
         self.selected_area = None
         self._drawing_vertices: list[PlanPoint] = []
@@ -103,6 +105,7 @@ class BlastEventWindow(QMainWindow):
         self._editing_area = None
         self._previous_selected_area = None
         self._refinement_path_item = None
+        self._highlighted_link = None
         self._vertex_handles = []
         self.setWindowTitle("SlopeForge — 2D Assessment Workspace")
         self.resize(1300, 800)
@@ -158,7 +161,7 @@ class BlastEventWindow(QMainWindow):
         events_layout.addWidget(self.event_list, 1)
         events_layout.addWidget(create)
         self.area_filter_combo = QComboBox(); self.area_filter_combo.addItems(["Активные", "Архив"])
-        self.area_filter_combo.currentIndexChanged.connect(self.refresh_areas)
+        self.area_filter_combo.currentIndexChanged.connect(self._area_filter_changed)
         self.area_list = QListWidget(); self.area_list.currentRowChanged.connect(self._select_area)
         create_area = QPushButton("+ Создать Assessment Area"); create_area.clicked.connect(self.start_area_drawing)
         areas_layout.addWidget(self.area_filter_combo); areas_layout.addWidget(self.area_list, 1); areas_layout.addWidget(create_area)
@@ -194,13 +197,18 @@ class BlastEventWindow(QMainWindow):
         root.addWidget(centre)
 
         self.card = QWidget()
-        self.card.setMinimumWidth(330)
+        self.card.setMinimumWidth(400)
         self.card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.card_layout = QVBoxLayout(self.card)
-        self.card_layout.addWidget(QLabel("Выберите событие"))
-        self.card_layout.addStretch()
+        self.details_scroll = QScrollArea(); self.details_scroll.setWidgetResizable(True)
+        self.details_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.details_content = QWidget(); self.details_layout = QVBoxLayout(self.details_content)
+        self.details_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.details_scroll.setWidget(self.details_content); self.card_layout.addWidget(self.details_scroll, 1)
+        self.card_actions = QWidget(); self.card_actions_layout = QVBoxLayout(self.card_actions)
+        self.card_actions_layout.setContentsMargins(0, 0, 0, 0); self.card_layout.addWidget(self.card_actions)
         root.addWidget(self.card)
-        root.setSizes([250, 700, 300])
+        root.setSizes([230, 670, 400])
 
     def plan_view_fit(self):
         self.plan_view.fit_to_extent()
@@ -213,6 +221,9 @@ class BlastEventWindow(QMainWindow):
         return [area for area in self.state.assessment_areas
                 if area.is_archived == (self.area_filter_combo.currentIndex() == 1)]
 
+    def _area_filter_changed(self):
+        self.clear_highlighted_link(redraw=False); self.refresh_areas()
+
     def refresh_areas(self):
         prior = self.selected_area.id if self.selected_area else None
         self.area_list.blockSignals(True); self.area_list.clear()
@@ -224,10 +235,12 @@ class BlastEventWindow(QMainWindow):
         if self.mode_tabs.currentIndex() == 1: self._render_card(); self.draw_geometry()
 
     def _select_area(self, row):
+        self.clear_highlighted_link(redraw=False)
         areas = self._areas(); self.selected_area = areas[row] if 0 <= row < len(areas) else None
         self._render_card(); self.draw_geometry()
 
     def _mode_changed(self):
+        self.clear_highlighted_link(redraw=False)
         self._render_card(); self.draw_geometry()
 
     def refresh_events(self):
@@ -263,42 +276,58 @@ class BlastEventWindow(QMainWindow):
         self._render_card()
         self.draw_geometry()
 
-    def _clear_card(self):
-        while self.card_layout.count():
-            item = self.card_layout.takeAt(0)
+    @staticmethod
+    def _clear_layout(layout):
+        while layout.count():
+            item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+    def _clear_card(self):
+        self._clear_layout(self.details_layout); self._clear_layout(self.card_actions_layout)
+
+    def _set_card(self, details, actions):
+        for caption, value in details:
+            block = QWidget(); block_layout = QVBoxLayout(block); block_layout.setContentsMargins(0, 2, 0, 6)
+            caption_label = QLabel(caption); caption_label.setStyleSheet("font-weight: 600;")
+            block_layout.addWidget(caption_label); block_layout.addWidget(self._detail_value_label(str(value)))
+            self.details_layout.addWidget(block)
+        self.details_layout.addStretch()
+        for text, callback, enabled in actions:
+            button = QPushButton(text); button.clicked.connect(callback); button.setEnabled(enabled)
+            self.card_actions_layout.addWidget(button)
 
     def _render_card(self):
         self._clear_card()
         if self.mode_tabs.currentIndex() == 1:
             area = self.selected_area
             if not area:
-                self.card_layout.addWidget(QLabel("Выберите Assessment Area")); self.card_layout.addStretch(); return
+                self.details_layout.addWidget(QLabel("Выберите Assessment Area")); return
             revision = area.active_geometry_revision()
             dataset = next((item for item in self.state.datasets if item.id == revision.source_dataset_id), None)
+            links = area.links_for_revision()
             details = [("ID", area.id), ("Название", area.name), ("Дата оценки", area.assessment_date.isoformat()),
+                       ("Статус", "Архив" if area.is_archived else "Активно"),
                        ("Активная ревизия", str(revision.revision_number)),
                        ("Всего ревизий", str(len(area.geometry_revisions))),
                        ("Дата ревизии", revision.created_at.isoformat(sep=" ", timespec="minutes")),
                        ("Dataset", f"{revision.source_dataset_id} — {dataset.name}" if dataset else revision.source_dataset_id),
                        ("Нижняя отметка", f"{area.lower_elevation:g}"), ("Верхняя отметка", f"{area.upper_elevation:g}"),
-                       ("Горизонтов", str(len(area.horizon_slices))), ("Связей событий", str(len(area.event_links))),
-                       ("Статус", "Архив" if area.is_archived else "Активно")]
-            form = QFormLayout()
-            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
-            form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-            for caption, value in details: form.addRow(caption, self._detail_value_label(value))
-            self.card_layout.addLayout(form)
-            if not area.is_archived:
-                edit = QPushButton("Редактировать границы")
-                edit.clicked.connect(self.edit_area_boundaries); self.card_layout.addWidget(edit)
-            archive = QPushButton("Восстановить" if area.is_archived else "Архивировать")
-            archive.clicked.connect(self.toggle_area_archive); self.card_layout.addWidget(archive); self.card_layout.addStretch(); return
+                       ("Горизонтов", str(len(area.horizon_slices))),
+                       ("Связи", str(len(links))),
+                ("Предложено", str(sum(x.status == "suggested" for x in links))),
+                ("Подтверждено", str(sum(x.status == "confirmed" for x in links))),
+                ("Исключено", str(sum(x.status == "excluded" for x in links))),
+                ("Устаревшие ревизии", str(sum(self.link_service.is_stale(x) for x in links)))]
+            actions = [("Связанные Blast Events", self.show_area_links, True)]
+            if self._highlighted_link: actions.append(("Скрыть BlastEvent", self.clear_highlighted_link, True))
+            actions += [("Найти / пересчитать связи", self.refresh_area_links, not area.is_archived),
+                        ("Редактировать границы", self.edit_area_boundaries, not area.is_archived),
+                        ("Восстановить" if area.is_archived else "Архивировать", self.toggle_area_archive, True)]
+            self._set_card(details, actions); return
         event = self.selected_event
         if not event:
-            self.card_layout.addWidget(QLabel("Выберите событие"))
-            self.card_layout.addStretch()
+            self.details_layout.addWidget(QLabel("Выберите событие"))
             return
         revision = event.active_geometry_revision()
         details = [("ID", event.id), ("Название", event.name), ("Тип", event.event_type),
@@ -310,19 +339,8 @@ class BlastEventWindow(QMainWindow):
                    ("Тип геометрии", revision.plan_geometry.to_dict()['type'] if revision else "—"),
                    ("Число ревизий", str(len(event.geometry_revisions))),
                    ("Статус", "Архив" if event.is_archived else "Активно")]
-        form = QFormLayout()
-        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        for caption, value in details:
-            form.addRow(caption, self._detail_value_label(value))
-        self.card_layout.addLayout(form)
-        reimport = QPushButton("Переимпортировать геометрию")
-        reimport.clicked.connect(self.reimport_geometry)
-        self.card_layout.addWidget(reimport)
-        archive = QPushButton("Восстановить" if event.is_archived else "Архивировать")
-        archive.clicked.connect(self.toggle_archive)
-        self.card_layout.addWidget(archive)
-        self.card_layout.addStretch()
+        self._set_card(details, [("Переимпортировать геометрию", self.reimport_geometry, True),
+            ("Восстановить" if event.is_archived else "Архивировать", self.toggle_archive, True)])
 
     @staticmethod
     def _detail_value_label(value: str) -> QLabel:
@@ -395,20 +413,26 @@ class BlastEventWindow(QMainWindow):
             self._path_item(horizon.frozen_geometry, QPen(color, width), z=25)
 
     def _draw_blast_event_context(self):
-        for event in self.state.active_blast_events():
-            revision = event.active_geometry_revision()
-            if revision is None: continue
-            geometry = revision.plan_geometry
-            if isinstance(geometry, PlanPolygon):
-                item = self._path_item(geometry, QPen(QColor(150, 95, 60, 150), 1.2),
-                                       QBrush(QColor(190, 120, 70, 25)), 12)
-                item.setData(BLAST_CONTEXT_ROLE, event.id)
-            elif isinstance(geometry, PlanMultiPoint):
-                for point in geometry.points:
-                    item = QGraphicsEllipseItem(-3, -3, 6, 6); item.setPos(point.x, -point.y)
-                    item.setBrush(QColor(80, 110, 160, 130)); item.setPen(QPen(Qt.PenStyle.NoPen))
-                    item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
-                    item.setData(BLAST_CONTEXT_ROLE, event.id); item.setZValue(12); self.scene.addItem(item)
+        link, area = self._highlighted_link, self.selected_area
+        if (link is None or area is None
+                or link.assessment_area_geometry_revision_id != area.active_geometry_revision_id
+                or link not in area.links_for_revision()):
+            self._highlighted_link = None; return
+        event = next((item for item in self.state.blast_events if item.id == link.blast_event_id), None)
+        if event is None:
+            self._highlighted_link = None; return
+        revision = self.link_service.linked_revision(event, link)
+        if revision is None: return
+        geometry = revision.plan_geometry; color = QColor(20, 170, 90)
+        if isinstance(geometry, PlanPolygon):
+            item = self._path_item(geometry, QPen(color, 3), QBrush(QColor(20, 170, 90, 45)), 30)
+            item.setData(BLAST_CONTEXT_ROLE, event.id)
+        elif isinstance(geometry, PlanMultiPoint):
+            for point in geometry.points:
+                item = QGraphicsEllipseItem(-4, -4, 8, 8); item.setPos(point.x, -point.y)
+                item.setBrush(color); item.setPen(QPen(Qt.PenStyle.NoPen))
+                item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
+                item.setData(BLAST_CONTEXT_ROLE, event.id); item.setZValue(30); self.scene.addItem(item)
 
     def _draw_polygon_preview(self):
         if not self._drawing_vertices: return
@@ -496,6 +520,7 @@ class BlastEventWindow(QMainWindow):
                 mapping = dialog.mapping()
                 QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             dataset, result = self.dataset_service.import_dataset(path, column_mapping=mapping)
+            self.clear_highlighted_link(redraw=False)
             self._save()
             self.refresh_datasets()
             self.draw_geometry()
@@ -515,18 +540,21 @@ class BlastEventWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selected_dataset_id():
             return
         self.dataset_service.set_active(dialog.selected_dataset_id())
+        self.clear_highlighted_link(redraw=False)
         self._save()
         self.refresh_datasets()
         self.draw_geometry()
 
     def create_event(self):
-        dialog = BlastEventDialog(self)
+        dialog = BlastEventDialog(self, self.service)
         if dialog.exec() != dialog.DialogCode.Accepted:
             return
         try:
             self.selected_event = self.service.create_event(**dialog.values())
             self._save()
             self.refresh_events()
+            if self.service.last_import_warning:
+                QMessageBox.warning(self, "Production CSV", self.service.last_import_warning)
         except Exception as exc:
             QMessageBox.warning(self, "Не удалось создать событие", str(exc))
 
@@ -541,6 +569,8 @@ class BlastEventWindow(QMainWindow):
             self._save()
             self._render_card()
             self.draw_geometry()
+            if self.service.last_import_warning:
+                QMessageBox.warning(self, "Production CSV", self.service.last_import_warning)
         except Exception as exc:
             QMessageBox.warning(self, "Ошибка переимпорта", str(exc))
 
@@ -553,13 +583,55 @@ class BlastEventWindow(QMainWindow):
 
     def toggle_area_archive(self):
         if not self.selected_area: return
+        self.clear_highlighted_link(redraw=False)
         self.selected_area.restore() if self.selected_area.is_archived else self.selected_area.archive()
         self._save(); self.refresh_areas()
+
+    def refresh_area_links(self):
+        if not self.selected_area: return
+        try:
+            result = self.link_service.refresh_suggestions(self.selected_area)
+            self._save(); self._render_card(); self.draw_geometry()
+            QMessageBox.information(self, "Связи Assessment Area",
+                f"Просканировано активных событий: {result.active_events_scanned}\n"
+                f"Без активной геометрии: {result.events_without_active_geometry}\n"
+                f"Отклонено по отметке: {result.events_rejected_by_elevation}\n"
+                f"Подошло по отметке: {result.elevation_matches}\n"
+                f"Отклонено пространственно: {result.events_rejected_by_spatial_match}\n"
+                f"Пространственно совпало: {result.spatial_matches}\n"
+                f"Production совпадений: {result.production_matches}\nContour совпадений: {result.contour_matches}\n"
+                f"Новых предложений: {result.suggestions_added}\n"
+                f"Сохранённых решений: {result.protected_existing_links}\n"
+                f"Всего связей активной ревизии: {result.total_links_for_active_area_revision}")
+        except ValueError as exc:
+            QMessageBox.warning(self, "Связи Assessment Area", str(exc))
+
+    def show_area_links(self):
+        if not self.selected_area: return
+        dialog = AssessmentEventLinksDialog(self.selected_area, self.state, self.link_service, self)
+        dialog.highlight_requested.connect(self.highlight_area_link)
+        dialog.exec(); self._save(); self._render_card(); self.draw_geometry()
+
+    def highlight_area_link(self, link):
+        if (not self.selected_area or
+                link.assessment_area_geometry_revision_id != self.selected_area.active_geometry_revision_id or
+                link not in self.selected_area.links_for_revision()):
+            return
+        self._highlighted_link = link
+        self._render_card(); self.draw_geometry(); self.statusBar().showMessage(
+            "Показана точная ревизия связи. Нажмите «Скрыть BlastEvent» для обычного режима.")
+
+    def clear_highlighted_link(self, _checked=False, *, redraw=True):
+        self._highlighted_link = None
+        self.statusBar().clearMessage()
+        if redraw:
+            self._render_card(); self.draw_geometry()
 
     def start_area_drawing(self):
         if self.state.active_dataset() is None:
             QMessageBox.warning(self, "Assessment Area", "Сначала загрузите или выберите активный Dataset")
             return
+        self.clear_highlighted_link(redraw=False)
         self._previous_selected_area = self.selected_area; self._editing_area = None
         self.workflow_state = "DRAWING"; self._drawing_vertices = []; self._drawing_cursor = None
         self.plan_view.set_polygon_drawing_mode(True)
@@ -655,8 +727,15 @@ class BlastEventWindow(QMainWindow):
             else:
                 area = self.area_service.create_area(name=dialog.area_name.text(), assessment_date=dialog.area_date.date().toPython(),
                                                      selection_polygon=polygon, selected_fragments=dialog.selected_candidates())
+            try:
+                scan = self.link_service.refresh_suggestions(area)
+                scan_text = (f"Production: {scan.production_candidates}; Contour: {scan.contour_candidates}; "
+                             f"предложений: {scan.suggestions_added}")
+            except Exception as exc:
+                scan_text = f"Ревизия сохранена, но поиск связей не выполнен: {exc}"
             self.selected_area = area; self._previous_selected_area = area
             self._save(); self.cancel_area_drawing(); self.refresh_areas()
+            QMessageBox.information(self, "Поиск связей", scan_text)
         except (ValueError, IndexError) as exc:
             self.workflow_state = "REFINING"
             QMessageBox.warning(self, "Некорректная Assessment Area", str(exc))
@@ -666,6 +745,7 @@ class BlastEventWindow(QMainWindow):
     def edit_area_boundaries(self):
         area = self.selected_area
         if area is None or area.is_archived: return
+        self.clear_highlighted_link(redraw=False)
         self._previous_selected_area = area; self._editing_area = area; self.workflow_state = "REFINING"
         self._drawing_vertices = list(area.selection_polygon_frozen.ring[:-1]); self._drawing_cursor = None
         self.cancel_workflow_button.setText("Отменить редактирование")
@@ -680,6 +760,115 @@ class BlastEventWindow(QMainWindow):
         self._save()
         self.closed.emit()
         super().closeEvent(event)
+
+
+class AssessmentEventLinksDialog(QDialog):
+    """Focused, revision-aware link manager; archived areas are read-only."""
+    highlight_requested = Signal(object)
+    FILTERS = {"Все": None, "Предложено": "suggested", "Подтверждено": "confirmed", "Исключено": "excluded"}
+
+    def __init__(self, area, state, service, parent=None):
+        super().__init__(parent); self.area = area; self.state = state; self.service = service
+        self.setWindowTitle(f"Связанные Blast Events — {area.name}"); self.resize(1050, 520)
+        layout = QVBoxLayout(self); self.filter = QComboBox(); self.filter.addItems(self.FILTERS)
+        self.filter.currentIndexChanged.connect(self.refresh); layout.addWidget(self.filter)
+        self.row_count_label = QLabel(); layout.addWidget(self.row_count_label)
+        self.table = QTableWidget(0, 8); self.table.setHorizontalHeaderLabels([
+            "Статус", "Источник", "BlastEvent", "Тип", "Отметка", "Ревизия", "Состояние", "Пространственное совпадение"])
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setSortingEnabled(True)
+        for column, width in enumerate((105, 105, 180, 90, 85, 170, 145)):
+            self.table.setColumnWidth(column, width)
+        self.table.horizontalHeader().setStretchLastSection(True); layout.addWidget(self.table, 1)
+        row = QHBoxLayout()
+        for text, slot in (("Подтвердить", self.confirm), ("Исключить", self.exclude),
+                           ("Вернуть в предложенные", self.restore), ("Добавить вручную", self.manual),
+                           ("Показать на плане", self.highlight)):
+            button = QPushButton(text); button.clicked.connect(slot); row.addWidget(button)
+            if area.is_archived and text != "Показать на плане": button.setEnabled(False)
+        close = QPushButton("Закрыть"); close.clicked.connect(self.accept); row.addWidget(close)
+        layout.addLayout(row); self.refresh()
+
+    def refresh(self):
+        status = self.FILTERS[self.filter.currentText()]
+        self.links = [x for x in self.area.links_for_revision() if status is None or x.status == status]
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(len(self.links))
+        self.row_count_label.setText(f"Показано: {len(self.links)}")
+        labels = {"suggested": "Предложено", "confirmed": "Подтверждено", "excluded": "Исключено",
+                  "automatic": "Автоматически", "manual": "Вручную"}
+        for row, link in enumerate(self.links):
+            event = next((e for e in self.state.blast_events if e.id == link.blast_event_id), None)
+            revision = self.service.linked_revision(event, link) if event else None
+            state = "событие не найдено" if not event else "событие в архиве" if event.is_archived else "устаревшая ревизия" if self.service.is_stale(link) else "текущая"
+            spatial = "совпавшие устья: " + str(len(link.frozen_intersection_geometry.points)) if isinstance(link.frozen_intersection_geometry, PlanMultiPoint) else "пересечение полигонов" if event and event.event_type == "production" else "—"
+            values = (labels[link.status], labels[link.source], event.name if event else link.blast_event_id,
+                      event.event_type if event else "—", f"{event.elevation:g}" if event else "—",
+                      f"{revision.revision_number} ({link.geometry_revision_id})" if revision else link.geometry_revision_id,
+                      state, spatial)
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value); item.setToolTip(value); self.table.setItem(row, column, item)
+                if column == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, link.id)
+                    item.setData(Qt.ItemDataRole.UserRole + 1, link.blast_event_id)
+        self.table.setSortingEnabled(True)
+
+    def selected_link(self):
+        row = self.table.currentRow()
+        item = self.table.item(row, 0) if row >= 0 else None
+        link_id = item.data(Qt.ItemDataRole.UserRole) if item else None
+        return next((link for link in self.area.links_for_revision() if link.id == link_id), None)
+
+    def _change(self, action):
+        link = self.selected_link()
+        if link:
+            try: action(self.area, link.id); self.refresh()
+            except ValueError as exc: QMessageBox.warning(self, "Связи", str(exc))
+    def confirm(self): self._change(self.service.confirm_link)
+    def exclude(self): self._change(self.service.exclude_link)
+    def restore(self): self._change(self.service.restore_suggestion)
+
+    def manual(self):
+        dialog = ManualAssessmentEventLinkDialog(self.area, self.state, self.service, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted: self.refresh()
+
+    def highlight(self):
+        link = self.selected_link()
+        if link: self.highlight_requested.emit(link); self.accept()
+
+
+class ManualAssessmentEventLinkDialog(QDialog):
+    def __init__(self, area, state, service, parent=None):
+        super().__init__(parent); self.area = area; self.service = service
+        linked = {x.blast_event_id for x in area.links_for_revision()}
+        self.events = [e for e in state.blast_events if not e.is_archived and e.id not in linked
+                       and e.active_geometry_revision() is not None]
+        self.setWindowTitle("Добавить BlastEvent вручную"); self.resize(820, 420)
+        layout = QVBoxLayout(self); self.table = QTableWidget(len(self.events), 6)
+        self.table.setHorizontalHeaderLabels(["BlastEvent", "Тип", "Отметка", "Ревизия", "Отметка подходит", "Геометрия подходит"])
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        for row, event in enumerate(self.events):
+            candidate = service.evaluate_event(area, event)
+            values = (event.name, event.event_type, f"{event.elevation:g}", event.active_geometry_revision_id,
+                      "Да" if candidate.elevation_matches else "Нет", "Да" if candidate.spatial_matches else "Нет")
+            for column, value in enumerate(values): self.table.setItem(row, column, QTableWidgetItem(value))
+        self.table.horizontalHeader().setStretchLastSection(True); layout.addWidget(self.table)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.add); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
+
+    def add(self):
+        row = self.table.currentRow()
+        if row < 0: return
+        event = self.events[row]; candidate = self.service.evaluate_event(self.area, event)
+        failures = []
+        if not candidate.elevation_matches: failures.append("отметка вне диапазона")
+        if not candidate.spatial_matches: failures.append("нет пространственного совпадения")
+        if failures and QMessageBox.warning(self, "Ручная связь",
+                "Автоматические условия не выполнены: " + ", ".join(failures) + ". Добавить всё равно?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes: return
+        try: self.service.add_manual_link(self.area, event.id); self.accept()
+        except ValueError as exc: QMessageBox.warning(self, "Ручная связь", str(exc))
 
 
 class AssessmentCandidateDialog(QDialog):
@@ -715,8 +904,12 @@ class AssessmentCandidateDialog(QDialog):
 
 
 class BlastEventDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, service=None):
         super().__init__(parent)
+        self.service = service or BlastEventService(AssessmentDomainState())
+        self._applying_suggestion = False
+        self.elevation_is_manual = False
+        self.preview = None
         self.setWindowTitle("Создать Blast Event")
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -728,22 +921,84 @@ class BlastEventDialog(QDialog):
         self.elevation = QDoubleSpinBox()
         self.elevation.setRange(-10000, 10000)
         self.elevation.setDecimals(2)
+        self.elevation.valueChanged.connect(self._elevation_changed)
         self.csv = QLineEdit()
         browse = QPushButton("Выбрать CSV")
-        browse.clicked.connect(lambda: self.csv.setText(QFileDialog.getOpenFileName(self, "Выберите CSV", "", "CSV (*.csv)")[0]))
+        browse.clicked.connect(self._choose_csv)
         row = QHBoxLayout()
         row.addWidget(self.csv)
         row.addWidget(browse)
+        auto = QPushButton("Определить автоматически"); auto.clicked.connect(self._auto_detect)
+        elevation_row = QHBoxLayout(); elevation_row.addWidget(self.elevation); elevation_row.addWidget(auto)
+        self.auto_status = QLabel("Выберите CSV для автоопределения горизонта")
+        self.auto_status.setWordWrap(True)
         form.addRow("Название *", self.name)
         form.addRow("Тип *", self.kind)
         form.addRow("Дата", self.date)
-        form.addRow("Горизонт *", self.elevation)
+        form.addRow("Горизонт *", elevation_row)
         form.addRow("CSV Datamine *", row)
+        form.addRow("", self.auto_status)
         layout.addLayout(form)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        self.kind.currentTextChanged.connect(self._event_type_changed)
+
+    def _choose_csv(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Выберите CSV", "", "CSV (*.csv)")
+        if not path: return
+        self.csv.setText(path)
+        self._inspect(force_override=True)
+
+    def _event_type_changed(self, _event_type):
+        if self.csv.text().strip(): self._inspect(force_override=True)
+
+    def _auto_detect(self):
+        self._inspect(force_override=True)
+
+    def _inspect(self, *, force_override: bool) -> bool:
+        path = self.csv.text().strip()
+        if not path:
+            self.auto_status.setText("Сначала выберите CSV")
+            return False
+        try:
+            preview = self.service.inspect_event_geometry(self.kind.currentText(), path)
+        except BlastEventValidationError as exc:
+            self.preview = None
+            self.auto_status.setText(f"Автоопределение не выполнено: {exc}")
+            QMessageBox.warning(self, "Автоопределение горизонта", str(exc))
+            return False
+        self.preview = preview
+        if force_override or not self.elevation_is_manual:
+            self._applying_suggestion = True
+            self.elevation.setValue(preview.suggested_elevation)
+            self._applying_suggestion = False
+            self.elevation_is_manual = False
+        if preview.geometry_type == "Polygon":
+            text = (f"Автоопределение: горизонт {preview.suggested_elevation:.2f} "
+                    f"по верхней линии SID {preview.selected_source_line_id}")
+        else:
+            text = (f"Автоопределение: горизонт {preview.suggested_elevation:.2f} по медиане "
+                    f"{preview.accepted_contour_drillhole_count} устьев")
+            if preview.ignored_flat_contour_line_count:
+                text += f"; плоских строк исключено: {preview.ignored_flat_contour_line_count}"
+        if preview.warning_text: text += f"\n{preview.warning_text}"
+        self.auto_status.setText(text)
+        return True
+
+    def _elevation_changed(self, _value):
+        if self._applying_suggestion: return
+        self.elevation_is_manual = True
+        if self.csv.text().strip(): self.auto_status.setText("Горизонт изменён вручную")
+
+    def _validate_and_accept(self):
+        manual = self.elevation_is_manual
+        if not self._inspect(force_override=not manual): return
+        if manual:
+            self.elevation_is_manual = True
+            self.auto_status.setText("Горизонт изменён вручную")
+        self.accept()
 
     def values(self):
         return {"name": self.name.text(), "event_type": self.kind.currentText(),
