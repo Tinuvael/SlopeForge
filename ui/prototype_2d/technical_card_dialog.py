@@ -19,7 +19,10 @@ def _number(value, suffix=""):
 
 class TechnicalCardDialog(QDialog):
     def __init__(self, event, card, revision, save_callback, parent=None, read_only=False):
-        super().__init__(parent); self.event, self.card, self.revision = event, card, revision
+        # QDialog already has an event() method used internally by Qt.  Do not
+        # shadow it with the BlastEvent model, otherwise showing the dialog
+        # fails with: "BlastEvent object is not callable".
+        super().__init__(parent); self.blast_event, self.card, self.revision = event, card, revision
         self.save_callback, self.read_only = save_callback, read_only
         self.setWindowTitle(f"Техническая карточка — {event.name}"); self.setMinimumSize(760, 560); self.resize(940, 720)
         root = QVBoxLayout(self); meta = QLabel(f"BlastEvent ID: {event.id}   |   Ревизия геометрии: {revision.geometry_revision_id}")
@@ -42,7 +45,7 @@ class TechnicalCardDialog(QDialog):
     def _common_tab(self):
         layout = self._scroll_tab("Общие"); common = self.revision.common_parameters
         identity = QGroupBox("Событие и источник"); form = QFormLayout(identity)
-        form.addRow("BlastEvent ID", QLabel(self.event.id)); form.addRow("Geometry revision ID", QLabel(self.revision.geometry_revision_id))
+        form.addRow("BlastEvent ID", QLabel(self.blast_event.id)); form.addRow("Geometry revision ID", QLabel(self.revision.geometry_revision_id))
         form.addRow("Исходный CSV", QLabel(common.source_csv or "—")); layout.addWidget(identity)
         block = QGroupBox("Параметры блока"); form = QFormLayout(block)
         self.block_name = QLineEdit(common.block_name); self.horizon = _number(common.working_horizon, "м"); self.comments = QLineEdit(common.comments)
@@ -71,7 +74,7 @@ class TechnicalCardDialog(QDialog):
     def _drilling_tab(self, title):
         self.drilling_layout = self._scroll_tab(title); self.group_cards = QWidget(); self.group_cards_layout = QVBoxLayout(self.group_cards)
         self.drilling_layout.addWidget(self.group_cards); self._render_groups()
-        self.add_group_combo = QComboBox(); catalogue = PRODUCTION_GROUP_TYPES if self.event.event_type == "production" else CONTOUR_GROUP_TYPES
+        self.add_group_combo = QComboBox(); catalogue = PRODUCTION_GROUP_TYPES if self.blast_event.event_type == "production" else CONTOUR_GROUP_TYPES
         self.add_group_combo.addItem("+ Добавить тип бурения", "")
         for key, name in catalogue.items(): self.add_group_combo.addItem(name, key)
         self.add_group_combo.activated.connect(self._add_group); self.drilling_layout.addWidget(self.add_group_combo)
@@ -95,7 +98,7 @@ class TechnicalCardDialog(QDialog):
     def _add_group(self, index):
         kind = self.add_group_combo.itemData(index)
         if not kind: return
-        catalogue = PRODUCTION_GROUP_TYPES if self.event.event_type == "production" else CONTOUR_GROUP_TYPES
+        catalogue = PRODUCTION_GROUP_TYPES if self.blast_event.event_type == "production" else CONTOUR_GROUP_TYPES
         group = BlastDrillingGroup(group_type=kind, name=catalogue[kind], sequence_order=len(self.revision.drilling_groups)+1)
         if kind == "other": group.custom_type_name = "Другой тип"
         self.revision.drilling_groups.append(group); self.add_group_combo.setCurrentIndex(0); self._render_groups()
