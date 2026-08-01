@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 import pytest
 
 from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
+from prototype_2d.blast_event_service import BlastEventService
 from prototype_2d.domain import (AssessmentArea, AssessmentAreaGeometryRevision,
     AssessmentDomainState, BlastEvent, PlanMultiPoint, PlanPoint, PlanPolygon)
 from prototype_2d.geometry import (points_from_multipoint_inside_polygon,
@@ -135,6 +136,20 @@ def test_linking_is_independent_of_visual_layer_state():
         service.refresh_suggestions(assessment)
         ids_by_visual_state.append({link.blast_event_id for link in assessment.links_for_revision()})
     assert ids_by_visual_state[0] == ids_by_visual_state[1]
+
+
+def test_multiple_auto_suggested_event_elevations_link_to_same_area(tmp_path):
+    state = AssessmentDomainState(); import_service = BlastEventService(state)
+    for index, elevation in enumerate((610, 620, 630)):
+        source = tmp_path / f"block-{index}.csv"
+        source.write_text("XP,YP,ZP,SID,PTN\n" + "\n".join(
+            f"{x},{y},{elevation},top,{number}" for number, (x, y) in enumerate(
+                ((1, 1), (4, 1), (4, 4), (1, 1)), 1)), encoding="utf-8")
+        preview = import_service.inspect_event_geometry("production", source)
+        import_service.create_event(name=f"Block {index}", event_type="production", event_date=None,
+                                    elevation=preview.suggested_elevation, csv_path=source)
+    assessment = area(); AssessmentEventLinkService(state).refresh_suggestions(assessment)
+    assert len(assessment.links_for_revision()) == 3
 
 
 def test_link_dialog_has_every_row_and_sorting_keeps_stable_link_identity():

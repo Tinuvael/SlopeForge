@@ -14,10 +14,10 @@ from PySide6.QtWidgets import (
 )
 
 from app.qt import apply_window_icon
-from prototype_2d.blast_event_service import BlastEventService
+from prototype_2d.blast_event_service import BlastEventService, BlastEventValidationError
 from prototype_2d.blast_event_storage import load_blast_event_state, save_blast_event_state
 from prototype_2d.csv_importer import DatamineCsvError, detect_columns, missing_required, read_text, sniff_delimiter
-from prototype_2d.domain import BlastEvent, PlanMultiPoint, PlanPoint, PlanPolygon
+from prototype_2d.domain import AssessmentDomainState, BlastEvent, PlanMultiPoint, PlanPoint, PlanPolygon
 from prototype_2d.assessment_area_service import AssessmentAreaService
 from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
 from prototype_2d.geometry import validate_simple_polygon
@@ -546,7 +546,7 @@ class BlastEventWindow(QMainWindow):
         self.draw_geometry()
 
     def create_event(self):
-        dialog = BlastEventDialog(self)
+        dialog = BlastEventDialog(self, self.service)
         if dialog.exec() != dialog.DialogCode.Accepted:
             return
         try:
@@ -904,8 +904,12 @@ class AssessmentCandidateDialog(QDialog):
 
 
 class BlastEventDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, service=None):
         super().__init__(parent)
+        self.service = service or BlastEventService(AssessmentDomainState())
+        self._applying_suggestion = False
+        self.elevation_is_manual = False
+        self.preview = None
         self.setWindowTitle("Создать Blast Event")
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -917,22 +921,84 @@ class BlastEventDialog(QDialog):
         self.elevation = QDoubleSpinBox()
         self.elevation.setRange(-10000, 10000)
         self.elevation.setDecimals(2)
+        self.elevation.valueChanged.connect(self._elevation_changed)
         self.csv = QLineEdit()
         browse = QPushButton("Выбрать CSV")
-        browse.clicked.connect(lambda: self.csv.setText(QFileDialog.getOpenFileName(self, "Выберите CSV", "", "CSV (*.csv)")[0]))
+        browse.clicked.connect(self._choose_csv)
         row = QHBoxLayout()
         row.addWidget(self.csv)
         row.addWidget(browse)
+        auto = QPushButton("Определить автоматически"); auto.clicked.connect(self._auto_detect)
+        elevation_row = QHBoxLayout(); elevation_row.addWidget(self.elevation); elevation_row.addWidget(auto)
+        self.auto_status = QLabel("Выберите CSV для автоопределения горизонта")
+        self.auto_status.setWordWrap(True)
         form.addRow("Название *", self.name)
         form.addRow("Тип *", self.kind)
         form.addRow("Дата", self.date)
-        form.addRow("Горизонт *", self.elevation)
+        form.addRow("Горизонт *", elevation_row)
         form.addRow("CSV Datamine *", row)
+        form.addRow("", self.auto_status)
         layout.addLayout(form)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        self.kind.currentTextChanged.connect(self._event_type_changed)
+
+    def _choose_csv(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Выберите CSV", "", "CSV (*.csv)")
+        if not path: return
+        self.csv.setText(path)
+        self._inspect(force_override=True)
+
+    def _event_type_changed(self, _event_type):
+        if self.csv.text().strip(): self._inspect(force_override=True)
+
+    def _auto_detect(self):
+        self._inspect(force_override=True)
+
+    def _inspect(self, *, force_override: bool) -> bool:
+        path = self.csv.text().strip()
+        if not path:
+            self.auto_status.setText("Сначала выберите CSV")
+            return False
+        try:
+            preview = self.service.inspect_event_geometry(self.kind.currentText(), path)
+        except BlastEventValidationError as exc:
+            self.preview = None
+            self.auto_status.setText(f"Автоопределение не выполнено: {exc}")
+            QMessageBox.warning(self, "Автоопределение горизонта", str(exc))
+            return False
+        self.preview = preview
+        if force_override or not self.elevation_is_manual:
+            self._applying_suggestion = True
+            self.elevation.setValue(preview.suggested_elevation)
+            self._applying_suggestion = False
+            self.elevation_is_manual = False
+        if preview.geometry_type == "Polygon":
+            text = (f"Автоопределение: горизонт {preview.suggested_elevation:.2f} "
+                    f"по верхней линии SID {preview.selected_source_line_id}")
+        else:
+            text = (f"Автоопределение: горизонт {preview.suggested_elevation:.2f} по медиане "
+                    f"{preview.accepted_contour_drillhole_count} устьев")
+            if preview.ignored_flat_contour_line_count:
+                text += f"; плоских строк исключено: {preview.ignored_flat_contour_line_count}"
+        if preview.warning_text: text += f"\n{preview.warning_text}"
+        self.auto_status.setText(text)
+        return True
+
+    def _elevation_changed(self, _value):
+        if self._applying_suggestion: return
+        self.elevation_is_manual = True
+        if self.csv.text().strip(): self.auto_status.setText("Горизонт изменён вручную")
+
+    def _validate_and_accept(self):
+        manual = self.elevation_is_manual
+        if not self._inspect(force_override=not manual): return
+        if manual:
+            self.elevation_is_manual = True
+            self.auto_status.setText("Горизонт изменён вручную")
+        self.accept()
 
     def values(self):
         return {"name": self.name.text(), "event_type": self.kind.currentText(),

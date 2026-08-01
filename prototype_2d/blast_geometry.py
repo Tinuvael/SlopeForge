@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import sqrt
+from statistics import median
 from typing import Sequence
 
 from .domain import PlanMultiPoint, PlanPoint, PlanPolygon
@@ -18,6 +19,9 @@ class ProductionGeometryResult:
     plan_geometry: PlanPolygon
     elevation: float
     closed_polygon_count: int = 1
+    representative_elevation: float = 0.0
+    maximum_elevation: float = 0.0
+    selected_source_line_id: str = ""
 
     @property
     def multiple_polygons_warning(self) -> str | None:
@@ -79,7 +83,12 @@ def build_production_geometry(
     ring = [PlanPoint(point.x, point.y) for point in selected.points]
     ring[-1] = ring[0]
     polygon = PlanPolygon(tuple(ring))
-    return ProductionGeometryResult(selected, polygon, _line_max_z(selected), closed_polygon_count)
+    maximum_elevation = _line_max_z(selected)
+    representative_elevation = float(median(point.z for point in selected.points))
+    return ProductionGeometryResult(
+        selected, polygon, maximum_elevation, closed_polygon_count,
+        representative_elevation, maximum_elevation, selected.source_id,
+    )
 
 
 def build_contour_geometry(

@@ -33,6 +33,79 @@ def test_create_contour_event_preserves_user_horizon(tmp_path):
     assert event.elevation == 640 and isinstance(event.active_geometry_revision().plan_geometry, PlanMultiPoint)
 
 
+def test_production_preview_uses_median_of_selected_upper_line_only(tmp_path):
+    source = tmp_path / "production-levels.csv"
+    write_csv(source, [
+        (0, 0, 620, "lower", 1), (10, 0, 620, "lower", 2),
+        (10, 10, 620, "lower", 3), (0, 0, 620, "lower", 4),
+        (0, 0, 630, "upper", 1), (10, 0, 630, "upper", 2),
+        (10, 10, 630.8, "upper", 3), (0, 10, 630, "upper", 4), (0, 0, 630, "upper", 5),
+    ])
+    service = BlastEventService(AssessmentDomainState())
+    preview = service.inspect_event_geometry("production", source)
+    assert preview.suggested_elevation == pytest.approx(630)
+    assert preview.selected_source_line_id == "upper"
+    assert preview.selected_line_representative_z == pytest.approx(630)
+    event = service.create_event(name="Блок", event_type="production", event_date=None,
+                                 elevation=preview.suggested_elevation, csv_path=source)
+    assert event.elevation == 630
+    assert event.active_geometry_revision().source_geometry[0].source_id == "upper"
+    assert event.active_geometry_revision().elevation == pytest.approx(630.8)
+
+
+def test_flat_production_preview_suggests_constant_z(tmp_path):
+    source = tmp_path / "flat-630.csv"; production_csv(source, 630)
+    preview = BlastEventService(AssessmentDomainState()).inspect_event_geometry("production", source)
+    assert preview.suggested_elevation == 630
+
+
+def test_contour_preview_uses_median_accepted_collars_and_ignores_toes_and_flat_lines(tmp_path):
+    source = tmp_path / "contour-preview.csv"
+    write_csv(source, [
+        (0, 0, 630, "hole-1", 1), (0, 0, 590, "hole-1", 2),
+        (10, 0, 632, "hole-2", 1), (10, 0, 580, "hole-2", 2),
+        (0, 20, 700, "marker", 1), (10, 20, 700, "marker", 2),
+    ])
+    preview = BlastEventService(AssessmentDomainState()).inspect_event_geometry("contour", source)
+    assert preview.suggested_elevation == pytest.approx(631)
+    assert preview.accepted_contour_drillhole_count == 2
+    assert preview.ignored_flat_contour_line_count == 1
+
+
+def test_manual_override_wins_over_preview_during_save(tmp_path):
+    source = tmp_path / "auto.csv"; production_csv(source, 630)
+    service = BlastEventService(AssessmentDomainState())
+    assert service.inspect_event_geometry("production", source).suggested_elevation == 630
+    event = service.create_event(name="Ручной горизонт", event_type="production", event_date=None,
+                                 elevation=628.5, csv_path=source)
+    assert event.elevation == 628.5
+
+
+def test_dialog_new_csv_and_event_type_refresh_auto_suggestion(tmp_path):
+    QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
+    from prototype_2d.blast_event_service import BlastEventImportPreview
+    from ui.prototype_2d.blast_event_window import BlastEventDialog
+
+    class PreviewService:
+        def inspect_event_geometry(self, event_type, csv_path):
+            base = 640 if event_type == "contour" else 630
+            if str(csv_path).endswith("second.csv"): base += 5
+            return BlastEventImportPreview(base, "MultiPoint" if event_type == "contour" else "Polygon",
+                selected_source_line_id="2", selected_line_representative_z=base,
+                accepted_contour_drillhole_count=212)
+
+    app = QApplication.instance() or QApplication([])
+    dialog = BlastEventDialog(service=PreviewService())
+    dialog.csv.setText(str(tmp_path / "first.csv")); assert dialog._inspect(force_override=True)
+    assert dialog.elevation.value() == 630 and not dialog.elevation_is_manual
+    dialog.elevation.setValue(628); assert dialog.elevation_is_manual
+    dialog.csv.setText(str(tmp_path / "second.csv")); dialog._inspect(force_override=True)
+    assert dialog.elevation.value() == 635 and not dialog.elevation_is_manual
+    dialog.kind.setCurrentText("contour")
+    assert dialog.elevation.value() == 645 and "212 устьев" in dialog.auto_status.text()
+    dialog.close(); assert app
+
+
 def test_contour_groups_by_sid_and_keeps_one_first_maximum_collar(tmp_path):
     source = tmp_path / "contour.csv"
     source.write_text(

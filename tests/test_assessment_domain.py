@@ -37,6 +37,9 @@ def test_production_uses_highest_closed_line_only():
     result = build_production_geometry([lower, upper])
     assert result.source_line.source_id == "upper"
     assert result.elevation == 620
+    assert result.selected_source_line_id == "upper"
+    assert result.representative_elevation == 620
+    assert result.maximum_elevation == 620
 
 
 def test_production_multiple_closed_polygons_reports_clear_import_warning():

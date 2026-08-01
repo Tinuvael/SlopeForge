@@ -1,8 +1,10 @@
 """Сервис создания и переимпорта взрывных событий."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from statistics import median
 from uuid import uuid4
 
 from .blast_geometry import BlastGeometryError, build_contour_geometry, build_production_geometry
@@ -12,6 +14,18 @@ from .domain import AssessmentDomainState, BlastEvent, BlastEventGeometryRevisio
 
 class BlastEventValidationError(ValueError):
     """Данные карточки события неполные или не подходят для сохранения."""
+
+
+@dataclass(frozen=True)
+class BlastEventImportPreview:
+    suggested_elevation: float
+    geometry_type: str
+    selected_source_line_id: str | None = None
+    selected_line_representative_z: float | None = None
+    production_closed_polygon_count: int = 0
+    accepted_contour_drillhole_count: int = 0
+    ignored_flat_contour_line_count: int = 0
+    warning_text: str | None = None
 
 
 class BlastEventService:
@@ -34,6 +48,39 @@ class BlastEventService:
 
     def reimport_geometry(self, event: BlastEvent, csv_path: str | Path) -> BlastEventGeometryRevision:
         return self._add_imported_geometry(event, csv_path)
+
+    def inspect_event_geometry(self, event_type: str, csv_path: str | Path) -> BlastEventImportPreview:
+        """Inspect with exactly the same importer/builders used by final event import."""
+        if event_type not in {"production", "contour"}:
+            raise BlastEventValidationError("Выберите тип события: production или contour")
+        path = Path(csv_path)
+        try:
+            result = import_datamine_csv(path)
+        except DatamineCsvError as exc:
+            raise BlastEventValidationError(f"Не удалось импортировать CSV: {exc}") from exc
+        if not result.lines:
+            message = ("CSV не содержит валидных контурных скважин" if event_type == "contour"
+                       else "CSV не содержит подходящих линий")
+            raise BlastEventValidationError(message)
+        try:
+            if event_type == "production":
+                geometry = build_production_geometry(result.lines)
+                return BlastEventImportPreview(
+                    suggested_elevation=geometry.representative_elevation,
+                    geometry_type="Polygon", selected_source_line_id=geometry.selected_source_line_id,
+                    selected_line_representative_z=geometry.representative_elevation,
+                    production_closed_polygon_count=geometry.closed_polygon_count,
+                    warning_text=geometry.multiple_polygons_warning,
+                )
+            geometry = build_contour_geometry(result.lines)
+            return BlastEventImportPreview(
+                suggested_elevation=float(median(point.z for point in geometry.collar_points)),
+                geometry_type="MultiPoint",
+                accepted_contour_drillhole_count=geometry.accepted_drillhole_count,
+                ignored_flat_contour_line_count=geometry.ignored_flat_line_count,
+            )
+        except BlastGeometryError as exc:
+            raise BlastEventValidationError(str(exc)) from exc
 
     def _add_imported_geometry(self, event: BlastEvent, csv_path: str | Path) -> BlastEventGeometryRevision:
         self.last_import_warning = None
