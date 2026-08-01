@@ -24,6 +24,8 @@ from prototype_2d.geometry import validate_simple_polygon
 from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
 from ui.prototype_2d.dialogs import ColumnMappingDialog
 from ui.prototype_2d.plan_view import PrototypePlanView
+from prototype_2d.technical_card import TechnicalCardService
+from ui.prototype_2d.technical_card_dialog import TechnicalCardDialog
 
 PROJECT_LINE_ROLE = 1001
 BLAST_GEOMETRY_ROLE = 1002
@@ -96,6 +98,7 @@ class BlastEventWindow(QMainWindow):
         self.dataset_service = ProjectLinesDatasetService(self.state)
         self.area_service = AssessmentAreaService(self.state)
         self.link_service = AssessmentEventLinkService(self.state)
+        self.technical_card_service = TechnicalCardService(self.state)
         self.selected_event: BlastEvent | None = None
         self.selected_area = None
         self._drawing_vertices: list[PlanPoint] = []
@@ -339,8 +342,18 @@ class BlastEventWindow(QMainWindow):
                    ("Тип геометрии", revision.plan_geometry.to_dict()['type'] if revision else "—"),
                    ("Число ревизий", str(len(event.geometry_revisions))),
                    ("Статус", "Архив" if event.is_archived else "Активно")]
-        self._set_card(details, [("Переимпортировать геометрию", self.reimport_geometry, True),
+        self._set_card(details, [("Техническая карточка", self.show_technical_card, True),
+            ("Переимпортировать геометрию", self.reimport_geometry, True),
             ("Восстановить" if event.is_archived else "Архивировать", self.toggle_archive, True)])
+
+    def show_technical_card(self):
+        if not self.selected_event: return
+        card, revision = self.technical_card_service.edit_or_create(self.selected_event)
+        TechnicalCardDialog(self.selected_event, card, revision, self._save_technical_card, self).exec()
+
+    def _save_technical_card(self, card, revision, status):
+        card.save_revision(revision, status=status)
+        save_blast_event_state(self.state, self.storage_path)
 
     @staticmethod
     def _detail_value_label(value: str) -> QLabel:

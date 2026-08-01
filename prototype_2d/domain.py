@@ -509,6 +509,7 @@ class AssessmentDomainState:
     datasets: list[ProjectLinesDataset] = field(default_factory=list)
     blast_events: list[BlastEvent] = field(default_factory=list)
     assessment_areas: list[AssessmentArea] = field(default_factory=list)
+    technical_cards: list[Any] = field(default_factory=list)
 
     def add_dataset(self, dataset: ProjectLinesDataset, make_active: bool = True) -> None:
         if any(item.id == dataset.id for item in self.datasets):
@@ -530,12 +531,16 @@ class AssessmentDomainState:
             "datasets": [dataset.to_dict() for dataset in self.datasets],
             "blast_events": [event.to_dict() for event in self.blast_events],
             "assessment_areas": [area.to_dict() for area in self.assessment_areas],
+            "technical_cards": [card.to_dict() for card in self.technical_cards],
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AssessmentDomainState":
+        # Local import keeps the technical-card layer separate from the geometry core.
+        from .technical_card import BlastEventTechnicalCard
         return cls(
             datasets=[ProjectLinesDataset.from_dict(item) for item in data.get("datasets", [])],
             blast_events=[BlastEvent.from_dict(item) for item in data.get("blast_events", [])],
             assessment_areas=[AssessmentArea.from_dict(item) for item in data.get("assessment_areas", [])],
+            technical_cards=[BlastEventTechnicalCard.from_dict(item) for item in data.get("technical_cards", [])],
         )
