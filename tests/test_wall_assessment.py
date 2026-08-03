@@ -39,9 +39,9 @@ def test_categories_damage_and_manual_rules():
     r=AssessmentCriterionResult("loose_blocks","x",CONDITION,selected_option_id="none"); assert score_result(r,t)==20
     r=AssessmentCriterionResult("damage","x",CONDITION,raw_numeric_value=3)
     assert score_result(r,t) is None
-    r.selected_option_id="low"
+    r.manual_score=7
     with pytest.raises(ValueError): score_result(r,t)
-    r.override_reason="осмотр"; assert score_result(r,t)==15
+    r.override_reason="осмотр"; assert score_result(r,t)==7
     r=AssessmentCriterionResult("open_cracks","x",CONDITION,selected_option_id="many_open",manual_score=11,override_reason="x")
     with pytest.raises(ValueError): score_result(r,t)
     r.manual_score=5; r.override_reason=""
@@ -67,10 +67,37 @@ def test_indices_quadrants_draft_and_completion():
 def test_versioning_roundtrip_old_json_archive_and_geometry_history(area):
     state=AssessmentDomainState(assessment_areas=[area]); svc=AssessmentAreaEvaluationService(state); evaluation,draft=svc.new_evaluation(area)
     draft=complete_revision("no_controlled_blasting_v1"); draft.evaluation_id=evaluation.id
-    first=evaluation.save_revision(draft,"completed"); edit=deepcopy(first); edit.comments="changed"; second=evaluation.save_revision(edit,"completed")
+    state.evaluations.append(evaluation); first=evaluation.save_revision(draft,"completed"); edit=deepcopy(first); edit.comments="changed"; second=evaluation.save_revision(edit,"completed")
     assert second.revision_number==2 and first.comments=="" and first.assessment_area_geometry_revision_id=="AA-1-R001"
     restored=AssessmentDomainState.from_dict(json.loads(json.dumps(state.to_dict())))
     assert restored.evaluations[0].revisions[0].result_quadrant=="good_results"
     old=state.to_dict(); old.pop("evaluations"); assert AssessmentDomainState.from_dict(old).evaluations==[]
     area.archive()
     with pytest.raises(ValueError): svc.new_evaluation(area)
+
+def test_manual_controlled_example_calculates_and_roundtrips():
+    t=get_template("controlled_blasting_v1")
+    raw={"bench_angle":0,"berm_width":0,"toe_position":0,"visible_drillhole_traces":90,"crest_loss":1,"damage":1}
+    choices={"loose_blocks":"several_small","face_profile":"hard_toe","open_cracks":"closed"}
+    results=[]
+    for section in t.sections:
+        for criterion in section.criteria:
+            results.append(AssessmentCriterionResult(criterion.id,criterion.name,section.id,
+                raw_numeric_value=raw.get(criterion.id),selected_option_id=choices.get(criterion.id),
+                manual_score=8 if criterion.id=="damage" else None,
+                override_reason="Экспертный осмотр" if criterion.id=="damage" else None,
+                maximum_score=criterion.maximum_score))
+    revision=AssessmentAreaEvaluationRevision("","E",0,datetime.now(timezone.utc),date.today(),"Иванов","draft","AA-1-R001",t.id,t.version,t.to_dict(),True,"confirmed_link",
+        design_inputs={"design_bench_face_angle_deg":65,"actual_bench_face_angle_deg":66,"bench_angle_shortfall_deg":0,"design_berm_width_m":10,"actual_berm_width_m":10,"berm_width_deficit_m":0,"toe_offset_from_design_m":0},
+        face_condition_inputs={"visible_drillhole_traces":90,"loose_blocks":"several_small","face_profile":"hard_toe","crest_loss":1,"damage":1,"open_cracks":"closed"},criterion_results=results)
+    evaluation=AssessmentAreaEvaluation("E","AA-1"); saved=evaluation.save_revision(revision,"completed")
+    assert saved.design_achievement_points==100 and saved.design_achievement_index==1
+    assert saved.face_condition_index is not None and saved.result_quadrant is not None
+    restored=AssessmentAreaEvaluation.from_dict(json.loads(json.dumps(evaluation.to_dict())))
+    assert restored.active_revision().design_inputs==saved.design_inputs
+    assert restored.active_revision().face_condition_inputs==saved.face_condition_inputs
+    assert restored.active_revision().face_condition_index==saved.face_condition_index
+
+def test_cancelled_transient_evaluation_never_enters_state(area):
+    state=AssessmentDomainState(assessment_areas=[area]); evaluation,_draft=AssessmentAreaEvaluationService(state).new_evaluation(area)
+    assert evaluation.revisions==[] and state.evaluations==[]

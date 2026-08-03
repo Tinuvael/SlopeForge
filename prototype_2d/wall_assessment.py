@@ -63,20 +63,24 @@ def _opts(values): return tuple(AssessmentCriterionOption(*x) for x in values)
 def _criterion(i,n,s,m,k="numeric",options=(),help_text=""): return AssessmentCriterionDefinition(i,n,s,m,k,_opts(options),(),help_text)
 def _templates():
     common_design=lambda angle,toe: AssessmentMatrixSection(DESIGN,"Результаты проектирования",(
-        _criterion("bench_angle","Угол откоса уступа",DESIGN,angle,help_text="Дефицит = max(проектный − фактический, 0)"),
-        _criterion("berm_width","Ширина бермы",DESIGN,40),_criterion("toe_position","Положение подошвы",DESIGN,toe)))
-    crest=_criterion("crest_loss","Состояние бровки",CONDITION,15)
-    cracks=lambda: _criterion("open_cracks","Открытые трещины",CONDITION,10,"categorical",(("closed","Все трещины закрыты / отсутствуют",10),("many_open","Много открытых трещин",0)))
-    damage=lambda m:_criterion("damage","Повреждение ранее ненарушенной породы",CONDITION,m,"damage",(("low","Менее 1 признака/м²",m),("extensive","Более 5 признаков/м²",0)),"При 1–5 признаках/м² требуется явное решение и причина")
+        _criterion("bench_angle","Недобор угла относительно проекта, °",DESIGN,angle,help_text="max(проектный угол − фактический угол, 0)"),
+        _criterion("berm_width","Уменьшение ширины относительно проекта, м",DESIGN,40),
+        _criterion("toe_position","Отклонение фактической подошвы от проектной, м",DESIGN,toe,
+                   help_text="Введите абсолютное расстояние между фактическим и проектным положением подошвы.")))
+    crest=_criterion("crest_loss","Потеря / разрушение бровки, м",CONDITION,15,
+                     help_text="Введите ширину потери фактической бровки относительно проектного положения.")
+    cracks=lambda: _criterion("open_cracks","Открытые трещины взрывного происхождения",CONDITION,10,"categorical",(("closed","Все трещины закрыты / отсутствуют",10),("many_open","Много открытых трещин",0)))
+    damage=lambda m:_criterion("damage","Признаки взрывного повреждения ранее ненарушенной породы, шт/м²",CONDITION,m,"damage",(),"Оцените количество видимых зон дробления, раскрытых нарушений или иных признаков повреждения на 1 м² поверхности. Для 1–5 включительно нужен экспертный балл и обоснование.")
     controlled=AssessmentMatrixTemplate("controlled_blasting_v1",1,"С контурным бурением","controlled",(
       common_design(50,10),AssessmentMatrixSection(CONDITION,"Показатели состояния борта",(
-       _criterion("visible_drillhole_traces","Видимые следы контурных скважин",CONDITION,20),
-       _criterion("loose_blocks","Свободные блоки",CONDITION,20,"categorical",(("none","Отсутствие валунов / свободных блоков",20),("several_small","Несколько небольших блоков",15),("large","Крупные блоки",10),("many","Много блоков",0))),
-       _criterion("face_profile","Профиль борта",CONDITION,20,"categorical",(("straight","Прямой профиль",20),("hard_toe","Твёрдая подошва",10),("hanging_crest","Зависание породы на бровке",5),("irregular","Неровная поверхность борта",0))),crest,damage(15),cracks()))))
+       _criterion("visible_drillhole_traces","Видимые следы контурных скважин, %",CONDITION,20,
+                  help_text="Оценочная доля сохранившихся видимых следов контурных скважин относительно общего количества на оцениваемом участке."),
+       _criterion("loose_blocks","Свободные блоки и неустойчивые обломки на откосе",CONDITION,20,"categorical",(("none","Отсутствуют",20),("several_small","Несколько небольших блоков",15),("large","Крупные блоки",10),("many","Много блоков",0))),
+       _criterion("face_profile","Фактический профиль откоса",CONDITION,20,"categorical",(("straight","Прямой профиль",20),("hard_toe","Твёрдая подошва",10),("hanging_crest","Зависание породы на бровке",5),("irregular","Неровная поверхность борта",0))),crest,damage(15),cracks()))))
     plain=AssessmentMatrixTemplate("no_controlled_blasting_v1",1,"Без контурного бурения","not_controlled",(
       common_design(40,20),AssessmentMatrixSection(CONDITION,"Показатели состояния борта",(crest,
-       _criterion("loose_blocks","Свободные блоки",CONDITION,25,"categorical",(("none","Отсутствуют",25),("several_small","Несколько небольших",15),("large","Крупные",10),("many","Много",0))),
-       _criterion("face_profile","Профиль борта",CONDITION,30,"categorical",(("straight","Прямой профиль",30),("hard_toe","Твёрдая подошва",20),("hanging_face","Зависание на борту",15),("hanging_crest","Зависание на бровке",10),("irregular","Неровный борт",0))),damage(20),cracks()))))
+       _criterion("loose_blocks","Свободные блоки и неустойчивые обломки на откосе",CONDITION,25,"categorical",(("none","Отсутствуют",25),("several_small","Несколько небольших блоков",15),("large","Крупные блоки",10),("many","Много блоков",0))),
+       _criterion("face_profile","Фактический профиль откоса",CONDITION,30,"categorical",(("straight","Прямой профиль",30),("hard_toe","Твёрдая подошва",20),("hanging_face","Зависание породы на откосе",15),("hanging_crest","Зависание породы на бровке",10),("irregular","Неровная поверхность борта",0))),damage(20),cracks()))))
     return {controlled.id:controlled,plain.id:plain}
 BUILTIN_TEMPLATES=_templates()
 
@@ -216,7 +220,9 @@ class AssessmentAreaEvaluationService:
         detected,present,source=self.detect_template(area)
         if template_id and template_id!=detected and not (override_reason or "").strip(): raise ValueError("Для ручного выбора матрицы укажите причину")
         chosen=template_id or detected; template=get_template(chosen); eid=f"AAE-{uuid4()}"
-        evaluation=AssessmentAreaEvaluation(eid,area.id); self.state.evaluations.append(evaluation)
+        # The evaluation remains transient until the first successful save.  This
+        # prevents Cancel/X from leaving empty placeholders in persisted state.
+        evaluation=AssessmentAreaEvaluation(eid,area.id)
         revision=AssessmentAreaEvaluationRevision("",eid,0,datetime.now(timezone.utc),date.today(),"","draft",area.active_geometry_revision_id,chosen,template.version,template.to_dict(),chosen=="controlled_blasting_v1","manual_override" if template_id and template_id!=detected else source,linked_event_snapshots=self.snapshot_links(area),change_reason=override_reason or "")
         return evaluation,revision
     def snapshot_links(self,area):

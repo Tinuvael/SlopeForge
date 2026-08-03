@@ -354,17 +354,33 @@ class BlastEventWindow(QMainWindow):
     def show_wall_assessment(self):
         if not self.selected_area: return
         existing = [e for e in self.state.evaluations if e.assessment_area_id == self.selected_area.id]
-        if existing:
-            evaluation = existing[-1]
-            current = evaluation.active_revision()
-            draft = deepcopy(current)
+        populated = [evaluation for evaluation in existing if evaluation.active_revision() is not None]
+        if populated:
+            evaluation = populated[-1]
+            draft = deepcopy(evaluation.active_revision())
         else:
-            evaluation, draft = self.evaluation_service.new_evaluation(self.selected_area)
+            transient, draft = self.evaluation_service.new_evaluation(self.selected_area)
+            # Safely reuse one placeholder written by the earlier implementation.
+            # Extra empty legacy evaluations are ignored and never duplicated.
+            evaluation = existing[-1] if existing else transient
+            draft.evaluation_id = evaluation.id
         AssessmentAreaEvaluationDialog(self.selected_area, evaluation, draft, self._save_wall_assessment, self).exec()
 
     def _save_wall_assessment(self, evaluation, revision, status):
-        evaluation.save_revision(revision, status)
-        save_blast_event_state(self.state, self.storage_path)
+        was_present = evaluation in self.state.evaluations
+        previous_count = len(evaluation.revisions)
+        previous_active = evaluation.active_revision_id
+        try:
+            evaluation.save_revision(revision, status)
+            if not was_present:
+                self.state.evaluations.append(evaluation)
+            save_blast_event_state(self.state, self.storage_path)
+        except Exception:
+            del evaluation.revisions[previous_count:]
+            evaluation.active_revision_id = previous_active
+            if not was_present and evaluation in self.state.evaluations:
+                self.state.evaluations.remove(evaluation)
+            raise
         self._render_card()
 
     def show_technical_card(self):
