@@ -840,10 +840,19 @@ class AssessmentWorkspaceWidget(QWidget):
         self.plan_view.set_polygon_refinement_mode()
         self._refresh_refinement_candidates(); self.draw_geometry()
 
-    def _save(self):
-        self.state_changed.emit()
+    def _persist(self, *, changed: bool) -> None:
         self._save_callback()
+        if changed:
+            self.state_changed.emit()
         self.state_saved.emit()
+
+    def _save(self) -> None:
+        """Persist a domain mutation and notify listeners after success."""
+        self._persist(changed=True)
+
+    def save_now(self) -> None:
+        """Persist the current snapshot without reporting a new mutation."""
+        self._persist(changed=False)
 
     def open_blast_event(self, event_id: str) -> bool:
         event = next((item for item in self.state.blast_events if item.id == event_id), None)

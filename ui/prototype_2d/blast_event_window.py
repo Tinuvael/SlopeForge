@@ -81,5 +81,15 @@ class BlastEventWindow(QMainWindow):
                 event.ignore()
                 return
             self.workspace.cancel_active_workflow()
+        try:
+            self.workspace.save_now()
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Ошибка сохранения",
+                f"Не удалось сохранить данные. Окно останется открытым.\n\n{exc}",
+            )
+            event.ignore()
+            return
         self.closed.emit()
         super().closeEvent(event)
