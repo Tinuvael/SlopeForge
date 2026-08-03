@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 import csv
 from pathlib import Path
 
@@ -25,6 +27,8 @@ from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetServic
 from ui.prototype_2d.dialogs import ColumnMappingDialog
 from ui.prototype_2d.plan_view import PrototypePlanView
 from prototype_2d.technical_card import TechnicalCardService
+from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+from ui.prototype_2d.wall_assessment_dialog import AssessmentAreaEvaluationDialog
 from ui.prototype_2d.technical_card_dialog import TechnicalCardDialog
 
 PROJECT_LINE_ROLE = 1001
@@ -99,6 +103,7 @@ class BlastEventWindow(QMainWindow):
         self.area_service = AssessmentAreaService(self.state)
         self.link_service = AssessmentEventLinkService(self.state)
         self.technical_card_service = TechnicalCardService(self.state)
+        self.evaluation_service = AssessmentAreaEvaluationService(self.state)
         self.selected_event: BlastEvent | None = None
         self.selected_area = None
         self._drawing_vertices: list[PlanPoint] = []
@@ -322,7 +327,7 @@ class BlastEventWindow(QMainWindow):
                 ("Подтверждено", str(sum(x.status == "confirmed" for x in links))),
                 ("Исключено", str(sum(x.status == "excluded" for x in links))),
                 ("Устаревшие ревизии", str(sum(self.link_service.is_stale(x) for x in links)))]
-            actions = [("Связанные Blast Events", self.show_area_links, True)]
+            actions = [("Оценка борта", self.show_wall_assessment, not area.is_archived), ("Связанные Blast Events", self.show_area_links, True)]
             if self._highlighted_link: actions.append(("Скрыть BlastEvent", self.clear_highlighted_link, True))
             actions += [("Найти / пересчитать связи", self.refresh_area_links, not area.is_archived),
                         ("Редактировать границы", self.edit_area_boundaries, not area.is_archived),
@@ -345,6 +350,38 @@ class BlastEventWindow(QMainWindow):
         self._set_card(details, [("Техническая карточка", self.show_technical_card, True),
             ("Переимпортировать геометрию", self.reimport_geometry, True),
             ("Восстановить" if event.is_archived else "Архивировать", self.toggle_archive, True)])
+
+    def show_wall_assessment(self):
+        if not self.selected_area: return
+        existing = [e for e in self.state.evaluations if e.assessment_area_id == self.selected_area.id]
+        populated = [evaluation for evaluation in existing if evaluation.active_revision() is not None]
+        if populated:
+            evaluation = populated[-1]
+            draft = deepcopy(evaluation.active_revision())
+        else:
+            transient, draft = self.evaluation_service.new_evaluation(self.selected_area)
+            # Safely reuse one placeholder written by the earlier implementation.
+            # Extra empty legacy evaluations are ignored and never duplicated.
+            evaluation = existing[-1] if existing else transient
+            draft.evaluation_id = evaluation.id
+        AssessmentAreaEvaluationDialog(self.selected_area, evaluation, draft, self._save_wall_assessment, self).exec()
+
+    def _save_wall_assessment(self, evaluation, revision, status):
+        was_present = evaluation in self.state.evaluations
+        previous_count = len(evaluation.revisions)
+        previous_active = evaluation.active_revision_id
+        try:
+            evaluation.save_revision(revision, status)
+            if not was_present:
+                self.state.evaluations.append(evaluation)
+            save_blast_event_state(self.state, self.storage_path)
+        except Exception:
+            del evaluation.revisions[previous_count:]
+            evaluation.active_revision_id = previous_active
+            if not was_present and evaluation in self.state.evaluations:
+                self.state.evaluations.remove(evaluation)
+            raise
+        self._render_card()
 
     def show_technical_card(self):
         if not self.selected_event: return
