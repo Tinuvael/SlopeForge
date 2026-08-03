@@ -28,6 +28,8 @@ from ui.prototype_2d.dialogs import ColumnMappingDialog
 from ui.prototype_2d.plan_view import PrototypePlanView
 from prototype_2d.technical_card import TechnicalCardService
 from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+from prototype_2d.entity_attachments import EntityAttachmentService
+from ui.prototype_2d.entity_attachment_dialog import EntityAttachmentDialog
 from ui.prototype_2d.wall_assessment_dialog import AssessmentAreaEvaluationDialog
 from ui.prototype_2d.technical_card_dialog import TechnicalCardDialog
 
@@ -104,6 +106,7 @@ class BlastEventWindow(QMainWindow):
         self.link_service = AssessmentEventLinkService(self.state)
         self.technical_card_service = TechnicalCardService(self.state)
         self.evaluation_service = AssessmentAreaEvaluationService(self.state)
+        self.attachment_service = EntityAttachmentService(self.state, storage_path, self._save)
         self.selected_event: BlastEvent | None = None
         self.selected_area = None
         self._drawing_vertices: list[PlanPoint] = []
@@ -327,7 +330,13 @@ class BlastEventWindow(QMainWindow):
                 ("Подтверждено", str(sum(x.status == "confirmed" for x in links))),
                 ("Исключено", str(sum(x.status == "excluded" for x in links))),
                 ("Устаревшие ревизии", str(sum(self.link_service.is_stale(x) for x in links)))]
+            evaluation = next((e for e in reversed(self.state.evaluations)
+                               if e.assessment_area_id == area.id and e.active_revision()), None)
+            photo_count, document_count = self.attachment_service.counts("assessment_evaluation", evaluation.id) if evaluation else (0, 0)
+            details += [("Фото", str(photo_count)), ("Документы", str(document_count))]
             actions = [("Оценка борта", self.show_wall_assessment, not area.is_archived), ("Связанные Blast Events", self.show_area_links, True)]
+            if evaluation:
+                actions.append(("Фото и документы", self.show_area_attachments, True))
             if self._highlighted_link: actions.append(("Скрыть BlastEvent", self.clear_highlighted_link, True))
             actions += [("Найти / пересчитать связи", self.refresh_area_links, not area.is_archived),
                         ("Редактировать границы", self.edit_area_boundaries, not area.is_archived),
@@ -347,7 +356,11 @@ class BlastEventWindow(QMainWindow):
                    ("Тип геометрии", revision.plan_geometry.to_dict()['type'] if revision else "—"),
                    ("Число ревизий", str(len(event.geometry_revisions))),
                    ("Статус", "Архив" if event.is_archived else "Активно")]
+        photo_count, document_count = self.attachment_service.counts("blast_event", event.id)
+        details += [("Фото", str(photo_count)), ("Документы", str(document_count))]
         self._set_card(details, [("Техническая карточка", self.show_technical_card, True),
+            ("Фото и документы", self.show_event_attachments, True),
+            ("Открыть папку", self.open_event_folder, True),
             ("Переимпортировать геометрию", self.reimport_geometry, True),
             ("Восстановить" if event.is_archived else "Архивировать", self.toggle_archive, True)])
 
@@ -364,7 +377,27 @@ class BlastEventWindow(QMainWindow):
             # Extra empty legacy evaluations are ignored and never duplicated.
             evaluation = existing[-1] if existing else transient
             draft.evaluation_id = evaluation.id
-        AssessmentAreaEvaluationDialog(self.selected_area, evaluation, draft, self._save_wall_assessment, self).exec()
+        AssessmentAreaEvaluationDialog(self.selected_area, evaluation, draft, self._save_wall_assessment, self,
+            attachment_service=self.attachment_service, unsaved=evaluation not in self.state.evaluations).exec()
+
+    def show_event_attachments(self):
+        if not self.selected_event: return
+        EntityAttachmentDialog(self.attachment_service, "blast_event", self.selected_event.id, self,
+                               read_only=self.selected_event.is_archived).exec()
+        self._render_card()
+
+    def open_event_folder(self):
+        if self.selected_event:
+            self.attachment_service.open_owner_folder("blast_event", self.selected_event.id)
+
+    def show_area_attachments(self):
+        if not self.selected_area: return
+        evaluation = next((e for e in reversed(self.state.evaluations)
+                           if e.assessment_area_id == self.selected_area.id and e.active_revision()), None)
+        if evaluation:
+            EntityAttachmentDialog(self.attachment_service, "assessment_evaluation", evaluation.id, self,
+                                   read_only=self.selected_area.is_archived).exec()
+            self._render_card()
 
     def _save_wall_assessment(self, evaluation, revision, status):
         was_present = evaluation in self.state.evaluations
