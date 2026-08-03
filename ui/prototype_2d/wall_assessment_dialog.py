@@ -147,16 +147,18 @@ class CriterionEditor(QWidget):
 
 class AssessmentAreaEvaluationDialog(QDialog):
     """Edits a private copy. Construction and live previews never mutate source objects."""
-    def __init__(self, area, evaluation, draft, save_callback, parent=None, read_only=False):
+    def __init__(self, area, evaluation, draft, save_callback, parent=None, read_only=False,
+                 attachment_service=None, unsaved=False):
         super().__init__(parent)
         self.area, self.evaluation, self.source_revision = area, evaluation, draft
         self.draft = deepcopy(draft)
         self.save_callback, self.read_only = save_callback, read_only
+        self.attachment_service, self.unsaved = attachment_service, unsaved
         self.template = AssessmentMatrixTemplate.from_dict(self.draft.matrix_template_snapshot)
         self._initializing = True; self._dirty = False; self._allow_close = False; self._preview = deepcopy(self.draft)
         self.setWindowTitle(self._base_title()); self.resize(1120, 780)
         root = QVBoxLayout(self); self.tabs = QTabWidget(); root.addWidget(self.tabs)
-        self._general(); self._geometry(); self._condition(); self._matrix(); self._events(); self._history()
+        self._general(); self._geometry(); self._condition(); self._matrix(); self._events(); self._attachments(); self._history()
         buttons = QHBoxLayout(); buttons.addStretch()
         self.draft_button = QPushButton("Сохранить черновик"); self.complete_button = QPushButton("Завершить оценку"); self.cancel_button = QPushButton("Закрыть" if read_only else "Отмена")
         self.draft_button.clicked.connect(lambda: self.save("draft")); self.complete_button.clicked.connect(lambda: self.save("completed")); self.cancel_button.clicked.connect(self.reject)
@@ -260,9 +262,28 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self.history.cellDoubleClicked.connect(self._open_history)
         container = QWidget(); layout = QVBoxLayout(container); hint = QLabel("Дважды щёлкните строку, чтобы открыть историческую ревизию только для чтения."); layout.addWidget(hint); layout.addWidget(self.history); self.tabs.addTab(container, "История")
 
+    def _attachments(self):
+        page = QWidget(); layout = QVBoxLayout(page)
+        info = QLabel("Файлы относятся ко всей оценке и общие для всех её ревизий."); info.setWordWrap(True); layout.addWidget(info)
+        if self.attachment_service is None:
+            layout.addWidget(QLabel("Хранилище файлов недоступно."))
+        else:
+            photos, documents = self.attachment_service.counts("assessment_evaluation", self.evaluation.id)
+            self.attachment_counts = QLabel(f"Фото: {photos}    Документы: {documents}"); layout.addWidget(self.attachment_counts)
+            manage = QPushButton("Фото и документы"); manage.clicked.connect(self._open_attachments); layout.addWidget(manage)
+        layout.addStretch(); self.tabs.addTab(page, "Фото и документы")
+
+    def _open_attachments(self):
+        from ui.prototype_2d.entity_attachment_dialog import EntityAttachmentDialog
+        EntityAttachmentDialog(self.attachment_service, "assessment_evaluation", self.evaluation.id, self,
+            read_only=self.read_only or self.area.is_archived, unsaved=self.unsaved).exec()
+        photos, documents = self.attachment_service.counts("assessment_evaluation", self.evaluation.id)
+        self.attachment_counts.setText(f"Фото: {photos}    Документы: {documents}")
+
     def _open_history(self, row, _column):
         if 0 <= row < len(self.evaluation.revisions):
-            AssessmentAreaEvaluationDialog(self.area, self.evaluation, self.evaluation.revisions[row], None, self, read_only=True).exec()
+            AssessmentAreaEvaluationDialog(self.area, self.evaluation, self.evaluation.revisions[row], None, self,
+                read_only=True, attachment_service=self.attachment_service).exec()
 
     def _restore_controls(self):
         d = self.draft.design_inputs or {}; results = {r.criterion_id: r for r in self.draft.criterion_results}
