@@ -1,1 +1,1 @@
-"""Isolated 2D Datamine line segment prototype."""
+"""Shared domain and services for the 2D Assessment Workspace."""
