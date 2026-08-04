@@ -172,7 +172,7 @@ class AssessmentAreaGeometryRevision(Base):
     lower_elevation_m: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     upper_elevation_m: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     horizon_slices_json: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
-    change_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    change_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     assessment_area: Mapped[AssessmentArea] = relationship(back_populates="geometry_revisions")
     source_dataset: Mapped[ProjectLinesDataset] = relationship()
