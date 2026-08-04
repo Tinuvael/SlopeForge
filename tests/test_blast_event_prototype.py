@@ -175,6 +175,8 @@ def test_main_window_embeds_assessment_instead_of_standalone_entry_point():
     assert 'Blast Events Prototype' not in source
     assert 'open_blast_events_prototype' not in source
     assert 'AssessmentWorkspacePage' in source
+    assert '2D Plan Prototype' not in source
+    assert 'Prototype2DWindow' not in source
 
 
 def test_project_line_imports_keep_history_and_can_switch_back(tmp_path):

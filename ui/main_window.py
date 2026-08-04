@@ -14,7 +14,6 @@ from app.qt import apply_window_icon
 from widgets.project_tree import ProjectTree
 from ui.pages.block_list_page import BlockListPage
 from ui.header import Header
-from ui.prototype_2d.window import Prototype2DWindow
 from database.app_context import AppContext
 
 
@@ -62,13 +61,10 @@ class MainWindow(QMainWindow):
         self.block_nav_button.clicked.connect(self.show_block_page)
         self.assessment_nav_button.clicked.connect(self.show_assessment_page)
 
-        self.prototype_button = QPushButton("2D Plan Prototype")
-        self.prototype_button.clicked.connect(self.open_2d_plan_prototype)
         header_layout = QHBoxLayout()
         header_layout.addWidget(self.header, 1)
         header_layout.addWidget(self.block_nav_button)
         header_layout.addWidget(self.assessment_nav_button)
-        header_layout.addWidget(self.prototype_button)
         main_layout.addLayout(header_layout)
 
         content = QWidget()
@@ -185,20 +181,6 @@ class MainWindow(QMainWindow):
     def refresh_project_data(self) -> None:
         self.tree.reload_filters()
         self.tree.load_data()
-
-    def open_2d_plan_prototype(self) -> None:
-        existing = getattr(self, "prototype_2d_window", None)
-        if existing is not None:
-            existing.showNormal()
-            existing.raise_()
-            existing.activateWindow()
-            return
-        self.prototype_2d_window = Prototype2DWindow(self)
-        self.prototype_2d_window.closed.connect(self._prototype_2d_closed)
-        self.prototype_2d_window.show()
-
-    def _prototype_2d_closed(self) -> None:
-        self.prototype_2d_window = None
 
     def closeEvent(self, event) -> None:
         page = self.assessment_page

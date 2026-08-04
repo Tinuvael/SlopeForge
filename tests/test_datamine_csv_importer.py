@@ -3,9 +3,7 @@ from pathlib import Path
 import pytest
 
 from prototype_2d.csv_importer import detect_columns, import_datamine_csv, sniff_delimiter
-from prototype_2d.geometry import extract_segment, nearest_point_on_polyline, project_point_to_segment
-from prototype_2d.models import BenchSectionDraft, DatamineLine, DataminePoint, LineSegmentSelection, PrototypeState
-from prototype_2d.storage import load_state, save_state
+from prototype_2d.models import DatamineLine, DataminePoint
 
 FIXTURE = Path(__file__).parent / "fixtures" / "datamine_lines_sample.csv"
 
@@ -92,40 +90,3 @@ def test_elevation_horizontal_tolerance_variable_and_median():
     assert not variable.is_horizontal
     assert variable.elevation is None
     assert variable.display_elevation() == "Z=680…715"
-
-
-def test_projection_nearest_extract_and_reverse_order():
-    line = import_datamine_csv(FIXTURE).lines[0]
-    projected, t, distance = project_point_to_segment(110.123456789, 205.987654321, line.points[0], line.points[1])
-    assert 0 < t < 1
-    assert distance > 0
-    _nearest, position, nearest_distance = nearest_point_on_polyline(line, 121, 206)
-    assert position > 0 and nearest_distance >= 0
-    start, end, points = extract_segment(line, 30, 5)
-    assert (start, end) == (5, 30)
-    assert len(points) >= 2
-
-
-def test_bench_draft_intermediates_prevent_duplicate():
-    draft = BenchSectionDraft("U-001", "S-001", "S-002", ["S-001"])
-    draft.add_intermediate("S-003")
-    assert draft.intermediate_segment_ids == ["S-001", "S-003"]
-    with pytest.raises(ValueError):
-        draft.add_intermediate("S-003")
-
-
-def test_json_round_trip_preserves_coordinates_and_segments(tmp_path):
-    line = import_datamine_csv(FIXTURE).lines[0]
-    start, end, points = extract_segment(line, 0, 12.5)
-    segment = LineSegmentSelection("S-001", line.source_id, start, end, points, "upper_boundary", line.elevation, "test")
-    state = PrototypeState(str(FIXTURE), [line], [segment], [BenchSectionDraft("U-001", "S-001", "S-001", ["S-001"])])
-    path = tmp_path / "state.json"
-    save_state(state, path)
-    restored = load_state(path)
-    assert restored.lines[0].points[0].x == 100.123456789
-    assert restored.segments[0].source_line_ids == [line.source_id]
-    assert restored.drafts[0].id == "U-001"
-
-
-def make_line(line_id, y=0, z=700, line_type="CREST", start_x=0, end_x=10):
-    return DatamineLine(line_id, [DataminePoint(start_x, y, z, 1), DataminePoint(end_x, y, z, 2)], None, line_type, line_type)

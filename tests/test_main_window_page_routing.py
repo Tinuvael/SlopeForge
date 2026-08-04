@@ -94,16 +94,6 @@ class Header(Widget):
         super().__init__(); self.create_block_requested = Signal(); self.directories_requested = Signal()
 
 
-class Prototype(Widget):
-    created = 0
-    def __init__(self, parent):
-        super().__init__(parent); type(self).created += 1; self.closed = Signal(); self.shown = False
-    def show(self): self.shown = True
-    def showNormal(self): pass
-    def raise_(self): pass
-    def activateWindow(self): pass
-
-
 class Assessment(Widget):
     created = 0
     fail_construct = False
@@ -130,7 +120,7 @@ class CloseEvent:
 
 @pytest.fixture
 def window_module(monkeypatch):
-    Assessment.created = Prototype.created = 0
+    Assessment.created = 0
     Assessment.fail_construct = Assessment.fail_refresh = False
     MessageBox.answer = MessageBox.StandardButton.Cancel
     MessageBox.critical_calls = []
@@ -146,7 +136,6 @@ def window_module(monkeypatch):
         "widgets.project_tree": {"ProjectTree": Tree},
         "ui.pages.block_list_page": {"BlockListPage": BlockPage},
         "ui.header": {"Header": Header},
-        "ui.prototype_2d.window": {"Prototype2DWindow": Prototype},
         "database.app_context": {"AppContext": object},
     }
     for name, attrs in modules.items():
@@ -264,9 +253,9 @@ def test_existing_refresh_failure_preserves_page_and_instance(window):
     assert window.page_stack.currentWidget() is window.block_page
 
 
-def test_2d_plan_prototype_is_still_available(window):
-    window.open_2d_plan_prototype()
-    first = window.prototype_2d_window
-    assert first.shown and Prototype.created == 1
-    window.open_2d_plan_prototype()
-    assert window.prototype_2d_window is first and Prototype.created == 1
+def test_obsolete_prototype_launcher_is_absent(window, window_module):
+    assert not hasattr(window, "prototype_button")
+    assert not hasattr(window, "prototype_2d_window")
+    assert not hasattr(window, "open_2d_plan_prototype")
+    assert "ui.prototype_2d.window" not in sys.modules
+    assert "2D Plan Prototype" not in Path("ui/main_window.py").read_text(encoding="utf-8")
