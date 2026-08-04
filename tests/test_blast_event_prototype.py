@@ -170,10 +170,11 @@ def test_archive_restore_and_json_round_trip(tmp_path):
     restored.blast_events[0].restore(); assert not restored.blast_events[0].is_archived
 
 
-def test_main_window_declares_blast_events_entry_point():
+def test_main_window_embeds_assessment_instead_of_standalone_entry_point():
     source = __import__('pathlib').Path('ui/main_window.py').read_text(encoding='utf-8')
-    assert 'Blast Events Prototype' in source
-    assert 'open_blast_events_prototype' in source
+    assert 'Blast Events Prototype' not in source
+    assert 'open_blast_events_prototype' not in source
+    assert 'AssessmentWorkspacePage' in source
 
 
 def test_project_line_imports_keep_history_and_can_switch_back(tmp_path):
