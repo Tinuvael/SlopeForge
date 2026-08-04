@@ -23,6 +23,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.context = context
         self.assessment_page = None
+        self.assessment_site_id: int | None = None
+        self.assessment_site_name: str | None = None
 
         self.setWindowTitle(f"{APP_NAME} — {APP_VERSION}")
         apply_window_icon(self)
@@ -39,6 +41,7 @@ class MainWindow(QMainWindow):
 
         self.tree.filters_changed.connect(self.block_page.set_filters)
         self.tree.block_selected.connect(self.open_block_from_tree)
+        self.tree.site_selected.connect(self.open_assessment_for_site)
         self.block_page.data_changed.connect(self.refresh_project_data)
 
         central = QWidget()
@@ -53,6 +56,10 @@ class MainWindow(QMainWindow):
         self.block_nav_button.setCheckable(True)
         self.assessment_nav_button = QPushButton("2D Assessment")
         self.assessment_nav_button.setCheckable(True)
+        self.assessment_nav_button.setEnabled(False)
+        self.assessment_nav_button.setToolTip(
+            "Выберите площадку/домен в дереве проекта"
+        )
         self.navigation_group = QButtonGroup(self)
         self.navigation_group.setExclusive(True)
         self.navigation_group.addButton(self.block_nav_button)
@@ -81,52 +88,95 @@ class MainWindow(QMainWindow):
         self.assessment_nav_button.setChecked(assessment_visible)
         self.block_nav_button.setChecked(not assessment_visible)
 
-    def _ensure_assessment_page(self):
-        if self.assessment_page is not None:
-            return self.assessment_page
+    def _construct_assessment_page(self, site_id: int, site_name: str | None):
         try:
             # Keep the assessment dependency graph out of normal block-app startup.
             from ui.pages.assessment_workspace_page import AssessmentWorkspacePage
 
-            page = AssessmentWorkspacePage(parent=self.page_stack)
+            return AssessmentWorkspacePage(
+                self.context, site_id, site_name, parent=self.page_stack
+            )
         except Exception as exc:
             QMessageBox.critical(
                 self,
                 "Ошибка загрузки 2D Assessment",
                 f"Не удалось загрузить данные 2D Assessment.\n\n{exc}",
             )
-            self.page_stack.setCurrentWidget(self.block_page)
             self._sync_navigation_buttons()
             return None
-        self.assessment_page = page
-        self.page_stack.addWidget(page)
-        return page
 
     def show_assessment_page(self) -> bool:
-        previous_page = self.page_stack.currentWidget()
-        page_was_created = self.assessment_page is None
-        page = self._ensure_assessment_page()
-        if page is None:
-            return False
-        try:
-            page.refresh_workspace()
-        except Exception as exc:
-            QMessageBox.critical(
-                self,
-                "Ошибка обновления 2D Assessment",
-                f"Не удалось обновить данные 2D Assessment.\n\n{exc}",
-            )
-            if page_was_created:
-                self.page_stack.removeWidget(page)
-                page.deleteLater()
-                self.assessment_page = None
-                self.page_stack.setCurrentWidget(self.block_page)
-            else:
-                self.page_stack.setCurrentWidget(previous_page)
+        if self.assessment_site_id is None:
+            self.page_stack.setCurrentWidget(self.block_page)
             self._sync_navigation_buttons()
             return False
+        return self.open_assessment_for_site(
+            self.assessment_site_id, self.assessment_site_name or ""
+        )
+
+    def open_assessment_for_site(self, site_id: int, site_name: str) -> bool:
+        if self.assessment_page is not None and site_id == self.assessment_site_id:
+            page = self.assessment_page
+            previous_page = self.page_stack.currentWidget()
+            try:
+                page.refresh_workspace()
+            except Exception as exc:
+                QMessageBox.critical(
+                    self, "Ошибка обновления 2D Assessment",
+                    f"Не удалось обновить данные 2D Assessment.\n\n{exc}",
+                )
+                self.page_stack.setCurrentWidget(previous_page)
+                self._sync_navigation_buttons()
+                return False
+            self.page_stack.setCurrentWidget(page)
+            self._sync_navigation_buttons()
+            return True
+
+        old_page = self.assessment_page
+        if old_page is not None and not self._prepare_assessment_for_site_switch():
+            return False
+
+        page = self._construct_assessment_page(site_id, site_name)
+        if page is None:
+            return False
+        self.page_stack.addWidget(page)
         self.page_stack.setCurrentWidget(page)
+        self.assessment_page = page
+        self.assessment_site_id = site_id
+        self.assessment_site_name = site_name
+        self.assessment_nav_button.setEnabled(True)
+        self.assessment_nav_button.setToolTip("")
+        if old_page is not None:
+            self.page_stack.removeWidget(old_page)
+            old_page.deleteLater()
         self._sync_navigation_buttons()
+        return True
+
+    def _prepare_assessment_for_site_switch(self) -> bool:
+        """Guard and persist the old Site before constructing another Site page."""
+        page = self.assessment_page
+        if page is None:
+            return True
+        if page.has_active_workflow():
+            answer = QMessageBox.warning(
+                self, "Несохранённая геометрия",
+                "Имеются несохранённые изменения геометрии.",
+                QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Discard,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if answer != QMessageBox.StandardButton.Discard:
+                self._sync_navigation_buttons()
+                return False
+            page.cancel_active_workflow()
+        try:
+            page.save_now()
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Ошибка сохранения",
+                f"Не удалось сохранить данные. Текущий домен останется открытым.\n\n{exc}",
+            )
+            self._sync_navigation_buttons()
+            return False
         return True
 
     def _prepare_to_leave_assessment_workspace(self) -> bool:

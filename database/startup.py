@@ -4,6 +4,7 @@ from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 from .base import Base
+from . import assessment_models  # noqa: F401  Ensure Assessment tables are validated.
 from .connection import check_connection, create_database_engine, create_session_factory
 from .models import User  # noqa: F401
 from .settings import ConfigurationError, Settings, safe_database_location

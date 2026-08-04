@@ -37,7 +37,7 @@ def main():
     splash.show_status("Loading application…")
     try:
         splash.show_status("Connecting to database…")
-        _settings, _engine, session_factory = initialize_database_runtime()
+        settings, _engine, session_factory = initialize_database_runtime()
         splash.show_status("Checking database schema…")
         auth_service = AuthService(session_factory)
         remember_service = RememberTokenService(session_factory)
@@ -57,7 +57,11 @@ def main():
         else:
             splash.close_with_fade()
         splash.show_status("Initializing interface…") if splash.isVisible() else None
-        window = MainWindow(AppContext(session_factory=session_factory, current_user=current_user))
+        window = MainWindow(AppContext(
+            session_factory=session_factory,
+            current_user=current_user,
+            storage_root=settings.storage_root,
+        ))
         window.showMaximized()
         return app.exec()
     except StartupError as exc:

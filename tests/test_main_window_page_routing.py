@@ -47,6 +47,9 @@ class Button(Widget):
     def setCheckable(self, value): self.checkable = value
     def setChecked(self, value): self.checked = value
     def isChecked(self): return self.checked
+    def setEnabled(self, value): self.enabled = value
+    def isEnabled(self): return self.enabled
+    def setToolTip(self, value): self.tooltip = value
 
 
 class ButtonGroup(Widget):
@@ -74,7 +77,7 @@ class MessageBox:
 
 class Tree(Widget):
     def __init__(self, context):
-        super().__init__(); self.filters_changed = Signal(); self.block_selected = Signal()
+        super().__init__(); self.filters_changed = Signal(); self.block_selected = Signal(); self.site_selected = Signal()
         self.reload_count = self.load_count = 0
     def reload_filters(self): self.reload_count += 1
     def load_data(self): self.load_count += 1
@@ -98,9 +101,10 @@ class Assessment(Widget):
     created = 0
     fail_construct = False
     fail_refresh = False
-    def __init__(self, parent=None):
+    def __init__(self, context, site_id, site_name, parent=None):
         if self.fail_construct: raise ValueError("bad json")
         super().__init__(parent); type(self).created += 1; self.active = False
+        self.context, self.site_id, self.site_name = context, site_id, site_name
         self.refreshes = self.saves = self.cancels = 0; self.fail_save = False
     def refresh_workspace(self):
         self.refreshes += 1
@@ -163,22 +167,24 @@ def test_startup_is_lazy_and_keeps_tree_outside_stack(window):
     assert window.assessment_page is None and Assessment.created == 0
     assert window.tree not in window.page_stack.widgets
     assert window.block_nav_button.isChecked() and not window.assessment_nav_button.isChecked()
+    assert not window.assessment_nav_button.isEnabled()
     assert not hasattr(window, "blast_events_window")
 
 
 def test_assessment_created_once_added_and_navigation_reused(window):
-    assert window.show_assessment_page()
+    assert not window.show_assessment_page()
+    assert window.open_assessment_for_site(7, "North")
     page = window.assessment_page
     assert Assessment.created == 1 and page in window.page_stack.widgets
     assert window.page_stack.currentWidget() is page
     assert window.assessment_nav_button.isChecked() and not window.block_nav_button.isChecked()
     assert window.show_assessment_page() and window.assessment_page is page
-    assert Assessment.created == 1 and page.refreshes == 2
+    assert Assessment.created == 1 and page.refreshes == 1
     assert window.show_block_page() and window.page_stack.currentWidget() is window.block_page
 
 
 def test_tree_header_and_filters_route_without_postgresql(window):
-    window.show_assessment_page(); page = window.assessment_page
+    window.tree.site_selected.emit(7, "North"); page = window.assessment_page
     window.tree.filters_changed.emit("mine")
     assert window.page_stack.currentWidget() is page
     assert window.block_page.calls[-1] == ("filters", ("mine",))
@@ -191,7 +197,7 @@ def test_tree_header_and_filters_route_without_postgresql(window):
 
 
 def test_cancel_preserves_active_workflow_and_restores_buttons(window):
-    window.show_assessment_page(); page = window.assessment_page; page.active = True
+    window.open_assessment_for_site(7, "North"); page = window.assessment_page; page.active = True
     MessageBox.answer = MessageBox.StandardButton.Cancel
     assert not window.show_block_page()
     assert page.active and page.cancels == 0 and page.saves == 0
@@ -199,14 +205,14 @@ def test_cancel_preserves_active_workflow_and_restores_buttons(window):
 
 
 def test_discard_cancels_saves_once_and_switches(window):
-    window.show_assessment_page(); page = window.assessment_page; page.active = True
+    window.open_assessment_for_site(7, "North"); page = window.assessment_page; page.active = True
     MessageBox.answer = MessageBox.StandardButton.Discard
     assert window.show_block_page()
     assert not page.active and page.cancels == 1 and page.saves == 1
 
 
 def test_save_failure_blocks_leave_and_actions(window):
-    window.show_assessment_page(); page = window.assessment_page; page.fail_save = True
+    window.open_assessment_for_site(7, "North"); page = window.assessment_page; page.fail_save = True
     assert not window.open_block_from_tree(7)
     assert window.page_stack.currentWidget() is page
     assert ("open", 7) not in window.block_page.calls
@@ -214,7 +220,7 @@ def test_save_failure_blocks_leave_and_actions(window):
 
 
 def test_close_saves_and_save_failure_ignores(window):
-    window.show_assessment_page(); page = window.assessment_page
+    window.open_assessment_for_site(7, "North"); page = window.assessment_page
     event = CloseEvent(); window.closeEvent(event)
     assert page.saves == 1 and event.accepted
     page.fail_save = True; event = CloseEvent(); window.closeEvent(event)
@@ -222,7 +228,7 @@ def test_close_saves_and_save_failure_ignores(window):
 
 
 def test_close_workflow_cancel_and_discard(window):
-    window.show_assessment_page(); page = window.assessment_page; page.active = True
+    window.open_assessment_for_site(7, "North"); page = window.assessment_page; page.active = True
     event = CloseEvent(); window.closeEvent(event)
     assert event.ignored and page.active and page.saves == 0
     MessageBox.answer = MessageBox.StandardButton.Discard
@@ -232,25 +238,53 @@ def test_close_workflow_cancel_and_discard(window):
 
 def test_construction_failure_stays_on_blocks(window):
     Assessment.fail_construct = True
-    assert not window.show_assessment_page()
+    assert not window.open_assessment_for_site(7, "North")
     assert window.assessment_page is None
     assert window.page_stack.currentWidget() is window.block_page
     assert window.block_nav_button.isChecked() and MessageBox.critical_calls
 
 
-def test_initial_refresh_failure_removes_partial_page(window):
-    Assessment.fail_refresh = True
-    assert not window.show_assessment_page()
-    assert window.assessment_page is None and len(window.page_stack.widgets) == 1
-    assert window.page_stack.currentWidget() is window.block_page
-
-
 def test_existing_refresh_failure_preserves_page_and_instance(window):
-    assert window.show_assessment_page(); page = window.assessment_page
+    assert window.open_assessment_for_site(7, "North"); page = window.assessment_page
     window.show_block_page(); page.fail_refresh = True
     assert not window.show_assessment_page()
     assert window.assessment_page is page and not page.deleted
     assert window.page_stack.currentWidget() is window.block_page
+
+
+def test_switching_site_saves_then_replaces_and_deletes_old_page(window):
+    assert window.open_assessment_for_site(7, "North")
+    old = window.assessment_page
+    assert window.open_assessment_for_site(8, "South")
+    assert old.saves == 1 and old.deleted
+    assert old not in window.page_stack.widgets
+    assert window.assessment_page.site_id == 8
+    assert window.assessment_site_id == 8 and window.assessment_site_name == "South"
+
+
+def test_site_switch_cancel_save_and_target_load_failures_preserve_old(window):
+    window.open_assessment_for_site(7, "North")
+    old = window.assessment_page
+    old.active = True
+    assert not window.open_assessment_for_site(8, "South")
+    assert window.assessment_page is old and window.assessment_site_id == 7
+
+    old.active = False; old.fail_save = True
+    assert not window.open_assessment_for_site(8, "South")
+    assert window.assessment_page is old and not old.deleted
+
+    old.fail_save = False; Assessment.fail_construct = True
+    assert not window.open_assessment_for_site(8, "South")
+    assert window.assessment_page is old and window.assessment_site_id == 7
+    assert window.page_stack.currentWidget() is old
+
+
+def test_site_switch_discard_cancels_workflow_and_proceeds(window):
+    window.open_assessment_for_site(7, "North")
+    old = window.assessment_page; old.active = True
+    MessageBox.answer = MessageBox.StandardButton.Discard
+    assert window.open_assessment_for_site(8, "South")
+    assert old.cancels == 1 and old.saves == 1 and old.deleted
 
 
 def test_obsolete_prototype_launcher_is_absent(window, window_module):

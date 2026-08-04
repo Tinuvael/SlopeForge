@@ -1,30 +1,30 @@
-"""Embedded host page for the reusable 2D assessment workspace."""
-from pathlib import Path
+"""PostgreSQL-backed host page for a Site's reusable 2D workspace."""
 
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from prototype_2d.blast_event_storage import (
-    default_blast_event_storage_path,
-    load_blast_event_state,
-    save_blast_event_state,
-)
+from database.app_context import AppContext
+from repositories.assessment_state_repository import AssessmentStateRepository
 from ui.prototype_2d.assessment_workspace import AssessmentWorkspaceWidget
 
 
 class AssessmentWorkspacePage(QWidget):
-    """Own one assessment state and its JSON persistence for the page lifetime."""
+    """Own one Site-scoped assessment state for the page lifetime."""
 
-    def __init__(self, storage_path: str | Path | None = None, parent: QWidget | None = None):
+    def __init__(self, context: AppContext, site_id: int,
+                 site_name: str | None = None, parent: QWidget | None = None):
         super().__init__(parent)
-        self.storage_path = (
-            Path(storage_path)
-            if storage_path is not None
-            else default_blast_event_storage_path()
-        )
-        self.state = load_blast_event_state(self.storage_path)
+        self.context = context
+        self.site_id = site_id
+        self.site_name = site_name
+        self.storage_path = context.storage_root / "slopeforge_state.json"
+        self.repository = AssessmentStateRepository(context.session_factory)
+        loaded = self.repository.load_for_site(site_id)
+        self.workspace_id = loaded.workspace_id
+        self.state = loaded.state
 
         def save_callback() -> None:
-            save_blast_event_state(self.state, self.storage_path)
+            saved = self.repository.replace_for_site(self.site_id, self.state)
+            self.workspace_id = saved.workspace_id
 
         self.workspace = AssessmentWorkspaceWidget(
             state=self.state,
@@ -34,6 +34,8 @@ class AssessmentWorkspacePage(QWidget):
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        self.domain_label = QLabel(f"Домен: {site_name or site_id}", self)
+        layout.addWidget(self.domain_label)
         layout.addWidget(self.workspace)
 
         # Expose the workspace's bound signals without manufacturing duplicate events.
