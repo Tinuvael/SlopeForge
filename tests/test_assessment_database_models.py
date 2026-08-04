@@ -210,3 +210,17 @@ def test_new_migration_is_single_schema_only_revision():
         "file_size_bytes BIGINT NOT NULL",
     ):
         assert ddl in source
+
+
+def test_nullable_change_reason_correction_migration_matches_orm():
+    migration = Path("alembic/versions/20260804_0005_nullable_assessment_area_change_reason.py")
+    assert migration.exists()
+    source = migration.read_text()
+    assert 'revision = "20260804_0005"' in source
+    assert 'down_revision = "20260804_0004"' in source
+    assert 'alter_column("assessment_area_geometry_revisions", "change_reason", nullable=True)' in source
+    update = "UPDATE assessment_area_geometry_revisions SET change_reason = '' WHERE change_reason IS NULL"
+    assert update in source
+    assert source.index(update) < source.index(
+        'alter_column("assessment_area_geometry_revisions", "change_reason", nullable=False)')
+    assert table("assessment_area_geometry_revisions").c.change_reason.nullable
