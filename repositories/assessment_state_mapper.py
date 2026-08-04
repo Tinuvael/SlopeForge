@@ -63,6 +63,7 @@ def validate_assessment_state(state: AssessmentDomainState) -> None:
     if sum(bool(x.is_active) for x in state.datasets) > 1:
         _fail("at most one dataset may be active")
     event_ids = _ids(state.blast_events, "blast event")
+    events_by_id = {item.id: item for item in state.blast_events}
     event_revisions: dict[str, str] = {}
     for event in state.blast_events:
         if not math.isfinite(event.elevation):
@@ -70,6 +71,12 @@ def validate_assessment_state(state: AssessmentDomainState) -> None:
         revisions = _revisions(event.geometry_revisions, event.id, "blast_event_id", "blast geometry revision")
         if event.active_geometry_revision_id is not None and event.active_geometry_revision_id not in revisions:
             _fail(f"active geometry revision does not exist for event {event.id!r}")
+        marked_active = [item.id for item in event.geometry_revisions if item.is_active]
+        if len(marked_active) > 1:
+            _fail(f"BlastEvent {event.id!r} has multiple active geometry revisions")
+        expected_active = marked_active[0] if marked_active else None
+        if event.active_geometry_revision_id != expected_active:
+            _fail(f"BlastEvent {event.id!r} active revision ID disagrees with is_active flags")
         for revision in event.geometry_revisions:
             if not math.isfinite(revision.elevation):
                 _fail("blast geometry elevation must be finite")
@@ -96,25 +103,42 @@ def validate_assessment_state(state: AssessmentDomainState) -> None:
                 if not item.id.strip() or not math.isfinite(item.elevation):
                     _fail("horizon slice IDs and elevations must be persistable")
         _ids(area.event_links, "assessment event link")
+        link_identities: set[tuple[str, str, str]] = set()
         for link in area.event_links:
             if link.assessment_area_geometry_revision_id not in revisions:
                 _fail("link references a geometry revision outside its Assessment Area")
             if link.blast_event_id not in event_ids or event_revisions.get(link.geometry_revision_id) != link.blast_event_id:
                 _fail("link references an invalid BlastEvent geometry revision")
+            identity = (link.assessment_area_geometry_revision_id, link.geometry_revision_id, link.source)
+            if identity in link_identities:
+                _fail("duplicate AssessmentEventLink geometry/source identity")
+            link_identities.add(identity)
+            if link.created_at is None:
+                _fail(f"AssessmentEventLink {link.id!r} has no created_at")
     card_ids = _ids(state.technical_cards, "technical card")
+    card_event_ids: set[str] = set()
     for card in state.technical_cards:
         if card.blast_event_id not in event_ids:
             _fail("technical card references a missing BlastEvent")
+        if card.blast_event_id in card_event_ids:
+            _fail(f"BlastEvent {card.blast_event_id!r} has more than one technical card")
+        card_event_ids.add(card.blast_event_id)
         revisions = _revisions(card.revisions, card.id, "technical_card_id", "technical-card revision")
         if card.active_revision_id is not None and card.active_revision_id not in revisions:
             _fail("technical-card active revision does not exist")
         for revision in card.revisions:
             if event_revisions.get(revision.geometry_revision_id) != card.blast_event_id:
                 _fail("technical-card geometry belongs to another event")
+            if revision.event_type != events_by_id[card.blast_event_id].event_type:
+                _fail("technical-card revision event_type differs from its BlastEvent")
     evaluation_ids = _ids(state.evaluations, "evaluation")
+    evaluation_area_ids: set[str] = set()
     for evaluation in state.evaluations:
         if evaluation.assessment_area_id not in area_ids:
             _fail("evaluation references a missing Assessment Area")
+        if evaluation.assessment_area_id in evaluation_area_ids:
+            _fail(f"Assessment Area {evaluation.assessment_area_id!r} has more than one evaluation")
+        evaluation_area_ids.add(evaluation.assessment_area_id)
         revisions = _revisions(evaluation.revisions, evaluation.id, "evaluation_id", "evaluation revision")
         if evaluation.active_revision_id is not None and evaluation.active_revision_id not in revisions:
             _fail("evaluation active revision does not exist")
@@ -124,6 +148,8 @@ def validate_assessment_state(state: AssessmentDomainState) -> None:
     del card_ids
     _ids(state.attachments, "attachment")
     for attachment in state.attachments:
+        if attachment.owner_type not in {"blast_event", "assessment_evaluation"}:
+            _fail(f"unsupported attachment owner_type {attachment.owner_type!r}")
         owners = event_ids if attachment.owner_type == "blast_event" else evaluation_ids
         if attachment.owner_id not in owners:
             _fail("attachment owner does not exist")

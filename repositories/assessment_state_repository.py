@@ -12,7 +12,7 @@ from database import assessment_models as orm
 from prototype_2d.domain import AssessmentDomainState
 from repositories.assessment_state_mapper import (
     AssessmentPersistenceCorruptionError, AssessmentSiteNotFoundError,
-    validate_assessment_state,
+    AssessmentStateValidationError, validate_assessment_state,
 )
 
 
@@ -66,7 +66,11 @@ def _state_from_workspace(workspace: orm.AssessmentWorkspace) -> AssessmentDomai
             revision_payloads = []
             for revision in sorted(card.revisions, key=lambda x: x.revision_number):
                 payload = revision.payload_json
-                geometry_domain = geometry_owner[revision.blast_event_geometry_revision_id][1]
+                owner = geometry_owner.get(revision.blast_event_geometry_revision_id)
+                if owner is None or owner[0] != row.domain_id:
+                    raise AssessmentPersistenceCorruptionError(
+                        "technical-card geometry revision belongs to another BlastEvent or workspace")
+                geometry_domain = owner[1]
                 _assert_payload(payload, {"id": revision.domain_id, "revision_number": revision.revision_number,
                     "geometry_revision_id": geometry_domain, "event_type": revision.event_type,
                     "status": revision.status}, "technical-card revision")
@@ -93,6 +97,10 @@ def _state_from_workspace(workspace: orm.AssessmentWorkspace) -> AssessmentDomai
                 "lower_elevation": float(revision.lower_elevation_m), "upper_elevation": float(revision.upper_elevation_m),
                 "horizon_slices": revision.horizon_slices_json, "change_reason": revision.change_reason})
             for link in sorted(revision.event_links, key=lambda x: (x.created_at, x.id)):
+                target = link.blast_event_geometry_revision
+                if target.blast_event.workspace_id != workspace.id:
+                    raise AssessmentPersistenceCorruptionError(
+                        "AssessmentEventLink connects revisions from different workspaces")
                 event_domain, geometry_domain = geometry_owner[link.blast_event_geometry_revision_id]
                 links.append({"id": link.domain_id, "assessment_area_geometry_revision_id": revision.domain_id,
                     "blast_event_id": event_domain, "geometry_revision_id": geometry_domain,
@@ -109,7 +117,10 @@ def _state_from_workspace(workspace: orm.AssessmentWorkspace) -> AssessmentDomai
             payloads = []
             for revision in sorted(evaluation.revisions, key=lambda x: x.revision_number):
                 payload = revision.payload_json
-                area_geometry_domain = revision_domains[revision.assessment_area_geometry_revision_id]
+                area_geometry_domain = revision_domains.get(revision.assessment_area_geometry_revision_id)
+                if area_geometry_domain is None:
+                    raise AssessmentPersistenceCorruptionError(
+                        "evaluation geometry revision belongs to another Assessment Area")
                 _assert_payload(payload, {"id": revision.domain_id, "revision_number": revision.revision_number,
                     "assessment_area_geometry_revision_id": area_geometry_domain, "status": revision.status,
                     "matrix_template_id": revision.matrix_template_id,
@@ -122,9 +133,15 @@ def _state_from_workspace(workspace: orm.AssessmentWorkspace) -> AssessmentDomai
                 "archived_at": evaluation.archived_at.isoformat() if evaluation.archived_at else None})
             for item in sorted(evaluation.attachments, key=lambda x: (x.created_at, x.id)):
                 attachments.append(_attachment_dict(item, evaluation.domain_id))
-    return AssessmentDomainState.from_dict({"datasets": datasets, "blast_events": events,
+    state = AssessmentDomainState.from_dict({"datasets": datasets, "blast_events": events,
         "assessment_areas": areas, "technical_cards": cards, "evaluations": evaluations,
         "attachments": sorted(attachments, key=lambda x: (x["created_at"], x["id"]))})
+    try:
+        validate_assessment_state(state)
+    except AssessmentStateValidationError as exc:
+        raise AssessmentPersistenceCorruptionError(
+            f"persisted Assessment state is invalid: {exc}") from exc
+    return state
 
 
 def _attachment_dict(row, owner_id):
