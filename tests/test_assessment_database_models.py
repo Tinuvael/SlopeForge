@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import importlib
-import sys
+import os
 from pathlib import Path
+import subprocess
+import sys
 
-from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, UniqueConstraint
+from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import CreateIndex, CreateTable
 
 from database.base import Base
-from database import models
+from database import assessment_models, models  # assessment import registers its metadata
 
 EXPECTED = {
     "assessment_workspaces", "project_lines_datasets", "blast_events",
@@ -38,13 +39,34 @@ def fk(name, column):
     return next(iter(table(name).c[column].foreign_keys))
 
 
-def test_import_is_declarative_only_and_does_not_import_application_layers(monkeypatch):
-    forbidden = {"PySide6", "PyQt6", "prototype_2d", "ui", "widgets", "database.database"}
-    before = set(sys.modules)
-    module = importlib.import_module("database.assessment_models")
-    assert module.Base is Base
-    imported = set(sys.modules) - before
-    assert not any(name.split(".")[0] in forbidden or name in forbidden for name in imported)
+def test_import_is_declarative_only_in_clean_subprocess():
+    code = r'''
+import sys
+import sqlalchemy
+import sqlalchemy.engine
+
+def forbidden(*args, **kwargs):
+    raise AssertionError("assessment_models attempted to create an engine or connection")
+
+sqlalchemy.create_engine = forbidden
+sqlalchemy.engine.create_engine = forbidden
+sqlalchemy.engine.Engine.connect = forbidden
+import database.assessment_models as module
+assert module.Base.metadata.tables["assessment_workspaces"] is not None
+for prefix in ("PySide6", "PyQt6", "ui", "widgets", "prototype_2d"):
+    assert not any(name == prefix or name.startswith(prefix + ".") for name in sys.modules), prefix
+'''
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(Path.cwd())
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path.cwd(),
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_expected_tables_and_legacy_tables_are_unchanged():
@@ -60,6 +82,7 @@ def test_workspace_and_top_level_domain_uniqueness():
     assert ("workspace_id", "domain_id") in uniques("project_lines_datasets")
     assert ("workspace_id", "domain_id") in uniques("blast_events")
     assert ("workspace_id", "domain_id") in uniques("assessment_areas")
+    assert ("domain_id",) in uniques("assessment_area_evaluations")
     assert fk("assessment_workspaces", "site_id").ondelete == "RESTRICT"
 
 
@@ -105,6 +128,20 @@ def test_geometry_elevation_json_and_exact_revision_links():
         for column in table(t).c:
             if column.name.endswith("_json"):
                 assert isinstance(column.type, JSONB)
+
+
+def test_required_domain_fields_are_not_nullable():
+    required = {
+        "blast_events": ("elevation_m",),
+        "blast_event_geometry_revisions": ("elevation_m",),
+        "assessment_areas": ("assessment_date",),
+        "assessment_entity_attachments": (
+            "subtype", "custom_subtype", "title", "file_date", "description",
+            "mime_type", "file_size_bytes",
+        ),
+    }
+    for table_name, columns in required.items():
+        assert all(not table(table_name).c[column].nullable for column in columns)
 
 
 def test_attachment_owner_and_other_checks():
@@ -160,3 +197,16 @@ def test_new_migration_is_single_schema_only_revision():
     assert not any(line.lstrip().lower().startswith(("insert ", "update ", "delete ")) for line in source.splitlines())
     assert "drop_table('attachments')" not in source
     assert "drop_table('blast_blocks')" not in source
+    for ddl in (
+        "CONSTRAINT uq_assessment_area_evaluations_domain_id UNIQUE (domain_id)",
+        "elevation_m NUMERIC(12, 3) NOT NULL",
+        "assessment_date DATE NOT NULL",
+        "subtype VARCHAR(80) NOT NULL",
+        "custom_subtype VARCHAR(255) NOT NULL",
+        "title VARCHAR(255) NOT NULL",
+        "file_date DATE NOT NULL",
+        "description TEXT NOT NULL",
+        "mime_type VARCHAR(255) NOT NULL",
+        "file_size_bytes BIGINT NOT NULL",
+    ):
+        assert ddl in source
