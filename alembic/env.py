@@ -7,6 +7,7 @@ from sqlalchemy import engine_from_config, pool
 
 from database.base import Base
 from database import models  # noqa: F401
+from database import assessment_models  # noqa: F401
 from database.settings import Settings
 
 config = context.config
