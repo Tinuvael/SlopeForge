@@ -51,6 +51,10 @@ def test_page_owns_one_loaded_state_path_signals_and_persistence(monkeypatch, tm
     assert page.workspace.storage_path.parent == target.parent
     assert page.state_changed is page.workspace.state_changed
     assert page.state_saved is page.workspace.state_saved
+    margins = page.layout().contentsMargins()
+    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (0, 0, 0, 0)
+    assert page.layout().count() == 1
+    assert page.layout().itemAt(0).widget() is page.workspace
     page.workspace.save_callback()
     assert saved == [(state, target)]
 
@@ -74,3 +78,23 @@ def test_explicit_path_and_public_delegation(monkeypatch, tmp_path):
         ("open_dataset", "dataset"), ("refresh_workspace",),
         ("cancel_active_workflow",), ("save_now",),
     ]
+
+
+def test_construction_does_not_access_postgresql(monkeypatch, tmp_path):
+    QApplication.instance() or QApplication([])
+    target = tmp_path / "events.json"
+    state = object()
+    monkeypatch.setattr(page_module, "load_blast_event_state", lambda path: state)
+    monkeypatch.setattr(page_module, "AssessmentWorkspaceWidget", FakeWorkspace)
+
+    # A database context would have to be explicitly imported/used to trip this guard.
+    import builtins
+    real_import = builtins.__import__
+    def guarded_import(name, *args, **kwargs):
+        if name.startswith("database"):
+            raise AssertionError("AssessmentWorkspacePage accessed PostgreSQL")
+        return real_import(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+    page = page_module.AssessmentWorkspacePage(target)
+    assert page.state is state
