@@ -117,15 +117,34 @@ class MainWindow(QMainWindow):
     def open_assessment_for_site(self, site_id: int, site_name: str) -> bool:
         if self.assessment_page is not None and site_id == self.assessment_site_id:
             page = self.assessment_page
-            previous_page = self.page_stack.currentWidget()
+            if self.page_stack.currentWidget() is page:
+                try:
+                    page.refresh_workspace()
+                except Exception as exc:
+                    QMessageBox.critical(
+                        self, "Ошибка обновления 2D Assessment",
+                        f"Не удалось обновить данные 2D Assessment.\n\n{exc}",
+                    )
+                    self._sync_navigation_buttons()
+                    return False
+                self._sync_navigation_buttons()
+                return True
+            if page.has_active_workflow():
+                QMessageBox.warning(
+                    self, "Несохранённая геометрия",
+                    "Завершите или отмените активное редактирование геометрии перед обновлением домена.",
+                )
+                self.page_stack.setCurrentWidget(self.block_page)
+                self._sync_navigation_buttons()
+                return False
             try:
-                page.refresh_workspace()
+                page.reload_from_repository()
             except Exception as exc:
                 QMessageBox.critical(
-                    self, "Ошибка обновления 2D Assessment",
-                    f"Не удалось обновить данные 2D Assessment.\n\n{exc}",
+                    self, "Ошибка загрузки 2D Assessment",
+                    f"Не удалось обновить данные 2D Assessment из PostgreSQL.\n\n{exc}",
                 )
-                self.page_stack.setCurrentWidget(previous_page)
+                self.page_stack.setCurrentWidget(self.block_page)
                 self._sync_navigation_buttons()
                 return False
             self.page_stack.setCurrentWidget(page)

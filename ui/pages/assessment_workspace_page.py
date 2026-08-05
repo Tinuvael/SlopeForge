@@ -23,6 +23,8 @@ class AssessmentWorkspacePage(QWidget):
         self.state = loaded.state
 
         def save_callback() -> None:
+            if not self.context.current_user.can_edit:
+                raise PermissionError("2D Assessment is read-only for the current user")
             saved = self.repository.replace_for_site(self.site_id, self.state)
             self.workspace_id = saved.workspace_id
 
@@ -31,6 +33,7 @@ class AssessmentWorkspacePage(QWidget):
             storage_path=self.storage_path,
             save_callback=save_callback,
             parent=self,
+            read_only=not self.context.current_user.can_edit,
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -53,6 +56,36 @@ class AssessmentWorkspacePage(QWidget):
 
     def refresh_workspace(self) -> None:
         self.workspace.refresh_workspace()
+
+    def reload_from_repository(self) -> None:
+        loaded = self.repository.load_for_site(self.site_id)
+        previous = {
+            "datasets": list(self.state.datasets),
+            "blast_events": list(self.state.blast_events),
+            "assessment_areas": list(self.state.assessment_areas),
+            "technical_cards": list(self.state.technical_cards),
+            "evaluations": list(self.state.evaluations),
+            "attachments": list(self.state.attachments),
+            "workspace_id": self.workspace_id,
+        }
+        try:
+            self.state.datasets[:] = loaded.state.datasets
+            self.state.blast_events[:] = loaded.state.blast_events
+            self.state.assessment_areas[:] = loaded.state.assessment_areas
+            self.state.technical_cards[:] = loaded.state.technical_cards
+            self.state.evaluations[:] = loaded.state.evaluations
+            self.state.attachments[:] = loaded.state.attachments
+            self.workspace_id = loaded.workspace_id
+            self.workspace.refresh_workspace()
+        except Exception:
+            self.state.datasets[:] = previous["datasets"]
+            self.state.blast_events[:] = previous["blast_events"]
+            self.state.assessment_areas[:] = previous["assessment_areas"]
+            self.state.technical_cards[:] = previous["technical_cards"]
+            self.state.evaluations[:] = previous["evaluations"]
+            self.state.attachments[:] = previous["attachments"]
+            self.workspace_id = previous["workspace_id"]
+            raise
 
     def has_active_workflow(self) -> bool:
         return self.workspace.has_active_workflow()

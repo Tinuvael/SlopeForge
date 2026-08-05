@@ -7,13 +7,13 @@ from prototype_2d.blast_event_service import BlastEventService
 from prototype_2d.domain import AssessmentDomainState
 
 
-def _widget(state=None, save_callback=lambda: None, storage_path=None):
+def _widget(state=None, save_callback=lambda: None, storage_path=None, read_only=False):
     QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
     from ui.prototype_2d.assessment_workspace import AssessmentWorkspaceWidget
 
     app = QApplication.instance() or QApplication([])
     return AssessmentWorkspaceWidget(
-        state if state is not None else AssessmentDomainState(), storage_path, save_callback
+        state if state is not None else AssessmentDomainState(), storage_path, save_callback, read_only=read_only
     ), app
 
 
@@ -265,6 +265,57 @@ def test_wall_assessment_save_and_failed_save_rollback(tmp_path):
     assert new_evaluation not in state.evaluations
     assert new_evaluation.revisions == [] and new_evaluation.active_revision_id is None
     assert emitted == []
+    widget.deleteLater(); assert app
+
+
+def test_read_only_blocks_direct_mutating_methods(tmp_path):
+    state = _project_state(tmp_path)
+    area = _area(state)
+    source = tmp_path / "event-readonly.csv"
+    source.write_text("XP,YP,ZP,SID,PTN\n0,0,620,t,1\n10,0,620,t,2\n10,10,620,t,3\n0,0,620,t,4\n", encoding="utf-8")
+    event = BlastEventService(state).create_event(name="A", event_type="production", event_date=date.today(), elevation=620, csv_path=source)
+    widget, app = _widget(state, read_only=True)
+    widget.selected_event = event
+    widget.selected_area = area
+
+    mutating_calls = [
+        lambda: widget._save(),
+        lambda: widget.save_now(),
+        lambda: widget.import_project_lines(),
+        lambda: widget.create_event(),
+        lambda: widget.reimport_geometry(),
+        lambda: widget.toggle_archive(),
+        lambda: widget.toggle_area_archive(),
+        lambda: widget.refresh_area_links(),
+        lambda: widget.start_area_drawing(),
+        lambda: widget.enter_refinement(),
+        lambda: widget.confirm_refined_polygon(),
+        lambda: widget.edit_area_boundaries(),
+        lambda: widget._save_technical_card(type("Card", (), {"save_revision": lambda self, revision, status: None})(), object(), "draft"),
+    ]
+    for call in mutating_calls:
+        with pytest.raises(PermissionError):
+            call()
+
+    assert widget.open_blast_event(event.id)
+    assert widget.open_assessment_area(area.id)
+    widget.refresh_workspace()
+    widget.deleteLater(); assert app
+
+
+def test_read_only_open_dataset_blocks_active_dataset_change(tmp_path):
+    from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
+    state = _project_state(tmp_path)
+    first = state.datasets[0]
+    second_source = tmp_path / "second-readonly.csv"
+    second_source.write_text("XP,YP,ZP,SID,PTN\n0,0,640,x,1\n1,0,640,x,2\n", encoding="utf-8")
+    second, _ = ProjectLinesDatasetService(state).import_dataset(second_source)
+    widget, app = _widget(state, read_only=True)
+
+    assert state.active_dataset() is second
+    with pytest.raises(PermissionError):
+        widget.open_dataset(first.id)
+    assert state.active_dataset() is second
     widget.deleteLater(); assert app
 
 

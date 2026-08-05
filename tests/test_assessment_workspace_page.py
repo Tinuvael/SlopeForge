@@ -13,7 +13,7 @@ import ui.pages.assessment_workspace_page as page_module
 class FakeRepository:
     loaded = []
     replacements = []
-    state = object()
+    state = None
     fail_save = False
 
     def __init__(self, session_factory):
@@ -21,6 +21,8 @@ class FakeRepository:
 
     def load_for_site(self, site_id):
         self.loaded.append(site_id)
+        if self.state is None:
+            self.state = SimpleNamespace(datasets=[], blast_events=[], assessment_areas=[], technical_cards=[], evaluations=[], attachments=[])
         return SimpleNamespace(workspace_id=12, state=self.state)
 
     def replace_for_site(self, site_id, state):
@@ -34,15 +36,20 @@ class FakeWorkspace(QWidget):
     state_changed = Signal()
     state_saved = Signal()
 
-    def __init__(self, state, storage_path, save_callback, parent=None):
+    def __init__(self, state, storage_path, save_callback, parent=None, read_only=False):
         super().__init__(parent)
         self.state, self.storage_path = state, storage_path
         self.save_callback, self.calls = save_callback, []
+        self.read_only = read_only
+        self.fail_refresh = False
 
     def open_blast_event(self, value): self.calls.append(("event", value)); return True
     def open_assessment_area(self, value): self.calls.append(("area", value)); return True
     def open_dataset(self, value): self.calls.append(("dataset", value)); return True
-    def refresh_workspace(self): self.calls.append(("refresh",))
+    def refresh_workspace(self):
+        self.calls.append(("refresh",))
+        if self.fail_refresh:
+            raise RuntimeError("refresh failed")
     def has_active_workflow(self): return True
     def cancel_active_workflow(self): self.calls.append(("cancel",)); return True
     def save_now(self): self.calls.append(("save",))
@@ -54,9 +61,11 @@ def page(monkeypatch, tmp_path):
     FakeRepository.loaded = []
     FakeRepository.replacements = []
     FakeRepository.fail_save = False
+    FakeRepository.state = SimpleNamespace(datasets=[], blast_events=[], assessment_areas=[], technical_cards=[], evaluations=[], attachments=[])
     monkeypatch.setattr(page_module, "AssessmentStateRepository", FakeRepository)
     monkeypatch.setattr(page_module, "AssessmentWorkspaceWidget", FakeWorkspace)
-    context = SimpleNamespace(session_factory=object(), storage_root=tmp_path)
+    context = SimpleNamespace(session_factory=object(), storage_root=tmp_path,
+                              current_user=SimpleNamespace(can_edit=True))
     return page_module.AssessmentWorkspacePage(context, 7, "Северный")
 
 
@@ -85,6 +94,81 @@ def test_repository_save_errors_propagate(page):
         page.workspace.save_callback()
 
 
+def test_viewer_save_is_rejected_without_replacing(monkeypatch, tmp_path):
+    QApplication.instance() or QApplication([])
+    FakeRepository.loaded = []
+    FakeRepository.replacements = []
+    FakeRepository.state = SimpleNamespace(datasets=[], blast_events=[], assessment_areas=[], technical_cards=[], evaluations=[], attachments=[])
+    monkeypatch.setattr(page_module, "AssessmentStateRepository", FakeRepository)
+    monkeypatch.setattr(page_module, "AssessmentWorkspaceWidget", FakeWorkspace)
+    context = SimpleNamespace(session_factory=object(), storage_root=tmp_path,
+                              current_user=SimpleNamespace(can_edit=False))
+
+    page = page_module.AssessmentWorkspacePage(context, 7, "Viewer")
+
+    assert page.workspace.read_only is True
+    with pytest.raises(PermissionError):
+        page.workspace.save_callback()
+    assert FakeRepository.replacements == []
+    assert page.workspace_id == 12
+
+
+def test_reload_preserves_state_identity_and_replaces_collections(page):
+    old_state = page.state
+    selected_event = SimpleNamespace(id="old-event")
+    selected_area = SimpleNamespace(id="old-area")
+    page.workspace.selected_event = selected_event
+    page.workspace.selected_area = selected_area
+    new_state = SimpleNamespace(
+        datasets=["dataset"], blast_events=[SimpleNamespace(id="new-event")],
+        assessment_areas=[SimpleNamespace(id="new-area")], technical_cards=["card"],
+        evaluations=["evaluation"], attachments=["attachment"],
+    )
+    page.repository.load_for_site = lambda site_id: SimpleNamespace(workspace_id=99, state=new_state)
+
+    page.reload_from_repository()
+
+    assert page.state is old_state
+    assert page.workspace.state is old_state
+    assert page.workspace_id == 99
+    assert old_state.datasets == ["dataset"]
+    assert old_state.blast_events == new_state.blast_events
+    assert old_state.assessment_areas == new_state.assessment_areas
+    assert old_state.technical_cards == ["card"]
+    assert old_state.evaluations == ["evaluation"]
+    assert old_state.attachments == ["attachment"]
+    assert ("refresh",) in page.workspace.calls
+
+
+def test_reload_refresh_failure_rolls_back_previous_state(page):
+    old_state = page.state
+    old_state.datasets[:] = ["old-dataset"]
+    old_state.blast_events[:] = ["old-event"]
+    old_state.assessment_areas[:] = ["old-area"]
+    old_state.technical_cards[:] = ["old-card"]
+    old_state.evaluations[:] = ["old-evaluation"]
+    old_state.attachments[:] = ["old-attachment"]
+    old_workspace_id = page.workspace_id
+    new_state = SimpleNamespace(
+        datasets=["new-dataset"], blast_events=["new-event"], assessment_areas=["new-area"],
+        technical_cards=["new-card"], evaluations=["new-evaluation"], attachments=["new-attachment"],
+    )
+    page.repository.load_for_site = lambda site_id: SimpleNamespace(workspace_id=77, state=new_state)
+    page.workspace.fail_refresh = True
+
+    with pytest.raises(RuntimeError, match="refresh failed"):
+        page.reload_from_repository()
+
+    assert page.state is old_state
+    assert page.workspace_id == old_workspace_id
+    assert old_state.datasets == ["old-dataset"]
+    assert old_state.blast_events == ["old-event"]
+    assert old_state.assessment_areas == ["old-area"]
+    assert old_state.technical_cards == ["old-card"]
+    assert old_state.evaluations == ["old-evaluation"]
+    assert old_state.attachments == ["old-attachment"]
+
+
 def test_public_delegation(page):
     assert page.open_blast_event("e")
     assert page.open_assessment_area("a")
@@ -101,7 +185,8 @@ def test_site_id_is_domain_label_fallback(monkeypatch, tmp_path):
     QApplication.instance() or QApplication([])
     monkeypatch.setattr(page_module, "AssessmentStateRepository", FakeRepository)
     monkeypatch.setattr(page_module, "AssessmentWorkspaceWidget", FakeWorkspace)
-    context = SimpleNamespace(session_factory=object(), storage_root=tmp_path)
+    context = SimpleNamespace(session_factory=object(), storage_root=tmp_path,
+                              current_user=SimpleNamespace(can_edit=True))
     page = page_module.AssessmentWorkspacePage(context, 99)
     assert "99" in page.domain_label.text()
 

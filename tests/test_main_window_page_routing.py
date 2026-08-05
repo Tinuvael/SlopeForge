@@ -105,10 +105,13 @@ class Assessment(Widget):
         if self.fail_construct: raise ValueError("bad json")
         super().__init__(parent); type(self).created += 1; self.active = False
         self.context, self.site_id, self.site_name = context, site_id, site_name
-        self.refreshes = self.saves = self.cancels = 0; self.fail_save = False
+        self.refreshes = self.saves = self.cancels = self.reloads = 0; self.fail_save = False; self.fail_reload = False
     def refresh_workspace(self):
         self.refreshes += 1
         if self.fail_refresh: raise RuntimeError("refresh")
+    def reload_from_repository(self):
+        self.reloads += 1
+        if self.fail_reload: raise RuntimeError("reload")
     def has_active_workflow(self): return self.active
     def cancel_active_workflow(self): self.active = False; self.cancels += 1; return True
     def save_now(self):
@@ -179,8 +182,31 @@ def test_assessment_created_once_added_and_navigation_reused(window):
     assert window.page_stack.currentWidget() is page
     assert window.assessment_nav_button.isChecked() and not window.block_nav_button.isChecked()
     assert window.show_assessment_page() and window.assessment_page is page
-    assert Assessment.created == 1 and page.refreshes == 1
+    assert Assessment.created == 1 and page.refreshes == 1 and page.reloads == 0
     assert window.show_block_page() and window.page_stack.currentWidget() is window.block_page
+    assert window.show_assessment_page() and window.assessment_page is page
+    assert page.reloads == 1
+
+
+def test_same_site_reopen_reload_failure_keeps_blocks_visible(window):
+    assert window.open_assessment_for_site(7, "North")
+    page = window.assessment_page
+    assert window.show_block_page()
+    page.fail_reload = True
+    assert not window.show_assessment_page()
+    assert window.assessment_page is page and window.assessment_site_id == 7
+    assert window.page_stack.currentWidget() is window.block_page
+    assert window.block_nav_button.isChecked() and not window.assessment_nav_button.isChecked()
+
+
+def test_same_site_reopen_active_workflow_blocks_reload(window):
+    assert window.open_assessment_for_site(7, "North")
+    page = window.assessment_page
+    window.page_stack.setCurrentWidget(window.block_page)
+    page.active = True
+    assert not window.show_assessment_page()
+    assert page.reloads == 0
+    assert window.page_stack.currentWidget() is window.block_page
 
 
 def test_tree_header_and_filters_route_without_postgresql(window):
@@ -246,10 +272,10 @@ def test_construction_failure_stays_on_blocks(window):
 
 def test_existing_refresh_failure_preserves_page_and_instance(window):
     assert window.open_assessment_for_site(7, "North"); page = window.assessment_page
-    window.show_block_page(); page.fail_refresh = True
+    page.fail_refresh = True
     assert not window.show_assessment_page()
     assert window.assessment_page is page and not page.deleted
-    assert window.page_stack.currentWidget() is window.block_page
+    assert window.page_stack.currentWidget() is page
 
 
 def test_switching_site_saves_then_replaces_and_deletes_old_page(window):
