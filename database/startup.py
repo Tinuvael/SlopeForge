@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import configure_mappers
 
 from .base import Base
 from . import assessment_models  # noqa: F401  Ensure Assessment tables are validated.
@@ -21,6 +22,7 @@ def initialize_database_runtime():
         settings = Settings.from_env()
         engine = create_database_engine(settings)
         check_connection(engine)
+        configure_mappers()
         existing = set(inspect(engine).get_table_names())
         required = set(Base.metadata.tables)
         missing = sorted(required - existing)
