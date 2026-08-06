@@ -99,6 +99,7 @@ class Header(Widget):
 
 class Assessment(Widget):
     created = 0
+    replacements = 0
     fail_construct = False
     fail_refresh = False
     def __init__(self, context, site_id, site_name, parent=None):
@@ -117,6 +118,8 @@ class Assessment(Widget):
     def save_now(self):
         self.saves += 1
         if self.fail_save: raise RuntimeError("save")
+        if self.context.current_user.can_edit:
+            type(self).replacements += 1
 
 
 class CloseEvent:
@@ -128,6 +131,7 @@ class CloseEvent:
 @pytest.fixture
 def window_module(monkeypatch):
     Assessment.created = 0
+    Assessment.replacements = 0
     Assessment.fail_construct = Assessment.fail_refresh = False
     MessageBox.answer = MessageBox.StandardButton.Cancel
     MessageBox.critical_calls = []
@@ -161,7 +165,9 @@ def window_module(monkeypatch):
 
 
 @pytest.fixture
-def window(window_module): return window_module.MainWindow(object())
+def window(window_module):
+    context = types.SimpleNamespace(current_user=types.SimpleNamespace(can_edit=True))
+    return window_module.MainWindow(context)
 
 
 def test_startup_is_lazy_and_keeps_tree_outside_stack(window):
@@ -260,6 +266,29 @@ def test_close_workflow_cancel_and_discard(window):
     MessageBox.answer = MessageBox.StandardButton.Discard
     event = CloseEvent(); window.closeEvent(event)
     assert event.accepted and page.cancels == 1 and page.saves == 1
+
+
+def test_viewer_can_leave_switch_site_and_close_without_writing(window):
+    window.context.current_user.can_edit = False
+    assert window.open_assessment_for_site(7, "North")
+    first = window.assessment_page
+
+    assert window.show_block_page()
+    assert first.saves == 1 and Assessment.replacements == 0
+    assert window.open_assessment_for_site(8, "South")
+    second = window.assessment_page
+    assert first.deleted and first.saves == 2
+
+    event = CloseEvent()
+    window.closeEvent(event)
+    assert event.accepted and second.saves == 1
+    assert Assessment.replacements == 0
+
+
+def test_editor_navigation_save_still_persists(window):
+    assert window.open_assessment_for_site(7, "North")
+    assert window.show_block_page()
+    assert Assessment.replacements == 1
 
 
 def test_construction_failure_stays_on_blocks(window):

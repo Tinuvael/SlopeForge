@@ -52,7 +52,10 @@ class FakeWorkspace(QWidget):
             raise RuntimeError("refresh failed")
     def has_active_workflow(self): return True
     def cancel_active_workflow(self): self.calls.append(("cancel",)); return True
-    def save_now(self): self.calls.append(("save",))
+    def save_now(self):
+        self.calls.append(("save",))
+        if not self.read_only:
+            self.save_callback()
 
 
 @pytest.fixture
@@ -109,6 +112,10 @@ def test_viewer_save_is_rejected_without_replacing(monkeypatch, tmp_path):
     assert page.workspace.read_only is True
     with pytest.raises(PermissionError):
         page.workspace.save_callback()
+    assert FakeRepository.replacements == []
+    assert page.workspace_id == 12
+
+    page.save_now()
     assert FakeRepository.replacements == []
     assert page.workspace_id == 12
 

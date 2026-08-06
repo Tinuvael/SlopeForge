@@ -154,6 +154,22 @@ def test_save_now_only_reports_persistence():
     widget.deleteLater(); assert app
 
 
+def test_read_only_save_now_is_a_silent_noop():
+    state = AssessmentDomainState()
+    saves = []
+    widget, app = _widget(state, lambda: saves.append(True), read_only=True)
+    emitted = []
+    widget.state_changed.connect(lambda: emitted.append("changed"))
+    widget.state_saved.connect(lambda: emitted.append("saved"))
+
+    widget.save_now()
+
+    assert saves == []
+    assert emitted == []
+    assert widget.state is state
+    widget.deleteLater(); assert app
+
+
 def test_assessment_area_navigation_active_archived_and_missing(tmp_path):
     state = _project_state(tmp_path)
     active = _area(state)
@@ -280,7 +296,6 @@ def test_read_only_blocks_direct_mutating_methods(tmp_path):
 
     mutating_calls = [
         lambda: widget._save(),
-        lambda: widget.save_now(),
         lambda: widget.import_project_lines(),
         lambda: widget.create_event(),
         lambda: widget.reimport_geometry(),

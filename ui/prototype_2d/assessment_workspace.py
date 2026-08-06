@@ -902,6 +902,8 @@ class AssessmentWorkspaceWidget(QWidget):
 
     def save_now(self) -> None:
         """Persist the current snapshot without reporting a new mutation."""
+        if self.read_only:
+            return
         self._persist(changed=False)
 
     def open_blast_event(self, event_id: str) -> bool:
