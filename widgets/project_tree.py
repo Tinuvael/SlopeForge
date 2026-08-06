@@ -32,6 +32,7 @@ def _horizon_label(horizon: Decimal | None) -> str:
 class ProjectTree(QWidget):
     filters_changed = Signal(dict)
     block_selected = Signal(int)
+    site_selected = Signal(int, str)
 
     def __init__(self, context: AppContext):
         super().__init__()
@@ -171,7 +172,9 @@ class ProjectTree(QWidget):
 
     def _item_clicked(self, item: QTreeWidgetItem) -> None:
         payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
-        if payload.get("type") == "block":
+        if payload.get("type") == "site":
+            self.site_selected.emit(int(payload["id"]), item.text(0))
+        elif payload.get("type") == "block":
             self.block_selected.emit(int(payload["id"]))
 
     @staticmethod

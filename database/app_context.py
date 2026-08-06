@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from sqlalchemy.orm import Session
@@ -26,3 +27,4 @@ class CurrentUser:
 class AppContext:
     session_factory: Callable[[], Session]
     current_user: CurrentUser
+    storage_root: Path

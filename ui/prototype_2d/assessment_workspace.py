@@ -99,11 +99,13 @@ class AssessmentWorkspaceWidget(QWidget):
     state_saved = Signal()
 
     def __init__(self, state: AssessmentDomainState, storage_path: str | Path | None,
-                 save_callback: Callable[[], None], parent: QWidget | None = None):
+                 save_callback: Callable[[], None], parent: QWidget | None = None,
+                 read_only: bool = False):
         super().__init__(parent)
         self.storage_path = storage_path
         self.state = state
         self._save_callback = save_callback
+        self.read_only = read_only
         self.service = BlastEventService(self.state)
         self.dataset_service = ProjectLinesDatasetService(self.state)
         self.area_service = AssessmentAreaService(self.state)
@@ -134,6 +136,7 @@ class AssessmentWorkspaceWidget(QWidget):
         self.dataset_label = QLabel()
         self.import_dataset_button = QPushButton("Загрузить проектные линии")
         self.import_dataset_button.clicked.connect(self.import_project_lines)
+        self.import_dataset_button.setEnabled(not self.read_only)
         history = QPushButton("История Dataset")
         history.clicked.connect(self.show_dataset_history)
         self.lines_checkbox = QCheckBox("Проектные линии")
@@ -166,13 +169,14 @@ class AssessmentWorkspaceWidget(QWidget):
         self.event_list.currentRowChanged.connect(self._select_event)
         create = QPushButton("+ Создать событие")
         create.clicked.connect(self.create_event)
+        create.setEnabled(not self.read_only)
         events_layout.addWidget(self.filter_combo)
         events_layout.addWidget(self.event_list, 1)
         events_layout.addWidget(create)
         self.area_filter_combo = QComboBox(); self.area_filter_combo.addItems(["Активные", "Архив"])
         self.area_filter_combo.currentIndexChanged.connect(self._area_filter_changed)
         self.area_list = QListWidget(); self.area_list.currentRowChanged.connect(self._select_area)
-        create_area = QPushButton("+ Создать Assessment Area"); create_area.clicked.connect(self.start_area_drawing)
+        create_area = QPushButton("+ Создать Assessment Area"); create_area.clicked.connect(self.start_area_drawing); create_area.setEnabled(not self.read_only)
         areas_layout.addWidget(self.area_filter_combo); areas_layout.addWidget(self.area_list, 1); areas_layout.addWidget(create_area)
         root.addWidget(left)
 
@@ -301,6 +305,23 @@ class AssessmentWorkspaceWidget(QWidget):
     def _clear_card(self):
         self._clear_layout(self.details_layout); self._clear_layout(self.card_actions_layout)
 
+    def _ensure_can_edit(self) -> None:
+        if self.read_only:
+            raise PermissionError("2D Assessment is read-only for the current user")
+
+    def _mutating_action_enabled(self, callback, enabled: bool) -> bool:
+        if not enabled:
+            return False
+        return not self.read_only or callback in {
+            self.show_event_attachments,
+            self.open_event_folder,
+            self.show_area_attachments,
+            self.show_area_links,
+            self.clear_highlighted_link,
+            self.show_technical_card,
+            self.show_wall_assessment,
+        }
+
     def _set_card(self, details, actions):
         for caption, value in details:
             block = QWidget(); block_layout = QVBoxLayout(block); block_layout.setContentsMargins(0, 2, 0, 6)
@@ -309,7 +330,7 @@ class AssessmentWorkspaceWidget(QWidget):
             self.details_layout.addWidget(block)
         self.details_layout.addStretch()
         for text, callback, enabled in actions:
-            button = QPushButton(text); button.clicked.connect(callback); button.setEnabled(enabled)
+            button = QPushButton(text); button.clicked.connect(callback); button.setEnabled(self._mutating_action_enabled(callback, enabled))
             self.card_actions_layout.addWidget(button)
 
     def _render_card(self):
@@ -382,12 +403,13 @@ class AssessmentWorkspaceWidget(QWidget):
             evaluation = existing[-1] if existing else transient
             draft.evaluation_id = evaluation.id
         AssessmentAreaEvaluationDialog(self.selected_area, evaluation, draft, self._save_wall_assessment, self,
+            read_only=self.read_only or self.selected_area.is_archived,
             attachment_service=self.attachment_service, unsaved=evaluation not in self.state.evaluations).exec()
 
     def show_event_attachments(self):
         if not self.selected_event: return
         EntityAttachmentDialog(self.attachment_service, "blast_event", self.selected_event.id, self,
-                               read_only=self.selected_event.is_archived).exec()
+                               read_only=self.read_only or self.selected_event.is_archived).exec()
         self._render_card()
 
     def open_event_folder(self):
@@ -400,10 +422,11 @@ class AssessmentWorkspaceWidget(QWidget):
                            if e.assessment_area_id == self.selected_area.id and e.active_revision()), None)
         if evaluation:
             EntityAttachmentDialog(self.attachment_service, "assessment_evaluation", evaluation.id, self,
-                                   read_only=self.selected_area.is_archived).exec()
+                                   read_only=self.read_only or self.selected_area.is_archived).exec()
             self._render_card()
 
     def _save_wall_assessment(self, evaluation, revision, status):
+        self._ensure_can_edit()
         was_present = evaluation in self.state.evaluations
         previous_count = len(evaluation.revisions)
         previous_active = evaluation.active_revision_id
@@ -422,10 +445,20 @@ class AssessmentWorkspaceWidget(QWidget):
 
     def show_technical_card(self):
         if not self.selected_event: return
-        card, revision = self.technical_card_service.edit_or_create(self.selected_event)
-        TechnicalCardDialog(self.selected_event, card, revision, self._save_technical_card, self).exec()
+        if self.read_only:
+            card = self.technical_card_service.card_for_event(self.selected_event.id)
+            revision = card.active_revision() if card else None
+            if card is None or revision is None:
+                QMessageBox.information(self, "Техническая карточка", "Техническая карточка ещё не создана")
+                return
+            revision = deepcopy(revision)
+        else:
+            card, revision = self.technical_card_service.edit_or_create(self.selected_event)
+        TechnicalCardDialog(self.selected_event, card, revision, self._save_technical_card, self,
+                            read_only=self.read_only or self.selected_event.is_archived).exec()
 
     def _save_technical_card(self, card, revision, status):
+        self._ensure_can_edit()
         card.save_revision(revision, status=status)
         self._save()
 
@@ -589,6 +622,7 @@ class AssessmentWorkspaceWidget(QWidget):
             y += step
 
     def import_project_lines(self):
+        self._ensure_can_edit()
         path, _ = QFileDialog.getOpenFileName(self, "CSV Datamine — проектные линии", "", "CSV (*.csv)")
         if not path:
             return
@@ -626,6 +660,7 @@ class AssessmentWorkspaceWidget(QWidget):
         dialog = DatasetHistoryDialog(self.state.datasets, self)
         if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selected_dataset_id():
             return
+        self._ensure_can_edit()
         self.dataset_service.set_active(dialog.selected_dataset_id())
         self.clear_highlighted_link(redraw=False)
         self._save()
@@ -633,6 +668,7 @@ class AssessmentWorkspaceWidget(QWidget):
         self.draw_geometry()
 
     def create_event(self):
+        self._ensure_can_edit()
         dialog = BlastEventDialog(self, self.service)
         if dialog.exec() != dialog.DialogCode.Accepted:
             return
@@ -646,6 +682,7 @@ class AssessmentWorkspaceWidget(QWidget):
             QMessageBox.warning(self, "Не удалось создать событие", str(exc))
 
     def reimport_geometry(self):
+        self._ensure_can_edit()
         if not self.selected_event:
             return
         path, _ = QFileDialog.getOpenFileName(self, "Выберите CSV", "", "CSV (*.csv)")
@@ -662,6 +699,7 @@ class AssessmentWorkspaceWidget(QWidget):
             QMessageBox.warning(self, "Ошибка переимпорта", str(exc))
 
     def toggle_archive(self):
+        self._ensure_can_edit()
         if not self.selected_event:
             return
         self.selected_event.restore() if self.selected_event.is_archived else self.selected_event.archive()
@@ -669,12 +707,14 @@ class AssessmentWorkspaceWidget(QWidget):
         self.refresh_events()
 
     def toggle_area_archive(self):
+        self._ensure_can_edit()
         if not self.selected_area: return
         self.clear_highlighted_link(redraw=False)
         self.selected_area.restore() if self.selected_area.is_archived else self.selected_area.archive()
         self._save(); self.refresh_areas()
 
     def refresh_area_links(self):
+        self._ensure_can_edit()
         if not self.selected_area: return
         try:
             result = self.link_service.refresh_suggestions(self.selected_area)
@@ -695,9 +735,12 @@ class AssessmentWorkspaceWidget(QWidget):
 
     def show_area_links(self):
         if not self.selected_area: return
-        dialog = AssessmentEventLinksDialog(self.selected_area, self.state, self.link_service, self)
+        dialog = AssessmentEventLinksDialog(self.selected_area, self.state, self.link_service, self, read_only=self.read_only)
         dialog.highlight_requested.connect(self.highlight_area_link)
-        dialog.exec(); self._save(); self._render_card(); self.draw_geometry()
+        dialog.exec()
+        if not self.read_only:
+            self._save()
+        self._render_card(); self.draw_geometry()
 
     def highlight_area_link(self, link):
         if (not self.selected_area or
@@ -715,6 +758,7 @@ class AssessmentWorkspaceWidget(QWidget):
             self._render_card(); self.draw_geometry()
 
     def start_area_drawing(self):
+        self._ensure_can_edit()
         if self.state.active_dataset() is None:
             QMessageBox.warning(self, "Assessment Area", "Сначала загрузите или выберите активный Dataset")
             return
@@ -727,6 +771,7 @@ class AssessmentWorkspaceWidget(QWidget):
         self.statusBar().showMessage("ЛКМ — вершина; Enter/двойной клик — завершить; Backspace — назад; Esc — отмена")
 
     def _drawing_click(self, x, y):
+        if self.read_only: return
         if self.workflow_state != "DRAWING": return
         point = PlanPoint(x, y)
         if self._drawing_vertices and len(self._drawing_vertices) >= 3:
@@ -740,6 +785,7 @@ class AssessmentWorkspaceWidget(QWidget):
             self._drawing_cursor = PlanPoint(x, y); self.draw_geometry()
 
     def _drawing_key(self, key):
+        if self.read_only: return
         if self.workflow_state == "DRAWING" and key == "back":
             if self._drawing_vertices: self._drawing_vertices.pop()
             self.draw_geometry()
@@ -756,6 +802,7 @@ class AssessmentWorkspaceWidget(QWidget):
         self.statusBar().clearMessage(); self.draw_geometry()
 
     def enter_refinement(self):
+        self._ensure_can_edit()
         if self.workflow_state != "DRAWING": return
         try:
             polygon = PlanPolygon(tuple(self._drawing_vertices + [self._drawing_vertices[0]]))
@@ -797,6 +844,7 @@ class AssessmentWorkspaceWidget(QWidget):
         self._refresh_refinement_candidates(); self.draw_geometry()
 
     def confirm_refined_polygon(self):
+        self._ensure_can_edit()
         if self.workflow_state != "REFINING": return
         try:
             polygon = self._current_draft_polygon(); validate_simple_polygon(polygon)
@@ -830,6 +878,7 @@ class AssessmentWorkspaceWidget(QWidget):
     finish_area_drawing = enter_refinement  # compatibility for older tests
 
     def edit_area_boundaries(self):
+        self._ensure_can_edit()
         area = self.selected_area
         if area is None or area.is_archived: return
         self.clear_highlighted_link(redraw=False)
@@ -841,6 +890,7 @@ class AssessmentWorkspaceWidget(QWidget):
         self._refresh_refinement_candidates(); self.draw_geometry()
 
     def _persist(self, *, changed: bool) -> None:
+        self._ensure_can_edit()
         self._save_callback()
         if changed:
             self.state_changed.emit()
@@ -852,6 +902,8 @@ class AssessmentWorkspaceWidget(QWidget):
 
     def save_now(self) -> None:
         """Persist the current snapshot without reporting a new mutation."""
+        if self.read_only:
+            return
         self._persist(changed=False)
 
     def open_blast_event(self, event_id: str) -> bool:
@@ -883,6 +935,7 @@ class AssessmentWorkspaceWidget(QWidget):
             return False
         active_dataset = self.dataset_service.active_dataset()
         if active_dataset is None or active_dataset.id != dataset_id:
+            self._ensure_can_edit()
             self.dataset_service.set_active(dataset_id)
             self._save()
         self.refresh_datasets()
@@ -916,8 +969,8 @@ class AssessmentEventLinksDialog(QDialog):
     highlight_requested = Signal(object)
     FILTERS = {"Все": None, "Предложено": "suggested", "Подтверждено": "confirmed", "Исключено": "excluded"}
 
-    def __init__(self, area, state, service, parent=None):
-        super().__init__(parent); self.area = area; self.state = state; self.service = service
+    def __init__(self, area, state, service, parent=None, read_only=False):
+        super().__init__(parent); self.area = area; self.state = state; self.service = service; self.read_only = read_only
         self.setWindowTitle(f"Связанные Blast Events — {area.name}"); self.resize(1050, 520)
         layout = QVBoxLayout(self); self.filter = QComboBox(); self.filter.addItems(self.FILTERS)
         self.filter.currentIndexChanged.connect(self.refresh); layout.addWidget(self.filter)
@@ -935,7 +988,7 @@ class AssessmentEventLinksDialog(QDialog):
                            ("Вернуть в предложенные", self.restore), ("Добавить вручную", self.manual),
                            ("Показать на плане", self.highlight)):
             button = QPushButton(text); button.clicked.connect(slot); row.addWidget(button)
-            if area.is_archived and text != "Показать на плане": button.setEnabled(False)
+            if (area.is_archived or read_only) and text != "Показать на плане": button.setEnabled(False)
         close = QPushButton("Закрыть"); close.clicked.connect(self.accept); row.addWidget(close)
         layout.addLayout(row); self.refresh()
 
@@ -970,6 +1023,8 @@ class AssessmentEventLinksDialog(QDialog):
         return next((link for link in self.area.links_for_revision() if link.id == link_id), None)
 
     def _change(self, action):
+        if self.read_only:
+            raise PermissionError("2D Assessment is read-only for the current user")
         link = self.selected_link()
         if link:
             try: action(self.area, link.id); self.refresh()
@@ -979,6 +1034,8 @@ class AssessmentEventLinksDialog(QDialog):
     def restore(self): self._change(self.service.restore_suggestion)
 
     def manual(self):
+        if self.read_only:
+            raise PermissionError("2D Assessment is read-only for the current user")
         dialog = ManualAssessmentEventLinkDialog(self.area, self.state, self.service, self)
         if dialog.exec() == QDialog.DialogCode.Accepted: self.refresh()
 
