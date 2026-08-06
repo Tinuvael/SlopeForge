@@ -20,8 +20,15 @@ class DomainRepository:
             return row
     def create_domain(self, site_id: int, name: str, description: str | None = None) -> Domain:
         return self._save(None, site_id, name, description)
-    def update_domain(self, domain_id: int, site_id: int, name: str, description: str | None = None) -> Domain:
-        return self._save(domain_id, site_id, name, description)
+    def update_domain(self, domain_id: int, name: str,
+                      description: str | None = None) -> Domain:
+        with self.session_factory() as session:
+            row = session.get(Domain, domain_id)
+            if row is None: raise ValueError("Domain not found")
+            if not name.strip(): raise ValueError("Domain name is required")
+            row.name = name.strip(); row.description = description or None
+            try: session.commit(); session.refresh(row); session.expunge(row); return row
+            except Exception: session.rollback(); raise
     def _save(self, domain_id, site_id, name, description):
         if not name.strip(): raise ValueError("Domain name is required")
         with self.session_factory() as session:

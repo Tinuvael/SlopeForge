@@ -341,3 +341,18 @@ def test_attachment_service_uses_injected_storage_path(tmp_path):
     assert widget.attachment_service.owner_folder("blast_event", "BE-1", create=False) == tmp_path / "nested" / "files" / "blast_events" / "BE-1"
     assert widget.attachment_service.owner_folder("assessment_evaluation", "EV-1", create=False) == tmp_path / "nested" / "files" / "assessments" / "EV-1"
     widget.deleteLater(); assert app
+
+
+def test_explicit_dataset_activation_does_not_use_domain_snapshot_save():
+    from prototype_2d.domain import AssessmentDomainState, ProjectLinesDataset, utc_now
+    from prototype_2d.models import DatamineLine
+    state = AssessmentDomainState()
+    line = DatamineLine.from_dict({"source_id": "L", "points": [{"x": 0, "y": 0, "z": 1, "source_row_number": 1}, {"x": 1, "y": 0, "z": 1, "source_row_number": 2}]})
+    state.add_dataset(ProjectLinesDataset("D-001", "X", utc_now(), "x.csv", False, [line]))
+    state.add_dataset(ProjectLinesDataset("D-002", "Y", utc_now(), "y.csv", False, [line]))
+    saves, activations = [], []
+    widget, app = _widget(state=state, save_callback=lambda: saves.append(True))
+    widget._dataset_activation_callback = activations.append
+    assert widget.open_dataset("D-001")
+    assert activations == ["D-001"]
+    assert saves == []

@@ -22,3 +22,7 @@
 20. Verify existing Site filters still work.
 
 Project Lines остаются версионируемыми инженерными данными Site. Эта проверка намеренно не включает dashboard и перенос команд создания в Header Add.
+
+## Ограничение downgrade
+
+Старая схема до `20260806_0006` умеет хранить только одну Assessment workspace на Site. Поэтому downgrade детерминированно сохраняет workspace с минимальным ID, переносит в неё доступную историю Project Lines и каскадно удаляет остальные Domain-workspace. Дополнительные Domain-данные при downgrade неизбежно теряются; upgrade существующей базы PR #39 остаётся недеструктивным.

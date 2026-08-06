@@ -100,11 +100,13 @@ class AssessmentWorkspaceWidget(QWidget):
 
     def __init__(self, state: AssessmentDomainState, storage_path: str | Path | None,
                  save_callback: Callable[[], None], parent: QWidget | None = None,
-                 read_only: bool = False):
+                 read_only: bool = False,
+                 dataset_activation_callback: Callable[[str | None], None] | None = None):
         super().__init__(parent)
         self.storage_path = storage_path
         self.state = state
         self._save_callback = save_callback
+        self._dataset_activation_callback = dataset_activation_callback
         self.read_only = read_only
         self.service = BlastEventService(self.state)
         self.dataset_service = ProjectLinesDatasetService(self.state)
@@ -643,6 +645,7 @@ class AssessmentWorkspaceWidget(QWidget):
             dataset, result = self.dataset_service.import_dataset(path, column_mapping=mapping)
             self.clear_highlighted_link(redraw=False)
             self._save()
+            self._persist_dataset_activation(dataset.id)
             self.refresh_datasets()
             self.draw_geometry()
             if first_import:
@@ -663,7 +666,7 @@ class AssessmentWorkspaceWidget(QWidget):
         self._ensure_can_edit()
         self.dataset_service.set_active(dialog.selected_dataset_id())
         self.clear_highlighted_link(redraw=False)
-        self._save()
+        self._persist_dataset_activation(dialog.selected_dataset_id())
         self.refresh_datasets()
         self.draw_geometry()
 
@@ -900,6 +903,14 @@ class AssessmentWorkspaceWidget(QWidget):
         """Persist a domain mutation and notify listeners after success."""
         self._persist(changed=True)
 
+    def _persist_dataset_activation(self, dataset_id: str | None) -> None:
+        if self._dataset_activation_callback is None:
+            self._save()
+            return
+        self._dataset_activation_callback(dataset_id)
+        self.state_changed.emit()
+        self.state_saved.emit()
+
     def save_now(self) -> None:
         """Persist the current snapshot without reporting a new mutation."""
         if self.read_only:
@@ -937,7 +948,7 @@ class AssessmentWorkspaceWidget(QWidget):
         if active_dataset is None or active_dataset.id != dataset_id:
             self._ensure_can_edit()
             self.dataset_service.set_active(dataset_id)
-            self._save()
+            self._persist_dataset_activation(dataset_id)
         self.refresh_datasets()
         self.draw_geometry()
         return True

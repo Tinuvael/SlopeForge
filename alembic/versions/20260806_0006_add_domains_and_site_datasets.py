@@ -56,6 +56,15 @@ def upgrade():
 
 
 def downgrade():
+    # The old schema can represent only one Assessment workspace per Site.
+    # Keep the lowest workspace id deterministically and cascade-delete the
+    # additional Domain workspaces before restoring UNIQUE(site_id).
+    op.execute(sa.text("""DELETE FROM assessment_workspaces w
+        USING domains d
+        WHERE w.domain_id=d.id AND w.id <> (
+            SELECT min(w2.id) FROM assessment_workspaces w2
+            JOIN domains d2 ON d2.id=w2.domain_id WHERE d2.site_id=d.site_id
+        )"""))
     op.add_column("blast_blocks", sa.Column("site_id", sa.Integer(), nullable=True))
     op.add_column("assessment_workspaces", sa.Column("site_id", sa.Integer(), nullable=True))
     op.add_column("project_lines_datasets", sa.Column("workspace_id", sa.Integer(), nullable=True))

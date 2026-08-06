@@ -7,11 +7,10 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.app_context import CurrentUser
-from database.models import BlastBlock, Domain, Site
+from database.models import BlastBlock, Domain
 from repositories.audit_log_repository import AuditLogRepository
 from repositories.blast_block_repository import BlastBlockRepository, BlastBlockRow
 from repositories.site_repository import SiteRepository
-from repositories.domain_repository import DomainRepository
 
 VALID_STATUSES = {"planned", "blasted", "assessed"}
 STATUS_LABELS = {"planned": "Planned", "blasted": "Blasted", "assessed": "Assessed"}
@@ -134,8 +133,9 @@ class BlastBlockService:
                         "comment": data.comment or None,
                     }
                     old_values = {field: getattr(block, field) for field in AUDITED_FIELDS}
-                    site_names = {}
-                    changes = build_audit_changes(old_values, new_values, site_names)
+                    domain_names = self._domain_names_for_audit(
+                        session, old_values["domain_id"], new_values["domain_id"])
+                    changes = build_audit_changes(old_values, new_values, domain_names)
                     for field, new_value in new_values.items():
                         setattr(block, field, new_value)
                     for field_name, old_text, new_text in changes:
@@ -189,24 +189,27 @@ class BlastBlockService:
             raise ValidationError("Horizon must be a number") from exc
 
     @staticmethod
-    def _site_names_for_audit(session, old_site_id: int | None, new_site_id: int | None) -> dict[int, str]:
-        ids = {site_id for site_id in (old_site_id, new_site_id) if site_id is not None}
-        return {site.id: site.name for site in session.query(Site).filter(Site.id.in_(ids)).all()} if ids else {}
+    def _domain_names_for_audit(session, old_domain_id: int | None,
+                                new_domain_id: int | None) -> dict[int, str]:
+        ids = {value for value in (old_domain_id, new_domain_id)
+               if value is not None}
+        return {domain.id: domain.name for domain in
+                session.query(Domain).filter(Domain.id.in_(ids)).all()} if ids else {}
 
 
-def build_audit_changes(old_values: dict, new_values: dict, site_names: dict[int, str] | None = None) -> list[tuple[str, str | None, str | None]]:
-    site_names = site_names or {}
+def build_audit_changes(old_values: dict, new_values: dict, names: dict[int, str] | None = None) -> list[tuple[str, str | None, str | None]]:
+    names = names or {}
     changes = []
     for field in AUDITED_FIELDS:
         old_value = old_values.get(field)
         new_value = new_values.get(field)
         if old_value == new_value:
             continue
-        changes.append((field, format_audit_value(field, old_value, site_names), format_audit_value(field, new_value, site_names)))
+        changes.append((field, format_audit_value(field, old_value, names), format_audit_value(field, new_value, names)))
     return changes
 
 
-def format_audit_value(field_name: str, value, site_names: dict[int, str] | None = None) -> str | None:
+def format_audit_value(field_name: str, value, names: dict[int, str] | None = None) -> str | None:
     if value is None:
         return None
     if field_name == "status":
@@ -215,6 +218,6 @@ def format_audit_value(field_name: str, value, site_names: dict[int, str] | None
         return value.strftime("%d.%m.%Y")
     if field_name == "horizon_m" and isinstance(value, Decimal):
         return format(value.normalize(), "f").rstrip("0").rstrip(".") if "." in format(value.normalize(), "f") else format(value.normalize(), "f")
-    if field_name == "site_id":
-        return (site_names or {}).get(int(value), str(value))
+    if field_name in {"site_id", "domain_id"}:
+        return (names or {}).get(int(value), str(value))
     return str(value)

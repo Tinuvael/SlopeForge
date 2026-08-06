@@ -63,6 +63,8 @@ class DirectoryDialog(QDialog):
         buttons=QHBoxLayout(); buttons.addStretch(); add=QPushButton("Create"); update=QPushButton("Save changes"); add.setEnabled(self.user.can_edit); update.setEnabled(self.user.can_edit); add.clicked.connect(self._save_new_domain); update.clicked.connect(self._update_domain); buttons.addWidget(add); buttons.addWidget(update); layout.addLayout(buttons); return w
 
     def refresh_all(self) -> None:
+        self.selected_domain_id = None
+        self.domain_site.setEnabled(self.user.can_edit)
         self.mines = self.mine_repo.list_mines(); self.sites = self.site_repo.list_sites(); self.domains = self.domain_repo.list_domains()
         self.mine_table.setRowCount(len(self.mines))
         for row, mine in enumerate(self.mines):
@@ -109,10 +111,10 @@ class DirectoryDialog(QDialog):
     def _select_domain(self):
         row=self.domain_table.currentRow()
         if row < 0 or row >= len(self.domains): return
-        domain=self.domains[row]; self.selected_domain_id=domain.id; self.domain_name.setText(domain.name); self.domain_desc.setPlainText(domain.description or ""); self.domain_site.setCurrentIndex(max(self.domain_site.findData(domain.site_id),0))
+        domain=self.domains[row]; self.selected_domain_id=domain.id; self.domain_name.setText(domain.name); self.domain_desc.setPlainText(domain.description or ""); self.domain_site.setCurrentIndex(max(self.domain_site.findData(domain.site_id),0)); self.domain_site.setEnabled(False)
     def _save_new_domain(self):
         if not self.user.can_edit: return
         self.domain_repo.create_domain(self.domain_site.currentData(), self.domain_name.text(), self.domain_desc.toPlainText()); self.refresh_all()
     def _update_domain(self):
         if not self.user.can_edit or self.selected_domain_id is None: return
-        self.domain_repo.update_domain(self.selected_domain_id, self.domain_site.currentData(), self.domain_name.text(), self.domain_desc.toPlainText()); self.refresh_all()
+        self.domain_repo.update_domain(self.selected_domain_id, self.domain_name.text(), self.domain_desc.toPlainText()); self.refresh_all()

@@ -184,10 +184,27 @@ class AssessmentStateRepository:
                 result = LoadedAssessmentState(domain_id, domain.site_id, workspace.id, saved)
             return result
 
+    def set_active_dataset_for_site(self, site_id: int,
+                                    dataset_domain_id: str | None) -> None:
+        """Explicitly set Site activation; Domain snapshot saves never do this."""
+        with self._session_factory() as session:
+            with session.begin():
+                rows = list(session.scalars(select(orm.ProjectLinesDataset).where(
+                    orm.ProjectLinesDataset.site_id == site_id)))
+                selected = next((row for row in rows
+                                 if row.domain_id == dataset_domain_id), None)
+                if dataset_domain_id is not None and selected is None:
+                    raise AssessmentStateValidationError(
+                        f"Dataset {dataset_domain_id!r} does not belong to Site {site_id}")
+                for row in rows:
+                    row.is_active = False
+                session.flush()
+                if selected is not None:
+                    selected.is_active = True
+
     @staticmethod
     def _sync_site_datasets(session, site_id, items):
         existing = {x.domain_id: x for x in session.scalars(select(orm.ProjectLinesDataset).where(orm.ProjectLinesDataset.site_id == site_id))}
-        requested_active = next((x.id for x in items if x.is_active), None)
         result = dict(existing)
         for item in items:
             payload = [x.to_dict() for x in item.lines]
@@ -200,10 +217,6 @@ class AssessmentStateRepository:
                 row = orm.ProjectLinesDataset(site_id=site_id, domain_id=item.id, name=item.name, imported_at=item.imported_at,
                     source_file_name=item.source_file_name, is_active=False, lines_json=payload)
                 session.add(row); result[item.id] = row
-        if requested_active is not None:
-            for row in result.values(): row.is_active = False
-            session.flush()  # avoid transient partial-unique-index collisions
-            result[requested_active].is_active = True
         session.flush()
         return result
 

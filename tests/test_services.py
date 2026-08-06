@@ -22,8 +22,16 @@ class FakeSite:
     name: str = "site"
 
 
+class FakeDomainSession:
+    def __init__(self, domains): self.domains = domains
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+    def get(self, model, domain_id): return self.domains.get(domain_id)
+
 class FakeSiteRepo:
     def __init__(self):
+        self.domains = {30: type("Domain", (), {"id": 30, "site_id": 10})()}
+        self.session_factory = lambda: FakeDomainSession(self.domains)
         self.sites = [FakeSite(id=10, mine_id=20)]
     def list_sites(self, mine_id=None):
         return [s for s in self.sites if mine_id is None or s.mine_id == mine_id]
@@ -65,6 +73,7 @@ def valid_input(**overrides):
         "planned_blast_date": None,
         "status": "planned",
         "comment": "",
+        "domain_id": 30,
     }
     data.update(overrides)
     return BlastBlockInput(**data)
@@ -155,8 +164,8 @@ def test_audit_value_formatting_and_changed_fields() -> None:
     assert format_audit_value("planned_blast_date", date(2026, 7, 15)) == "15.07.2026"
     assert format_audit_value("horizon_m", Decimal("760.5000")) == "760.5"
     changes = build_audit_changes(
-        {"block_number": "A", "site_id": 1, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "planned", "comment": None},
-        {"block_number": "A", "site_id": 2, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "blasted", "comment": None},
+        {"block_number": "A", "domain_id": 1, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "planned", "comment": None},
+        {"block_number": "A", "domain_id": 2, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "blasted", "comment": None},
         {1: "Old site", 2: "New site"},
     )
-    assert changes == [("site_id", "Old site", "New site"), ("status", "Запланирован", "Взорван")]
+    assert changes == [("domain_id", "Old site", "New site"), ("status", "Запланирован", "Взорван")]

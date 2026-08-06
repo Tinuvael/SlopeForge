@@ -29,12 +29,18 @@ class AssessmentWorkspacePage(QWidget):
             saved = self.repository.replace_for_domain(self.domain_id, self.state)
             self.workspace_id = saved.workspace_id
 
+        def dataset_activation_callback(dataset_id: str | None) -> None:
+            if not self.context.current_user.can_edit:
+                raise PermissionError("2D Assessment is read-only for the current user")
+            self.repository.set_active_dataset_for_site(loaded.site_id, dataset_id)
+
         self.workspace = AssessmentWorkspaceWidget(
             state=self.state,
             storage_path=self.storage_path,
             save_callback=save_callback,
             parent=self,
             read_only=not self.context.current_user.can_edit,
+            dataset_activation_callback=dataset_activation_callback,
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
