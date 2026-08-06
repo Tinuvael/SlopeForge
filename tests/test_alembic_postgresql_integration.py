@@ -5,10 +5,17 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set; PostgreSQL Alembic integration test skipped")
 def test_alembic_upgrade_downgrade_upgrade_cycle_on_postgresql(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    database_name = make_url(os.environ["TEST_DATABASE_URL"]).database or ""
+    if "test" not in database_name.lower():
+        pytest.fail(
+            "Refusing destructive Alembic test: PostgreSQL database name must contain 'test'",
+            pytrace=False,
+        )
     command = pytest.importorskip("alembic.command", reason="Alembic package is not installed", exc_type=ImportError)
     config_module = pytest.importorskip("alembic.config", reason="Alembic package is not installed", exc_type=ImportError)
     monkeypatch.setenv("DATABASE_URL", os.environ["TEST_DATABASE_URL"])
