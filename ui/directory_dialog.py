@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QComboBox, QDialog, QFormLayout, QHBoxLayout, QLin
 from database.app_context import CurrentUser
 from repositories.mine_repository import MineRepository
 from repositories.site_repository import SiteRepository
+from repositories.domain_repository import DomainRepository
 
 
 class DirectoryDialog(QDialog):
@@ -13,6 +14,8 @@ class DirectoryDialog(QDialog):
         self.mine_repo = mine_repo
         self.site_repo = site_repo
         self.user = user
+        self.domain_repo = DomainRepository(site_repo.session_factory)
+        self.selected_domain_id = None
         self.selected_mine_id = None
         self.selected_site_id = None
         self.setWindowTitle("Directories")
@@ -21,6 +24,7 @@ class DirectoryDialog(QDialog):
         tabs = QTabWidget(); layout.addWidget(tabs)
         tabs.addTab(self._mine_tab(), "Mines")
         tabs.addTab(self._site_tab(), "Sites")
+        tabs.addTab(self._domain_tab(), "Domains")
         self.refresh_all()
 
     def _mine_tab(self) -> QWidget:
@@ -51,14 +55,26 @@ class DirectoryDialog(QDialog):
         buttons.addWidget(add); buttons.addWidget(upd); layout.addLayout(buttons)
         return w
 
+    def _domain_tab(self) -> QWidget:
+        w=QWidget(); layout=QVBoxLayout(w)
+        self.domain_table=QTableWidget(0,3); self.domain_table.setHorizontalHeaderLabels(["Site","Domain","Description"]); self.domain_table.itemSelectionChanged.connect(self._select_domain); layout.addWidget(self.domain_table)
+        form=QFormLayout(); self.domain_site=QComboBox(); self.domain_name=QLineEdit(); self.domain_desc=QTextEdit(); self.domain_desc.setMaximumHeight(70)
+        form.addRow("Site *",self.domain_site); form.addRow("Name *",self.domain_name); form.addRow("Description",self.domain_desc); layout.addLayout(form)
+        buttons=QHBoxLayout(); buttons.addStretch(); add=QPushButton("Create"); update=QPushButton("Save changes"); add.setEnabled(self.user.can_edit); update.setEnabled(self.user.can_edit); add.clicked.connect(self._save_new_domain); update.clicked.connect(self._update_domain); buttons.addWidget(add); buttons.addWidget(update); layout.addLayout(buttons); return w
+
     def refresh_all(self) -> None:
-        self.mines = self.mine_repo.list_mines(); self.sites = self.site_repo.list_sites()
+        self.mines = self.mine_repo.list_mines(); self.sites = self.site_repo.list_sites(); self.domains = self.domain_repo.list_domains()
         self.mine_table.setRowCount(len(self.mines))
         for row, mine in enumerate(self.mines):
             self.mine_table.setItem(row, 0, QTableWidgetItem(mine.name)); self.mine_table.setItem(row, 1, QTableWidgetItem(mine.description or ""))
         self.site_mine.clear()
         for mine in self.mines:
             self.site_mine.addItem(mine.name, mine.id)
+        self.domain_site.clear()
+        for site in self.sites: self.domain_site.addItem(site.name, site.id)
+        self.domain_table.setRowCount(len(self.domains))
+        for row, domain in enumerate(self.domains):
+            self.domain_table.setItem(row,0,QTableWidgetItem(domain.site.name)); self.domain_table.setItem(row,1,QTableWidgetItem(domain.name)); self.domain_table.setItem(row,2,QTableWidgetItem(domain.description or ""))
         self.site_table.setRowCount(len(self.sites))
         for row, site in enumerate(self.sites):
             self.site_table.setItem(row, 0, QTableWidgetItem(site.mine.name)); self.site_table.setItem(row, 1, QTableWidgetItem(site.name)); self.site_table.setItem(row, 2, QTableWidgetItem(site.description or ""))
@@ -89,3 +105,14 @@ class DirectoryDialog(QDialog):
     def _update_site(self) -> None:
         if self.selected_site_id is None: return
         self.site_repo.update_site(self.selected_site_id, self.site_mine.currentData(), self.site_name.text(), self.site_desc.toPlainText()); self.refresh_all()
+
+    def _select_domain(self):
+        row=self.domain_table.currentRow()
+        if row < 0 or row >= len(self.domains): return
+        domain=self.domains[row]; self.selected_domain_id=domain.id; self.domain_name.setText(domain.name); self.domain_desc.setPlainText(domain.description or ""); self.domain_site.setCurrentIndex(max(self.domain_site.findData(domain.site_id),0))
+    def _save_new_domain(self):
+        if not self.user.can_edit: return
+        self.domain_repo.create_domain(self.domain_site.currentData(), self.domain_name.text(), self.domain_desc.toPlainText()); self.refresh_all()
+    def _update_domain(self):
+        if not self.user.can_edit or self.selected_domain_id is None: return
+        self.domain_repo.update_domain(self.selected_domain_id, self.domain_site.currentData(), self.domain_name.text(), self.domain_desc.toPlainText()); self.refresh_all()

@@ -52,21 +52,34 @@ class Site(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
     mine: Mapped[Mine] = relationship(back_populates="sites")
-    blast_blocks: Mapped[list["BlastBlock"]] = relationship(back_populates="site")
+    domains: Mapped[list["Domain"]] = relationship(back_populates="site")
+    project_lines_datasets: Mapped[list["ProjectLinesDataset"]] = relationship(back_populates="site")
+
+
+class Domain(TimestampMixin, Base):
+    __tablename__ = "domains"
+    __table_args__ = (UniqueConstraint("site_id", "name", name="uq_domains_site_name"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="RESTRICT"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    site: Mapped[Site] = relationship(back_populates="domains")
+    blast_blocks: Mapped[list["BlastBlock"]] = relationship(back_populates="domain")
+    assessment_workspace: Mapped[Optional["AssessmentWorkspace"]] = relationship(back_populates="domain", uselist=False)
 
 
 class BlastBlock(TimestampMixin, Base):
     __tablename__ = "blast_blocks"
-    __table_args__ = (Index("ix_blast_blocks_site_block_number", "site_id", "block_number"),)
+    __table_args__ = (Index("ix_blast_blocks_domain_block_number", "domain_id", "block_number"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="RESTRICT"), nullable=False, index=True)
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="RESTRICT"), nullable=False, index=True)
     block_number: Mapped[str] = mapped_column(String(80), nullable=False)
     horizon_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
     planned_blast_date: Mapped[Optional[date]] = mapped_column(Date)
     status: Mapped[str] = mapped_column(blast_block_status_enum, nullable=False, default="planned", index=True)
     comment: Mapped[Optional[str]] = mapped_column(Text)
     created_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
-    site: Mapped[Site] = relationship(back_populates="blast_blocks")
+    domain: Mapped[Domain] = relationship(back_populates="blast_blocks")
     created_by_user: Mapped[Optional[User]] = relationship()
     rock_mass_profile: Mapped[Optional["RockMassProfile"]] = relationship(back_populates="blast_block", uselist=False)
     blast_design: Mapped[Optional["BlastDesign"]] = relationship(back_populates="blast_block", uselist=False)

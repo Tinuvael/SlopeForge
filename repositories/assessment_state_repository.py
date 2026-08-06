@@ -7,7 +7,7 @@ from typing import Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from database.models import Site
+from database.models import Domain
 from database import assessment_models as orm
 from prototype_2d.domain import AssessmentDomainState
 from repositories.assessment_state_mapper import (
@@ -18,15 +18,15 @@ from repositories.assessment_state_mapper import (
 
 @dataclass(frozen=True)
 class LoadedAssessmentState:
+    domain_id: int
     site_id: int
     workspace_id: int | None
     state: AssessmentDomainState
 
 
-def _workspace_query(site_id: int):
-    return (select(orm.AssessmentWorkspace).where(orm.AssessmentWorkspace.site_id == site_id)
+def _workspace_query(domain_id: int):
+    return (select(orm.AssessmentWorkspace).where(orm.AssessmentWorkspace.domain_id == domain_id)
             .options(
-                selectinload(orm.AssessmentWorkspace.datasets),
                 selectinload(orm.AssessmentWorkspace.events).selectinload(orm.BlastEvent.geometry_revisions),
                 selectinload(orm.AssessmentWorkspace.events).selectinload(orm.BlastEvent.technical_card).selectinload(orm.BlastEventTechnicalCard.revisions),
                 selectinload(orm.AssessmentWorkspace.events).selectinload(orm.BlastEvent.attachments),
@@ -43,7 +43,7 @@ def _assert_payload(payload, expected, kind: str) -> None:
                 f"{kind} payload field {key!r} disagrees with relational data")
 
 
-def _state_from_workspace(workspace: orm.AssessmentWorkspace) -> AssessmentDomainState:
+def _state_from_workspace(workspace: orm.AssessmentWorkspace, dataset_rows) -> AssessmentDomainState:
     events, areas, cards, evaluations, attachments = [], [], [], [], []
     geometry_owner = {}
     for row in sorted(workspace.events, key=lambda x: x.id):
@@ -83,8 +83,8 @@ def _state_from_workspace(workspace: orm.AssessmentWorkspace) -> AssessmentDomai
             attachments.append(_attachment_dict(item, row.domain_id))
     datasets = [{"id": x.domain_id, "name": x.name, "imported_at": x.imported_at.isoformat(),
         "source_file_name": x.source_file_name, "is_active": x.is_active, "lines": x.lines_json}
-        for x in sorted(workspace.datasets, key=lambda x: x.id)]
-    dataset_domains = {x.id: x.domain_id for x in workspace.datasets}
+        for x in sorted(dataset_rows, key=lambda x: x.id)]
+    dataset_domains = {x.id: x.domain_id for x in dataset_rows}
     for row in sorted(workspace.areas, key=lambda x: x.id):
         revisions, links = [], []
         revision_domains = {x.id: x.domain_id for x in row.geometry_revisions}
@@ -156,41 +156,59 @@ class AssessmentStateRepository:
     def __init__(self, session_factory: Callable[[], Session]):
         self._session_factory = session_factory
 
-    def load_for_site(self, site_id: int) -> LoadedAssessmentState:
+    def load_for_domain(self, domain_id: int) -> LoadedAssessmentState:
         with self._session_factory() as session:
-            if session.get(Site, site_id) is None:
-                raise AssessmentSiteNotFoundError(f"Site {site_id} does not exist")
-            workspace = session.scalars(_workspace_query(site_id)).one_or_none()
-            return LoadedAssessmentState(site_id, workspace.id if workspace else None,
-                _state_from_workspace(workspace) if workspace else AssessmentDomainState())
+            domain = session.get(Domain, domain_id)
+            if domain is None:
+                raise AssessmentSiteNotFoundError(f"Domain {domain_id} does not exist")
+            datasets = list(session.scalars(select(orm.ProjectLinesDataset).where(orm.ProjectLinesDataset.site_id == domain.site_id)))
+            workspace = session.scalars(_workspace_query(domain_id)).one_or_none()
+            state = _state_from_workspace(workspace, datasets) if workspace else AssessmentDomainState.from_dict({"datasets": [
+                {"id": x.domain_id, "name": x.name, "imported_at": x.imported_at.isoformat(), "source_file_name": x.source_file_name,
+                 "is_active": x.is_active, "lines": x.lines_json} for x in datasets]})
+            return LoadedAssessmentState(domain.id, domain.site_id, workspace.id if workspace else None, state)
 
-    def replace_for_site(self, site_id: int, state: AssessmentDomainState) -> LoadedAssessmentState:
+    def replace_for_domain(self, domain_id: int, state: AssessmentDomainState) -> LoadedAssessmentState:
         validate_assessment_state(state)
         with self._session_factory() as session:
             with session.begin():
-                if session.get(Site, site_id) is None:
-                    raise AssessmentSiteNotFoundError(f"Site {site_id} does not exist")
-                previous = session.scalars(_workspace_query(site_id)).one_or_none()
-                if previous:
-                    session.delete(previous)
-                    session.flush()
-                workspace = orm.AssessmentWorkspace(site_id=site_id)
-                session.add(workspace)
-                session.flush()
-                self._insert(session, workspace, state)
-                session.flush()
-                saved = _state_from_workspace(session.scalars(_workspace_query(site_id)).one())
-                result = LoadedAssessmentState(site_id, workspace.id, saved)
+                domain = session.get(Domain, domain_id)
+                if domain is None: raise AssessmentSiteNotFoundError(f"Domain {domain_id} does not exist")
+                datasets = self._sync_site_datasets(session, domain.site_id, state.datasets)
+                previous = session.scalars(_workspace_query(domain_id)).one_or_none()
+                if previous: session.delete(previous); session.flush()
+                workspace = orm.AssessmentWorkspace(domain_id=domain_id); session.add(workspace); session.flush()
+                self._insert(session, workspace, state, datasets); session.flush()
+                rows = list(session.scalars(select(orm.ProjectLinesDataset).where(orm.ProjectLinesDataset.site_id == domain.site_id)))
+                saved = _state_from_workspace(session.scalars(_workspace_query(domain_id)).one(), rows)
+                result = LoadedAssessmentState(domain_id, domain.site_id, workspace.id, saved)
             return result
 
     @staticmethod
-    def _insert(session, workspace, state):
-        datasets = {}
-        for item in state.datasets:
-            row = orm.ProjectLinesDataset(workspace=workspace, domain_id=item.id, name=item.name,
-                imported_at=item.imported_at, source_file_name=item.source_file_name,
-                is_active=item.is_active, lines_json=[x.to_dict() for x in item.lines])
-            session.add(row); datasets[item.id] = row
+    def _sync_site_datasets(session, site_id, items):
+        existing = {x.domain_id: x for x in session.scalars(select(orm.ProjectLinesDataset).where(orm.ProjectLinesDataset.site_id == site_id))}
+        requested_active = next((x.id for x in items if x.is_active), None)
+        result = dict(existing)
+        for item in items:
+            payload = [x.to_dict() for x in item.lines]
+            row = existing.get(item.id)
+            if row:
+                immutable = (row.name, row.imported_at, row.source_file_name, row.lines_json)
+                proposed = (item.name, item.imported_at, item.source_file_name, payload)
+                if immutable != proposed: raise AssessmentPersistenceCorruptionError(f"Dataset {item.id!r} immutable payload changed")
+            else:
+                row = orm.ProjectLinesDataset(site_id=site_id, domain_id=item.id, name=item.name, imported_at=item.imported_at,
+                    source_file_name=item.source_file_name, is_active=False, lines_json=payload)
+                session.add(row); result[item.id] = row
+        if requested_active is not None:
+            for row in result.values(): row.is_active = False
+            session.flush()  # avoid transient partial-unique-index collisions
+            result[requested_active].is_active = True
+        session.flush()
+        return result
+
+    @staticmethod
+    def _insert(session, workspace, state, datasets):
         events, geometries = {}, {}
         for item in state.blast_events:
             row = orm.BlastEvent(workspace=workspace, domain_id=item.id, name=item.name,

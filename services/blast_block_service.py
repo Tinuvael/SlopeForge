@@ -7,23 +7,24 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.app_context import CurrentUser
-from database.models import BlastBlock, Site
+from database.models import BlastBlock, Domain, Site
 from repositories.audit_log_repository import AuditLogRepository
 from repositories.blast_block_repository import BlastBlockRepository, BlastBlockRow
 from repositories.site_repository import SiteRepository
+from repositories.domain_repository import DomainRepository
 
 VALID_STATUSES = {"planned", "blasted", "assessed"}
 STATUS_LABELS = {"planned": "Planned", "blasted": "Blasted", "assessed": "Assessed"}
 AUDIT_STATUS_LABELS = {"planned": "Запланирован", "blasted": "Взорван", "assessed": "Оценён"}
 AUDIT_FIELD_LABELS = {
     "block_number": "Номер блока",
-    "site_id": "Участок",
+    "domain_id": "Домен",
     "horizon_m": "Горизонт",
     "planned_blast_date": "Плановая дата взрыва",
     "status": "Статус",
     "comment": "Комментарий",
 }
-AUDITED_FIELDS = ("block_number", "site_id", "horizon_m", "planned_blast_date", "status", "comment")
+AUDITED_FIELDS = ("block_number", "domain_id", "horizon_m", "planned_blast_date", "status", "comment")
 
 
 class PermissionDenied(ValueError):
@@ -43,6 +44,7 @@ class BlastBlockInput:
     planned_blast_date: date | None
     status: str
     comment: str | None
+    domain_id: int | None = None
 
 
 class BlastBlockService:
@@ -63,7 +65,7 @@ class BlastBlockService:
         horizon = self._validate(data)
         if self.session_factory is None:
             block = self.block_repository.create_block(
-                site_id=data.site_id,
+                domain_id=data.domain_id,
                 block_number=data.block_number,
                 horizon_m=horizon,
                 planned_blast_date=data.planned_blast_date,
@@ -76,7 +78,7 @@ class BlastBlockService:
             with self.session_factory() as session:
                 try:
                     block = BlastBlock(
-                        site_id=data.site_id,
+                        domain_id=data.domain_id,
                         block_number=data.block_number.strip(),
                         horizon_m=horizon,
                         planned_blast_date=data.planned_blast_date,
@@ -109,7 +111,7 @@ class BlastBlockService:
         if self.session_factory is None:
             self.block_repository.update_block(
                 block_id=block_id,
-                site_id=data.site_id,
+                domain_id=data.domain_id,
                 block_number=data.block_number,
                 horizon_m=horizon,
                 planned_blast_date=data.planned_blast_date,
@@ -125,14 +127,14 @@ class BlastBlockService:
                         raise ValueError("Blast block not found")
                     new_values = {
                         "block_number": data.block_number.strip(),
-                        "site_id": data.site_id,
+                        "domain_id": data.domain_id,
                         "horizon_m": horizon,
                         "planned_blast_date": data.planned_blast_date,
                         "status": data.status,
                         "comment": data.comment or None,
                     }
                     old_values = {field: getattr(block, field) for field in AUDITED_FIELDS}
-                    site_names = self._site_names_for_audit(session, old_values["site_id"], new_values["site_id"])
+                    site_names = {}
                     changes = build_audit_changes(old_values, new_values, site_names)
                     for field, new_value in new_values.items():
                         setattr(block, field, new_value)
@@ -166,11 +168,17 @@ class BlastBlockService:
             raise ValidationError("Block number is required")
         if data.site_id is None:
             raise ValidationError("Select a site")
+        if data.domain_id is None:
+            raise ValidationError("Select a domain")
         if data.mine_id is None:
             raise ValidationError("Select a mine")
         sites = self.site_repository.list_sites(data.mine_id)
         if not any(site.id == data.site_id for site in sites):
             raise ValidationError("Selected site does not belong to selected mine")
+        with self.site_repository.session_factory() as session:
+            domain = session.get(Domain, data.domain_id)
+            if domain is None or domain.site_id != data.site_id:
+                raise ValidationError("Selected domain does not belong to selected site")
         if data.status not in VALID_STATUSES:
             raise ValidationError("Invalid block status")
         if not data.horizon_text.strip():

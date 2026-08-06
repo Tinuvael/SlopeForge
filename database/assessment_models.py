@@ -21,8 +21,8 @@ from .base import Base, TimestampMixin
 class AssessmentWorkspace(TimestampMixin, Base):
     __tablename__ = "assessment_workspaces"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="RESTRICT"), nullable=False, unique=True)
-    datasets: Mapped[list["ProjectLinesDataset"]] = relationship(back_populates="workspace", cascade="all, delete-orphan", passive_deletes=True)
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="RESTRICT"), nullable=False, unique=True)
+    domain: Mapped["Domain"] = relationship(back_populates="assessment_workspace")
     events: Mapped[list["BlastEvent"]] = relationship(back_populates="workspace", cascade="all, delete-orphan", passive_deletes=True)
     areas: Mapped[list["AssessmentArea"]] = relationship(back_populates="workspace", cascade="all, delete-orphan", passive_deletes=True)
 
@@ -30,21 +30,21 @@ class AssessmentWorkspace(TimestampMixin, Base):
 class ProjectLinesDataset(Base):
     __tablename__ = "project_lines_datasets"
     __table_args__ = (
-        UniqueConstraint("workspace_id", "domain_id", name="uq_project_lines_datasets_workspace_domain_id"),
+        UniqueConstraint("site_id", "domain_id", name="uq_project_lines_datasets_site_domain_id"),
         CheckConstraint("jsonb_typeof(lines_json) = 'array'", name="ck_project_lines_datasets_lines_json_array"),
-        Index("ix_project_lines_datasets_one_active_per_workspace", "workspace_id", unique=True, postgresql_where=text("is_active")),
-        Index("ix_project_lines_datasets_workspace_id", "workspace_id"),
+        Index("ix_project_lines_datasets_one_active_per_site", "site_id", unique=True, postgresql_where=text("is_active")),
+        Index("ix_project_lines_datasets_site_id", "site_id"),
         Index("ix_project_lines_datasets_imported_at", "imported_at"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    workspace_id: Mapped[int] = mapped_column(ForeignKey("assessment_workspaces.id", ondelete="CASCADE"), nullable=False)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="RESTRICT"), nullable=False)
     domain_id: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     source_file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     lines_json: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
-    workspace: Mapped[AssessmentWorkspace] = relationship(back_populates="datasets")
+    site: Mapped["Site"] = relationship(back_populates="project_lines_datasets")
 
 
 class BlastEvent(TimestampMixin, Base):
