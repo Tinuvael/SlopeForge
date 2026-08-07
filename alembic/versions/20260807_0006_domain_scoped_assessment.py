@@ -74,6 +74,16 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.add_column("assessment_workspaces", sa.Column("site_id", sa.Integer(), nullable=True))
     op.execute("UPDATE assessment_workspaces w SET site_id = d.site_id FROM domains d WHERE d.id = w.domain_id")
+    # The 0005 schema can represent only one workspace per Site.  Keep the
+    # lowest integer PK deterministically; deleting the others intentionally
+    # cascades their Domain-owned Assessment rows before UNIQUE(site_id) is
+    # restored.  Site Project Lines are retained independently and attached to
+    # that surviving workspace below.
+    op.execute("""
+        DELETE FROM assessment_workspaces w
+        USING assessment_workspaces keep
+        WHERE w.site_id = keep.site_id AND w.id > keep.id
+    """)
     op.create_foreign_key("assessment_workspaces_site_id_fkey", "assessment_workspaces", "sites",
                           ["site_id"], ["id"], ondelete="RESTRICT")
     op.create_unique_constraint("assessment_workspaces_site_id_key", "assessment_workspaces", ["site_id"])

@@ -100,11 +100,15 @@ class AssessmentWorkspaceWidget(QWidget):
 
     def __init__(self, state: AssessmentDomainState, storage_path: str | Path | None,
                  save_callback: Callable[[], None], parent: QWidget | None = None,
-                 read_only: bool = False):
+                 read_only: bool = False,
+                 persist_dataset_callback: Callable[[object], None] | None = None,
+                 set_active_dataset_callback: Callable[[str], None] | None = None):
         super().__init__(parent)
         self.storage_path = storage_path
         self.state = state
         self._save_callback = save_callback
+        self._persist_dataset_callback = persist_dataset_callback
+        self._set_active_dataset_callback = set_active_dataset_callback
         self.read_only = read_only
         self.service = BlastEventService(self.state)
         self.dataset_service = ProjectLinesDatasetService(self.state)
@@ -627,6 +631,7 @@ class AssessmentWorkspaceWidget(QWidget):
         if not path:
             return
         first_import = not self.state.datasets
+        previous_datasets = deepcopy(self.state.datasets)
         try:
             QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             text, _ = read_text(Path(path))
@@ -642,13 +647,23 @@ class AssessmentWorkspaceWidget(QWidget):
                 QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             dataset, result = self.dataset_service.import_dataset(path, column_mapping=mapping)
             self.clear_highlighted_link(redraw=False)
-            self._save()
+            if self._persist_dataset_callback is None:
+                self._save()
+            else:
+                self._persist_dataset_callback(dataset)
+                self.state_changed.emit()
+                self.state_saved.emit()
             self.refresh_datasets()
             self.draw_geometry()
             if first_import:
                 self.plan_view.fit_to_extent()
             QMessageBox.information(self, "Импорт проектных линий", result.summary.to_text() + f"\nDataset: {dataset.id}")
-        except (DatamineCsvError, ValueError) as exc:
+        except Exception as exc:
+            # Parsing changes the aggregate before PostgreSQL persistence.  On any
+            # failure restore the exact Site snapshot so no fake Dataset remains.
+            self.state.datasets[:] = previous_datasets
+            self.refresh_datasets()
+            self.draw_geometry()
             QMessageBox.warning(self, "Ошибка импорта", str(exc))
         finally:
             QGuiApplication.restoreOverrideCursor()
@@ -661,9 +676,7 @@ class AssessmentWorkspaceWidget(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selected_dataset_id():
             return
         self._ensure_can_edit()
-        self.dataset_service.set_active(dialog.selected_dataset_id())
-        self.clear_highlighted_link(redraw=False)
-        self._save()
+        self._activate_dataset(dialog.selected_dataset_id())
         self.refresh_datasets()
         self.draw_geometry()
 
@@ -936,11 +949,27 @@ class AssessmentWorkspaceWidget(QWidget):
         active_dataset = self.dataset_service.active_dataset()
         if active_dataset is None or active_dataset.id != dataset_id:
             self._ensure_can_edit()
-            self.dataset_service.set_active(dataset_id)
-            self._save()
+            self._activate_dataset(dataset_id)
         self.refresh_datasets()
         self.draw_geometry()
         return True
+
+    def _activate_dataset(self, dataset_id: str) -> None:
+        previous = deepcopy(self.state.datasets)
+        try:
+            self.dataset_service.set_active(dataset_id)
+            if self._set_active_dataset_callback is None:
+                self._save()
+            else:
+                self._set_active_dataset_callback(dataset_id)
+                self.state_changed.emit()
+                self.state_saved.emit()
+        except Exception:
+            self.state.datasets[:] = previous
+            raise
+        self.clear_highlighted_link(redraw=False)
+        self.refresh_datasets()
+        self.draw_geometry()
 
     def refresh_workspace(self) -> None:
         event_id = self.selected_event.id if self.selected_event else None

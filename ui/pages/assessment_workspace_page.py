@@ -4,6 +4,7 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from database.app_context import AppContext
 from repositories.assessment_state_repository import AssessmentStateRepository
+from repositories.project_lines_repository import ProjectLinesRepository
 from ui.prototype_2d.assessment_workspace import AssessmentWorkspaceWidget
 
 
@@ -19,6 +20,7 @@ class AssessmentWorkspacePage(QWidget):
         self.domain_name = domain_name
         self.storage_path = context.storage_root / "slopeforge_state.json"
         self.repository = AssessmentStateRepository(context.session_factory)
+        self.project_lines_repository = ProjectLinesRepository(context.session_factory)
         loaded = self.repository.load_for_domain(domain_id)
         self.site_id = loaded.site_id if site_id is None else site_id
         self.workspace_id = loaded.workspace_id
@@ -30,12 +32,25 @@ class AssessmentWorkspacePage(QWidget):
             saved = self.repository.replace_for_domain(self.domain_id, self.state)
             self.workspace_id = saved.workspace_id
 
+        def persist_dataset_callback(dataset) -> None:
+            make_active = dataset.is_active
+            self.project_lines_repository.add_dataset(self.site_id, dataset)
+            if make_active:
+                self.project_lines_repository.set_active(self.site_id, dataset.id)
+            self._reload_site_datasets()
+
+        def set_active_dataset_callback(dataset_id: str) -> None:
+            self.project_lines_repository.set_active(self.site_id, dataset_id)
+            self._reload_site_datasets()
+
         self.workspace = AssessmentWorkspaceWidget(
             state=self.state,
             storage_path=self.storage_path,
             save_callback=save_callback,
             parent=self,
             read_only=not self.context.current_user.can_edit,
+            persist_dataset_callback=persist_dataset_callback,
+            set_active_dataset_callback=set_active_dataset_callback,
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -88,6 +103,11 @@ class AssessmentWorkspacePage(QWidget):
             self.state.attachments[:] = previous["attachments"]
             self.workspace_id = previous["workspace_id"]
             raise
+
+    def _reload_site_datasets(self) -> None:
+        """Refresh shared Site history without touching Domain-owned data."""
+        loaded = self.repository.load_for_domain(self.domain_id)
+        self.state.datasets[:] = loaded.state.datasets
 
     def has_active_workflow(self) -> bool:
         return self.workspace.has_active_workflow()

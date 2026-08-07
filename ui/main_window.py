@@ -119,6 +119,14 @@ class MainWindow(QMainWindow):
 
     def select_site(self, site_id: int, site_name: str) -> None:
         """Select Site context without guessing or opening a Domain workspace."""
+        if self.assessment_site_id != site_id:
+            self.assessment_domain_id = None
+            self.assessment_domain_name = None
+            self.assessment_nav_button.setEnabled(False)
+            self.assessment_nav_button.setToolTip("Выберите домен в дереве проекта")
+            self.page_stack.setCurrentWidget(self.block_page)
+            self._sync_navigation_buttons()
+            return
         self.assessment_nav_button.setEnabled(self.assessment_domain_id is not None)
 
     def open_assessment_for_domain(self, domain_id: int, domain_name: str, site_id: int) -> bool:

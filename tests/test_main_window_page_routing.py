@@ -349,3 +349,13 @@ def test_obsolete_prototype_launcher_is_absent(window, window_module):
     assert not hasattr(window, "open_2d_plan_prototype")
     assert "ui.prototype_2d.window" not in sys.modules
     assert "2D Plan Prototype" not in Path("ui/main_window.py").read_text(encoding="utf-8")
+
+
+def test_selecting_another_site_clears_stale_domain_context(window):
+    assert window.open_assessment_for_domain(7, "North", 70)
+    window.tree.site_selected.emit(80, "Other site")
+    assert window.assessment_domain_id is None
+    assert window.assessment_domain_name is None
+    assert not window.assessment_nav_button.isEnabled()
+    assert window.page_stack.currentWidget() is window.block_page
+    assert not window.show_assessment_page()

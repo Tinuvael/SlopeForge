@@ -4,10 +4,14 @@ import os
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set; PostgreSQL Alembic integration test skipped")
 def test_alembic_upgrade_downgrade_upgrade_cycle_on_postgresql(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    if "test" not in (make_url(os.environ["TEST_DATABASE_URL"]).database or "").lower():
+        pytest.fail("Refusing migration test outside a test database", pytrace=False)
     command = pytest.importorskip("alembic.command", reason="Alembic package is not installed", exc_type=ImportError)
     config_module = pytest.importorskip("alembic.config", reason="Alembic package is not installed", exc_type=ImportError)
     monkeypatch.setenv("DATABASE_URL", os.environ["TEST_DATABASE_URL"])
@@ -18,3 +22,54 @@ def test_alembic_upgrade_downgrade_upgrade_cycle_on_postgresql(monkeypatch: pyte
     command.downgrade(config, "base")
     command.upgrade(config, "head")
     command.downgrade(config, "base")
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
+def test_0006_preserves_dataset_reference_and_downgrades_multiple_domains(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    url = os.environ["TEST_DATABASE_URL"]
+    if "test" not in (make_url(url).database or "").lower():
+        pytest.fail("Refusing migration test outside a test database", pytrace=False)
+    from alembic import command
+    from alembic.config import Config
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
+    config = Config("alembic.ini")
+    command.downgrade(config, "base")
+    command.upgrade(config, "20260804_0005")
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            mine = connection.scalar(text("INSERT INTO mines (name) VALUES ('migration') RETURNING id"))
+            site = connection.scalar(text("INSERT INTO sites (mine_id, name) VALUES (:m, 'site') RETURNING id"), {"m": mine})
+            workspace = connection.scalar(text("INSERT INTO assessment_workspaces (site_id) VALUES (:s) RETURNING id"), {"s": site})
+            dataset_id = connection.scalar(text("""INSERT INTO project_lines_datasets
+                (workspace_id, domain_id, name, imported_at, source_file_name, is_active, lines_json)
+                VALUES (:w, 'D-X', 'X', now(), 'x.csv', true, '[]'::jsonb) RETURNING id"""), {"w": workspace})
+            area = connection.scalar(text("""INSERT INTO assessment_areas
+                (workspace_id, domain_id, name, assessment_date, is_archived)
+                VALUES (:w, 'A-X', 'A', CURRENT_DATE, false) RETURNING id"""), {"w": workspace})
+            revision = connection.scalar(text("""INSERT INTO assessment_area_geometry_revisions
+                (assessment_area_id, domain_id, revision_number, created_at, source_dataset_id,
+                 selection_polygon_json, final_geometry_json, lower_elevation_m, upper_elevation_m,
+                 horizon_slices_json, change_reason, is_active)
+                VALUES (:a, 'R-X', 1, now(), :d,
+                 '{"type":"Polygon","coordinates":[]}'::jsonb,
+                 '{"type":"Polygon","coordinates":[]}'::jsonb,
+                 1, 2, '[]'::jsonb, NULL, true) RETURNING id"""), {"a": area, "d": dataset_id})
+        command.upgrade(config, "20260807_0006")
+        with engine.begin() as connection:
+            assert connection.scalar(text("SELECT id FROM project_lines_datasets WHERE domain_id='D-X'")) == dataset_id
+            assert connection.scalar(text("SELECT source_dataset_id FROM assessment_area_geometry_revisions WHERE id=:r"), {"r": revision}) == dataset_id
+            compatibility = connection.scalar(text("SELECT id FROM domains WHERE site_id=:s"), {"s": site})
+            connection.execute(text("INSERT INTO domains (site_id, name) VALUES (:s, 'South')"), {"s": site})
+            south = connection.scalar(text("SELECT id FROM domains WHERE site_id=:s AND name='South'"), {"s": site})
+            connection.execute(text("INSERT INTO assessment_workspaces (domain_id) VALUES (:d)"), {"d": south})
+            assert compatibility is not None
+        command.downgrade(config, "20260804_0005")
+        with engine.begin() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM assessment_workspaces WHERE site_id=:s"), {"s": site}) == 1
+            assert connection.scalar(text("SELECT workspace_id FROM project_lines_datasets WHERE id=:d"), {"d": dataset_id}) is not None
+    finally:
+        engine.dispose()
+        command.downgrade(config, "base")

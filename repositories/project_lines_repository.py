@@ -30,13 +30,9 @@ class ProjectLinesRepository:
         with self._session_factory.begin() as session:
             if session.get(Site, site_id) is None:
                 raise ValueError(f"Site {site_id} does not exist")
-            if dataset.is_active:
-                session.execute(update(orm.ProjectLinesDataset).where(
-                    orm.ProjectLinesDataset.site_id == site_id
-                ).values(is_active=False))
             row = orm.ProjectLinesDataset(site_id=site_id, domain_id=dataset.id, name=dataset.name,
                 imported_at=dataset.imported_at, source_file_name=dataset.source_file_name,
-                is_active=dataset.is_active, is_archived=False,
+                is_active=False, is_archived=False,
                 lines_json=[line.to_dict() for line in dataset.lines])
             session.add(row)
             session.flush()
