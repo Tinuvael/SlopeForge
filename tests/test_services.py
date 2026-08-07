@@ -27,8 +27,9 @@ class FakeDomainRepo:
 
 class FakeBlockRepo:
     session_factory = None
-    def __init__(self): self.created=[]; self.rows=[]
+    def __init__(self): self.created=[]; self.updated=[]; self.rows=[]
     def create_block(self, **kwargs): self.created.append(kwargs); return type("Block",(),{"id":100})()
+    def update_block(self, **kwargs): self.updated.append(kwargs); return type("Block",(),{"id":kwargs["block_id"]})()
     def list_blocks(self, **filters): return self.rows
     def get_block(self, block_id): return None
 
@@ -46,6 +47,28 @@ def test_block_validation_rejects_missing_domain_and_bad_status():
     with pytest.raises(ValidationError): service.create_block(valid_input(status="bad"),admin)
 def test_repository_filters_are_forwarded():
     repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo()); assert service.list_blocks(domain_id=7,status="planned")==[]
+
+def test_block_update_preserves_zero_horizon_and_empty_planned_date():
+    repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo())
+    service.update_block(5,valid_input(horizon_text="0",planned_blast_date=None),editor)
+    assert repo.updated[0]["horizon_m"] == Decimal("0")
+    assert repo.updated[0]["planned_blast_date"] is None
+
+def test_linked_production_block_domain_is_immutable():
+    class Session:
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def get(self,model,key):
+            if model.__name__ == "BlastBlock": return type("Block",(),{"id":5,"domain_id":7})()
+            return FakeDomain(key,site_id=10)
+        def scalar(self,_statement): return 44
+    class Factory:
+        def __call__(self): return Session()
+        def begin(self): return Session()
+    repo=FakeBlockRepo(); repo.session_factory=Factory()
+    domains=FakeDomainRepo(); domains.domains.append(FakeDomain(8,site_id=10)); service=BlastBlockService(repo,domains,audit_repository=object())
+    with pytest.raises(ValidationError,match="Domain cannot be changed"):
+        service.update_block(5,valid_input(domain_id=8),editor)
 
 
 def test_auth_success_and_failure_with_fake_session() -> None:

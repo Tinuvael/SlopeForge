@@ -21,12 +21,22 @@ class EntityPageController:
     def event_for_block(self, block_id): return next((e for e in self.state.blast_events if e.blast_block_id==block_id and e.event_type=="production"),None)
     def area(self, area_id): return next((a for a in self.state.assessment_areas if a.id==area_id),None)
     def technical_card_draft(self,event): return self.technical_cards.edit_or_create(event)
-    def save_technical_card(self,card,revision,status): card.save_revision(revision,status=status); self.save()
+    def save_technical_card(self,card,revision,status):
+        count=len(card.revisions); active=card.active_revision_id
+        try: card.save_revision(revision,status=status); self.save()
+        except Exception:
+            del card.revisions[count:]; card.active_revision_id=active; raise
     def evaluation_draft(self,area):
         existing=next((e for e in reversed(self.state.evaluations) if e.assessment_area_id==area.id and e.active_revision()),None)
         if existing:return existing,deepcopy(existing.active_revision())
         return self.evaluations.new_evaluation(area)
     def save_evaluation(self,evaluation,revision,status):
-        present=evaluation in self.state.evaluations; evaluation.save_revision(revision,status)
-        if not present:self.state.evaluations.append(evaluation)
-        self.save()
+        present=evaluation in self.state.evaluations; count=len(evaluation.revisions); active=evaluation.active_revision_id
+        try:
+            evaluation.save_revision(revision,status)
+            if not present:self.state.evaluations.append(evaluation)
+            self.save()
+        except Exception:
+            del evaluation.revisions[count:]; evaluation.active_revision_id=active
+            if not present and evaluation in self.state.evaluations:self.state.evaluations.remove(evaluation)
+            raise

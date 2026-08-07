@@ -81,3 +81,29 @@ def test_area_links_and_focused_creation_are_reused():
     assert "Blast Events" not in creation and "TechnicalCard" not in creation
     main=source("ui/main_window.py")
     assert "AssessmentAreaCreationPage" in main and "_area_created" in main
+
+def test_entity_page_integration_corrections_are_visible():
+    block=source("ui/pages/block_list_page.py")
+    assert 'QPushButton("Save draft")' in block and 'QPushButton("Complete")' in block
+    assert "save_draft()" in block and "complete()" in block
+    area=source("ui/pages/assessment_area_page.py")
+    assert "self.assessment_sections=QTabWidget()" in area
+    assert 'addTab(take("Общие"),"Общие")' in area
+    assert "Сначала сохраните черновик оценки" in area
+    creation=source("ui/pages/assessment_area_creation_page.py")
+    for label in ("Fit","Project Lines","Grid","Back / undo vertex","Finish polygon / Continue","Confirm boundaries","Cancel"):
+        assert label in creation
+
+def test_refresh_reloads_filters_and_area_construction_is_guarded():
+    main=source("ui/main_window.py")
+    refresh=main[main.index("def refresh_project_data"):main.index("def closeEvent")]
+    assert refresh.index("reload_filters") < refresh.index("load_data")
+    assert main.count("Не удалось открыть Assessment Area") == 1
+    assert "Не удалось запустить создание Assessment Area" in main
+    assert "Не удалось открыть редактирование границ" in main
+
+def test_existing_block_dialog_preserves_zero_and_none_and_locks_linked_domain():
+    dialog=source("ui/block_dialog.py")
+    assert '"" if block.horizon_m is None else str(block.horizon_m)' in dialog
+    assert "self.planned_date.setDate(self.planned_date.minimumDate())" in dialog
+    assert "is_linked_to_production_event" in dialog and "self.domain.setEnabled(False)" in dialog

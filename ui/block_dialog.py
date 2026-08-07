@@ -13,8 +13,10 @@ class BlockDialog(QDialog):
             self.domain.setCurrentIndex(max(0,self.domain.findData(selected)))
         form.addRow("Domain *",self.domain); form.addRow("Block number *",self.block_number); form.addRow("Horizon, m",self.horizon); form.addRow("Planned blast date",self.planned_date); form.addRow("Status",self.status); form.addRow("Comment",self.comment); layout.addLayout(form)
         if block:
-            self.block_number.setText(block.block_number); self.horizon.setText(str(block.horizon_m or "")); self.status.setCurrentIndex(max(0,self.status.findData(block.status))); self.comment.setPlainText(block.comment or "")
+            self.block_number.setText(block.block_number); self.horizon.setText("" if block.horizon_m is None else str(block.horizon_m)); self.status.setCurrentIndex(max(0,self.status.findData(block.status))); self.comment.setPlainText(block.comment or "")
             if block.planned_blast_date: d=block.planned_blast_date; self.planned_date.setDate(QDate(d.year,d.month,d.day))
+            else:self.planned_date.setDate(self.planned_date.minimumDate())
+            if service.is_linked_to_production_event(block.id): self.domain.setEnabled(False); self.domain.setToolTip("Domain is fixed because this Block is linked to a production BlastEvent")
         buttons=QHBoxLayout(); buttons.addStretch(); cancel=QPushButton("Cancel"); cancel.clicked.connect(self.reject); save=QPushButton("Save"); save.clicked.connect(self._save); save.setVisible(not self.read_only); buttons.addWidget(cancel); buttons.addWidget(save); layout.addLayout(buttons)
     def _input(self):
         q=self.planned_date.date(); planned=None if q==self.planned_date.minimumDate() else date(q.year(),q.month(),q.day())

@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
 
 from database.app_context import CurrentUser
 from database.models import BlastBlock, Domain
@@ -40,6 +41,11 @@ class BlastBlockService:
 
     def list_blocks(self, **filters): return self.block_repository.list_blocks(**filters)
     def get_block(self, block_id): return self.block_repository.get_block(block_id)
+    def is_linked_to_production_event(self, block_id: int) -> bool:
+        if self.session_factory is None: return False
+        from database.assessment_models import BlastEvent
+        with self.session_factory() as session:
+            return session.scalar(select(BlastEvent.id).where(BlastEvent.blast_block_id==block_id,BlastEvent.event_type=="production")) is not None
 
     def set_archived(self, block_id: int, archived: bool, user: CurrentUser) -> None:
         self._check_can_edit(user)
@@ -63,11 +69,18 @@ class BlastBlockService:
 
     def update_block(self, block_id: int, data: BlastBlockInput, user: CurrentUser) -> int:
         self._check_can_edit(user); horizon = self._validate(data)
+        if self.session_factory is None:
+            self.block_repository.update_block(block_id=block_id,domain_id=data.domain_id,block_number=data.block_number,horizon_m=horizon,planned_blast_date=data.planned_blast_date,status=data.status,comment=data.comment)
+            return block_id
         try:
             with self.session_factory.begin() as session:
                 block = session.get(BlastBlock, block_id)
                 if block is None: raise ValueError("Blast block not found")
                 old_domain = session.get(Domain, block.domain_id); new_domain = session.get(Domain, data.domain_id)
+                if data.domain_id != block.domain_id:
+                    from database.assessment_models import BlastEvent
+                    linked=session.scalar(select(BlastEvent.id).where(BlastEvent.blast_block_id==block.id,BlastEvent.event_type=="production"))
+                    if linked is not None: raise ValidationError("Domain cannot be changed for a Block linked to a production BlastEvent")
                 if old_domain.site_id != new_domain.site_id: raise ValidationError("A block can only move between Domains of the same project")
                 new_values = {"block_number": data.block_number.strip(), "domain_id": data.domain_id, "horizon_m": horizon, "planned_blast_date": data.planned_blast_date, "status": data.status, "comment": data.comment or None}
                 old_values = {field: getattr(block, field) for field in AUDITED_FIELDS}

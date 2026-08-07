@@ -24,7 +24,7 @@ class AssessmentAreaPage(QWidget):
             for i in range(source.count()):
                 if source.tabText(i)==title: page=source.widget(i); source.removeTab(i); return page
             return QWidget()
-        assessment=QWidget(); layout=QVBoxLayout(assessment); layout.addWidget(take("Общие")); layout.addWidget(take("Геометрия")); layout.addWidget(take("Состояние борта")); controls=QHBoxLayout(); save=QPushButton("Сохранить черновик"); complete=QPushButton("Завершить оценку"); save.clicked.connect(lambda:self.evaluation_editor.save("draft")); complete.clicked.connect(lambda:self.evaluation_editor.save("completed")); controls.addStretch(); controls.addWidget(save); controls.addWidget(complete); layout.addLayout(controls); self.tabs.addTab(assessment,"Assessment")
+        assessment=QWidget(); layout=QVBoxLayout(assessment); self.assessment_sections=QTabWidget(); self.assessment_sections.addTab(take("Общие"),"Общие"); self.assessment_sections.addTab(take("Геометрия"),"Геометрия"); self.assessment_sections.addTab(take("Состояние борта"),"Состояние борта"); layout.addWidget(self.assessment_sections); controls=QHBoxLayout(); save=QPushButton("Сохранить черновик"); complete=QPushButton("Завершить оценку"); save.clicked.connect(lambda:self._save_evaluation("draft")); complete.clicked.connect(lambda:self._save_evaluation("completed")); controls.addStretch(); controls.addWidget(save); controls.addWidget(complete); layout.addLayout(controls); self.tabs.addTab(assessment,"Assessment")
         self.result=take("Матрица"); self.tabs.addTab(self.result,"Result"); self.history=take("История")
     def _linked_events(self):
         page=QWidget(); layout=QVBoxLayout(page); self.links_table=QTableWidget(0,8); self.links_table.setHorizontalHeaderLabels(["Status","Source","BlastEvent","Type","Elevation","Revision","State","Spatial match"]); layout.addWidget(self.links_table)
@@ -56,8 +56,13 @@ class AssessmentAreaPage(QWidget):
         event=self.controller.links.event(link.blast_event_id); revision=event.active_geometry_revision(); area_revision=self.area.active_geometry_revision(); dataset=next((d for d in self.controller.state.datasets if d.id==area_revision.source_dataset_id),None)
         self.plan.set_geometry(revision.plan_geometry if revision else area_revision.final_geometry_frozen,dataset.lines if dataset else [],f"{event.name} | {event.elevation:g}"); self.tabs.setCurrentIndex(0)
     def _attachment_tab(self,title):
-        page=QWidget(); layout=QVBoxLayout(page); layout.addWidget(QLabel(f"{title} for this Assessment evaluation")); manage=QPushButton(f"Manage {title.lower()}")
+        page=QWidget(); layout=QVBoxLayout(page); hint=QLabel(); manage=QPushButton(f"Manage {title.lower()}"); self.attachment_controls=getattr(self,"attachment_controls",[]); self.attachment_controls.append((manage,hint)); layout.addWidget(hint)
         def open_dialog():
             from ui.prototype_2d.entity_attachment_dialog import EntityAttachmentDialog
             EntityAttachmentDialog(self.controller.attachments,"assessment_evaluation",self.evaluation.id,self,read_only=not self.context.current_user.can_edit).exec()
-        manage.clicked.connect(open_dialog); layout.addWidget(manage); layout.addStretch(); self.tabs.addTab(page,title)
+        manage.clicked.connect(open_dialog); layout.addWidget(manage); layout.addStretch(); self.tabs.addTab(page,title); self._refresh_attachment_controls()
+    def _save_evaluation(self,status):
+        if self.evaluation_editor.save(status): self._refresh_attachment_controls()
+    def _refresh_attachment_controls(self):
+        saved=self.evaluation in self.controller.state.evaluations
+        for button,hint in getattr(self,"attachment_controls",[]): button.setEnabled(saved and self.context.current_user.can_edit); hint.setText("" if saved else "Сначала сохраните черновик оценки")

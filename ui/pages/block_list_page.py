@@ -72,6 +72,11 @@ class BlockListPage(QWidget):
         self.history_tab = AuditPreviewWidget("Change history")
         self.tabs.addTab(self.history_tab, "History")
         left.addWidget(self.tabs)
+        engineering_actions = QHBoxLayout(); engineering_actions.addStretch()
+        self.save_engineering_draft = QPushButton("Save draft"); self.complete_engineering = QPushButton("Complete")
+        self.save_engineering_draft.setEnabled(False); self.complete_engineering.setEnabled(False)
+        self.save_engineering_draft.clicked.connect(self._save_technical_card_draft); self.complete_engineering.clicked.connect(self._complete_technical_card)
+        engineering_actions.addWidget(self.save_engineering_draft); engineering_actions.addWidget(self.complete_engineering); left.addLayout(engineering_actions)
         body.addLayout(left, 4)
 
         right = QVBoxLayout()
@@ -176,6 +181,12 @@ class BlockListPage(QWidget):
         self.design_tab=self._replace_tab(self.design_tab,BlastDesignEditorWidget(editor.take_tab("Бурение и заряды")),"Blast design")
         self.execution_tab=self._replace_tab(self.execution_tab,ActualExecutionEditorWidget(editor.take_tab("Факт")),"Execution fact")
         self.technical_card_editor=editor
+        self.save_engineering_draft.setEnabled(not editor.editor.read_only); self.complete_engineering.setEnabled(not editor.editor.read_only)
+
+    def _save_technical_card_draft(self):
+        if hasattr(self,"technical_card_editor"): self.technical_card_editor.save_draft()
+    def _complete_technical_card(self):
+        if hasattr(self,"technical_card_editor"): self.technical_card_editor.complete()
 
     def _reimport_geometry(self,event):
         path,_=QFileDialog.getOpenFileName(self,"Reimport production geometry","","CSV (*.csv)")
