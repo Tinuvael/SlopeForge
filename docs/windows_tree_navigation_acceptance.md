@@ -17,3 +17,13 @@
 15. Archive a test Block and confirm it disappears normally; enable Show archived to restore it.
 16. Archive an Assessment Area and confirm it disappears from the normal tree.
 17. Restart and verify Blocks, linked production geometry, Areas and Project Lines persist.
+
+## Entity-page architecture
+
+1. Open a Block and confirm the normal Block card remains visible; the legacy 2D workspace does not open.
+2. In General information confirm linked production geometry, Project Lines toggle, Fit, CSV and revision context.
+3. Confirm Geomechanics, Blast design and Execution fact edit the linked revision-safe Technical Card.
+4. Open an Assessment Area and confirm the focused Overview/Assessment/Result/Linked events/Photos/Documents/History tabs.
+5. Confirm Result keeps separate DAI and FCI values and the quadrant plot.
+6. Use Edit boundaries and confirm only the focused plan workflow opens.
+7. Use Add Assessment Area and confirm only the focused creation workflow opens, then routes to the new Area page.

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget
 
 from database.app_context import AppContext
 from repositories.attachment_repository import AttachmentRepository
@@ -21,6 +21,9 @@ from ui.pages.block_card_widgets import (
     CompactInfoCards,
     EmptySection,
 )
+from ui.pages.entity_page_controller import EntityPageController
+from ui.pages.technical_card_widgets import (ActualExecutionEditorWidget,
+    BlastDesignEditorWidget, GeomechanicsEditorWidget, TechnicalCardEditorWidget)
 
 
 class BlockListPage(QWidget):
@@ -61,9 +64,10 @@ class BlockListPage(QWidget):
         overview_layout.addWidget(self.compact_cards)
         overview_layout.addLayout(bottom)
         self.tabs.addTab(self.overview_tab, "General information")
-        self.tabs.addTab(EmptySection(), "Geomechanics")
-        self.tabs.addTab(EmptySection(), "Blast design")
-        self.tabs.addTab(EmptySection(), "Execution fact")
+        self.geomechanics_tab = EmptySection(); self.design_tab = EmptySection(); self.execution_tab = EmptySection()
+        self.tabs.addTab(self.geomechanics_tab, "Geomechanics")
+        self.tabs.addTab(self.design_tab, "Blast design")
+        self.tabs.addTab(self.execution_tab, "Execution fact")
         self.tabs.addTab(EmptySection(), "Documents")
         self.history_tab = AuditPreviewWidget("Change history")
         self.tabs.addTab(self.history_tab, "History")
@@ -148,3 +152,35 @@ class BlockListPage(QWidget):
         self.documents.set_items(documents, "No documents yet")
         self.audit_preview.set_entries(audit_entries)
         self.history_tab.set_entries(audit_entries, limit=200)
+        self._render_engineering(block)
+
+    def _replace_tab(self, old, new, title):
+        index=self.tabs.indexOf(old); self.tabs.removeTab(index); self.tabs.insertTab(index,new,title); return new
+
+    def _render_engineering(self, block):
+        if block is None:return
+        self.entity_controller=EntityPageController(self.context,block.domain_id)
+        event=self.entity_controller.event_for_block(block.id)
+        if event is None:
+            self.overview.scheme.set_geometry(None,context="Linked production geometry is not loaded")
+            return
+        geometry=event.active_geometry_revision(); dataset=self.entity_controller.state.active_dataset(); lines=dataset.lines if dataset else []
+        self.overview.scheme.set_geometry(geometry.plan_geometry if geometry else None,lines,
+            f"Horizon {event.elevation:g} | CSV: {geometry.source_file_name if geometry else '—'} | Revision: {geometry.revision_number if geometry else '—'}")
+        try:self.overview.scheme.reimport_requested.disconnect()
+        except RuntimeError:pass
+        self.overview.scheme.reimport_requested.connect(lambda:self._reimport_geometry(event))
+        card,revision=self.entity_controller.technical_card_draft(event)
+        editor=TechnicalCardEditorWidget(event,card,revision,self.entity_controller.save_technical_card,self,not self.context.current_user.can_edit or block.is_archived)
+        self.geomechanics_tab=self._replace_tab(self.geomechanics_tab,GeomechanicsEditorWidget(editor.take_tab("Геомеханика")),"Geomechanics")
+        self.design_tab=self._replace_tab(self.design_tab,BlastDesignEditorWidget(editor.take_tab("Бурение и заряды")),"Blast design")
+        self.execution_tab=self._replace_tab(self.execution_tab,ActualExecutionEditorWidget(editor.take_tab("Факт")),"Execution fact")
+        self.technical_card_editor=editor
+
+    def _reimport_geometry(self,event):
+        path,_=QFileDialog.getOpenFileName(self,"Reimport production geometry","","CSV (*.csv)")
+        if not path:return
+        try:
+            from prototype_2d.blast_event_service import BlastEventService
+            BlastEventService(self.entity_controller.state).reimport_geometry(event,path); self.entity_controller.save(); self._render_engineering(self.current_block)
+        except Exception as exc:QMessageBox.warning(self,"Geometry import",str(exc))
