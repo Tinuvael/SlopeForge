@@ -66,10 +66,28 @@ def test_0006_preserves_dataset_reference_and_downgrades_multiple_domains(
             south = connection.scalar(text("SELECT id FROM domains WHERE site_id=:s AND name='South'"), {"s": site})
             connection.execute(text("INSERT INTO assessment_workspaces (domain_id) VALUES (:d)"), {"d": south})
             assert compatibility is not None
+            no_workspace_site = connection.scalar(text(
+                "INSERT INTO sites (mine_id, name) VALUES (:m, 'lines only') RETURNING id"), {"m": mine})
+            no_workspace_domain = connection.scalar(text(
+                "INSERT INTO domains (site_id, name) VALUES (:s, 'North') RETURNING id"),
+                {"s": no_workspace_site})
+            lines_only_dataset = connection.scalar(text("""INSERT INTO project_lines_datasets
+                (site_id, domain_id, name, imported_at, source_file_name, is_active,
+                 is_archived, lines_json)
+                VALUES (:s, 'D-ONLY', 'Only', now(), 'only.csv', true, false, '[]'::jsonb)
+                RETURNING id"""), {"s": no_workspace_site})
+            assert no_workspace_domain is not None
         command.downgrade(config, "20260804_0005")
         with engine.begin() as connection:
             assert connection.scalar(text("SELECT count(*) FROM assessment_workspaces WHERE site_id=:s"), {"s": site}) == 1
             assert connection.scalar(text("SELECT workspace_id FROM project_lines_datasets WHERE id=:d"), {"d": dataset_id}) is not None
+            workspace_id = connection.scalar(text(
+                "SELECT workspace_id FROM project_lines_datasets WHERE id=:d"),
+                {"d": lines_only_dataset})
+            assert workspace_id is not None
+            assert connection.scalar(text(
+                "SELECT site_id FROM assessment_workspaces WHERE id=:w"),
+                {"w": workspace_id}) == no_workspace_site
     finally:
         engine.dispose()
         command.downgrade(config, "base")

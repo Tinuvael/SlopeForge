@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -21,11 +22,12 @@ if "test" not in DATABASE_NAME.lower():
     pytest.fail("Refusing destructive tests: PostgreSQL database name must contain 'test'", pytrace=False)
 
 from database import assessment_models as orm
-from database.models import BlastBlock, Mine, Site
+from database.models import BlastBlock, Domain, Mine, Site
 from repositories.assessment_state_mapper import (
     AssessmentPersistenceCorruptionError, AssessmentSiteNotFoundError,
 )
 from repositories.assessment_state_repository import AssessmentStateRepository
+from repositories.project_lines_repository import ProjectLinesRepository
 from tests.test_assessment_state_mapper import build_rich_state
 
 
@@ -49,21 +51,41 @@ def session_factory(tmp_path_factory):
     engine.dispose()
 
 
+@dataclass(frozen=True)
+class AssessmentContext:
+    site_id: int
+    domain_id: int
+    mine_id: int
+
+
 @pytest.fixture
-def site(session_factory):
+def assessment_context(session_factory):
     with session_factory.begin() as session:
         mine = Mine(name="Assessment repository integration mine")
         session.add(mine); session.flush()
-        value = Site(mine_id=mine.id, name="Assessment repository integration site")
-        session.add(value); session.flush()
-        ids = value.id, mine.id
-    yield ids[0]
+        site = Site(mine_id=mine.id, name="Assessment repository integration site")
+        session.add(site); session.flush()
+        domain = Domain(site_id=site.id, name="North")
+        session.add(domain); session.flush()
+        context = AssessmentContext(site.id, domain.id, mine.id)
+    yield context
     with session_factory.begin() as session:
-        workspace = session.scalar(select(orm.AssessmentWorkspace).where(orm.AssessmentWorkspace.site_id == ids[0]))
+        workspace = session.scalar(select(orm.AssessmentWorkspace).where(
+            orm.AssessmentWorkspace.domain_id == context.domain_id))
         if workspace: session.delete(workspace); session.flush()
-        session.query(BlastBlock).filter_by(site_id=ids[0]).delete()
-        session.query(Site).filter_by(id=ids[0]).delete()
-        session.query(Mine).filter_by(id=ids[1]).delete()
+        session.query(orm.ProjectLinesDataset).filter_by(site_id=context.site_id).delete()
+        session.query(BlastBlock).filter_by(site_id=context.site_id).delete()
+        session.query(Domain).filter_by(id=context.domain_id).delete()
+        session.query(Site).filter_by(id=context.site_id).delete()
+        session.query(Mine).filter_by(id=context.mine_id).delete()
+
+
+def persist_project_lines(session_factory, site_id, state):
+    repository = ProjectLinesRepository(session_factory)
+    for dataset in state.datasets:
+        repository.add_dataset(site_id, dataset)
+    active = state.active_dataset()
+    repository.set_active(site_id, active.id if active else None)
 
 
 def semantic(state):
@@ -86,17 +108,18 @@ def semantic(state):
     return normalize(state.to_dict())
 
 
-def test_missing_site_and_empty_site(session_factory, site):
+def test_missing_domain_and_empty_domain(session_factory, assessment_context):
     repository = AssessmentStateRepository(session_factory)
-    with pytest.raises(AssessmentSiteNotFoundError): repository.load_for_site(2_000_000_000)
-    loaded = repository.load_for_site(site)
+    with pytest.raises(AssessmentSiteNotFoundError): repository.load_for_domain(2_000_000_000)
+    loaded = repository.load_for_domain(assessment_context.domain_id)
     assert loaded.workspace_id is None and semantic(loaded.state) == semantic(type(loaded.state)())
 
 
-def test_rich_replace_round_trip_and_active_history(session_factory, site):
+def test_rich_replace_round_trip_and_active_history(session_factory, assessment_context):
     repository = AssessmentStateRepository(session_factory); expected = build_rich_state()
-    saved = repository.replace_for_site(site, expected)
-    loaded = AssessmentStateRepository(session_factory).load_for_site(site)
+    persist_project_lines(session_factory, assessment_context.site_id, expected)
+    saved = repository.replace_for_domain(assessment_context.domain_id, expected)
+    loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
     assert loaded.workspace_id == saved.workspace_id
     assert semantic(loaded.state) == semantic(expected)
     assert loaded.state.active_dataset().id == "D2"
@@ -109,63 +132,73 @@ def test_rich_replace_round_trip_and_active_history(session_factory, site):
     assert loaded.state.assessment_areas[0].geometry_revisions[-1].change_reason is None
 
 
-def test_second_replace_recreates_rows_and_removes_omitted_state(session_factory, site):
+def test_second_replace_recreates_rows_and_removes_omitted_state(session_factory, assessment_context):
     repository = AssessmentStateRepository(session_factory); state = build_rich_state()
-    first = repository.replace_for_site(site, state)
+    persist_project_lines(session_factory, assessment_context.site_id, state)
+    first = repository.replace_for_domain(assessment_context.domain_id, state)
     with session_factory() as session:
         old_event_ids = set(session.scalars(select(orm.BlastEvent.id)).all())
     replacement = deepcopy(state); replacement.blast_events[1].is_archived = True
-    second = repository.replace_for_site(site, replacement)
+    second = repository.replace_for_domain(assessment_context.domain_id, replacement)
     with session_factory() as session:
         new_event_ids = set(session.scalars(select(orm.BlastEvent.id)).all())
         assert session.scalar(select(func.count()).select_from(orm.AssessmentWorkspace).where(
-            orm.AssessmentWorkspace.site_id == site)) == 1
+            orm.AssessmentWorkspace.domain_id == assessment_context.domain_id)) == 1
     assert first.workspace_id != second.workspace_id and old_event_ids.isdisjoint(new_event_ids)
     assert [x.id for x in second.state.blast_events] == [x.id for x in replacement.blast_events]
 
 
-def test_real_cascade_graph_preserves_foundation_and_clears_block_link(session_factory, site):
+def test_real_cascade_graph_preserves_foundation_and_clears_block_link(session_factory, assessment_context):
     with session_factory.begin() as session:
-        block = BlastBlock(site_id=site, block_number="B-1", status="planned")
+        block = BlastBlock(site_id=assessment_context.site_id, block_number="B-1", status="planned")
         session.add(block); session.flush(); block_id = block.id
     repository = AssessmentStateRepository(session_factory)
-    repository.replace_for_site(site, build_rich_state())
-    repository.replace_for_site(site, build_rich_state())
+    state = build_rich_state()
+    persist_project_lines(session_factory, assessment_context.site_id, state)
+    repository.replace_for_domain(assessment_context.domain_id, state)
+    repository.replace_for_domain(assessment_context.domain_id, state)
     with session_factory() as session:
-        assert session.get(Site, site) is not None and session.get(BlastBlock, block_id) is not None
+        assert session.get(Site, assessment_context.site_id) is not None and session.get(BlastBlock, block_id) is not None
         assert all(value is None for value in session.scalars(select(orm.BlastEvent.blast_block_id)))
 
 
-def test_failed_replace_rolls_back_previous_workspace(session_factory, site, monkeypatch):
+def test_failed_replace_rolls_back_previous_workspace(session_factory, assessment_context, monkeypatch):
     repository = AssessmentStateRepository(session_factory); state = build_rich_state()
-    committed = repository.replace_for_site(site, state)
+    persist_project_lines(session_factory, assessment_context.site_id, state)
+    committed = repository.replace_for_domain(assessment_context.domain_id, state)
     def fail(*args): raise RuntimeError("injected insertion failure")
     monkeypatch.setattr(repository, "_insert", fail)
-    with pytest.raises(RuntimeError): repository.replace_for_site(site, deepcopy(state))
-    loaded = AssessmentStateRepository(session_factory).load_for_site(site)
+    with pytest.raises(RuntimeError): repository.replace_for_domain(assessment_context.domain_id, deepcopy(state))
+    loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
     assert loaded.workspace_id == committed.workspace_id and semantic(loaded.state) == semantic(state)
 
 
-def test_replace_performs_no_filesystem_operations(session_factory, site, monkeypatch):
+def test_replace_performs_no_filesystem_operations(session_factory, assessment_context, monkeypatch):
     def forbidden(*args, **kwargs): raise AssertionError("filesystem operation")
     for name in ("unlink", "rename", "replace", "read_bytes", "write_bytes"):
         monkeypatch.setattr(Path, name, forbidden)
-    AssessmentStateRepository(session_factory).replace_for_site(site, build_rich_state())
+    state = build_rich_state()
+    persist_project_lines(session_factory, assessment_context.site_id, state)
+    AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id, state)
 
 
-def test_payload_mismatch_is_corruption(session_factory, site):
-    AssessmentStateRepository(session_factory).replace_for_site(site, build_rich_state())
+def test_payload_mismatch_is_corruption(session_factory, assessment_context):
+    state = build_rich_state()
+    persist_project_lines(session_factory, assessment_context.site_id, state)
+    AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id, state)
     with session_factory.begin() as session:
         row = session.scalar(select(orm.BlastEventTechnicalCardRevision).order_by(orm.BlastEventTechnicalCardRevision.id))
         payload = dict(row.payload_json); payload["status"] = "completed"
         session.execute(update(orm.BlastEventTechnicalCardRevision).where(
             orm.BlastEventTechnicalCardRevision.id == row.id).values(payload_json=payload))
     with pytest.raises(AssessmentPersistenceCorruptionError, match="payload"):
-        AssessmentStateRepository(session_factory).load_for_site(site)
+        AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
 
 
-def test_cross_event_card_geometry_corruption_is_detected(session_factory, site):
-    AssessmentStateRepository(session_factory).replace_for_site(site, build_rich_state())
+def test_cross_event_card_geometry_corruption_is_detected(session_factory, assessment_context):
+    state = build_rich_state()
+    persist_project_lines(session_factory, assessment_context.site_id, state)
+    AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id, state)
     with session_factory.begin() as session:
         contour_geometry = session.scalar(select(orm.BlastEventGeometryRevision.id).join(orm.BlastEvent).where(
             orm.BlastEvent.domain_id == "BE-C"))
@@ -174,19 +207,20 @@ def test_cross_event_card_geometry_corruption_is_detected(session_factory, site)
             orm.BlastEventTechnicalCardRevision.id == card_revision).values(
                 blast_event_geometry_revision_id=contour_geometry))
     with pytest.raises(AssessmentPersistenceCorruptionError, match="another BlastEvent"):
-        AssessmentStateRepository(session_factory).load_for_site(site)
+        AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
 
 
-def test_cross_area_evaluation_geometry_corruption_is_detected(session_factory, site):
+def test_cross_area_evaluation_geometry_corruption_is_detected(session_factory, assessment_context):
     # A second area and its revision are produced through a valid replacement,
     # then the relational FK is deliberately pointed at that other area.
     state = build_rich_state(); other = deepcopy(state.assessment_areas[0])
+    persist_project_lines(session_factory, assessment_context.site_id, state)
     other.id = "AA-OTHER"; other.event_links = []
     for revision in other.geometry_revisions:
         object.__setattr__(revision, "assessment_area_id", other.id)
         object.__setattr__(revision, "id", "OTHER-" + revision.id)
     other.active_geometry_revision_id = "OTHER-AA-R2"; state.assessment_areas.append(other)
-    AssessmentStateRepository(session_factory).replace_for_site(site, state)
+    AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id, state)
     with session_factory.begin() as session:
         other_geometry = session.scalar(select(orm.AssessmentAreaGeometryRevision.id).join(orm.AssessmentArea).where(
             orm.AssessmentArea.domain_id == "AA-OTHER"))
@@ -195,4 +229,4 @@ def test_cross_area_evaluation_geometry_corruption_is_detected(session_factory, 
             orm.AssessmentAreaEvaluationRevision.id == evaluation_revision).values(
                 assessment_area_geometry_revision_id=other_geometry))
     with pytest.raises(AssessmentPersistenceCorruptionError, match="another Assessment Area"):
-        AssessmentStateRepository(session_factory).load_for_site(site)
+        AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)

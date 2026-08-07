@@ -74,6 +74,26 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.add_column("assessment_workspaces", sa.Column("site_id", sa.Integer(), nullable=True))
     op.execute("UPDATE assessment_workspaces w SET site_id = d.site_id FROM domains d WHERE d.id = w.domain_id")
+    # Project Lines may have been imported before a Domain workspace existed.
+    # The old schema requires every Dataset to point at a workspace, so create
+    # a temporary compatibility Domain for a Domain-less Site if necessary,
+    # then create one workspace from the Site's lowest Domain id.
+    op.execute("""
+        INSERT INTO domains (site_id, name)
+        SELECT DISTINCT p.site_id, 'Основной домен'
+        FROM project_lines_datasets p
+        WHERE NOT EXISTS (SELECT 1 FROM domains d WHERE d.site_id = p.site_id)
+    """)
+    op.execute("""
+        INSERT INTO assessment_workspaces (domain_id, site_id)
+        SELECT min(d.id), p.site_id
+        FROM (SELECT DISTINCT site_id FROM project_lines_datasets) p
+        JOIN domains d ON d.site_id = p.site_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM assessment_workspaces w WHERE w.site_id = p.site_id
+        )
+        GROUP BY p.site_id
+    """)
     # The 0005 schema can represent only one workspace per Site.  Keep the
     # lowest integer PK deterministically; deleting the others intentionally
     # cascades their Domain-owned Assessment rows before UNIQUE(site_id) is
