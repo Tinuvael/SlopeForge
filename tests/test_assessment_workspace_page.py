@@ -65,7 +65,8 @@ class FakeProjectLinesRepository:
     activated = []
 
     def __init__(self, session_factory): pass
-    def add_dataset(self, site_id, dataset): self.added.append((site_id, dataset.id))
+    def import_dataset(self, site_id, dataset, *, make_active=True):
+        self.added.append((site_id, dataset.id, make_active))
     def set_active(self, site_id, dataset_id): self.activated.append((site_id, dataset_id))
 
 
@@ -89,8 +90,8 @@ def test_dataset_callbacks_use_explicit_site_repository(page):
     FakeProjectLinesRepository.activated = []
     dataset = SimpleNamespace(id="D-001", is_active=True)
     page.workspace.persist_dataset_callback(dataset)
-    assert FakeProjectLinesRepository.added == [(70, "D-001")]
-    assert FakeProjectLinesRepository.activated == [(70, "D-001")]
+    assert FakeProjectLinesRepository.added == [(70, "D-001", True)]
+    assert FakeProjectLinesRepository.activated == []
     page.workspace.set_active_dataset_callback("D-002")
     assert FakeProjectLinesRepository.activated[-1] == (70, "D-002")
 

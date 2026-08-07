@@ -34,9 +34,9 @@ class AssessmentWorkspacePage(QWidget):
 
         def persist_dataset_callback(dataset) -> None:
             make_active = dataset.is_active
-            self.project_lines_repository.add_dataset(self.site_id, dataset)
-            if make_active:
-                self.project_lines_repository.set_active(self.site_id, dataset.id)
+            self.project_lines_repository.import_dataset(
+                self.site_id, dataset, make_active=make_active
+            )
             self._reload_site_datasets()
 
         def set_active_dataset_callback(dataset_id: str) -> None:

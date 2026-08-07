@@ -74,6 +74,23 @@ def test_add_list_activate_archive_restore_and_stable_pk(context):
     assert second.id != first.id
 
 
+def test_atomic_import_rolls_back_row_when_activation_fails(context, monkeypatch):
+    factory, ids = context
+    repo = ProjectLinesRepository(factory)
+    repo.import_dataset(ids[1], dataset("D-X"), make_active=True)
+
+    def fail_activation(session, site_id, row):
+        raise RuntimeError("injected activation failure")
+
+    monkeypatch.setattr(ProjectLinesRepository, "_activate_imported_dataset",
+                        staticmethod(fail_activation))
+    with pytest.raises(RuntimeError, match="activation failure"):
+        repo.import_dataset(ids[1], dataset("D-FAILED"), make_active=True)
+
+    assert [row.domain_id for row in repo.list_for_site(ids[1])] == ["D-X"]
+    assert repo.get_active(ids[1]).domain_id == "D-X"
+
+
 def test_domains_share_one_site_history_but_sites_are_isolated(context):
     factory, ids = context
     lines = ProjectLinesRepository(factory)

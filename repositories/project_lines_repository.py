@@ -27,6 +27,11 @@ class ProjectLinesRepository:
             ).order_by(orm.ProjectLinesDataset.imported_at, orm.ProjectLinesDataset.id)))
 
     def add_dataset(self, site_id: int, dataset: ProjectLinesDataset) -> orm.ProjectLinesDataset:
+        return self.import_dataset(site_id, dataset, make_active=False)
+
+    def import_dataset(self, site_id: int, dataset: ProjectLinesDataset,
+                       *, make_active: bool = True) -> orm.ProjectLinesDataset:
+        """Insert and optionally activate a Dataset in one transaction."""
         with self._session_factory.begin() as session:
             if session.get(Site, site_id) is None:
                 raise ValueError(f"Site {site_id} does not exist")
@@ -36,8 +41,20 @@ class ProjectLinesRepository:
                 lines_json=[line.to_dict() for line in dataset.lines])
             session.add(row)
             session.flush()
+            if make_active:
+                self._activate_imported_dataset(session, site_id, row)
+                session.flush()
             row_id = row.id
         return self._get_row(row_id)
+
+    @staticmethod
+    def _activate_imported_dataset(session: Session, site_id: int,
+                                   row: orm.ProjectLinesDataset) -> None:
+        session.execute(update(orm.ProjectLinesDataset).where(
+            orm.ProjectLinesDataset.site_id == site_id,
+            orm.ProjectLinesDataset.id != row.id,
+        ).values(is_active=False))
+        row.is_active = True
 
     def set_active(self, site_id: int, dataset_domain_id: str | None) -> None:
         with self._session_factory.begin() as session:
