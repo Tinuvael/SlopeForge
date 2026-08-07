@@ -77,7 +77,7 @@ class MessageBox:
 
 class Tree(Widget):
     def __init__(self, context):
-        super().__init__(); self.filters_changed = Signal(); self.block_selected = Signal(); self.site_selected = Signal()
+        super().__init__(); self.filters_changed = Signal(); self.block_selected = Signal(); self.site_selected = Signal(); self.domain_selected = Signal()
         self.reload_count = self.load_count = 0
     def reload_filters(self): self.reload_count += 1
     def load_data(self): self.load_count += 1
@@ -102,10 +102,10 @@ class Assessment(Widget):
     replacements = 0
     fail_construct = False
     fail_refresh = False
-    def __init__(self, context, site_id, site_name, parent=None):
+    def __init__(self, context, domain_id, domain_name, site_id=None, parent=None):
         if self.fail_construct: raise ValueError("bad json")
         super().__init__(parent); type(self).created += 1; self.active = False
-        self.context, self.site_id, self.site_name = context, site_id, site_name
+        self.context, self.domain_id, self.domain_name, self.site_id = context, domain_id, domain_name, site_id
         self.refreshes = self.saves = self.cancels = self.reloads = 0; self.fail_save = False; self.fail_reload = False
     def refresh_workspace(self):
         self.refreshes += 1
@@ -182,7 +182,7 @@ def test_startup_is_lazy_and_keeps_tree_outside_stack(window):
 
 def test_assessment_created_once_added_and_navigation_reused(window):
     assert not window.show_assessment_page()
-    assert window.open_assessment_for_site(7, "North")
+    assert window.open_assessment_for_domain(7, "North", 70)
     page = window.assessment_page
     assert Assessment.created == 1 and page in window.page_stack.widgets
     assert window.page_stack.currentWidget() is page
@@ -195,18 +195,18 @@ def test_assessment_created_once_added_and_navigation_reused(window):
 
 
 def test_same_site_reopen_reload_failure_keeps_blocks_visible(window):
-    assert window.open_assessment_for_site(7, "North")
+    assert window.open_assessment_for_domain(7, "North", 70)
     page = window.assessment_page
     assert window.show_block_page()
     page.fail_reload = True
     assert not window.show_assessment_page()
-    assert window.assessment_page is page and window.assessment_site_id == 7
+    assert window.assessment_page is page and window.assessment_domain_id == 7
     assert window.page_stack.currentWidget() is window.block_page
     assert window.block_nav_button.isChecked() and not window.assessment_nav_button.isChecked()
 
 
 def test_same_site_reopen_active_workflow_blocks_reload(window):
-    assert window.open_assessment_for_site(7, "North")
+    assert window.open_assessment_for_domain(7, "North", 70)
     page = window.assessment_page
     window.page_stack.setCurrentWidget(window.block_page)
     page.active = True
@@ -216,7 +216,8 @@ def test_same_site_reopen_active_workflow_blocks_reload(window):
 
 
 def test_tree_header_and_filters_route_without_postgresql(window):
-    window.tree.site_selected.emit(7, "North"); page = window.assessment_page
+    window.tree.site_selected.emit(70, "Olympiada"); assert window.assessment_page is None
+    window.tree.domain_selected.emit(7, "North", 70); page = window.assessment_page
     window.tree.filters_changed.emit("mine")
     assert window.page_stack.currentWidget() is page
     assert window.block_page.calls[-1] == ("filters", ("mine",))
@@ -229,7 +230,7 @@ def test_tree_header_and_filters_route_without_postgresql(window):
 
 
 def test_cancel_preserves_active_workflow_and_restores_buttons(window):
-    window.open_assessment_for_site(7, "North"); page = window.assessment_page; page.active = True
+    window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page; page.active = True
     MessageBox.answer = MessageBox.StandardButton.Cancel
     assert not window.show_block_page()
     assert page.active and page.cancels == 0 and page.saves == 0
@@ -237,14 +238,14 @@ def test_cancel_preserves_active_workflow_and_restores_buttons(window):
 
 
 def test_discard_cancels_saves_once_and_switches(window):
-    window.open_assessment_for_site(7, "North"); page = window.assessment_page; page.active = True
+    window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page; page.active = True
     MessageBox.answer = MessageBox.StandardButton.Discard
     assert window.show_block_page()
     assert not page.active and page.cancels == 1 and page.saves == 1
 
 
 def test_save_failure_blocks_leave_and_actions(window):
-    window.open_assessment_for_site(7, "North"); page = window.assessment_page; page.fail_save = True
+    window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page; page.fail_save = True
     assert not window.open_block_from_tree(7)
     assert window.page_stack.currentWidget() is page
     assert ("open", 7) not in window.block_page.calls
@@ -252,7 +253,7 @@ def test_save_failure_blocks_leave_and_actions(window):
 
 
 def test_close_saves_and_save_failure_ignores(window):
-    window.open_assessment_for_site(7, "North"); page = window.assessment_page
+    window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page
     event = CloseEvent(); window.closeEvent(event)
     assert page.saves == 1 and event.accepted
     page.fail_save = True; event = CloseEvent(); window.closeEvent(event)
@@ -260,7 +261,7 @@ def test_close_saves_and_save_failure_ignores(window):
 
 
 def test_close_workflow_cancel_and_discard(window):
-    window.open_assessment_for_site(7, "North"); page = window.assessment_page; page.active = True
+    window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page; page.active = True
     event = CloseEvent(); window.closeEvent(event)
     assert event.ignored and page.active and page.saves == 0
     MessageBox.answer = MessageBox.StandardButton.Discard
@@ -270,12 +271,12 @@ def test_close_workflow_cancel_and_discard(window):
 
 def test_viewer_can_leave_switch_site_and_close_without_writing(window):
     window.context.current_user.can_edit = False
-    assert window.open_assessment_for_site(7, "North")
+    assert window.open_assessment_for_domain(7, "North", 70)
     first = window.assessment_page
 
     assert window.show_block_page()
     assert first.saves == 1 and Assessment.replacements == 0
-    assert window.open_assessment_for_site(8, "South")
+    assert window.open_assessment_for_domain(8, "South", 80)
     second = window.assessment_page
     assert first.deleted and first.saves == 2
 
@@ -286,21 +287,21 @@ def test_viewer_can_leave_switch_site_and_close_without_writing(window):
 
 
 def test_editor_navigation_save_still_persists(window):
-    assert window.open_assessment_for_site(7, "North")
+    assert window.open_assessment_for_domain(7, "North", 70)
     assert window.show_block_page()
     assert Assessment.replacements == 1
 
 
 def test_construction_failure_stays_on_blocks(window):
     Assessment.fail_construct = True
-    assert not window.open_assessment_for_site(7, "North")
+    assert not window.open_assessment_for_domain(7, "North", 70)
     assert window.assessment_page is None
     assert window.page_stack.currentWidget() is window.block_page
     assert window.block_nav_button.isChecked() and MessageBox.critical_calls
 
 
 def test_existing_refresh_failure_preserves_page_and_instance(window):
-    assert window.open_assessment_for_site(7, "North"); page = window.assessment_page
+    assert window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page
     page.fail_refresh = True
     assert not window.show_assessment_page()
     assert window.assessment_page is page and not page.deleted
@@ -308,37 +309,37 @@ def test_existing_refresh_failure_preserves_page_and_instance(window):
 
 
 def test_switching_site_saves_then_replaces_and_deletes_old_page(window):
-    assert window.open_assessment_for_site(7, "North")
+    assert window.open_assessment_for_domain(7, "North", 70)
     old = window.assessment_page
-    assert window.open_assessment_for_site(8, "South")
+    assert window.open_assessment_for_domain(8, "South", 80)
     assert old.saves == 1 and old.deleted
     assert old not in window.page_stack.widgets
-    assert window.assessment_page.site_id == 8
-    assert window.assessment_site_id == 8 and window.assessment_site_name == "South"
+    assert window.assessment_page.site_id == 80
+    assert window.assessment_domain_id == 8 and window.assessment_domain_name == "South"
 
 
 def test_site_switch_cancel_save_and_target_load_failures_preserve_old(window):
-    window.open_assessment_for_site(7, "North")
+    window.open_assessment_for_domain(7, "North", 70)
     old = window.assessment_page
     old.active = True
-    assert not window.open_assessment_for_site(8, "South")
-    assert window.assessment_page is old and window.assessment_site_id == 7
+    assert not window.open_assessment_for_domain(8, "South", 80)
+    assert window.assessment_page is old and window.assessment_domain_id == 7
 
     old.active = False; old.fail_save = True
-    assert not window.open_assessment_for_site(8, "South")
+    assert not window.open_assessment_for_domain(8, "South", 80)
     assert window.assessment_page is old and not old.deleted
 
     old.fail_save = False; Assessment.fail_construct = True
-    assert not window.open_assessment_for_site(8, "South")
-    assert window.assessment_page is old and window.assessment_site_id == 7
+    assert not window.open_assessment_for_domain(8, "South", 80)
+    assert window.assessment_page is old and window.assessment_domain_id == 7
     assert window.page_stack.currentWidget() is old
 
 
 def test_site_switch_discard_cancels_workflow_and_proceeds(window):
-    window.open_assessment_for_site(7, "North")
+    window.open_assessment_for_domain(7, "North", 70)
     old = window.assessment_page; old.active = True
     MessageBox.answer = MessageBox.StandardButton.Discard
-    assert window.open_assessment_for_site(8, "South")
+    assert window.open_assessment_for_domain(8, "South", 80)
     assert old.cancels == 1 and old.saves == 1 and old.deleted
 
 

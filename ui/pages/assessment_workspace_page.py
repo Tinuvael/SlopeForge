@@ -1,4 +1,4 @@
-"""PostgreSQL-backed host page for a Site's reusable 2D workspace."""
+"""PostgreSQL-backed host page for one Domain's 2D Assessment workspace."""
 
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
@@ -8,24 +8,26 @@ from ui.prototype_2d.assessment_workspace import AssessmentWorkspaceWidget
 
 
 class AssessmentWorkspacePage(QWidget):
-    """Own one Site-scoped assessment state for the page lifetime."""
+    """Own one Domain-scoped assessment state while viewing shared Site lines."""
 
-    def __init__(self, context: AppContext, site_id: int,
-                 site_name: str | None = None, parent: QWidget | None = None):
+    def __init__(self, context: AppContext, domain_id: int,
+                 domain_name: str | None = None, site_id: int | None = None,
+                 parent: QWidget | None = None):
         super().__init__(parent)
         self.context = context
-        self.site_id = site_id
-        self.site_name = site_name
+        self.domain_id = domain_id
+        self.domain_name = domain_name
         self.storage_path = context.storage_root / "slopeforge_state.json"
         self.repository = AssessmentStateRepository(context.session_factory)
-        loaded = self.repository.load_for_site(site_id)
+        loaded = self.repository.load_for_domain(domain_id)
+        self.site_id = loaded.site_id if site_id is None else site_id
         self.workspace_id = loaded.workspace_id
         self.state = loaded.state
 
         def save_callback() -> None:
             if not self.context.current_user.can_edit:
                 raise PermissionError("2D Assessment is read-only for the current user")
-            saved = self.repository.replace_for_site(self.site_id, self.state)
+            saved = self.repository.replace_for_domain(self.domain_id, self.state)
             self.workspace_id = saved.workspace_id
 
         self.workspace = AssessmentWorkspaceWidget(
@@ -37,7 +39,7 @@ class AssessmentWorkspacePage(QWidget):
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.domain_label = QLabel(f"Домен: {site_name or site_id}", self)
+        self.domain_label = QLabel(f"Домен: {domain_name or domain_id}", self)
         layout.addWidget(self.domain_label)
         layout.addWidget(self.workspace)
 
@@ -58,7 +60,7 @@ class AssessmentWorkspacePage(QWidget):
         self.workspace.refresh_workspace()
 
     def reload_from_repository(self) -> None:
-        loaded = self.repository.load_for_site(self.site_id)
+        loaded = self.repository.load_for_domain(self.domain_id)
         previous = {
             "datasets": list(self.state.datasets),
             "blast_events": list(self.state.blast_events),

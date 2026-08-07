@@ -78,12 +78,23 @@ def test_expected_tables_and_legacy_tables_are_unchanged():
 
 
 def test_workspace_and_top_level_domain_uniqueness():
-    assert ("site_id",) in uniques("assessment_workspaces")
-    assert ("workspace_id", "domain_id") in uniques("project_lines_datasets")
+    assert ("domain_id",) in uniques("assessment_workspaces")
+    assert ("site_id", "domain_id") in uniques("project_lines_datasets")
     assert ("workspace_id", "domain_id") in uniques("blast_events")
     assert ("workspace_id", "domain_id") in uniques("assessment_areas")
     assert ("domain_id",) in uniques("assessment_area_evaluations")
-    assert fk("assessment_workspaces", "site_id").ondelete == "RESTRICT"
+    assert fk("assessment_workspaces", "domain_id").ondelete == "RESTRICT"
+
+
+def test_domain_and_site_scoped_project_lines_foundation():
+    assert ("site_id", "name") in uniques("domains")
+    assert fk("domains", "site_id").column.table.name == "sites"
+    assert fk("project_lines_datasets", "site_id").column.table.name == "sites"
+    assert "is_archived" in table("project_lines_datasets").c
+    assert "archived_at" in table("project_lines_datasets").c
+    assert "NOT (is_archived AND is_active)" in checks("project_lines_datasets")
+    assert fk("blast_blocks", "site_id").column.table.name == "sites"
+    assert "horizons" not in Base.metadata.tables
 
 
 def test_blast_event_rules_and_optional_legacy_block_link():
@@ -113,7 +124,7 @@ def test_revision_identity_numbers_and_active_partial_indexes():
         assert str(partial[0].dialect_options["postgresql"]["where"]) == "is_active"
     dataset_partial = [i for i in table("project_lines_datasets").indexes if i.unique]
     assert len(dataset_partial) == 1
-    assert tuple(c.name for c in dataset_partial[0].columns) == ("workspace_id",)
+    assert tuple(c.name for c in dataset_partial[0].columns) == ("site_id",)
 
 
 def test_geometry_elevation_json_and_exact_revision_links():
@@ -155,8 +166,8 @@ def test_attachment_owner_and_other_checks():
 
 def test_all_foreign_key_delete_actions():
     expected = {
-        ("assessment_workspaces", "site_id"): "RESTRICT",
-        ("project_lines_datasets", "workspace_id"): "CASCADE",
+        ("assessment_workspaces", "domain_id"): "RESTRICT",
+        ("project_lines_datasets", "site_id"): "RESTRICT",
         ("blast_events", "workspace_id"): "CASCADE",
         ("blast_events", "blast_block_id"): "SET NULL",
         ("blast_event_geometry_revisions", "blast_event_id"): "CASCADE",

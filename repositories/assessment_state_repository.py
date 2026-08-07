@@ -7,7 +7,7 @@ from typing import Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from database.models import Site
+from database.models import Domain
 from database import assessment_models as orm
 from prototype_2d.domain import AssessmentDomainState
 from repositories.assessment_state_mapper import (
@@ -18,15 +18,15 @@ from repositories.assessment_state_mapper import (
 
 @dataclass(frozen=True)
 class LoadedAssessmentState:
+    domain_id: int
     site_id: int
     workspace_id: int | None
     state: AssessmentDomainState
 
 
-def _workspace_query(site_id: int):
-    return (select(orm.AssessmentWorkspace).where(orm.AssessmentWorkspace.site_id == site_id)
+def _workspace_query(domain_id: int):
+    return (select(orm.AssessmentWorkspace).where(orm.AssessmentWorkspace.domain_id == domain_id)
             .options(
-                selectinload(orm.AssessmentWorkspace.datasets),
                 selectinload(orm.AssessmentWorkspace.events).selectinload(orm.BlastEvent.geometry_revisions),
                 selectinload(orm.AssessmentWorkspace.events).selectinload(orm.BlastEvent.technical_card).selectinload(orm.BlastEventTechnicalCard.revisions),
                 selectinload(orm.AssessmentWorkspace.events).selectinload(orm.BlastEvent.attachments),
@@ -43,9 +43,12 @@ def _assert_payload(payload, expected, kind: str) -> None:
                 f"{kind} payload field {key!r} disagrees with relational data")
 
 
-def _state_from_workspace(workspace: orm.AssessmentWorkspace) -> AssessmentDomainState:
+def _state_from_workspace(workspace: orm.AssessmentWorkspace | None,
+                          dataset_rows: list[orm.ProjectLinesDataset]) -> AssessmentDomainState:
     events, areas, cards, evaluations, attachments = [], [], [], [], []
     geometry_owner = {}
+    if workspace is None:
+        return AssessmentDomainState.from_dict({"datasets": _dataset_dicts(dataset_rows)})
     for row in sorted(workspace.events, key=lambda x: x.id):
         revisions = []
         for revision in sorted(row.geometry_revisions, key=lambda x: x.revision_number):
@@ -81,10 +84,8 @@ def _state_from_workspace(workspace: orm.AssessmentWorkspace) -> AssessmentDomai
                 "is_archived": card.is_archived})
         for item in sorted(row.attachments, key=lambda x: (x.created_at, x.id)):
             attachments.append(_attachment_dict(item, row.domain_id))
-    datasets = [{"id": x.domain_id, "name": x.name, "imported_at": x.imported_at.isoformat(),
-        "source_file_name": x.source_file_name, "is_active": x.is_active, "lines": x.lines_json}
-        for x in sorted(workspace.datasets, key=lambda x: x.id)]
-    dataset_domains = {x.id: x.domain_id for x in workspace.datasets}
+    datasets = _dataset_dicts(dataset_rows)
+    dataset_domains = {x.id: x.domain_id for x in dataset_rows}
     for row in sorted(workspace.areas, key=lambda x: x.id):
         revisions, links = [], []
         revision_domains = {x.id: x.domain_id for x in row.geometry_revisions}
@@ -144,6 +145,12 @@ def _state_from_workspace(workspace: orm.AssessmentWorkspace) -> AssessmentDomai
     return state
 
 
+def _dataset_dicts(rows):
+    return [{"id": x.domain_id, "name": x.name, "imported_at": x.imported_at.isoformat(),
+        "source_file_name": x.source_file_name, "is_active": x.is_active, "lines": x.lines_json}
+        for x in sorted(rows, key=lambda x: x.id)]
+
+
 def _attachment_dict(row, owner_id):
     return {"id": row.domain_id, "owner_type": row.owner_type, "owner_id": owner_id,
         "attachment_kind": row.attachment_kind, "subtype": row.subtype, "custom_subtype": row.custom_subtype,
@@ -156,41 +163,48 @@ class AssessmentStateRepository:
     def __init__(self, session_factory: Callable[[], Session]):
         self._session_factory = session_factory
 
-    def load_for_site(self, site_id: int) -> LoadedAssessmentState:
+    def load_for_domain(self, domain_id: int) -> LoadedAssessmentState:
         with self._session_factory() as session:
-            if session.get(Site, site_id) is None:
-                raise AssessmentSiteNotFoundError(f"Site {site_id} does not exist")
-            workspace = session.scalars(_workspace_query(site_id)).one_or_none()
-            return LoadedAssessmentState(site_id, workspace.id if workspace else None,
-                _state_from_workspace(workspace) if workspace else AssessmentDomainState())
+            domain = session.get(Domain, domain_id)
+            if domain is None:
+                raise AssessmentSiteNotFoundError(f"Domain {domain_id} does not exist")
+            workspace = session.scalars(_workspace_query(domain_id)).one_or_none()
+            datasets = list(session.scalars(select(orm.ProjectLinesDataset).where(
+                orm.ProjectLinesDataset.site_id == domain.site_id)))
+            return LoadedAssessmentState(domain.id, domain.site_id,
+                workspace.id if workspace else None, _state_from_workspace(workspace, datasets))
 
-    def replace_for_site(self, site_id: int, state: AssessmentDomainState) -> LoadedAssessmentState:
+    def replace_for_domain(self, domain_id: int, state: AssessmentDomainState) -> LoadedAssessmentState:
         validate_assessment_state(state)
         with self._session_factory() as session:
             with session.begin():
-                if session.get(Site, site_id) is None:
-                    raise AssessmentSiteNotFoundError(f"Site {site_id} does not exist")
-                previous = session.scalars(_workspace_query(site_id)).one_or_none()
+                domain = session.get(Domain, domain_id)
+                if domain is None:
+                    raise AssessmentSiteNotFoundError(f"Domain {domain_id} does not exist")
+                previous = session.scalars(_workspace_query(domain_id)).one_or_none()
                 if previous:
                     session.delete(previous)
                     session.flush()
-                workspace = orm.AssessmentWorkspace(site_id=site_id)
+                workspace = orm.AssessmentWorkspace(domain_id=domain_id)
                 session.add(workspace)
                 session.flush()
-                self._insert(session, workspace, state)
+                datasets = list(session.scalars(select(orm.ProjectLinesDataset).where(
+                    orm.ProjectLinesDataset.site_id == domain.site_id)))
+                self._insert(session, workspace, state, datasets)
                 session.flush()
-                saved = _state_from_workspace(session.scalars(_workspace_query(site_id)).one())
-                result = LoadedAssessmentState(site_id, workspace.id, saved)
+                saved = _state_from_workspace(session.scalars(_workspace_query(domain_id)).one(), datasets)
+                result = LoadedAssessmentState(domain_id, domain.site_id, workspace.id, saved)
             return result
 
     @staticmethod
-    def _insert(session, workspace, state):
-        datasets = {}
-        for item in state.datasets:
-            row = orm.ProjectLinesDataset(workspace=workspace, domain_id=item.id, name=item.name,
-                imported_at=item.imported_at, source_file_name=item.source_file_name,
-                is_active=item.is_active, lines_json=[x.to_dict() for x in item.lines])
-            session.add(row); datasets[item.id] = row
+    def _insert(session, workspace, state, dataset_rows):
+        # Dataset rows are shared Site history and are never written by a Domain save.
+        datasets = {row.domain_id: row for row in dataset_rows}
+        missing = {revision.source_dataset_id for area in state.assessment_areas
+                   for revision in area.geometry_revisions} - datasets.keys()
+        if missing:
+            raise AssessmentStateValidationError(
+                "Assessment Area references a Project Lines dataset outside its Site")
         events, geometries = {}, {}
         for item in state.blast_events:
             row = orm.BlastEvent(workspace=workspace, domain_id=item.id, name=item.name,

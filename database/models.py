@@ -53,6 +53,21 @@ class Site(TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     mine: Mapped[Mine] = relationship(back_populates="sites")
     blast_blocks: Mapped[list["BlastBlock"]] = relationship(back_populates="site")
+    domains: Mapped[list["Domain"]] = relationship(back_populates="site", cascade="all, delete-orphan")
+    project_lines_datasets: Mapped[list["ProjectLinesDataset"]] = relationship(back_populates="site")
+
+
+class Domain(TimestampMixin, Base):
+    __tablename__ = "domains"
+    __table_args__ = (UniqueConstraint("site_id", "name", name="uq_domains_site_name"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="RESTRICT"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    site: Mapped[Site] = relationship(back_populates="domains")
+    assessment_workspace: Mapped[Optional["AssessmentWorkspace"]] = relationship(
+        back_populates="domain", uselist=False
+    )
 
 
 class BlastBlock(TimestampMixin, Base):
