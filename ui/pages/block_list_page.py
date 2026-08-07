@@ -7,8 +7,7 @@ from database.app_context import AppContext
 from repositories.attachment_repository import AttachmentRepository
 from repositories.audit_log_repository import AuditLogRepository
 from repositories.blast_block_repository import BlastBlockRepository, BlastBlockRow
-from repositories.mine_repository import MineRepository
-from repositories.site_repository import SiteRepository
+from repositories.domain_repository import DomainRepository
 from services.blast_block_service import BlastBlockService
 from ui.block_dialog import BlockDialog
 from ui.directory_dialog import DirectoryDialog
@@ -30,13 +29,12 @@ class BlockListPage(QWidget):
     def __init__(self, context: AppContext):
         super().__init__()
         self.context = context
-        self.mine_repo = MineRepository(context.session_factory)
-        self.site_repo = SiteRepository(context.session_factory)
+        self.domain_repo = DomainRepository(context.session_factory)
         self.block_repo = BlastBlockRepository(context.session_factory)
-        self.block_service = BlastBlockService(self.block_repo, self.site_repo)
+        self.block_service = BlastBlockService(self.block_repo, self.domain_repo)
         self.audit_repo = AuditLogRepository(context.session_factory)
         self.attachment_repo = AttachmentRepository(context.session_factory)
-        self.filters = {"number_query": None, "mine_id": None, "site_id": None, "status": None}
+        self.filters = {"number_query": None, "domain_id": None, "site_id": None, "status": None}
         self.current_block: BlastBlockRow | None = None
 
         layout = QVBoxLayout(self)
@@ -114,8 +112,8 @@ class BlockListPage(QWidget):
         self.current_block = self.block_service.get_block(block_id)
         self._render_current_block()
 
-    def create_block(self) -> None:
-        dialog = BlockDialog(self.block_service, self.mine_repo, self.site_repo, self.context.current_user)
+    def create_block(self, domain_id: int | None = None) -> None:
+        dialog = BlockDialog(self.block_service, self.domain_repo, self.context.current_user, domain_id=domain_id)
         if dialog.exec():
             self.current_block = self.block_service.get_block(dialog.saved_block_id) if dialog.saved_block_id else None
             self.refresh()
@@ -124,15 +122,13 @@ class BlockListPage(QWidget):
     def edit_current_block(self) -> None:
         if not self.current_block or not self.context.current_user.can_edit:
             return
-        dialog = BlockDialog(self.block_service, self.mine_repo, self.site_repo, self.context.current_user, self.current_block)
+        dialog = BlockDialog(self.block_service, self.domain_repo, self.context.current_user, block=self.current_block)
         if dialog.exec():
             self.current_block = self.block_service.get_block(dialog.saved_block_id or self.current_block.id)
             self.refresh()
             self.data_changed.emit()
 
     def open_directories(self) -> None:
-        dialog = DirectoryDialog(self.mine_repo, self.site_repo, self.context.current_user)
-        dialog.exec()
         self.refresh()
         self.data_changed.emit()
 

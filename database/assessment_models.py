@@ -11,9 +11,9 @@ from typing import Any, Optional
 
 from sqlalchemy import (BigInteger, Boolean, CheckConstraint, Date, DateTime,
                         ForeignKey, Index, Integer, Numeric, String, Text,
-                        UniqueConstraint, func, text)
+                        UniqueConstraint, event, func, select, text)
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from .base import Base, TimestampMixin
 
@@ -76,6 +76,26 @@ class BlastEvent(TimestampMixin, Base):
     geometry_revisions: Mapped[list["BlastEventGeometryRevision"]] = relationship(back_populates="blast_event", cascade="all, delete-orphan", passive_deletes=True, order_by="BlastEventGeometryRevision.revision_number")
     technical_card: Mapped[Optional["BlastEventTechnicalCard"]] = relationship(back_populates="blast_event", cascade="all, delete-orphan", passive_deletes=True, uselist=False)
     attachments: Mapped[list["AssessmentEntityAttachment"]] = relationship(back_populates="blast_event", cascade="all, delete-orphan", passive_deletes=True, foreign_keys="AssessmentEntityAttachment.blast_event_id")
+
+
+@event.listens_for(Session, "before_flush")
+def _validate_blast_event_block_domain(session, _flush_context, _instances):
+    """A production event may only reference a block in its own Domain."""
+    from database.models import BlastBlock
+
+    for row in session.new.union(session.dirty):
+        if not isinstance(row, BlastEvent) or row.blast_block_id is None:
+            continue
+        workspace_domain_id = row.workspace.domain_id if row.workspace is not None else session.scalar(
+            select(AssessmentWorkspace.domain_id).where(AssessmentWorkspace.id == row.workspace_id)
+        )
+        block_domain_id = session.scalar(
+            select(BlastBlock.domain_id).where(BlastBlock.id == row.blast_block_id)
+        )
+        if block_domain_id is None:
+            raise ValueError("Linked BlastBlock does not exist")
+        if workspace_domain_id != block_domain_id:
+            raise ValueError("BlastEvent and linked BlastBlock must belong to the same Domain")
 
 
 class BlastEventGeometryRevision(Base):
