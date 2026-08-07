@@ -5,7 +5,7 @@ from services.blast_block_service import BlastBlockInput,PermissionDenied,STATUS
 class BlockDialog(QDialog):
     def __init__(self, service, domain_repo, user, domain_id=None, block=None, read_only=False):
         super().__init__(); self.service=service; self.domain_repo=domain_repo; self.user=user; self.block=block; self.saved_block_id=None; self.read_only=read_only or not user.can_edit
-        self.setWindowTitle("Block card" if block else "New block"); layout=QVBoxLayout(self); form=QFormLayout(); self.domain=QComboBox(); self.block_number=QLineEdit(); self.horizon=QLineEdit(); self.planned_date=QDateEdit(); self.planned_date.setCalendarPopup(True); self.planned_date.setMinimumDate(QDate(1900,1,1)); self.status=QComboBox(); self.comment=QTextEdit()
+        self.setWindowTitle("Block card" if block else "New block"); layout=QVBoxLayout(self); form=QFormLayout(); self.domain=QComboBox(); self.block_number=QLineEdit(); self.horizon=QLineEdit(); self.planned_date=QDateEdit(QDate.currentDate()); self.planned_date.setCalendarPopup(True); self.planned_date.setMinimumDate(QDate(1900,1,1)); self.status=QComboBox(); self.comment=QTextEdit()
         for value,label in STATUS_LABELS.items(): self.status.addItem(label,value)
         selected=block.domain_id if block else domain_id; domain=domain_repo.get(selected) if selected else None
         if domain:

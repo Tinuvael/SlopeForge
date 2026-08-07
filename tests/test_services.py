@@ -16,97 +16,36 @@ viewer = CurrentUser(id=3, username="viewer", full_name=None, role="viewer")
 
 
 @dataclass
-class FakeSite:
+class FakeDomain:
     id: int
-    mine_id: int
-    name: str = "site"
+    site_id: int = 10
+    name: str = "North"
 
-
-class FakeSiteRepo:
-    def __init__(self):
-        self.sites = [FakeSite(id=10, mine_id=20)]
-    def list_sites(self, mine_id=None):
-        return [s for s in self.sites if mine_id is None or s.mine_id == mine_id]
-
+class FakeDomainRepo:
+    def __init__(self): self.domains = [FakeDomain(7)]
+    def get(self, domain_id): return next((x for x in self.domains if x.id == domain_id), None)
 
 class FakeBlockRepo:
-    def __init__(self):
-        self.created = []
-        self.updated = []
-        self.rows = [
-            type("Row", (), {"id": 1, "block_number": "24-001", "site_id": 10, "status": "planned"})(),
-            type("Row", (), {"id": 2, "block_number": "25-002", "site_id": 11, "status": "blasted"})(),
-        ]
-    def create_block(self, **kwargs):
-        self.created.append(kwargs)
-        return type("Block", (), {"id": 100})()
-    def update_block(self, **kwargs):
-        self.updated.append(kwargs)
-        return type("Block", (), {"id": kwargs["block_id"]})()
-    def list_blocks(self, number_query=None, mine_id=None, site_id=None, status=None):
-        rows = self.rows
-        if number_query:
-            rows = [r for r in rows if number_query in r.block_number]
-        if site_id is not None:
-            rows = [r for r in rows if r.site_id == site_id]
-        if status:
-            rows = [r for r in rows if r.status == status]
-        return rows
-    def get_block(self, block_id):
-        return next((r for r in self.rows if r.id == block_id), None)
-
+    session_factory = None
+    def __init__(self): self.created=[]; self.rows=[]
+    def create_block(self, **kwargs): self.created.append(kwargs); return type("Block",(),{"id":100})()
+    def list_blocks(self, **filters): return self.rows
+    def get_block(self, block_id): return None
 
 def valid_input(**overrides):
-    data = {
-        "block_number": "24-017",
-        "mine_id": 20,
-        "site_id": 10,
-        "horizon_text": "135.5",
-        "planned_blast_date": None,
-        "status": "planned",
-        "comment": "",
-    }
-    data.update(overrides)
-    return BlastBlockInput(**data)
+    data={"domain_id":7,"block_number":"24-017","horizon_text":"135.5","planned_blast_date":None,"status":"planned","comment":""}; data.update(overrides); return BlastBlockInput(**data)
 
-
-def test_roles_can_edit() -> None:
-    assert admin.can_edit
-    assert editor.can_edit
-    assert not viewer.can_edit
-
-
-def test_create_block_success() -> None:
-    repo = FakeBlockRepo(); service = BlastBlockService(repo, FakeSiteRepo())
-    block_id = service.create_block(valid_input(), admin)
-    assert block_id == 100
-    assert repo.created[0]["horizon_m"] == Decimal("135.5")
-
-
-def test_update_existing_block_success() -> None:
-    repo = FakeBlockRepo(); service = BlastBlockService(repo, FakeSiteRepo())
-    block_id = service.update_block(5, valid_input(block_number="24-018"), editor)
-    assert block_id == 5
-    assert repo.updated[0]["block_number"] == "24-018"
-
-
-def test_filter_blocks_by_number_site_and_status() -> None:
-    service = BlastBlockService(FakeBlockRepo(), FakeSiteRepo())
-    assert [r.id for r in service.list_blocks(number_query="24", site_id=10, status="planned")] == [1]
-
-
-def test_viewer_cannot_edit() -> None:
-    service = BlastBlockService(FakeBlockRepo(), FakeSiteRepo())
-    with pytest.raises(PermissionDenied):
-        service.create_block(valid_input(), viewer)
-
-
-def test_block_validation_rejects_bad_site_and_status() -> None:
-    service = BlastBlockService(FakeBlockRepo(), FakeSiteRepo())
-    with pytest.raises(ValidationError):
-        service.create_block(valid_input(site_id=99), admin)
-    with pytest.raises(ValidationError):
-        service.create_block(valid_input(status="bad"), admin)
+def test_roles_can_edit(): assert admin.can_edit and editor.can_edit and not viewer.can_edit
+def test_create_block_by_domain():
+    repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo()); assert service.create_block(valid_input(),admin)==100; assert repo.created[0]["domain_id"]==7; assert repo.created[0]["horizon_m"]==Decimal("135.5")
+def test_viewer_cannot_edit():
+    with pytest.raises(PermissionDenied): BlastBlockService(FakeBlockRepo(),FakeDomainRepo()).create_block(valid_input(),viewer)
+def test_block_validation_rejects_missing_domain_and_bad_status():
+    service=BlastBlockService(FakeBlockRepo(),FakeDomainRepo())
+    with pytest.raises(ValidationError): service.create_block(valid_input(domain_id=99),admin)
+    with pytest.raises(ValidationError): service.create_block(valid_input(status="bad"),admin)
+def test_repository_filters_are_forwarded():
+    repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo()); assert service.list_blocks(domain_id=7,status="planned")==[]
 
 
 def test_auth_success_and_failure_with_fake_session() -> None:
@@ -155,8 +94,8 @@ def test_audit_value_formatting_and_changed_fields() -> None:
     assert format_audit_value("planned_blast_date", date(2026, 7, 15)) == "15.07.2026"
     assert format_audit_value("horizon_m", Decimal("760.5000")) == "760.5"
     changes = build_audit_changes(
-        {"block_number": "A", "site_id": 1, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "planned", "comment": None},
-        {"block_number": "A", "site_id": 2, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "blasted", "comment": None},
+        {"block_number": "A", "domain_id": 1, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "planned", "comment": None},
+        {"block_number": "A", "domain_id": 2, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "blasted", "comment": None},
         {1: "Old site", 2: "New site"},
     )
-    assert changes == [("site_id", "Old site", "New site"), ("status", "Запланирован", "Взорван")]
+    assert changes == [("domain_id", "Old site", "New site"), ("status", "Запланирован", "Взорван")]

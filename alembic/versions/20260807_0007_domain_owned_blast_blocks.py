@@ -14,6 +14,9 @@ depends_on = None
 
 def upgrade():
     op.add_column("blast_blocks", sa.Column("domain_id", sa.Integer(), nullable=True))
+    op.add_column("blast_blocks", sa.Column("is_archived", sa.Boolean(), nullable=False, server_default=sa.false()))
+    op.add_column("blast_blocks", sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True))
+    op.create_index("ix_blast_blocks_is_archived", "blast_blocks", ["is_archived"])
     # Sites with legacy blocks must have a deterministic fallback Domain.
     op.execute("""
         INSERT INTO domains (site_id, name, description, created_at, updated_at)
@@ -56,3 +59,6 @@ def downgrade():
     op.drop_index("ix_blast_blocks_domain_id", table_name="blast_blocks")
     op.drop_constraint("fk_blast_blocks_domain_id_domains", "blast_blocks", type_="foreignkey")
     op.drop_column("blast_blocks", "domain_id")
+    op.drop_index("ix_blast_blocks_is_archived", table_name="blast_blocks")
+    op.drop_column("blast_blocks", "archived_at")
+    op.drop_column("blast_blocks", "is_archived")

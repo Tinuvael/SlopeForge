@@ -16,8 +16,9 @@ class MainWindow(QMainWindow):
         self.assessment_page=None; self.assessment_domain_id=None; self.assessment_site_id=None
         self.tree=ProjectTree(context); self.tree.setMaximumWidth(320); self.block_page=BlockListPage(context); self.page=self.block_page; self.page_stack=QStackedWidget(); self.page_stack.addWidget(self.block_page)
         self.header=Header(context); self.domain_repo=DomainRepository(context.session_factory); self.project_service=ProjectService(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory)
-        self.tree.site_selected.connect(self.select_site); self.tree.domain_selected.connect(self.select_domain); self.tree.block_selected.connect(self.open_block_from_tree); self.tree.assessment_area_selected.connect(self.open_area_from_tree); self.tree.project_lines_selected.connect(self.open_project_lines)
+        self.tree.site_selected.connect(self.select_site); self.tree.domain_selected.connect(self.select_domain); self.tree.block_selected.connect(self.open_block_from_tree); self.tree.assessment_area_selected.connect(self.open_area_from_tree)
         self.header.add_mine_requested.connect(self._add_mine); self.header.add_domain_requested.connect(self._add_domain); self.header.add_block_requested.connect(self._add_block); self.header.add_assessment_area_requested.connect(self._add_area)
+        self.header.archive_requested.connect(self._archive_selected)
         self.block_page.data_changed.connect(self.refresh_project_data)
         central=QWidget(); self.setCentralWidget(central); root=QVBoxLayout(central); root.addWidget(self.header); body=QHBoxLayout(); body.addWidget(self.tree,1); body.addWidget(self.page_stack,4); root.addLayout(body); self._update_add()
     def _show(self,page):
@@ -34,24 +35,21 @@ class MainWindow(QMainWindow):
         try: page.save_now(); return True
         except Exception as exc: QMessageBox.critical(self,"Ошибка сохранения",f"Не удалось сохранить данные.\n\n{exc}"); return False
     def _set_context(self,site_id,site_name=None,domain_id=None,domain_name=None,block_id=None,area_id=None):
-        self.selected_site_id=site_id; self.selected_site_name=site_name or self.selected_site_name; self.selected_domain_id=domain_id; self.selected_domain_name=domain_name; self.selected_block_id=block_id; self.selected_assessment_area_id=area_id; self._update_add()
+        self.selected_site_id=site_id; self.selected_site_name=site_name or self.selected_site_name; self.selected_domain_id=domain_id; self.selected_domain_name=domain_name; self.selected_block_id=block_id; self.selected_assessment_area_id=area_id; self._update_add(); self.header.set_archive_context(area_id is not None)
     def _update_add(self):
         active=bool(self.selected_site_id and self.lines_repo.get_active(self.selected_site_id)); self.header.update_add_availability(self.selected_site_id is not None,self.selected_domain_id is not None,active)
     def select_site(self,site_id,site_name):
         from ui.pages.navigation_pages import SiteDashboardPage
-        page=SiteDashboardPage(site_name)
+        page=SiteDashboardPage(self.context,site_id,site_name)
         if self._show(page): self._set_context(site_id,site_name)
     def select_domain(self,domain_id,domain_name,site_id,site_name):
         from ui.pages.navigation_pages import DomainDashboardPage
         page=DomainDashboardPage(domain_name)
         if self._show(page): self._set_context(site_id,site_name,domain_id,domain_name)
-    def open_project_lines(self,site_id,site_name):
-        from ui.pages.navigation_pages import ProjectLinesPage
-        page=ProjectLinesPage(self.context,site_id,site_name)
-        if self._show(page): self._set_context(site_id,site_name)
     def open_block_from_tree(self,block_id,domain_id=None,site_id=None):
         domain=self.domain_repo.get(domain_id) if domain_id else None
-        if self._show(self.block_page): self.block_page.open_block_id(block_id); self._set_context(site_id,domain.site.name if domain else None,domain_id,domain.name if domain else None,block_id); return True
+        if self._show(self.block_page):
+            self.block_page.open_block_id(block_id); self._set_context(site_id,domain.site.name if domain else None,domain_id,domain.name if domain else None,block_id); self.header.set_archive_context(True,self.block_page.current_block.is_archived); return True
         return False
     def _assessment(self,domain_id,domain_name,site_id):
         if self.assessment_page is not None and self.assessment_domain_id==domain_id: return self.assessment_page
@@ -65,20 +63,67 @@ class MainWindow(QMainWindow):
         if page is None:return False
         self.page_stack.setCurrentWidget(page); page.open_assessment_area(area_id); domain=self.domain_repo.get(domain_id); self._set_context(site_id,domain.site.name,domain_id,domain_name,area_id=area_id); return True
     def _add_mine(self):
-        from ui.add_dialog import AddDialog
-        d=AddDialog("mine / quarry")
-        if d.exec(): self.project_service.create_project(d.name.text(),d.description.toPlainText()); self.refresh_project_data()
+        from ui.project_dialog import ProjectDialog
+        from prototype_2d.domain import AssessmentDomainState
+        from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
+        d=ProjectDialog(self)
+        if not d.exec(): return
+        dataset=None
+        try:
+            if d.csv_path.text(): dataset,_=ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(d.csv_path.text())
+            site_id=self.project_service.create_project(d.name.text(),d.description.toPlainText())
+            if dataset:
+                try: self.lines_repo.import_dataset(site_id,dataset,make_active=True)
+                except Exception as exc:
+                    QMessageBox.warning(self,"Проект создан без линий",f"Проект создан, но линии не сохранены: {exc}\nПовторите импорт на странице проекта.")
+            self.refresh_project_data(); self.select_site(site_id,d.name.text())
+        except Exception as exc: QMessageBox.warning(self,"Не удалось создать проект",str(exc))
     def _add_domain(self):
         if self.selected_site_id is None:return
         from ui.add_dialog import AddDialog
         d=AddDialog("domain")
         if d.exec(): self.domain_repo.create(self.selected_site_id,d.name.text(),d.description.toPlainText()); self.refresh_project_data()
     def _add_block(self):
-        if self.selected_domain_id is not None: self.block_page.create_block(self.selected_domain_id); self.refresh_project_data()
+        if self.selected_domain_id is None:return
+        page=self._assessment(self.selected_domain_id,self.selected_domain_name,self.selected_site_id)
+        if page is None:return
+        from ui.prototype_2d.assessment_workspace import BlastEventDialog
+        dialog=BlastEventDialog(self,page.workspace.service); dialog.kind.setCurrentText("production"); dialog.kind.setEnabled(False)
+        if not dialog.exec():return
+        event=None; block_id=None
+        try:
+            event=page.workspace.service.create_event(**dialog.values())
+            from services.blast_block_service import BlastBlockInput
+            block_id=self.block_page.block_service.create_block(BlastBlockInput(self.selected_domain_id,event.name,str(event.elevation),event.event_date,"planned",None),self.context.current_user)
+            page.save_now()
+            from database.assessment_models import BlastEvent
+            with self.context.session_factory.begin() as session:
+                row=session.query(BlastEvent).filter_by(workspace_id=page.workspace_id,domain_id=event.id).one(); row.blast_block_id=block_id
+            self.refresh_project_data(); self.open_block_from_tree(block_id,self.selected_domain_id,self.selected_site_id)
+        except Exception as exc:
+            if event in page.state.blast_events:
+                page.state.blast_events.remove(event)
+                try: page.save_now()
+                except Exception: pass
+            if block_id:
+                from database.models import BlastBlock
+                with self.context.session_factory.begin() as session:
+                    row=session.get(BlastBlock,block_id)
+                    if row: session.delete(row)
+            QMessageBox.warning(self,"Не удалось создать блок",str(exc))
     def _add_area(self):
-        if self.selected_domain_id is None or not self.lines_repo.get_active(self.selected_site_id):return
+        if self.selected_domain_id is None:return
+        if not self.lines_repo.get_active(self.selected_site_id):
+            QMessageBox.information(self,"Проектные линии","Сначала загрузите проектные линии для карьера."); self.select_site(self.selected_site_id,self.selected_site_name); return
         page=self._assessment(self.selected_domain_id,self.selected_domain_name,self.selected_site_id)
         if page is not None: self.page_stack.setCurrentWidget(page); page.workspace.start_area_drawing()
+    def _archive_selected(self):
+        if self.selected_block_id is not None:
+            block=self.block_page.current_block; action="восстановить" if block.is_archived else "архивировать"
+            if QMessageBox.question(self,"Archive",f"{action.capitalize()} Block {block.block_number}?") != QMessageBox.StandardButton.Yes:return
+            self.block_page.block_service.set_archived(block.id,not block.is_archived,self.context.current_user); self.selected_block_id=None; self.header.set_archive_context(False); self.refresh_project_data(); return
+        if self.selected_assessment_area_id and self.assessment_page:
+            self.assessment_page.workspace.toggle_area_archive(); self.header.set_archive_context(False); self.refresh_project_data()
     def refresh_project_data(self): self.tree.load_data(); self._update_add()
     def closeEvent(self,event):
         if not self._guard_leave(): event.ignore(); return

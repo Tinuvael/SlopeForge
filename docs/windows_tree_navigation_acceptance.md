@@ -1,20 +1,19 @@
 # Windows manual acceptance — tree navigation
 
-1. Launch the application.
-2. Confirm the tree shows the visible Site directly and has no Mine parent.
-3. Click Site and confirm the Site dashboard opens.
-4. Create North and South Domains through **Add**.
-5. Click a Domain and confirm the Domain dashboard opens.
-6. Add a Block under North through **Add**.
-7. Confirm its Horizon appears automatically.
-8. Click Horizon and confirm it only expands/collapses.
-9. Click Block and confirm the existing block card opens.
-10. Add an Assessment Area under North through **Add**.
-11. Confirm its Interval appears automatically.
-12. Click Interval and confirm it only expands/collapses.
-13. Click Area and confirm the correct Area opens.
-14. Confirm South does not show North Blocks or Areas.
-15. Confirm Project Lines are shared by both Domains.
-16. Restart and verify persistence.
-17. Confirm Cancel preserves unfinished drawing and the current page.
-18. Confirm Discard abandons drawing and performs navigation.
+1. Launch the application and confirm the compact filters are visible below the tree.
+2. Confirm the tree shows the visible Project/Site directly and has no internal Mine parent.
+3. Confirm there is no Project Lines branch in the tree.
+4. Click Project and confirm its dashboard contains the Project Lines section and history.
+5. Import or update Project Lines from the Project dashboard.
+6. Create a new Project and optionally select its Project Lines CSV in the creation dialog.
+7. Without active lines, choose Add Assessment Area and confirm the clear instruction is shown.
+8. With active lines, choose Add Assessment Area and confirm drawing starts.
+9. Select a Domain and choose Add Block; confirm the geometry-import wizard opens.
+10. Select a production CSV and confirm the horizon is detected automatically.
+11. Confirm the planned date defaults to today.
+12. Save and confirm the Block appears under the correct Domain and virtual Horizon.
+13. Click the Block and confirm the existing full Block card opens.
+14. Confirm the card shows Project / Quarry and Domain, not duplicate Mine and Site fields.
+15. Archive a test Block and confirm it disappears normally; enable Show archived to restore it.
+16. Archive an Assessment Area and confirm it disappears from the normal tree.
+17. Restart and verify Blocks, linked production geometry, Areas and Project Lines persist.

@@ -98,8 +98,8 @@ class BlockHeaderWidget(CardFrame):
         values = [
             f"ID: {block.id}",
             f"Horizon: {format_decimal(block.horizon_m)}",
-            f"Site: {block.site_name}",
-            f"Mine: {block.mine_name}",
+            f"Project / Quarry: {block.site_name}",
+            f"Domain: {block.domain_name}",
             f"Created: {format_datetime(block.created_at)}",
             f"Updated: {format_datetime(block.updated_at)}",
         ]
@@ -135,8 +135,8 @@ class BlockOverviewWidget(QWidget):
                 ("Created", format_datetime(block.created_at)),
                 ("Author", block.author_name),
                 ("Horizon", format_decimal(block.horizon_m)),
-                ("Mine", block.mine_name),
-                ("Site", block.site_name),
+                ("Project / Quarry", block.site_name),
+                ("Domain", block.domain_name),
                 ("Status", STATUS_LABELS.get(block.status, block.status)),
                 ("Comment", block.comment),
             ]

@@ -80,6 +80,8 @@ class BlastBlock(TimestampMixin, Base):
     planned_blast_date: Mapped[Optional[date]] = mapped_column(Date)
     status: Mapped[str] = mapped_column(blast_block_status_enum, nullable=False, default="planned", index=True)
     comment: Mapped[Optional[str]] = mapped_column(Text)
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     domain: Mapped[Domain] = relationship(back_populates="blast_blocks")
     created_by_user: Mapped[Optional[User]] = relationship()

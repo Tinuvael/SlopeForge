@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -39,6 +40,14 @@ class BlastBlockService:
 
     def list_blocks(self, **filters): return self.block_repository.list_blocks(**filters)
     def get_block(self, block_id): return self.block_repository.get_block(block_id)
+
+    def set_archived(self, block_id: int, archived: bool, user: CurrentUser) -> None:
+        self._check_can_edit(user)
+        with self.session_factory.begin() as session:
+            block = session.get(BlastBlock, block_id)
+            if block is None: raise ValidationError("Blast block not found")
+            block.is_archived = archived
+            block.archived_at = datetime.now(timezone.utc) if archived else None
 
     def create_block(self, data: BlastBlockInput, user: CurrentUser) -> int:
         self._check_can_edit(user); horizon = self._validate(data)
