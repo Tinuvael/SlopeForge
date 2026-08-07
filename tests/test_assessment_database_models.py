@@ -93,7 +93,10 @@ def test_domain_and_site_scoped_project_lines_foundation():
     assert "is_archived" in table("project_lines_datasets").c
     assert "archived_at" in table("project_lines_datasets").c
     assert "NOT (is_archived AND is_active)" in checks("project_lines_datasets")
-    assert fk("blast_blocks", "site_id").column.table.name == "sites"
+    assert "site_id" not in table("blast_blocks").c
+    assert fk("blast_blocks", "domain_id").column.table.name == "domains"
+    assert "is_archived" in table("blast_blocks").c
+    assert "archived_at" in table("blast_blocks").c
     assert "horizons" not in Base.metadata.tables
 
 

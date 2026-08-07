@@ -189,6 +189,7 @@ class BlastEvent:
     is_archived: bool = False
     archived_at: datetime | None = None
     archive_reason: str | None = None
+    blast_block_id: int | None = None
 
     def __post_init__(self) -> None:
         if self.event_type not in {"production", "contour"}:
@@ -244,6 +245,7 @@ class BlastEvent:
             "event_type": self.event_type,
             "event_date": self.event_date.isoformat() if self.event_date else None,
             "elevation": self.elevation,
+            "blast_block_id": self.blast_block_id,
             "geometry_revisions": [revision.to_dict() for revision in self.geometry_revisions],
             "active_geometry_revision_id": self.active_geometry_revision_id,
             "is_archived": self.is_archived,
@@ -259,6 +261,7 @@ class BlastEvent:
             event_type=data["event_type"],
             event_date=date.fromisoformat(data["event_date"]) if data.get("event_date") else None,
             elevation=float(data["elevation"]),
+            blast_block_id=data.get("blast_block_id"),
             geometry_revisions=[BlastEventGeometryRevision.from_dict(item) for item in data.get("geometry_revisions", [])],
             active_geometry_revision_id=data.get("active_geometry_revision_id"),
             is_archived=bool(data.get("is_archived", False)),

@@ -1,197 +1,92 @@
 from __future__ import annotations
-
 from decimal import Decimal
-
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (
-    QComboBox,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QTreeWidget,
-    QTreeWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
-
-from database.app_context import AppContext
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QLabel, QLineEdit, QPushButton,
+                               QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 from repositories.blast_block_repository import BlastBlockRepository
-from repositories.mine_repository import MineRepository
 from repositories.site_repository import SiteRepository
 from repositories.domain_repository import DomainRepository
-from services.blast_block_service import BlastBlockService, STATUS_LABELS
+from repositories.navigation_repository import NavigationRepository
 
 
-def _horizon_label(horizon: Decimal | None) -> str:
-    if horizon is None:
-        return "No horizon"
-    text = format(horizon.normalize(), "f")
-    text = text.rstrip("0").rstrip(".") if "." in text else text
-    return f"Horizon {text}"
-
+def _number(value):
+    text = format(Decimal(value).normalize(), "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
 class ProjectTree(QWidget):
-    filters_changed = Signal(dict)
-    block_selected = Signal(int)
+    block_selected = Signal(int, int, int)
     site_selected = Signal(int, str)
-    domain_selected = Signal(int, str, int)
-
-    def __init__(self, context: AppContext):
-        super().__init__()
-        self.context = context
-        self.mine_repo = MineRepository(context.session_factory)
-        self.site_repo = SiteRepository(context.session_factory)
-        self.domain_repo = DomainRepository(context.session_factory)
-        self.block_service = BlastBlockService(BlastBlockRepository(context.session_factory), self.site_repo)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
-        layout.addWidget(QLabel("Project"))
-
-        self.tree = QTreeWidget()
-        self.tree.setHeaderHidden(True)
-        self.tree.itemClicked.connect(self._item_clicked)
-        layout.addWidget(self.tree, 1)
-
+    domain_selected = Signal(int, str, int, str)
+    assessment_area_selected = Signal(str, int, int, str)
+    def __init__(self, context):
+        super().__init__(); self.context = context
+        self.site_repo = SiteRepository(context.session_factory); self.domain_repo = DomainRepository(context.session_factory)
+        self.block_repo = BlastBlockRepository(context.session_factory); self.navigation_repo = NavigationRepository(context.session_factory)
+        layout = QVBoxLayout(self); layout.setContentsMargins(8,8,8,8); layout.addWidget(QLabel("Projects"))
+        self.tree = QTreeWidget(); self.tree.setHeaderHidden(True); self.tree.itemClicked.connect(self._item_clicked); layout.addWidget(self.tree)
         layout.addWidget(QLabel("Filters"))
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search by block number")
-        self.mine_filter = QComboBox()
-        self.site_filter = QComboBox()
-        self.status_filter = QComboBox()
-        self.reset_button = QPushButton("Reset filters")
-
-        for widget in (self.search, self.mine_filter, self.site_filter, self.status_filter, self.reset_button):
-            layout.addWidget(widget)
-
-        self.search.textChanged.connect(self._emit_filters)
-        self.mine_filter.currentIndexChanged.connect(self._reload_site_filter)
-        self.site_filter.currentIndexChanged.connect(self._emit_filters)
-        self.status_filter.currentIndexChanged.connect(self._emit_filters)
+        self.search = QLineEdit(); self.search.setPlaceholderText("Search by block number")
+        self.project_filter = QComboBox(); self.domain_filter = QComboBox(); self.status_filter = QComboBox()
+        self.show_archived = QCheckBox("Show archived"); self.reset_button = QPushButton("Reset filters")
+        for widget in (self.search, self.project_filter, self.domain_filter, self.status_filter,
+                       self.show_archived, self.reset_button): layout.addWidget(widget)
+        self.project_filter.currentIndexChanged.connect(self._reload_domains)
+        for signal in (self.search.textChanged, self.domain_filter.currentIndexChanged,
+                       self.status_filter.currentIndexChanged, self.show_archived.toggled): signal.connect(self.load_data)
         self.reset_button.clicked.connect(self.reset_filters)
-
         self.reload_filters()
         self.load_data()
-
-    def reload_filters(self) -> None:
-        current_mine = self.mine_filter.currentData() if self.mine_filter.count() else None
-        current_site = self.site_filter.currentData() if self.site_filter.count() else None
-        current_status = self.status_filter.currentData() if self.status_filter.count() else None
-
-        self.mine_filter.blockSignals(True)
-        self.mine_filter.clear()
-        self.mine_filter.addItem("All mines", None)
-        for mine in self.mine_repo.list_mines():
-            self.mine_filter.addItem(mine.name, mine.id)
-        self._restore_combo_value(self.mine_filter, current_mine)
-        self.mine_filter.blockSignals(False)
-
-        self.status_filter.blockSignals(True)
-        self.status_filter.clear()
-        self.status_filter.addItem("All statuses", None)
-        for value, label in STATUS_LABELS.items():
-            self.status_filter.addItem(label, value)
-        self._restore_combo_value(self.status_filter, current_status)
-        self.status_filter.blockSignals(False)
-
-        self._reload_site_filter(emit=False, preferred_site_id=current_site)
-
-    def _reload_site_filter(self, emit: bool = True, preferred_site_id: int | None = None) -> None:
-        current_site = preferred_site_id if preferred_site_id is not None else self.site_filter.currentData()
-        self.site_filter.blockSignals(True)
-        self.site_filter.clear()
-        self.site_filter.addItem("All sites", None)
-        for site in self.site_repo.list_sites(self.mine_filter.currentData()):
-            self.site_filter.addItem(site.name, site.id)
-        self._restore_combo_value(self.site_filter, current_site)
-        self.site_filter.blockSignals(False)
-        if emit:
-            self._emit_filters()
-
-    def reset_filters(self) -> None:
-        self.search.clear()
-        self.mine_filter.setCurrentIndex(0)
-        self.status_filter.setCurrentIndex(0)
-        self._reload_site_filter(emit=False)
-        self._emit_filters()
-
-    def current_filters(self) -> dict:
-        return {
-            "number_query": self.search.text(),
-            "mine_id": self.mine_filter.currentData(),
-            "site_id": self.site_filter.currentData(),
-            "status": self.status_filter.currentData(),
-        }
-
-    def _emit_filters(self) -> None:
-        filters = self.current_filters()
-        self.load_data(filters)
-        self.filters_changed.emit(filters)
-
-    def load_data(self, filters: dict | None = None) -> None:
-        filters = filters or self.current_filters()
-        self.tree.clear()
-        mine_items: dict[int, QTreeWidgetItem] = {}
-        site_items: dict[int, QTreeWidgetItem] = {}
-        horizon_items: dict[tuple[int, str], QTreeWidgetItem] = {}
-
-        for mine in self.mine_repo.list_mines():
-            if filters.get("mine_id") is not None and mine.id != filters["mine_id"]:
-                continue
-            mine_item = QTreeWidgetItem([mine.name])
-            mine_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "mine", "id": mine.id})
-            self.tree.addTopLevelItem(mine_item)
-            mine_items[mine.id] = mine_item
-
-        for site in self.site_repo.list_sites(filters.get("mine_id")):
-            if filters.get("site_id") is not None and site.id != filters["site_id"]:
-                continue
-            mine_item = mine_items.get(site.mine_id)
-            if mine_item is None:
-                continue
-            site_item = QTreeWidgetItem([site.name])
-            site_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "site", "id": site.id})
-            mine_item.addChild(site_item)
-            site_items[site.id] = site_item
-
+    def reload_filters(self):
+        selected = self.project_filter.currentData() if self.project_filter.count() else None
+        self.project_filter.blockSignals(True); self.project_filter.clear(); self.project_filter.addItem("All projects", None)
+        for site in self.site_repo.list_sites(): self.project_filter.addItem(site.name, site.id)
+        self.project_filter.setCurrentIndex(max(0, self.project_filter.findData(selected))); self.project_filter.blockSignals(False)
+        self.status_filter.clear(); self.status_filter.addItem("All statuses", None)
+        for value, label in (("planned","Planned"),("blasted","Blasted"),("assessed","Assessed")): self.status_filter.addItem(label,value)
+        self._reload_domains()
+    def _reload_domains(self, *_args):
+        selected = self.domain_filter.currentData() if self.domain_filter.count() else None
+        self.domain_filter.blockSignals(True); self.domain_filter.clear(); self.domain_filter.addItem("All domains", None)
+        sites = [self.project_filter.currentData()] if self.project_filter.currentData() else [s.id for s in self.site_repo.list_sites()]
+        for site_id in sites:
+            for domain in self.domain_repo.list_for_site(site_id): self.domain_filter.addItem(domain.name, domain.id)
+        self.domain_filter.setCurrentIndex(max(0, self.domain_filter.findData(selected))); self.domain_filter.blockSignals(False); self.load_data()
+    def reset_filters(self):
+        self.search.clear(); self.project_filter.setCurrentIndex(0); self.status_filter.setCurrentIndex(0); self.show_archived.setChecked(False); self._reload_domains()
+    def load_data(self, *_args, **_kwargs):
+        self.tree.clear(); areas_by_domain = {}
+        for area in self.navigation_repo.list_active_areas(): areas_by_domain.setdefault(area.domain_id, []).append(area)
+        project_id = self.project_filter.currentData(); domain_id = self.domain_filter.currentData()
+        for site in self.site_repo.list_sites():
+            if project_id is not None and site.id != project_id: continue
+            site_item = self._item(site.name, {"type":"site","id":site.id,"site_name":site.name}); self.tree.addTopLevelItem(site_item)
             for domain in self.domain_repo.list_for_site(site.id):
-                domain_item = QTreeWidgetItem([domain.name])
-                domain_item.setData(0, Qt.ItemDataRole.UserRole, {
-                    "type": "domain", "id": domain.id, "site_id": site.id
-                })
-                site_item.addChild(domain_item)
-
-        for block in self.block_service.list_blocks(**filters):
-            site_item = site_items.get(block.site_id)
-            if site_item is None:
-                continue
-            horizon = _horizon_label(block.horizon_m)
-            key = (block.site_id, horizon)
-            horizon_item = horizon_items.get(key)
-            if horizon_item is None:
-                horizon_item = QTreeWidgetItem([horizon])
-                horizon_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "horizon", "value": horizon})
-                site_item.addChild(horizon_item)
-                horizon_items[key] = horizon_item
-            block_item = QTreeWidgetItem([f"Block {block.block_number}"])
-            block_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "block", "id": block.id})
-            horizon_item.addChild(block_item)
-
-        self.tree.expandAll()
-
-    def _item_clicked(self, item: QTreeWidgetItem) -> None:
-        payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
-        if payload.get("type") == "site":
-            self.site_selected.emit(int(payload["id"]), item.text(0))
-        elif payload.get("type") == "domain":
-            self.domain_selected.emit(
-                int(payload["id"]), item.text(0), int(payload["site_id"])
-            )
-        elif payload.get("type") == "block":
-            self.block_selected.emit(int(payload["id"]))
-
+                if domain_id is not None and domain.id != domain_id: continue
+                base = {"domain_id":domain.id,"domain_name":domain.name,"site_id":site.id,"site_name":site.name}
+                domain_item = self._item(domain.name, {"type":"domain", **base}); site_item.addChild(domain_item)
+                blocks_folder = self._item("Blast blocks", {"type":"folder", **base}); domain_item.addChild(blocks_folder)
+                horizons = {}
+                for block in self.block_repo.list_blocks(domain_id=domain.id, number_query=self.search.text(), status=self.status_filter.currentData(), show_archived=self.show_archived.isChecked()):
+                    label = "No horizon" if block.horizon_m is None else f"Horizon {_number(block.horizon_m)}"
+                    folder = horizons.get(label)
+                    if folder is None: folder = self._item(label, {"type":"horizon", **base}); blocks_folder.addChild(folder); horizons[label] = folder
+                    text = f"Block {block.block_number}" + (" [Archived]" if block.is_archived else "")
+                    folder.addChild(self._item(text, {"type":"block","id":block.id,"archived":block.is_archived, **base}))
+                areas_folder = self._item("Assessment areas", {"type":"folder", **base}); domain_item.addChild(areas_folder)
+                intervals = {}
+                for area in areas_by_domain.get(domain.id, []):
+                    label = f"Interval {_number(area.lower_elevation)}–{_number(area.upper_elevation)}"
+                    folder = intervals.get(label)
+                    if folder is None: folder = self._item(label, {"type":"interval", **base}); areas_folder.addChild(folder); intervals[label] = folder
+                    folder.addChild(self._item(area.name, {"type":"area","id":area.id, **base}))
+        self.tree.expandToDepth(1)
     @staticmethod
-    def _restore_combo_value(combo: QComboBox, value) -> None:
-        index = combo.findData(value)
-        combo.setCurrentIndex(index if index >= 0 else 0)
+    def _item(text, payload):
+        item = QTreeWidgetItem([text]); item.setData(0, Qt.ItemDataRole.UserRole, payload); return item
+    def _item_clicked(self, item, _column=0):
+        p = item.data(0, Qt.ItemDataRole.UserRole) or {}; kind = p.get("type")
+        if kind in {"folder","horizon","interval"}: item.setExpanded(not item.isExpanded()); return
+        if kind == "site": self.site_selected.emit(p["id"], p["site_name"])
+        elif kind == "domain": self.domain_selected.emit(p["domain_id"], p["domain_name"], p["site_id"], p["site_name"])
+        elif kind == "block": self.block_selected.emit(p["id"], p["domain_id"], p["site_id"])
+        elif kind == "area": self.assessment_area_selected.emit(p["id"], p["domain_id"], p["site_id"], p["domain_name"])

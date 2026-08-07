@@ -18,6 +18,7 @@ from repositories.attachment_repository import AttachmentRow
 from repositories.audit_log_repository import AuditLogEntryRow
 from repositories.blast_block_repository import BlastBlockRow
 from services.blast_block_service import AUDIT_FIELD_LABELS, STATUS_LABELS
+from ui.pages.plan_geometry_widget import PlanGeometryWidget
 
 ACTION_LABELS = {"create": "Create", "update": "Update", "delete": "Delete", "attach": "Attach", "detach": "Detach"}
 
@@ -98,8 +99,8 @@ class BlockHeaderWidget(CardFrame):
         values = [
             f"ID: {block.id}",
             f"Horizon: {format_decimal(block.horizon_m)}",
-            f"Site: {block.site_name}",
-            f"Mine: {block.mine_name}",
+            f"Project / Quarry: {block.site_name}",
+            f"Domain: {block.domain_name}",
             f"Created: {format_datetime(block.created_at)}",
             f"Updated: {format_datetime(block.updated_at)}",
         ]
@@ -118,7 +119,7 @@ class BlockOverviewWidget(QWidget):
         self.info = CardFrame("General information")
         self.grid = QGridLayout()
         self.info.layout.addLayout(self.grid)
-        self.scheme = BlockSchemePlaceholder()
+        self.scheme = PlanGeometryWidget()
         layout.addWidget(self.info, 3)
         layout.addWidget(self.scheme, 2)
 
@@ -135,8 +136,8 @@ class BlockOverviewWidget(QWidget):
                 ("Created", format_datetime(block.created_at)),
                 ("Author", block.author_name),
                 ("Horizon", format_decimal(block.horizon_m)),
-                ("Mine", block.mine_name),
-                ("Site", block.site_name),
+                ("Project / Quarry", block.site_name),
+                ("Domain", block.domain_name),
                 ("Status", STATUS_LABELS.get(block.status, block.status)),
                 ("Comment", block.comment),
             ]
@@ -149,7 +150,7 @@ class BlockOverviewWidget(QWidget):
             right.setWordWrap(True)
             self.grid.addWidget(left, row, 0)
             self.grid.addWidget(right, row, 1)
-        self.scheme.set_block(block)
+        if block is None: self.scheme.set_geometry(None, context="Geometry is not loaded")
 
 
 class BlockSchemePlaceholder(CardFrame):

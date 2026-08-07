@@ -174,7 +174,8 @@ def test_main_window_embeds_assessment_instead_of_standalone_entry_point():
     source = __import__('pathlib').Path('ui/main_window.py').read_text(encoding='utf-8')
     assert 'Blast Events Prototype' not in source
     assert 'open_blast_events_prototype' not in source
-    assert 'AssessmentWorkspacePage' in source
+    assert 'AssessmentAreaPage' in source
+    assert 'AssessmentWorkspacePage' not in source
     assert '2D Plan Prototype' not in source
     assert 'Prototype2DWindow' not in source
 
