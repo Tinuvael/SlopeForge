@@ -23,6 +23,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.context = context
         self.assessment_page = None
+        self.assessment_domain_id: int | None = None
+        self.assessment_domain_name: str | None = None
         self.assessment_site_id: int | None = None
         self.assessment_site_name: str | None = None
 
@@ -41,7 +43,8 @@ class MainWindow(QMainWindow):
 
         self.tree.filters_changed.connect(self.block_page.set_filters)
         self.tree.block_selected.connect(self.open_block_from_tree)
-        self.tree.site_selected.connect(self.open_assessment_for_site)
+        self.tree.site_selected.connect(self.select_site)
+        self.tree.domain_selected.connect(self.open_assessment_for_domain)
         self.block_page.data_changed.connect(self.refresh_project_data)
 
         central = QWidget()
@@ -88,13 +91,13 @@ class MainWindow(QMainWindow):
         self.assessment_nav_button.setChecked(assessment_visible)
         self.block_nav_button.setChecked(not assessment_visible)
 
-    def _construct_assessment_page(self, site_id: int, site_name: str | None):
+    def _construct_assessment_page(self, domain_id: int, domain_name: str | None, site_id: int):
         try:
             # Keep the assessment dependency graph out of normal block-app startup.
             from ui.pages.assessment_workspace_page import AssessmentWorkspacePage
 
             return AssessmentWorkspacePage(
-                self.context, site_id, site_name, parent=self.page_stack
+                self.context, domain_id, domain_name, site_id, parent=self.page_stack
             )
         except Exception as exc:
             QMessageBox.critical(
@@ -106,16 +109,28 @@ class MainWindow(QMainWindow):
             return None
 
     def show_assessment_page(self) -> bool:
-        if self.assessment_site_id is None:
+        if self.assessment_domain_id is None or self.assessment_site_id is None:
             self.page_stack.setCurrentWidget(self.block_page)
             self._sync_navigation_buttons()
             return False
-        return self.open_assessment_for_site(
-            self.assessment_site_id, self.assessment_site_name or ""
+        return self.open_assessment_for_domain(
+            self.assessment_domain_id, self.assessment_domain_name or "", self.assessment_site_id
         )
 
-    def open_assessment_for_site(self, site_id: int, site_name: str) -> bool:
-        if self.assessment_page is not None and site_id == self.assessment_site_id:
+    def select_site(self, site_id: int, site_name: str) -> None:
+        """Select Site context without guessing or opening a Domain workspace."""
+        if self.assessment_site_id != site_id:
+            self.assessment_domain_id = None
+            self.assessment_domain_name = None
+            self.assessment_nav_button.setEnabled(False)
+            self.assessment_nav_button.setToolTip("Выберите домен в дереве проекта")
+            self.page_stack.setCurrentWidget(self.block_page)
+            self._sync_navigation_buttons()
+            return
+        self.assessment_nav_button.setEnabled(self.assessment_domain_id is not None)
+
+    def open_assessment_for_domain(self, domain_id: int, domain_name: str, site_id: int) -> bool:
+        if self.assessment_page is not None and domain_id == self.assessment_domain_id:
             page = self.assessment_page
             if self.page_stack.currentWidget() is page:
                 try:
@@ -155,14 +170,15 @@ class MainWindow(QMainWindow):
         if old_page is not None and not self._prepare_assessment_for_site_switch():
             return False
 
-        page = self._construct_assessment_page(site_id, site_name)
+        page = self._construct_assessment_page(domain_id, domain_name, site_id)
         if page is None:
             return False
         self.page_stack.addWidget(page)
         self.page_stack.setCurrentWidget(page)
         self.assessment_page = page
+        self.assessment_domain_id = domain_id
+        self.assessment_domain_name = domain_name
         self.assessment_site_id = site_id
-        self.assessment_site_name = site_name
         self.assessment_nav_button.setEnabled(True)
         self.assessment_nav_button.setToolTip("")
         if old_page is not None:

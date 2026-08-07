@@ -18,6 +18,7 @@ from database.app_context import AppContext
 from repositories.blast_block_repository import BlastBlockRepository
 from repositories.mine_repository import MineRepository
 from repositories.site_repository import SiteRepository
+from repositories.domain_repository import DomainRepository
 from services.blast_block_service import BlastBlockService, STATUS_LABELS
 
 
@@ -33,12 +34,14 @@ class ProjectTree(QWidget):
     filters_changed = Signal(dict)
     block_selected = Signal(int)
     site_selected = Signal(int, str)
+    domain_selected = Signal(int, str, int)
 
     def __init__(self, context: AppContext):
         super().__init__()
         self.context = context
         self.mine_repo = MineRepository(context.session_factory)
         self.site_repo = SiteRepository(context.session_factory)
+        self.domain_repo = DomainRepository(context.session_factory)
         self.block_service = BlastBlockService(BlastBlockRepository(context.session_factory), self.site_repo)
 
         layout = QVBoxLayout(self)
@@ -152,6 +155,13 @@ class ProjectTree(QWidget):
             mine_item.addChild(site_item)
             site_items[site.id] = site_item
 
+            for domain in self.domain_repo.list_for_site(site.id):
+                domain_item = QTreeWidgetItem([domain.name])
+                domain_item.setData(0, Qt.ItemDataRole.UserRole, {
+                    "type": "domain", "id": domain.id, "site_id": site.id
+                })
+                site_item.addChild(domain_item)
+
         for block in self.block_service.list_blocks(**filters):
             site_item = site_items.get(block.site_id)
             if site_item is None:
@@ -174,6 +184,10 @@ class ProjectTree(QWidget):
         payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
         if payload.get("type") == "site":
             self.site_selected.emit(int(payload["id"]), item.text(0))
+        elif payload.get("type") == "domain":
+            self.domain_selected.emit(
+                int(payload["id"]), item.text(0), int(payload["site_id"])
+            )
         elif payload.get("type") == "block":
             self.block_selected.emit(int(payload["id"]))
 

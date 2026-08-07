@@ -48,6 +48,13 @@ class FakeSiteRepository:
         return [SiteRow(10, 1, "Domain")]
 
 
+class FakeDomainRepository:
+    def __init__(self, session_factory):
+        self.session_factory = session_factory
+    def list_for_site(self, site_id):
+        return []
+
+
 class FakeBlastBlockRepository:
     def __init__(self, session_factory):
         self.session_factory = session_factory
@@ -102,6 +109,7 @@ def test_real_main_window_constructs_lazily_without_assessment_query(monkeypatch
     FakeBlastBlockService.queries = 0
     monkeypatch.setattr(project_tree, "MineRepository", FakeMineRepository)
     monkeypatch.setattr(project_tree, "SiteRepository", FakeSiteRepository)
+    monkeypatch.setattr(project_tree, "DomainRepository", FakeDomainRepository)
     monkeypatch.setattr(project_tree, "BlastBlockRepository", FakeBlastBlockRepository)
     monkeypatch.setattr(project_tree, "BlastBlockService", FakeBlastBlockService)
     monkeypatch.setattr(main_window, "BlockListPage", FakeBlockListPage)

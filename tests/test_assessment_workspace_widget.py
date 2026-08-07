@@ -7,13 +7,16 @@ from prototype_2d.blast_event_service import BlastEventService
 from prototype_2d.domain import AssessmentDomainState
 
 
-def _widget(state=None, save_callback=lambda: None, storage_path=None, read_only=False):
+def _widget(state=None, save_callback=lambda: None, storage_path=None, read_only=False,
+            persist_dataset_callback=None, set_active_dataset_callback=None):
     QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
     from ui.prototype_2d.assessment_workspace import AssessmentWorkspaceWidget
 
     app = QApplication.instance() or QApplication([])
     return AssessmentWorkspaceWidget(
-        state if state is not None else AssessmentDomainState(), storage_path, save_callback, read_only=read_only
+        state if state is not None else AssessmentDomainState(), storage_path, save_callback,
+        read_only=read_only, persist_dataset_callback=persist_dataset_callback,
+        set_active_dataset_callback=set_active_dataset_callback,
     ), app
 
 
@@ -340,4 +343,24 @@ def test_attachment_service_uses_injected_storage_path(tmp_path):
     assert widget.attachment_service.storage_path == storage
     assert widget.attachment_service.owner_folder("blast_event", "BE-1", create=False) == tmp_path / "nested" / "files" / "blast_events" / "BE-1"
     assert widget.attachment_service.owner_folder("assessment_evaluation", "EV-1", create=False) == tmp_path / "nested" / "files" / "assessments" / "EV-1"
+    widget.deleteLater(); assert app
+
+
+def test_dataset_activation_uses_focused_callback_and_rolls_back_on_failure(tmp_path):
+    from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
+    state = _project_state(tmp_path)
+    first = state.datasets[0]
+    source = tmp_path / "second-callback.csv"
+    source.write_text("XP,YP,ZP,SID,PTN\n0,0,640,x,1\n1,0,640,x,2\n", encoding="utf-8")
+    second, _ = ProjectLinesDatasetService(state).import_dataset(source)
+    calls = []
+    widget, app = _widget(state, set_active_dataset_callback=lambda value: calls.append(value))
+    widget._activate_dataset(first.id)
+    assert calls == [first.id]
+    assert state.active_dataset().id == first.id
+
+    widget._set_active_dataset_callback = lambda _value: (_ for _ in ()).throw(RuntimeError("db"))
+    with pytest.raises(RuntimeError, match="db"):
+        widget._activate_dataset(second.id)
+    assert state.active_dataset().id == first.id
     widget.deleteLater(); assert app

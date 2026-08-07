@@ -19,14 +19,14 @@ class FakeRepository:
     def __init__(self, session_factory):
         self.session_factory = session_factory
 
-    def load_for_site(self, site_id):
-        self.loaded.append(site_id)
+    def load_for_domain(self, domain_id):
+        self.loaded.append(domain_id)
         if self.state is None:
             self.state = SimpleNamespace(datasets=[], blast_events=[], assessment_areas=[], technical_cards=[], evaluations=[], attachments=[])
-        return SimpleNamespace(workspace_id=12, state=self.state)
+        return SimpleNamespace(domain_id=domain_id, site_id=70, workspace_id=12, state=self.state)
 
-    def replace_for_site(self, site_id, state):
-        self.replacements.append((site_id, state))
+    def replace_for_domain(self, domain_id, state):
+        self.replacements.append((domain_id, state))
         if self.fail_save:
             raise RuntimeError("database unavailable")
         return SimpleNamespace(workspace_id=34, state=object())
@@ -36,11 +36,13 @@ class FakeWorkspace(QWidget):
     state_changed = Signal()
     state_saved = Signal()
 
-    def __init__(self, state, storage_path, save_callback, parent=None, read_only=False):
+    def __init__(self, state, storage_path, save_callback, parent=None, read_only=False, persist_dataset_callback=None, set_active_dataset_callback=None):
         super().__init__(parent)
         self.state, self.storage_path = state, storage_path
         self.save_callback, self.calls = save_callback, []
         self.read_only = read_only
+        self.persist_dataset_callback = persist_dataset_callback
+        self.set_active_dataset_callback = set_active_dataset_callback
         self.fail_refresh = False
 
     def open_blast_event(self, value): self.calls.append(("event", value)); return True
@@ -58,6 +60,16 @@ class FakeWorkspace(QWidget):
             self.save_callback()
 
 
+class FakeProjectLinesRepository:
+    added = []
+    activated = []
+
+    def __init__(self, session_factory): pass
+    def import_dataset(self, site_id, dataset, *, make_active=True):
+        self.added.append((site_id, dataset.id, make_active))
+    def set_active(self, site_id, dataset_id): self.activated.append((site_id, dataset_id))
+
+
 @pytest.fixture
 def page(monkeypatch, tmp_path):
     QApplication.instance() or QApplication([])
@@ -66,10 +78,22 @@ def page(monkeypatch, tmp_path):
     FakeRepository.fail_save = False
     FakeRepository.state = SimpleNamespace(datasets=[], blast_events=[], assessment_areas=[], technical_cards=[], evaluations=[], attachments=[])
     monkeypatch.setattr(page_module, "AssessmentStateRepository", FakeRepository)
+    monkeypatch.setattr(page_module, "ProjectLinesRepository", FakeProjectLinesRepository)
     monkeypatch.setattr(page_module, "AssessmentWorkspaceWidget", FakeWorkspace)
     context = SimpleNamespace(session_factory=object(), storage_root=tmp_path,
                               current_user=SimpleNamespace(can_edit=True))
     return page_module.AssessmentWorkspacePage(context, 7, "Северный")
+
+
+def test_dataset_callbacks_use_explicit_site_repository(page):
+    FakeProjectLinesRepository.added = []
+    FakeProjectLinesRepository.activated = []
+    dataset = SimpleNamespace(id="D-001", is_active=True)
+    page.workspace.persist_dataset_callback(dataset)
+    assert FakeProjectLinesRepository.added == [(70, "D-001", True)]
+    assert FakeProjectLinesRepository.activated == []
+    page.workspace.set_active_dataset_callback("D-002")
+    assert FakeProjectLinesRepository.activated[-1] == (70, "D-002")
 
 
 def test_loads_site_state_workspace_id_anchor_label_and_signals(page, tmp_path):
@@ -131,7 +155,7 @@ def test_reload_preserves_state_identity_and_replaces_collections(page):
         assessment_areas=[SimpleNamespace(id="new-area")], technical_cards=["card"],
         evaluations=["evaluation"], attachments=["attachment"],
     )
-    page.repository.load_for_site = lambda site_id: SimpleNamespace(workspace_id=99, state=new_state)
+    page.repository.load_for_domain = lambda domain_id: SimpleNamespace(site_id=70, workspace_id=99, state=new_state)
 
     page.reload_from_repository()
 
@@ -160,7 +184,7 @@ def test_reload_refresh_failure_rolls_back_previous_state(page):
         datasets=["new-dataset"], blast_events=["new-event"], assessment_areas=["new-area"],
         technical_cards=["new-card"], evaluations=["new-evaluation"], attachments=["new-attachment"],
     )
-    page.repository.load_for_site = lambda site_id: SimpleNamespace(workspace_id=77, state=new_state)
+    page.repository.load_for_domain = lambda domain_id: SimpleNamespace(site_id=70, workspace_id=77, state=new_state)
     page.workspace.fail_refresh = True
 
     with pytest.raises(RuntimeError, match="refresh failed"):
