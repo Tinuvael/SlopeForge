@@ -163,12 +163,14 @@ class BlockListPage(QWidget):
         index=self.tabs.indexOf(old); self.tabs.removeTab(index); self.tabs.insertTab(index,new,title); return new
 
     def _render_engineering(self, block):
+        self._clear_engineering()
         if block is None:return
         self.entity_controller=EntityPageController(self.context,block.domain_id)
         event=self.entity_controller.event_for_block(block.id)
         if event is None:
             self.overview.scheme.set_geometry(None,context="Linked production geometry is not loaded")
             return
+        editable=self.context.current_user.can_edit and not block.is_archived
         geometry=event.active_geometry_revision(); dataset=self.entity_controller.state.active_dataset(); lines=dataset.lines if dataset else []
         self.overview.scheme.set_geometry(geometry.plan_geometry if geometry else None,lines,
             f"Horizon {event.elevation:g} | CSV: {geometry.source_file_name if geometry else '—'} | Revision: {geometry.revision_number if geometry else '—'}")
@@ -176,19 +178,30 @@ class BlockListPage(QWidget):
         except RuntimeError:pass
         self.overview.scheme.reimport_requested.connect(lambda:self._reimport_geometry(event))
         card,revision=self.entity_controller.technical_card_draft(event)
-        editor=TechnicalCardEditorWidget(event,card,revision,self.entity_controller.save_technical_card,self,not self.context.current_user.can_edit or block.is_archived)
+        editor=TechnicalCardEditorWidget(event,card,revision,self.entity_controller.save_technical_card,self,not editable)
         self.geomechanics_tab=self._replace_tab(self.geomechanics_tab,GeomechanicsEditorWidget(editor.take_tab("Геомеханика")),"Geomechanics")
         self.design_tab=self._replace_tab(self.design_tab,BlastDesignEditorWidget(editor.take_tab("Бурение и заряды")),"Blast design")
         self.execution_tab=self._replace_tab(self.execution_tab,ActualExecutionEditorWidget(editor.take_tab("Факт")),"Execution fact")
         self.technical_card_editor=editor
         self.save_engineering_draft.setEnabled(not editor.editor.read_only); self.complete_engineering.setEnabled(not editor.editor.read_only)
+        self.overview.scheme.set_reimport_enabled(editable)
+
+    def _clear_engineering(self):
+        for attr,title in (("geomechanics_tab","Geomechanics"),("design_tab","Blast design"),("execution_tab","Execution fact")):
+            old=getattr(self,attr); setattr(self,attr,self._replace_tab(old,EmptySection(),title))
+        self.save_engineering_draft.setEnabled(False); self.complete_engineering.setEnabled(False); self.technical_card_editor=None
+        self.overview.scheme.set_reimport_enabled(False)
+        try:self.overview.scheme.reimport_requested.disconnect()
+        except RuntimeError:pass
 
     def _save_technical_card_draft(self):
-        if hasattr(self,"technical_card_editor"): self.technical_card_editor.save_draft()
+        if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:self.technical_card_editor.save_draft()
     def _complete_technical_card(self):
-        if hasattr(self,"technical_card_editor"): self.technical_card_editor.complete()
+        if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:self.technical_card_editor.complete()
 
     def _reimport_geometry(self,event):
+        if not self.context.current_user.can_edit or not self.current_block or self.current_block.is_archived:
+            QMessageBox.warning(self,"Read only","Archived Blocks and Viewer accounts cannot reimport geometry."); return
         path,_=QFileDialog.getOpenFileName(self,"Reimport production geometry","","CSV (*.csv)")
         if not path:return
         try:

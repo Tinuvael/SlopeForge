@@ -266,6 +266,9 @@ class TechnicalCardDialog(QDialog):
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.horizontalHeader().setStretchLastSection(True); layout.addWidget(table)
 
     def _save(self, status):
+        if self.read_only:
+            QMessageBox.warning(self, "Read only", "Archived entities and Viewer accounts cannot change the Technical Card.")
+            return False
         self.revision.common_parameters.block_name = self.block_name.text(); self.revision.common_parameters.comments = self.comments.text()
         if self.revision.production_parameters:
             p=self.revision.production_parameters; p.design_bench_height_m=None if self.bench_height.value()==self.bench_height.minimum() else self.bench_height.value(); p.total_explosive_mass_kg=None if self.explosive.value()==self.explosive.minimum() else self.explosive.value()

@@ -21,7 +21,12 @@ class AssessmentAreaCreationPage(QWidget):
         if created:self.area_created.emit(created[-1])
     def _cancel_drawing(self): self.controller.cancel_active_workflow(); self._sync_status()
     def _close_page(self): self.cancelled.emit()
-    def _start_drawing(self): self.controller.workspace.start_area_drawing(); self._sync_status()
+    def _start_drawing(self):
+        if self.edit_area_id:
+            self.controller.open_assessment_area(self.edit_area_id)
+            self.controller.workspace.edit_area_boundaries()
+        else:self.controller.workspace.start_area_drawing()
+        self._sync_status()
     def _toggle_lines(self,shown):self.controller.workspace.lines_checkbox.setChecked(shown); self.controller.workspace.draw_geometry()
     def _toggle_grid(self,shown):self.controller.workspace.grid_button.setChecked(shown); self.controller.workspace.draw_geometry()
     def _workflow_action(self,key):self.controller.workspace._drawing_key(key); self._sync_status()

@@ -9,7 +9,8 @@ class PlanGeometryWidget(QWidget):
     reimport_requested=Signal()
     def __init__(self,parent=None):
         super().__init__(parent); self.scene=QGraphicsScene(self); self.view=PrototypePlanView(self.scene); self._project_items=[]
-        layout=QVBoxLayout(self); bar=QHBoxLayout(); self.context=QLabel("Geometry is not loaded"); self.lines=QCheckBox("Project Lines"); self.lines.setChecked(True); self.lines.toggled.connect(self._toggle_lines); fit=QPushButton("Fit"); fit.clicked.connect(self.fit); reimport=QPushButton("Reimport geometry"); reimport.clicked.connect(self.reimport_requested); bar.addWidget(self.context); bar.addStretch(); bar.addWidget(self.lines); bar.addWidget(fit); bar.addWidget(reimport); layout.addLayout(bar); layout.addWidget(self.view)
+        layout=QVBoxLayout(self); bar=QHBoxLayout(); self.context=QLabel("Geometry is not loaded"); self.lines=QCheckBox("Project Lines"); self.lines.setChecked(True); self.lines.toggled.connect(self._toggle_lines); fit=QPushButton("Fit"); fit.clicked.connect(self.fit); self.reimport_button=QPushButton("Reimport geometry"); self.reimport_button.clicked.connect(self.reimport_requested); bar.addWidget(self.context); bar.addStretch(); bar.addWidget(self.lines); bar.addWidget(fit); bar.addWidget(self.reimport_button); layout.addLayout(bar); layout.addWidget(self.view)
+    def set_reimport_enabled(self,enabled): self.reimport_button.setEnabled(enabled)
     def set_geometry(self,geometry,project_lines=(),context=""):
         self.scene.clear(); self._project_items=[]; self.context.setText(context or "Plan geometry")
         pen=QPen(QColor("#8795a1"),0)

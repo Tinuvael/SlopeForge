@@ -14,8 +14,8 @@ class TechnicalCardEditorWidget(QWidget):
             if self.tabs.tabText(index)==title:
                 page=self.tabs.widget(index); self.tabs.removeTab(index); return page
         return QWidget()
-    def save_draft(self): return self.editor._save("draft")
-    def complete(self): return self.editor._save("completed")
+    def save_draft(self): return False if self.editor.read_only else self.editor._save("draft")
+    def complete(self): return False if self.editor.read_only else self.editor._save("completed")
 
 class _SectionWidget(QWidget):
     def __init__(self,page,parent=None): super().__init__(parent); QVBoxLayout(self).addWidget(page)

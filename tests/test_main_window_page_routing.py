@@ -127,3 +127,33 @@ def test_area_creation_cancel_drawing_is_not_page_cancel():
     cancel=creation[creation.index("def _cancel_drawing"):creation.index("def _close_page")]
     assert "cancel_active_workflow" in cancel and "cancelled.emit" not in cancel
     assert "def _start_drawing" in creation and "start_area_drawing" in creation
+
+
+def test_stale_block_engineering_is_cleared_and_read_only_is_defensive():
+    block=source("ui/pages/block_list_page.py")
+    render=block[block.index("def _render_engineering"):block.index("def _reimport_geometry")]
+    assert "self._clear_engineering()" in render
+    assert "self.technical_card_editor=None" in render
+    assert "set_reimport_enabled(False)" in render
+    assert "self.current_block.is_archived" in render
+    reimport=block[block.index("def _reimport_geometry"):]
+    assert "not self.context.current_user.can_edit" in reimport and "self.current_block.is_archived" in reimport
+
+def test_area_and_contour_mutations_are_defensively_read_only():
+    area=source("ui/pages/assessment_area_page.py")
+    assert "self.read_only=not context.current_user.can_edit or self.area.is_archived" in area
+    assert "def _ensure_editable" in area
+    for method in ("_change_link","recalculate_links","add_manual_link","_save_evaluation","_request_edit_boundaries"):
+        section=area[area.index(f"def {method}"):]
+        assert "_ensure_editable" in section[:500]
+    contour=source("ui/pages/contour_event_page.py")
+    assert "self.read_only=not context.current_user.can_edit or self.event.is_archived" in contour
+    assert "if self.read_only" in contour and "set_reimport_enabled(not self.read_only)" in contour
+
+def test_restart_drawing_distinguishes_create_and_edit_modes():
+    creation=source("ui/pages/assessment_area_creation_page.py")
+    restart=creation[creation.index("def _start_drawing"):creation.index("def _toggle_lines")]
+    assert "if self.edit_area_id" in restart
+    assert "open_assessment_area(self.edit_area_id)" in restart
+    assert "edit_area_boundaries()" in restart
+    assert "else:self.controller.workspace.start_area_drawing()" in restart
