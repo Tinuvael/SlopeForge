@@ -276,26 +276,38 @@ def test_real_block_page_embeds_engineering_and_persists_ucs(session_factory, as
     page.deleteLater(); app.processEvents()
 
 
-def test_focused_area_edit_boundaries_round_trip_preserves_entity_graph(session_factory, assessment_context, tmp_path):
+def test_focused_area_edit_boundaries_round_trip_preserves_entity_graph(session_factory, assessment_context, tmp_path, monkeypatch):
     widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
     from database.app_context import AppContext,CurrentUser
-    from ui.pages.assessment_area_page import AssessmentAreaPage
-    from ui.pages.assessment_area_creation_page import AssessmentAreaCreationPage
+    from ui.main_window import MainWindow
     app=widgets.QApplication.instance() or widgets.QApplication([])
     state=build_rich_state(); persist_project_lines(session_factory,assessment_context.site_id,state); repository=AssessmentStateRepository(session_factory); repository.replace_for_domain(assessment_context.domain_id,state)
     original=repository.load_for_domain(assessment_context.domain_id).state; area=original.assessment_areas[0]; area_id=area.id; revision_ids=[r.id for r in area.geometry_revisions]; evaluation_ids=[e.id for e in original.evaluations]; attachment_ids=[a.id for a in original.attachments]
     context=AppContext(session_factory,CurrentUser(1,"area-editor","Area Editor","editor"),tmp_path)
-    page=AssessmentAreaPage(context,assessment_context.domain_id,"North",area_id); page.show(); app.processEvents(); assert page.area.id==area_id
-    focused=AssessmentAreaCreationPage(context,assessment_context.domain_id,"North",assessment_context.site_id,edit_area_id=area_id); focused.show(); app.processEvents(); assert focused.controller.workspace.workflow_state=="REFINING"
+    window=MainWindow(context); window.show(); window._set_context(assessment_context.site_id,"Project",assessment_context.domain_id,"North",area_id=area_id)
+    assert window.open_area_from_tree(area_id,assessment_context.domain_id,assessment_context.site_id,"North")
+    window._edit_area_boundaries(area_id); focused=window.assessment_page; app.processEvents(); assert focused.controller.workspace.workflow_state=="REFINING"
+    warnings=[]
+    monkeypatch.setattr(widgets.QMessageBox,"warning",lambda *args,**kwargs:(warnings.append(args),widgets.QMessageBox.StandardButton.Cancel)[1])
+    focused._close_page(); app.processEvents()
+    assert warnings and window.assessment_page is focused and window.page_stack.currentWidget() is focused
     focused._cancel_drawing(); assert focused.controller.workspace.workflow_state=="IDLE"
     focused._start_drawing(); assert focused.controller.workspace.workflow_state=="REFINING" and focused.controller.workspace.selected_area.id==area_id
-    edited=focused.controller.workspace.selected_area; polygon=edited.selection_polygon_frozen; candidates=focused.controller.workspace.area_service.generate_candidates(polygon)
-    focused.controller.workspace.area_service.revise_area(edited,selection_polygon=polygon,selected_fragments=candidates)
-    focused.controller.workspace.link_service.refresh_suggestions(edited); focused.controller.workspace._save()
+    saved_signals=[]; focused.controller.state_saved.connect(lambda:saved_signals.append(True)); completed=[]; focused.area_created.connect(completed.append)
+    focused.controller.workspace._save(); assert saved_signals==[True] and completed==[]
+    save_now_calls=[]; monkeypatch.setattr(focused,"save_now",lambda:save_now_calls.append(True))
+    def confirm_after_persistence():
+        edited=focused.controller.workspace.selected_area; polygon=edited.selection_polygon_frozen; candidates=focused.controller.workspace.area_service.generate_candidates(polygon)
+        focused.controller.workspace.area_service.revise_area(edited,selection_polygon=polygon,selected_fragments=candidates)
+        focused.controller.workspace.link_service.refresh_suggestions(edited); focused.controller.workspace._save(); focused.controller.workspace.cancel_area_drawing()
+    monkeypatch.setattr(focused.controller.workspace,"confirm_refined_polygon",confirm_after_persistence)
+    warning_count=len(warnings); focused._confirm(); app.processEvents()
+    assert completed==[area_id] and len(warnings)==warning_count and save_now_calls==[]
+    assert window.assessment_page is None and window.area_page.area.id==area_id and window.page_stack.indexOf(focused)==-1
     reloaded=repository.load_for_domain(assessment_context.domain_id).state
     assert [a.id for a in reloaded.assessment_areas]==[area_id]
     saved_area=reloaded.assessment_areas[0]; assert len(saved_area.geometry_revisions)==len(revision_ids)+1
     assert set(revision_ids).issubset({r.id for r in saved_area.geometry_revisions})
     assert saved_area.active_geometry_revision().source_dataset_id in {d.id for d in reloaded.datasets}
     assert [e.id for e in reloaded.evaluations]==evaluation_ids and [a.id for a in reloaded.attachments]==attachment_ids
-    page.close(); focused.close(); app.processEvents()
+    window.close(); app.processEvents()

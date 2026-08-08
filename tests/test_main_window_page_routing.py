@@ -157,3 +157,23 @@ def test_restart_drawing_distinguishes_create_and_edit_modes():
     assert "open_assessment_area(self.edit_area_id)" in restart
     assert "edit_area_boundaries()" in restart
     assert "else:self.controller.workspace.start_area_drawing()" in restart
+
+
+def test_area_completion_is_not_driven_by_generic_state_saved():
+    creation=source("ui/pages/assessment_area_creation_page.py")
+    assert "state_saved.connect" not in creation
+    confirm=creation[creation.index("def _confirm"):creation.index("def _sync_status")]
+    assert confirm.index("confirm_refined_polygon()") < confirm.index('workflow_state!="IDLE"')
+    assert "_edit_revision_count" in confirm and "_edit_active_revision_id" in confirm
+    assert "_completion_emitted=True" in confirm
+
+
+def test_successful_area_edit_has_dedicated_unguarded_completion_path():
+    main=source("ui/main_window.py")
+    finish=main[main.index("def _finish_area_boundary_edit"):main.index("def _cancel_area_boundary_edit")]
+    assert "self.assessment_page=None" in finish
+    assert "refresh_project_data()" in finish and "open_area_from_tree" in finish
+    assert "save_now" not in finish and "_guard_leave" not in finish
+    assert "removeWidget(edit_page)" in finish and "deleteLater()" in finish
+    cancel=main[main.index("def _cancel_area_boundary_edit"):main.index("def _edit_area_boundaries")]
+    assert "open_area_from_tree" in cancel

@@ -130,13 +130,27 @@ class MainWindow(QMainWindow):
         self.page_stack.addWidget(page); self.assessment_page=page; self.assessment_domain_id=self.selected_domain_id; self.page_stack.setCurrentWidget(page)
     def _area_created(self,area_id,creation_page):
         self.assessment_page=None; self.refresh_project_data(); self.open_area_from_tree(area_id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name); self.page_stack.removeWidget(creation_page); creation_page.deleteLater()
+    def _finish_area_boundary_edit(self,area_id,edit_page):
+        """Leave an already-saved edit without running the unsaved-work guard again."""
+        if self.assessment_page is edit_page:self.assessment_page=None
+        self.assessment_domain_id=None; self.assessment_site_id=None
+        domain_id=self.selected_domain_id; site_id=self.selected_site_id; domain_name=self.selected_domain_name
+        self.refresh_project_data()
+        self.open_area_from_tree(area_id,domain_id,site_id,domain_name)
+        if self.page_stack.indexOf(edit_page)>=0:self.page_stack.removeWidget(edit_page)
+        edit_page.deleteLater()
+    def _cancel_area_boundary_edit(self,area_id,edit_page):
+        """Back remains guarded while an edit workflow is active."""
+        if not self.open_area_from_tree(area_id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name):return
+        if self.page_stack.indexOf(edit_page)>=0:self.page_stack.removeWidget(edit_page)
+        edit_page.deleteLater()
     def _edit_area_boundaries(self,area_id):
         if not self._guard_leave(): return
         from ui.pages.assessment_area_creation_page import AssessmentAreaCreationPage
         try: page=AssessmentAreaCreationPage(self.context,self.selected_domain_id,self.selected_domain_name,self.selected_site_id,self.page_stack,edit_area_id=area_id)
         except Exception as exc:
             QMessageBox.critical(self,"Assessment Area",f"Не удалось открыть редактирование границ. Текущая страница сохранена.\n\n{exc}"); return
-        page.area_created.connect(lambda _ignored:self.open_area_from_tree(area_id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)); page.cancelled.connect(lambda:self.open_area_from_tree(area_id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)); self.assessment_page=page; self.page_stack.addWidget(page); self.page_stack.setCurrentWidget(page)
+        page.area_created.connect(lambda completed_id:self._finish_area_boundary_edit(completed_id,page)); page.cancelled.connect(lambda:self._cancel_area_boundary_edit(area_id,page)); self.assessment_page=page; self.assessment_domain_id=self.selected_domain_id; self.assessment_site_id=self.selected_site_id; self.page_stack.addWidget(page); self.page_stack.setCurrentWidget(page)
     def _archive_selected(self):
         if self.selected_block_id is not None:
             block=self.block_page.current_block; action="восстановить" if block.is_archived else "архивировать"
