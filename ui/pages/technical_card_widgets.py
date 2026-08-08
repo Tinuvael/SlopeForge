@@ -18,7 +18,8 @@ class TechnicalCardEditorWidget(QWidget):
     def complete(self): return False if self.editor.read_only else self.editor._save("completed")
 
 class _SectionWidget(QWidget):
-    def __init__(self,page,parent=None): super().__init__(parent); QVBoxLayout(self).addWidget(page)
+    def __init__(self,page,parent=None):
+        super().__init__(parent); self.page=page; page.setParent(self); QVBoxLayout(self).addWidget(page); page.setVisible(True)
 class GeomechanicsEditorWidget(_SectionWidget): pass
 class BlastDesignEditorWidget(_SectionWidget): pass
 class ActualExecutionEditorWidget(_SectionWidget): pass

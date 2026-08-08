@@ -17,8 +17,7 @@ class MainWindow(QMainWindow):
         self.tree=ProjectTree(context); self.tree.setMaximumWidth(320); self.block_page=BlockListPage(context); self.page=self.block_page; self.page_stack=QStackedWidget(); self.page_stack.addWidget(self.block_page)
         self.header=Header(context); self.domain_repo=DomainRepository(context.session_factory); self.project_service=ProjectService(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory)
         self.tree.site_selected.connect(self.select_site); self.tree.domain_selected.connect(self.select_domain); self.tree.block_selected.connect(self.open_block_from_tree); self.tree.contour_event_selected.connect(self.open_contour_from_tree); self.tree.assessment_area_selected.connect(self.open_area_from_tree)
-        self.header.add_mine_requested.connect(self._add_mine); self.header.add_domain_requested.connect(self._add_domain); self.header.add_block_requested.connect(self._add_block); self.header.add_assessment_area_requested.connect(self._add_area)
-        self.header.add_contour_requested.connect(self._add_contour)
+        self.header.add_mine_requested.connect(self._add_mine); self.header.add_domain_requested.connect(self._add_domain); self.header.add_blast_event_requested.connect(self._add_blast_event); self.header.add_assessment_area_requested.connect(self._add_area)
         self.header.archive_requested.connect(self._archive_selected)
         self.block_page.data_changed.connect(self.refresh_project_data)
         central=QWidget(); self.setCentralWidget(central); root=QVBoxLayout(central); root.addWidget(self.header); body=QHBoxLayout(); body.addWidget(self.tree,1); body.addWidget(self.page_stack,4); root.addLayout(body); self._update_add()
@@ -67,7 +66,7 @@ class MainWindow(QMainWindow):
         try: page=ContourEventPage(self.context,domain_id,domain_name,event_id,self.page_stack)
         except Exception as exc: QMessageBox.critical(self,"Contour blast",f"Не удалось открыть контурное событие.\n\n{exc}"); return False
         if not self._show(page):return False
-        domain=self.domain_repo.get(domain_id); self.contour_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,contour_id=event_id); self.header.set_archive_context(True,page.event.is_archived); return True
+        domain=self.domain_repo.get(domain_id); self.contour_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,contour_id=event_id); self.header.set_archive_context(True,page.blast_event.is_archived); return True
     def _add_mine(self):
         from ui.project_dialog import ProjectDialog
         from prototype_2d.domain import AssessmentDomainState
@@ -89,17 +88,19 @@ class MainWindow(QMainWindow):
         from ui.add_dialog import AddDialog
         d=AddDialog("domain")
         if d.exec(): self.domain_repo.create(self.selected_site_id,d.name.text(),d.description.toPlainText()); self.refresh_project_data()
-    def _add_block(self):
+    def _add_blast_event(self):
         if self.selected_domain_id is None:return
         from ui.pages.entity_page_controller import EntityPageController
         from prototype_2d.blast_event_service import BlastEventService
         controller=EntityPageController(self.context,self.selected_domain_id); event_service=BlastEventService(controller.state)
         from ui.prototype_2d.assessment_workspace import BlastEventDialog
-        dialog=BlastEventDialog(self,event_service); dialog.kind.setCurrentText("production"); dialog.kind.setEnabled(False)
+        dialog=BlastEventDialog(self,event_service)
         if not dialog.exec():return
         event=None; block_id=None
         try:
             event=event_service.create_event(**dialog.values())
+            if event.event_type=="contour":
+                controller.save(); self.refresh_project_data(); self.open_contour_from_tree(event.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name); return
             from services.blast_block_service import BlastBlockInput
             block_id=self.block_page.block_service.create_block(BlastBlockInput(self.selected_domain_id,event.name,str(event.elevation),event.event_date,"planned",None),self.context.current_user)
             event.blast_block_id=block_id
@@ -115,17 +116,7 @@ class MainWindow(QMainWindow):
                 with self.context.session_factory.begin() as session:
                     row=session.get(BlastBlock,block_id)
                     if row: session.delete(row)
-            QMessageBox.warning(self,"Не удалось создать блок",str(exc))
-    def _add_contour(self):
-        if self.selected_domain_id is None:return
-        from ui.pages.entity_page_controller import EntityPageController
-        from prototype_2d.blast_event_service import BlastEventService
-        from ui.prototype_2d.assessment_workspace import BlastEventDialog
-        controller=EntityPageController(self.context,self.selected_domain_id); service=BlastEventService(controller.state); dialog=BlastEventDialog(self,service); dialog.kind.setCurrentText("contour"); dialog.kind.setEnabled(False)
-        if not dialog.exec():return
-        try:
-            event=service.create_event(**dialog.values()); controller.save(); self.refresh_project_data(); self.open_contour_from_tree(event.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
-        except Exception as exc: QMessageBox.warning(self,"Не удалось создать контурное событие",str(exc))
+            QMessageBox.warning(self,"Не удалось создать Blast Event",str(exc))
     def _add_area(self):
         if self.selected_domain_id is None:return
         if not self.lines_repo.get_active(self.selected_site_id):
@@ -154,7 +145,7 @@ class MainWindow(QMainWindow):
         if self.selected_assessment_area_id and getattr(self,"area_page",None):
             area=self.area_page.area; area.restore() if area.is_archived else area.archive(); self.area_page.controller.save(); self.header.set_archive_context(False); self.refresh_project_data()
         elif self.selected_contour_event_id and getattr(self,"contour_page",None):
-            event=self.contour_page.event; event.restore() if event.is_archived else event.archive(); self.contour_page.controller.save(); self.header.set_archive_context(False); self.refresh_project_data()
+            event=self.contour_page.blast_event; event.restore() if event.is_archived else event.archive(); self.contour_page.controller.save(); self.header.set_archive_context(False); self.refresh_project_data()
     def refresh_project_data(self): self.tree.reload_filters(); self.tree.load_data(); self._update_add()
     def closeEvent(self,event):
         if not self._guard_leave(): event.ignore(); return

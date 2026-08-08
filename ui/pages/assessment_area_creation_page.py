@@ -1,6 +1,6 @@
 """Focused Area polygon workflow; the compatibility workspace acts only as a hidden controller."""
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox,QHBoxLayout,QLabel,QPushButton,QVBoxLayout,QWidget
+from PySide6.QtWidgets import QCheckBox,QHBoxLayout,QLabel,QMessageBox,QPushButton,QVBoxLayout,QWidget
 from ui.pages.assessment_workspace_page import AssessmentWorkspacePage
 
 class AssessmentAreaCreationPage(QWidget):
@@ -22,16 +22,24 @@ class AssessmentAreaCreationPage(QWidget):
     def _cancel_drawing(self): self.controller.cancel_active_workflow(); self._sync_status()
     def _close_page(self): self.cancelled.emit()
     def _start_drawing(self):
-        if self.edit_area_id:
-            self.controller.open_assessment_area(self.edit_area_id)
-            self.controller.workspace.edit_area_boundaries()
-        else:self.controller.workspace.start_area_drawing()
+        try:
+            if self.edit_area_id:
+                if not self.controller.open_assessment_area(self.edit_area_id): raise ValueError("Assessment Area is not available")
+                self.controller.workspace.edit_area_boundaries()
+            else:self.controller.workspace.start_area_drawing()
+        except Exception as exc: QMessageBox.critical(self,"Assessment Area",f"Не удалось начать редактирование границ.\n\n{exc}")
         self._sync_status()
     def _toggle_lines(self,shown):self.controller.workspace.lines_checkbox.setChecked(shown); self.controller.workspace.draw_geometry()
     def _toggle_grid(self,shown):self.controller.workspace.grid_button.setChecked(shown); self.controller.workspace.draw_geometry()
     def _workflow_action(self,key):self.controller.workspace._drawing_key(key); self._sync_status()
-    def _continue(self):self.controller.workspace.finish_area_drawing(); self._sync_status()
-    def _confirm(self):self.controller.workspace.confirm_refined_polygon(); self._sync_status()
+    def _continue(self):
+        try:self.controller.workspace.finish_area_drawing()
+        except Exception as exc:QMessageBox.critical(self,"Assessment Area",f"Не удалось перейти к уточнению границ.\n\n{exc}")
+        self._sync_status()
+    def _confirm(self):
+        try:self.controller.workspace.confirm_refined_polygon()
+        except Exception as exc:QMessageBox.critical(self,"Assessment Area",f"Не удалось сохранить новые границы.\n\n{exc}")
+        self._sync_status()
     def _sync_status(self):
         state=self.controller.workspace.workflow_state; active=state!="IDLE"; self.start.setEnabled(not active); self.back_vertex.setEnabled(state=="DRAWING"); self.finish.setEnabled(state=="DRAWING"); self.confirm.setEnabled(state=="REFINING"); self.cancel_drawing.setEnabled(active)
         instructions={"DRAWING":"Шаг 1: добавьте вершины. Undo отменяет последнюю вершину; Finish продолжает.","REFINING":"Шаг 2: уточните вершины и нажмите Confirm boundaries.","CANDIDATE_CONFIRMATION":"Шаг 3: выберите интервалы и подтвердите сохранение.","IDLE":"Панорамируйте или масштабируйте план, затем нажмите Draw boundaries."}; self.step_status.setText(instructions.get(state,state))

@@ -258,15 +258,44 @@ def test_real_block_page_embeds_engineering_and_persists_ucs(session_factory, as
     state=build_rich_state(); production=next(e for e in state.blast_events if e.event_type=="production"); production.blast_block_id=block_id
     persist_project_lines(session_factory,assessment_context.site_id,state); AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id,state)
     context=AppContext(session_factory,CurrentUser(1,"qt-editor","Qt Editor","editor"),tmp_path)
-    page=BlockListPage(context); page.open_block_id(block_id); app.processEvents()
+    page=BlockListPage(context); page.resize(1400,900); page.show(); page.open_block_id(block_id); app.processEvents()
     editor=page.technical_card_editor.editor
-    assert page.tabs.indexOf(page.geomechanics_tab)>=0 and editor.lithology is not None and editor.ucs is not None and editor.rqd is not None
-    assert page.tabs.indexOf(page.design_tab)>=0 and editor.group_cards_layout.count()>=1
-    assert editor.group_cards.findChild(widgets.QDoubleSpinBox,"burden_m") is not None
-    assert editor.group_cards.findChild(widgets.QDoubleSpinBox,"spacing_m") is not None
-    assert page.tabs.indexOf(page.execution_tab)>=0 and editor.completion_status is not None and editor.actual_summary_widgets
+    page.tabs.setCurrentWidget(page.geomechanics_tab); app.processEvents()
+    assert page.geomechanics_tab.isVisibleTo(page)
+    for control in (editor.lithology,editor.geotechnical_domain,editor.strength_class,editor.ucs,editor.ucs_min,editor.ucs_max,editor.rqd,editor.rqd_min,editor.rqd_max,editor.rock_properties,editor.fracturing,editor.water,editor.geo_notes):
+        assert page.geomechanics_tab.isAncestorOf(control) and control.isVisibleTo(page.geomechanics_tab)
+    page.tabs.setCurrentWidget(page.design_tab); app.processEvents(); assert page.design_tab.isVisibleTo(page) and editor.group_cards_layout.count()>=1
+    burden=page.design_tab.findChild(widgets.QDoubleSpinBox,"burden_m"); spacing=page.design_tab.findChild(widgets.QDoubleSpinBox,"spacing_m")
+    assert burden is not None and burden.isVisibleTo(page.design_tab); assert spacing is not None and spacing.isVisibleTo(page.design_tab)
+    page.tabs.setCurrentWidget(page.execution_tab); app.processEvents(); assert page.execution_tab.isVisibleTo(page)
+    assert page.execution_tab.isAncestorOf(editor.completion_status) and editor.completion_status.isVisibleTo(page.execution_tab) and editor.actual_summary_widgets
     editor.ucs.setValue(147.0); page._save_technical_card_draft()
     reloaded=AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state
     card=next(c for c in reloaded.technical_cards if c.blast_event_id==production.id)
     assert card.active_revision().geomechanical_parameters.representative_ucs_mpa==147.0
     page.deleteLater(); app.processEvents()
+
+
+def test_focused_area_edit_boundaries_round_trip_preserves_entity_graph(session_factory, assessment_context, tmp_path):
+    widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
+    from database.app_context import AppContext,CurrentUser
+    from ui.pages.assessment_area_page import AssessmentAreaPage
+    from ui.pages.assessment_area_creation_page import AssessmentAreaCreationPage
+    app=widgets.QApplication.instance() or widgets.QApplication([])
+    state=build_rich_state(); persist_project_lines(session_factory,assessment_context.site_id,state); repository=AssessmentStateRepository(session_factory); repository.replace_for_domain(assessment_context.domain_id,state)
+    original=repository.load_for_domain(assessment_context.domain_id).state; area=original.assessment_areas[0]; area_id=area.id; revision_ids=[r.id for r in area.geometry_revisions]; evaluation_ids=[e.id for e in original.evaluations]; attachment_ids=[a.id for a in original.attachments]
+    context=AppContext(session_factory,CurrentUser(1,"area-editor","Area Editor","editor"),tmp_path)
+    page=AssessmentAreaPage(context,assessment_context.domain_id,"North",area_id); page.show(); app.processEvents(); assert page.area.id==area_id
+    focused=AssessmentAreaCreationPage(context,assessment_context.domain_id,"North",assessment_context.site_id,edit_area_id=area_id); focused.show(); app.processEvents(); assert focused.controller.workspace.workflow_state=="REFINING"
+    focused._cancel_drawing(); assert focused.controller.workspace.workflow_state=="IDLE"
+    focused._start_drawing(); assert focused.controller.workspace.workflow_state=="REFINING" and focused.controller.workspace.selected_area.id==area_id
+    edited=focused.controller.workspace.selected_area; polygon=edited.selection_polygon_frozen; candidates=focused.controller.workspace.area_service.generate_candidates(polygon)
+    focused.controller.workspace.area_service.revise_area(edited,selection_polygon=polygon,selected_fragments=candidates)
+    focused.controller.workspace.link_service.refresh_suggestions(edited); focused.controller.workspace._save()
+    reloaded=repository.load_for_domain(assessment_context.domain_id).state
+    assert [a.id for a in reloaded.assessment_areas]==[area_id]
+    saved_area=reloaded.assessment_areas[0]; assert len(saved_area.geometry_revisions)==len(revision_ids)+1
+    assert set(revision_ids).issubset({r.id for r in saved_area.geometry_revisions})
+    assert saved_area.active_geometry_revision().source_dataset_id in {d.id for d in reloaded.datasets}
+    assert [e.id for e in reloaded.evaluations]==evaluation_ids and [a.id for a in reloaded.attachments]==attachment_ids
+    page.close(); focused.close(); app.processEvents()

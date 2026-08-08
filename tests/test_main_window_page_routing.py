@@ -38,9 +38,9 @@ def test_missing_project_lines_warning_and_no_drawing_before_check():
 
 def test_block_creation_reuses_blast_event_dialog_and_links_event():
     main=source("ui/main_window.py")
-    block=main[main.index("def _add_block"):main.index("def _add_area")]
+    block=main[main.index("def _add_blast_event"):main.index("def _add_area")]
     assert "BlastEventDialog" in block
-    assert 'setCurrentText("production")' in block
+    assert "event.event_type==\"contour\"" in block
     assert "create_event" in block and "blast_block_id=block_id" in block
 
 def test_site_dashboard_owns_project_lines_management():
@@ -113,11 +113,11 @@ def test_contour_event_ui_and_tree_architecture():
     assert '"Blast events"' in tree and '"Blast blocks"' not in tree
     assert "list_contour_events" in tree and '"type":"contour"' in tree
     header=source("ui/header.py")
-    for label in ("Add production block","Add contour blast","Add assessment area"):
+    for label in ("Add blast event","Add assessment area"):
         assert label in header
     main=source("ui/main_window.py")
-    assert "def _add_contour" in main and "open_contour_from_tree" in main
-    assert 'setCurrentText("contour")' in main
+    assert "def _add_blast_event" in main and "open_contour_from_tree" in main
+    assert "event.event_type==\"contour\"" in main
     page=source("ui/pages/contour_event_page.py")
     assert "ContourEventPage" in page and "Geomechanics" not in page
     assert '"Blast design"' in page and '"Execution fact"' in page
@@ -147,7 +147,7 @@ def test_area_and_contour_mutations_are_defensively_read_only():
         section=area[area.index(f"def {method}"):]
         assert "_ensure_editable" in section[:500]
     contour=source("ui/pages/contour_event_page.py")
-    assert "self.read_only=not context.current_user.can_edit or self.event.is_archived" in contour
+    assert "self.read_only=not context.current_user.can_edit or self.blast_event.is_archived" in contour
     assert "if self.read_only" in contour and "set_reimport_enabled(not self.read_only)" in contour
 
 def test_restart_drawing_distinguishes_create_and_edit_modes():
