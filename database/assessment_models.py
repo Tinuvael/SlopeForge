@@ -215,7 +215,12 @@ class AssessmentEventLink(Base):
     domain_id: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     source: Mapped[str] = mapped_column(String(20), nullable=False)
-    frozen_intersection_geometry_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)
+    # Domain None means "no frozen snapshot" for production polygon links.
+    # none_as_null prevents psycopg from writing JSON `null`, which would fail
+    # ck_assessment_event_links_frozen_object (SQL NULL is intentionally valid).
+    frozen_intersection_geometry_json: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSONB(none_as_null=True)
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     assessment_area_geometry_revision: Mapped[AssessmentAreaGeometryRevision] = relationship(back_populates="event_links")
     blast_event_geometry_revision: Mapped[BlastEventGeometryRevision] = relationship(back_populates="event_links")

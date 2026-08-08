@@ -12,12 +12,13 @@ from widgets.project_tree import ProjectTree
 class MainWindow(QMainWindow):
     def __init__(self, context: AppContext):
         super().__init__(); self.context=context; self.setWindowTitle(f"{APP_NAME} — {APP_VERSION}"); apply_window_icon(self); self.resize(1600,900)
-        self.selected_site_id=None; self.selected_site_name=None; self.selected_domain_id=None; self.selected_domain_name=None; self.selected_block_id=None; self.selected_assessment_area_id=None
+        self.selected_site_id=None; self.selected_site_name=None; self.selected_domain_id=None; self.selected_domain_name=None; self.selected_block_id=None; self.selected_contour_event_id=None; self.selected_assessment_area_id=None
         self.assessment_page=None; self.assessment_domain_id=None; self.assessment_site_id=None
         self.tree=ProjectTree(context); self.tree.setMaximumWidth(320); self.block_page=BlockListPage(context); self.page=self.block_page; self.page_stack=QStackedWidget(); self.page_stack.addWidget(self.block_page)
         self.header=Header(context); self.domain_repo=DomainRepository(context.session_factory); self.project_service=ProjectService(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory)
-        self.tree.site_selected.connect(self.select_site); self.tree.domain_selected.connect(self.select_domain); self.tree.block_selected.connect(self.open_block_from_tree); self.tree.assessment_area_selected.connect(self.open_area_from_tree)
+        self.tree.site_selected.connect(self.select_site); self.tree.domain_selected.connect(self.select_domain); self.tree.block_selected.connect(self.open_block_from_tree); self.tree.contour_event_selected.connect(self.open_contour_from_tree); self.tree.assessment_area_selected.connect(self.open_area_from_tree)
         self.header.add_mine_requested.connect(self._add_mine); self.header.add_domain_requested.connect(self._add_domain); self.header.add_block_requested.connect(self._add_block); self.header.add_assessment_area_requested.connect(self._add_area)
+        self.header.add_contour_requested.connect(self._add_contour)
         self.header.archive_requested.connect(self._archive_selected)
         self.block_page.data_changed.connect(self.refresh_project_data)
         central=QWidget(); self.setCentralWidget(central); root=QVBoxLayout(central); root.addWidget(self.header); body=QHBoxLayout(); body.addWidget(self.tree,1); body.addWidget(self.page_stack,4); root.addLayout(body); self._update_add()
@@ -34,8 +35,8 @@ class MainWindow(QMainWindow):
             page.cancel_active_workflow()
         try: page.save_now(); return True
         except Exception as exc: QMessageBox.critical(self,"Ошибка сохранения",f"Не удалось сохранить данные.\n\n{exc}"); return False
-    def _set_context(self,site_id,site_name=None,domain_id=None,domain_name=None,block_id=None,area_id=None):
-        self.selected_site_id=site_id; self.selected_site_name=site_name or self.selected_site_name; self.selected_domain_id=domain_id; self.selected_domain_name=domain_name; self.selected_block_id=block_id; self.selected_assessment_area_id=area_id; self._update_add(); self.header.set_archive_context(area_id is not None)
+    def _set_context(self,site_id,site_name=None,domain_id=None,domain_name=None,block_id=None,area_id=None,contour_id=None):
+        self.selected_site_id=site_id; self.selected_site_name=site_name or self.selected_site_name; self.selected_domain_id=domain_id; self.selected_domain_name=domain_name; self.selected_block_id=block_id; self.selected_contour_event_id=contour_id; self.selected_assessment_area_id=area_id; self._update_add(); self.header.set_archive_context(area_id is not None or contour_id is not None)
     def _update_add(self):
         active=bool(self.selected_site_id and self.lines_repo.get_active(self.selected_site_id)); self.header.update_add_availability(self.selected_site_id is not None,self.selected_domain_id is not None,active)
     def select_site(self,site_id,site_name):
@@ -61,6 +62,12 @@ class MainWindow(QMainWindow):
         if self.page_stack.indexOf(page)<0:self.page_stack.addWidget(page)
         self.page_stack.setCurrentWidget(page)
         domain=self.domain_repo.get(domain_id); self.assessment_page=None; self.area_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,area_id=area_id); return True
+    def open_contour_from_tree(self,event_id,domain_id,site_id,domain_name):
+        from ui.pages.contour_event_page import ContourEventPage
+        try: page=ContourEventPage(self.context,domain_id,domain_name,event_id,self.page_stack)
+        except Exception as exc: QMessageBox.critical(self,"Contour blast",f"Не удалось открыть контурное событие.\n\n{exc}"); return False
+        if not self._show(page):return False
+        domain=self.domain_repo.get(domain_id); self.contour_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,contour_id=event_id); self.header.set_archive_context(True,page.event.is_archived); return True
     def _add_mine(self):
         from ui.project_dialog import ProjectDialog
         from prototype_2d.domain import AssessmentDomainState
@@ -109,6 +116,16 @@ class MainWindow(QMainWindow):
                     row=session.get(BlastBlock,block_id)
                     if row: session.delete(row)
             QMessageBox.warning(self,"Не удалось создать блок",str(exc))
+    def _add_contour(self):
+        if self.selected_domain_id is None:return
+        from ui.pages.entity_page_controller import EntityPageController
+        from prototype_2d.blast_event_service import BlastEventService
+        from ui.prototype_2d.assessment_workspace import BlastEventDialog
+        controller=EntityPageController(self.context,self.selected_domain_id); service=BlastEventService(controller.state); dialog=BlastEventDialog(self,service); dialog.kind.setCurrentText("contour"); dialog.kind.setEnabled(False)
+        if not dialog.exec():return
+        try:
+            event=service.create_event(**dialog.values()); controller.save(); self.refresh_project_data(); self.open_contour_from_tree(event.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
+        except Exception as exc: QMessageBox.warning(self,"Не удалось создать контурное событие",str(exc))
     def _add_area(self):
         if self.selected_domain_id is None:return
         if not self.lines_repo.get_active(self.selected_site_id):
@@ -136,6 +153,8 @@ class MainWindow(QMainWindow):
             self.block_page.block_service.set_archived(block.id,not block.is_archived,self.context.current_user); self.selected_block_id=None; self.header.set_archive_context(False); self.refresh_project_data(); return
         if self.selected_assessment_area_id and getattr(self,"area_page",None):
             area=self.area_page.area; area.restore() if area.is_archived else area.archive(); self.area_page.controller.save(); self.header.set_archive_context(False); self.refresh_project_data()
+        elif self.selected_contour_event_id and getattr(self,"contour_page",None):
+            event=self.contour_page.event; event.restore() if event.is_archived else event.archive(); self.contour_page.controller.save(); self.header.set_archive_context(False); self.refresh_project_data()
     def refresh_project_data(self): self.tree.reload_filters(); self.tree.load_data(); self._update_add()
     def closeEvent(self,event):
         if not self._guard_leave(): event.ignore(); return

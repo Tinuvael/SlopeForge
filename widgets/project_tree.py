@@ -18,6 +18,7 @@ class ProjectTree(QWidget):
     site_selected = Signal(int, str)
     domain_selected = Signal(int, str, int, str)
     assessment_area_selected = Signal(str, int, int, str)
+    contour_event_selected = Signal(str, int, int, str)
     def __init__(self, context):
         super().__init__(); self.context = context
         self.site_repo = SiteRepository(context.session_factory); self.domain_repo = DomainRepository(context.session_factory)
@@ -54,8 +55,9 @@ class ProjectTree(QWidget):
     def reset_filters(self):
         self.search.clear(); self.project_filter.setCurrentIndex(0); self.status_filter.setCurrentIndex(0); self.show_archived.setChecked(False); self._reload_domains()
     def load_data(self, *_args, **_kwargs):
-        self.tree.clear(); areas_by_domain = {}
+        self.tree.clear(); areas_by_domain = {}; contours_by_domain={}
         for area in self.navigation_repo.list_active_areas(): areas_by_domain.setdefault(area.domain_id, []).append(area)
+        for event in self.navigation_repo.list_contour_events(self.show_archived.isChecked()): contours_by_domain.setdefault(event.domain_id,[]).append(event)
         project_id = self.project_filter.currentData(); domain_id = self.domain_filter.currentData()
         for site in self.site_repo.list_sites():
             if project_id is not None and site.id != project_id: continue
@@ -64,7 +66,7 @@ class ProjectTree(QWidget):
                 if domain_id is not None and domain.id != domain_id: continue
                 base = {"domain_id":domain.id,"domain_name":domain.name,"site_id":site.id,"site_name":site.name}
                 domain_item = self._item(domain.name, {"type":"domain", **base}); site_item.addChild(domain_item)
-                blocks_folder = self._item("Blast blocks", {"type":"folder", **base}); domain_item.addChild(blocks_folder)
+                blocks_folder = self._item("Blast events", {"type":"folder", **base}); domain_item.addChild(blocks_folder)
                 horizons = {}
                 for block in self.block_repo.list_blocks(domain_id=domain.id, number_query=self.search.text(), status=self.status_filter.currentData(), show_archived=self.show_archived.isChecked()):
                     label = "No horizon" if block.horizon_m is None else f"Horizon {_number(block.horizon_m)}"
@@ -72,6 +74,12 @@ class ProjectTree(QWidget):
                     if folder is None: folder = self._item(label, {"type":"horizon", **base}); blocks_folder.addChild(folder); horizons[label] = folder
                     text = f"Block {block.block_number}" + (" [Archived]" if block.is_archived else "")
                     folder.addChild(self._item(text, {"type":"block","id":block.id,"archived":block.is_archived, **base}))
+                for event in contours_by_domain.get(domain.id,[]):
+                    if self.search.text().strip() and self.search.text().strip().lower() not in event.name.lower(): continue
+                    label=f"Horizon {_number(event.elevation)}"; folder=horizons.get(label)
+                    if folder is None: folder=self._item(label,{"type":"horizon",**base}); blocks_folder.addChild(folder); horizons[label]=folder
+                    text=f"Contour {event.name}" + (" [Archived]" if event.is_archived else "")
+                    folder.addChild(self._item(text,{"type":"contour","id":event.id,"archived":event.is_archived,**base}))
                 areas_folder = self._item("Assessment areas", {"type":"folder", **base}); domain_item.addChild(areas_folder)
                 intervals = {}
                 for area in areas_by_domain.get(domain.id, []):
@@ -90,3 +98,4 @@ class ProjectTree(QWidget):
         elif kind == "domain": self.domain_selected.emit(p["domain_id"], p["domain_name"], p["site_id"], p["site_name"])
         elif kind == "block": self.block_selected.emit(p["id"], p["domain_id"], p["site_id"])
         elif kind == "area": self.assessment_area_selected.emit(p["id"], p["domain_id"], p["site_id"], p["domain_name"])
+        elif kind == "contour": self.contour_event_selected.emit(p["id"],p["domain_id"],p["site_id"],p["domain_name"])

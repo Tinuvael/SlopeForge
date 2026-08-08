@@ -2,7 +2,7 @@
 from PySide6.QtCore import QPointF,Signal
 from PySide6.QtGui import QPainterPath,QPen,QColor
 from PySide6.QtWidgets import QCheckBox,QGraphicsScene,QHBoxLayout,QLabel,QPushButton,QVBoxLayout,QWidget
-from prototype_2d.domain import PlanPolygon
+from prototype_2d.domain import PlanMultiPoint,PlanPolygon
 from ui.prototype_2d.plan_view import PrototypePlanView
 
 class PlanGeometryWidget(QWidget):
@@ -25,6 +25,8 @@ class PlanGeometryWidget(QWidget):
                 path.moveTo(QPointF(ring[0].x,-ring[0].y))
                 for point in ring[1:]:path.lineTo(QPointF(point.x,-point.y))
                 path.closeSubpath(); self.scene.addPath(path,QPen(QColor("#1261a0"),2))
+        elif isinstance(geometry,PlanMultiPoint):
+            for point in geometry.points:self.scene.addEllipse(point.x-2,-point.y-2,4,4,QPen(QColor("#1261a0"),2))
         self.fit()
     def _toggle_lines(self,shown):
         for item in self._project_items:item.setVisible(shown)

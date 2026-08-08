@@ -74,7 +74,7 @@ def assessment_context(session_factory):
             orm.AssessmentWorkspace.domain_id == context.domain_id))
         if workspace: session.delete(workspace); session.flush()
         session.query(orm.ProjectLinesDataset).filter_by(site_id=context.site_id).delete()
-        session.query(BlastBlock).filter_by(site_id=context.site_id).delete()
+        session.query(BlastBlock).filter_by(domain_id=context.domain_id).delete()
         session.query(Domain).filter_by(id=context.domain_id).delete()
         session.query(Site).filter_by(id=context.site_id).delete()
         session.query(Mine).filter_by(id=context.mine_id).delete()
@@ -150,7 +150,7 @@ def test_second_replace_recreates_rows_and_removes_omitted_state(session_factory
 
 def test_real_cascade_graph_preserves_foundation_and_clears_block_link(session_factory, assessment_context):
     with session_factory.begin() as session:
-        block = BlastBlock(site_id=assessment_context.site_id, block_number="B-1", status="planned")
+        block = BlastBlock(domain_id=assessment_context.domain_id, block_number="B-1", status="planned")
         session.add(block); session.flush(); block_id = block.id
     repository = AssessmentStateRepository(session_factory)
     state = build_rich_state()
@@ -230,3 +230,18 @@ def test_cross_area_evaluation_geometry_corruption_is_detected(session_factory, 
                 assessment_area_geometry_revision_id=other_geometry))
     with pytest.raises(AssessmentPersistenceCorruptionError, match="another Assessment Area"):
         AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
+
+
+def test_optional_production_link_snapshot_persists_as_sql_null(session_factory, assessment_context):
+    """Production suggestions intentionally have no frozen intersection snapshot."""
+    repository=AssessmentStateRepository(session_factory); state=build_rich_state(); persist_project_lines(session_factory,assessment_context.site_id,state)
+    active=next(link for link in state.assessment_areas[0].event_links if link.id=="LINK-ACTIVE")
+    active.frozen_intersection_geometry=None
+    saved=repository.replace_for_domain(assessment_context.domain_id,state)
+    restored=next(link for link in saved.state.assessment_areas[0].event_links if link.id=="LINK-ACTIVE")
+    contour_snapshot=next(link for link in saved.state.assessment_areas[0].event_links if link.id=="LINK-OLD")
+    assert restored.frozen_intersection_geometry is None
+    assert contour_snapshot.frozen_intersection_geometry is not None
+    with session_factory() as session:
+        row=session.scalar(select(orm.AssessmentEventLink).where(orm.AssessmentEventLink.domain_id=="LINK-ACTIVE"))
+        assert row.frozen_intersection_geometry_json is None

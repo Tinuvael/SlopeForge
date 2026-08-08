@@ -91,7 +91,7 @@ def test_entity_page_integration_corrections_are_visible():
     assert 'addTab(take("Общие"),"Общие")' in area
     assert "Сначала сохраните черновик оценки" in area
     creation=source("ui/pages/assessment_area_creation_page.py")
-    for label in ("Fit","Project Lines","Grid","Back / undo vertex","Finish polygon / Continue","Confirm boundaries","Cancel"):
+    for label in ("Fit","Project Lines","Grid","Undo vertex","Finish polygon / Continue","Confirm boundaries","Cancel"):
         assert label in creation
 
 def test_refresh_reloads_filters_and_area_construction_is_guarded():
@@ -107,3 +107,23 @@ def test_existing_block_dialog_preserves_zero_and_none_and_locks_linked_domain()
     assert '"" if block.horizon_m is None else str(block.horizon_m)' in dialog
     assert "self.planned_date.setDate(self.planned_date.minimumDate())" in dialog
     assert "is_linked_to_production_event" in dialog and "self.domain.setEnabled(False)" in dialog
+
+def test_contour_event_ui_and_tree_architecture():
+    tree=source("widgets/project_tree.py")
+    assert '"Blast events"' in tree and '"Blast blocks"' not in tree
+    assert "list_contour_events" in tree and '"type":"contour"' in tree
+    header=source("ui/header.py")
+    for label in ("Add production block","Add contour blast","Add assessment area"):
+        assert label in header
+    main=source("ui/main_window.py")
+    assert "def _add_contour" in main and "open_contour_from_tree" in main
+    assert 'setCurrentText("contour")' in main
+    page=source("ui/pages/contour_event_page.py")
+    assert "ContourEventPage" in page and "Geomechanics" not in page
+    assert '"Blast design"' in page and '"Execution fact"' in page
+
+def test_area_creation_cancel_drawing_is_not_page_cancel():
+    creation=source("ui/pages/assessment_area_creation_page.py")
+    cancel=creation[creation.index("def _cancel_drawing"):creation.index("def _close_page")]
+    assert "cancel_active_workflow" in cancel and "cancelled.emit" not in cancel
+    assert "def _start_drawing" in creation and "start_area_drawing" in creation
