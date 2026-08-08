@@ -132,3 +132,24 @@ def test_technical_card_dialog_does_not_shadow_qt_event_method():
     app.processEvents()
     assert dialog.isVisible()
     dialog.close()
+
+
+def test_real_embedded_production_editor_controls_and_ucs_persistence():
+    """Construct the same Qt editor used by BlockListPage, not a source-text fake."""
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.technical_card_widgets import TechnicalCardEditorWidget
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); blast.blast_block_id = 77
+    state = AssessmentDomainState(blast_events=[blast]); service = TechnicalCardService(state)
+    card, draft = service.edit_or_create(blast)
+    embedded = TechnicalCardEditorWidget(blast, card, draft,
+        lambda saved_card, revision, status: saved_card.save_revision(revision, status=status))
+    assert embedded.editor.lithology.isVisibleTo(embedded.editor) is False  # dialog is intentionally not shown
+    assert embedded.editor.ucs is not None
+    assert embedded.editor.group_cards_layout.count() >= 1
+    assert embedded.editor.completion_status is not None
+    embedded.editor.ucs.setValue(123.0)
+    assert embedded.save_draft() is True
+    restored = AssessmentDomainState.from_dict(json.loads(json.dumps(state.to_dict())))
+    assert restored.technical_cards[0].active_revision().geomechanical_parameters.representative_ucs_mpa == 123.0
+    embedded.deleteLater(); app.processEvents()

@@ -3,210 +3,112 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
 
 from database.app_context import CurrentUser
-from database.models import BlastBlock, Site
+from database.models import BlastBlock, Domain
 from repositories.audit_log_repository import AuditLogRepository
 from repositories.blast_block_repository import BlastBlockRepository, BlastBlockRow
-from repositories.site_repository import SiteRepository
+from repositories.domain_repository import DomainRepository
 
 VALID_STATUSES = {"planned", "blasted", "assessed"}
 STATUS_LABELS = {"planned": "Planned", "blasted": "Blasted", "assessed": "Assessed"}
 AUDIT_STATUS_LABELS = {"planned": "Запланирован", "blasted": "Взорван", "assessed": "Оценён"}
-AUDIT_FIELD_LABELS = {
-    "block_number": "Номер блока",
-    "site_id": "Участок",
-    "horizon_m": "Горизонт",
-    "planned_blast_date": "Плановая дата взрыва",
-    "status": "Статус",
-    "comment": "Комментарий",
-}
-AUDITED_FIELDS = ("block_number", "site_id", "horizon_m", "planned_blast_date", "status", "comment")
+AUDIT_FIELD_LABELS = {"block_number": "Номер блока", "domain_id": "Домен", "horizon_m": "Горизонт", "planned_blast_date": "Плановая дата взрыва", "status": "Статус", "comment": "Комментарий"}
+AUDITED_FIELDS = tuple(AUDIT_FIELD_LABELS)
 
-
-class PermissionDenied(ValueError):
-    pass
-
-
-class ValidationError(ValueError):
-    pass
-
+class PermissionDenied(ValueError): pass
+class ValidationError(ValueError): pass
 
 @dataclass(frozen=True)
 class BlastBlockInput:
+    domain_id: int | None
     block_number: str
-    mine_id: int | None
-    site_id: int | None
     horizon_text: str
     planned_blast_date: date | None
     status: str
     comment: str | None
 
-
 class BlastBlockService:
-    def __init__(self, block_repository: BlastBlockRepository, site_repository: SiteRepository, audit_repository: AuditLogRepository | None = None):
+    def __init__(self, block_repository: BlastBlockRepository, domain_repository: DomainRepository, audit_repository: AuditLogRepository | None = None):
         self.block_repository = block_repository
-        self.site_repository = site_repository
+        self.domain_repository = domain_repository
         self.session_factory = getattr(block_repository, "session_factory", None)
         self.audit_repository = audit_repository or (AuditLogRepository(self.session_factory) if self.session_factory else None)
 
-    def list_blocks(self, **filters) -> list[BlastBlockRow]:
-        return self.block_repository.list_blocks(**filters)
+    def list_blocks(self, **filters): return self.block_repository.list_blocks(**filters)
+    def get_block(self, block_id): return self.block_repository.get_block(block_id)
+    def is_linked_to_production_event(self, block_id: int) -> bool:
+        if self.session_factory is None: return False
+        from database.assessment_models import BlastEvent
+        with self.session_factory() as session:
+            return session.scalar(select(BlastEvent.id).where(BlastEvent.blast_block_id==block_id,BlastEvent.event_type=="production")) is not None
 
-    def get_block(self, block_id: int) -> BlastBlockRow | None:
-        return self.block_repository.get_block(block_id)
+    def set_archived(self, block_id: int, archived: bool, user: CurrentUser) -> None:
+        self._check_can_edit(user)
+        with self.session_factory.begin() as session:
+            block = session.get(BlastBlock, block_id)
+            if block is None: raise ValidationError("Blast block not found")
+            block.is_archived = archived
+            block.archived_at = datetime.now(timezone.utc) if archived else None
 
     def create_block(self, data: BlastBlockInput, user: CurrentUser) -> int:
-        self._check_can_edit(user)
-        horizon = self._validate(data)
+        self._check_can_edit(user); horizon = self._validate(data)
         if self.session_factory is None:
-            block = self.block_repository.create_block(
-                site_id=data.site_id,
-                block_number=data.block_number,
-                horizon_m=horizon,
-                planned_blast_date=data.planned_blast_date,
-                status=data.status,
-                comment=data.comment,
-                created_by_user_id=user.id,
-            )
-            return block.id
+            return self.block_repository.create_block(domain_id=data.domain_id, block_number=data.block_number, horizon_m=horizon, planned_blast_date=data.planned_blast_date, status=data.status, comment=data.comment, created_by_user_id=user.id).id
         try:
-            with self.session_factory() as session:
-                try:
-                    block = BlastBlock(
-                        site_id=data.site_id,
-                        block_number=data.block_number.strip(),
-                        horizon_m=horizon,
-                        planned_blast_date=data.planned_blast_date,
-                        status=data.status,
-                        comment=data.comment or None,
-                        created_by_user_id=user.id,
-                    )
-                    session.add(block)
-                    session.flush()
-                    self.audit_repository.add_entry(
-                        session,
-                        blast_block_id=block.id,
-                        user_id=user.id,
-                        action="create",
-                        entity_type="blast_block",
-                        entity_id=block.id,
-                        description="Создан взрывной блок",
-                    )
-                    session.commit()
-                    return block.id
-                except Exception:
-                    session.rollback()
-                    raise
-        except SQLAlchemyError as exc:
-            raise ValidationError("Could not save the block in PostgreSQL. Check the data and database migrations.") from exc
+            with self.session_factory.begin() as session:
+                block = BlastBlock(domain_id=data.domain_id, block_number=data.block_number.strip(), horizon_m=horizon, planned_blast_date=data.planned_blast_date, status=data.status, comment=data.comment or None, created_by_user_id=user.id)
+                session.add(block); session.flush()
+                self.audit_repository.add_entry(session, blast_block_id=block.id, user_id=user.id, action="create", entity_type="blast_block", entity_id=block.id, description="Создан взрывной блок")
+                return block.id
+        except SQLAlchemyError as exc: raise ValidationError("Could not save the block in PostgreSQL. Check the data and database migrations.") from exc
 
     def update_block(self, block_id: int, data: BlastBlockInput, user: CurrentUser) -> int:
-        self._check_can_edit(user)
-        horizon = self._validate(data)
+        self._check_can_edit(user); horizon = self._validate(data)
         if self.session_factory is None:
-            self.block_repository.update_block(
-                block_id=block_id,
-                site_id=data.site_id,
-                block_number=data.block_number,
-                horizon_m=horizon,
-                planned_blast_date=data.planned_blast_date,
-                status=data.status,
-                comment=data.comment,
-            )
+            self.block_repository.update_block(block_id=block_id,domain_id=data.domain_id,block_number=data.block_number,horizon_m=horizon,planned_blast_date=data.planned_blast_date,status=data.status,comment=data.comment)
             return block_id
         try:
-            with self.session_factory() as session:
-                try:
-                    block = session.get(BlastBlock, block_id)
-                    if block is None:
-                        raise ValueError("Blast block not found")
-                    new_values = {
-                        "block_number": data.block_number.strip(),
-                        "site_id": data.site_id,
-                        "horizon_m": horizon,
-                        "planned_blast_date": data.planned_blast_date,
-                        "status": data.status,
-                        "comment": data.comment or None,
-                    }
-                    old_values = {field: getattr(block, field) for field in AUDITED_FIELDS}
-                    site_names = self._site_names_for_audit(session, old_values["site_id"], new_values["site_id"])
-                    changes = build_audit_changes(old_values, new_values, site_names)
-                    for field, new_value in new_values.items():
-                        setattr(block, field, new_value)
-                    for field_name, old_text, new_text in changes:
-                        self.audit_repository.add_entry(
-                            session,
-                            blast_block_id=block.id,
-                            user_id=user.id,
-                            action="update",
-                            entity_type="blast_block",
-                            entity_id=block.id,
-                            field_name=field_name,
-                            old_value=old_text,
-                            new_value=new_text,
-                            description=f"Изменено поле: {AUDIT_FIELD_LABELS[field_name]}",
-                        )
-                    session.commit()
-                    return block_id
-                except Exception:
-                    session.rollback()
-                    raise
-        except SQLAlchemyError as exc:
-            raise ValidationError("Could not update the block in PostgreSQL. Check the data and database migrations.") from exc
+            with self.session_factory.begin() as session:
+                block = session.get(BlastBlock, block_id)
+                if block is None: raise ValueError("Blast block not found")
+                old_domain = session.get(Domain, block.domain_id); new_domain = session.get(Domain, data.domain_id)
+                if data.domain_id != block.domain_id:
+                    from database.assessment_models import BlastEvent
+                    linked=session.scalar(select(BlastEvent.id).where(BlastEvent.blast_block_id==block.id,BlastEvent.event_type=="production"))
+                    if linked is not None: raise ValidationError("Domain cannot be changed for a Block linked to a production BlastEvent")
+                if old_domain.site_id != new_domain.site_id: raise ValidationError("A block can only move between Domains of the same project")
+                new_values = {"block_number": data.block_number.strip(), "domain_id": data.domain_id, "horizon_m": horizon, "planned_blast_date": data.planned_blast_date, "status": data.status, "comment": data.comment or None}
+                old_values = {field: getattr(block, field) for field in AUDITED_FIELDS}
+                names = {d.id: d.name for d in session.query(Domain).filter(Domain.id.in_({block.domain_id, data.domain_id})).all()}
+                for field, old_text, new_text in build_audit_changes(old_values, new_values, names):
+                    self.audit_repository.add_entry(session, blast_block_id=block.id, user_id=user.id, action="update", entity_type="blast_block", entity_id=block.id, field_name=field, old_value=old_text, new_value=new_text, description=f"Изменено поле: {AUDIT_FIELD_LABELS[field]}")
+                for field, value in new_values.items(): setattr(block, field, value)
+                return block_id
+        except SQLAlchemyError as exc: raise ValidationError("Could not update the block in PostgreSQL. Check the data and database migrations.") from exc
 
-    def _check_can_edit(self, user: CurrentUser) -> None:
-        if not user.can_edit:
-            raise PermissionDenied("Your role is not allowed to create or edit blocks")
+    def _check_can_edit(self, user):
+        if not user.can_edit: raise PermissionDenied("Your role is not allowed to create or edit blocks")
+    def _validate(self, data):
+        if not data.block_number.strip(): raise ValidationError("Block number is required")
+        if data.domain_id is None or self.domain_repository.get(data.domain_id) is None: raise ValidationError("Select an existing Domain")
+        if data.status not in VALID_STATUSES: raise ValidationError("Invalid block status")
+        if not data.horizon_text.strip(): return None
+        try: return Decimal(data.horizon_text.replace(",", "."))
+        except InvalidOperation as exc: raise ValidationError("Horizon must be a number") from exc
 
-    def _validate(self, data: BlastBlockInput) -> Decimal | None:
-        if not data.block_number.strip():
-            raise ValidationError("Block number is required")
-        if data.site_id is None:
-            raise ValidationError("Select a site")
-        if data.mine_id is None:
-            raise ValidationError("Select a mine")
-        sites = self.site_repository.list_sites(data.mine_id)
-        if not any(site.id == data.site_id for site in sites):
-            raise ValidationError("Selected site does not belong to selected mine")
-        if data.status not in VALID_STATUSES:
-            raise ValidationError("Invalid block status")
-        if not data.horizon_text.strip():
-            return None
-        try:
-            return Decimal(data.horizon_text.replace(",", "."))
-        except InvalidOperation as exc:
-            raise ValidationError("Horizon must be a number") from exc
+def build_audit_changes(old_values, new_values, domain_names=None):
+    return [(field, format_audit_value(field, old_values.get(field), domain_names), format_audit_value(field, new_values.get(field), domain_names)) for field in AUDITED_FIELDS if old_values.get(field) != new_values.get(field)]
 
-    @staticmethod
-    def _site_names_for_audit(session, old_site_id: int | None, new_site_id: int | None) -> dict[int, str]:
-        ids = {site_id for site_id in (old_site_id, new_site_id) if site_id is not None}
-        return {site.id: site.name for site in session.query(Site).filter(Site.id.in_(ids)).all()} if ids else {}
-
-
-def build_audit_changes(old_values: dict, new_values: dict, site_names: dict[int, str] | None = None) -> list[tuple[str, str | None, str | None]]:
-    site_names = site_names or {}
-    changes = []
-    for field in AUDITED_FIELDS:
-        old_value = old_values.get(field)
-        new_value = new_values.get(field)
-        if old_value == new_value:
-            continue
-        changes.append((field, format_audit_value(field, old_value, site_names), format_audit_value(field, new_value, site_names)))
-    return changes
-
-
-def format_audit_value(field_name: str, value, site_names: dict[int, str] | None = None) -> str | None:
-    if value is None:
-        return None
-    if field_name == "status":
-        return AUDIT_STATUS_LABELS.get(str(value), str(value))
-    if field_name == "planned_blast_date" and isinstance(value, date):
-        return value.strftime("%d.%m.%Y")
+def format_audit_value(field_name, value, domain_names=None):
+    if value is None: return None
+    if field_name == "status": return AUDIT_STATUS_LABELS.get(str(value), str(value))
+    if field_name == "planned_blast_date" and isinstance(value, date): return value.strftime("%d.%m.%Y")
     if field_name == "horizon_m" and isinstance(value, Decimal):
-        return format(value.normalize(), "f").rstrip("0").rstrip(".") if "." in format(value.normalize(), "f") else format(value.normalize(), "f")
-    if field_name == "site_id":
-        return (site_names or {}).get(int(value), str(value))
+        text = format(value.normalize(), "f"); return text.rstrip("0").rstrip(".") if "." in text else text
+    if field_name == "domain_id": return (domain_names or {}).get(int(value), str(value))
     return str(value)

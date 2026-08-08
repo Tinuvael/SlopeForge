@@ -171,7 +171,7 @@ class AssessmentWorkspaceWidget(QWidget):
         self.filter_combo.currentIndexChanged.connect(self.refresh_events)
         self.event_list = QListWidget()
         self.event_list.currentRowChanged.connect(self._select_event)
-        create = QPushButton("+ Создать событие")
+        create = QPushButton("+ Создать событие"); create.setVisible(False)
         create.clicked.connect(self.create_event)
         create.setEnabled(not self.read_only)
         events_layout.addWidget(self.filter_combo)
@@ -180,7 +180,7 @@ class AssessmentWorkspaceWidget(QWidget):
         self.area_filter_combo = QComboBox(); self.area_filter_combo.addItems(["Активные", "Архив"])
         self.area_filter_combo.currentIndexChanged.connect(self._area_filter_changed)
         self.area_list = QListWidget(); self.area_list.currentRowChanged.connect(self._select_area)
-        create_area = QPushButton("+ Создать Assessment Area"); create_area.clicked.connect(self.start_area_drawing); create_area.setEnabled(not self.read_only)
+        create_area = QPushButton("+ Создать Assessment Area"); create_area.clicked.connect(self.start_area_drawing); create_area.setEnabled(not self.read_only); create_area.setVisible(False)
         areas_layout.addWidget(self.area_filter_combo); areas_layout.addWidget(self.area_list, 1); areas_layout.addWidget(create_area)
         root.addWidget(left)
 

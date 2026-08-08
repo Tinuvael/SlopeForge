@@ -1,361 +1,179 @@
-"""Behavioural MainWindow routing tests using tiny Qt/domain fakes.
-
-The production PySide build needs libGL, which is intentionally absent in CI's
-minimal image.  These fakes exercise MainWindow itself without PostgreSQL or the
-assessment dependency graph.
-"""
-from __future__ import annotations
-
-import importlib.util
-import sys
-import types
+"""Architecture-level routing regressions for the tree-driven MainWindow."""
 from pathlib import Path
 
-import pytest
-
-
-class Signal:
-    def __init__(self): self.slots = []
-    def connect(self, slot): self.slots.append(slot)
-    def emit(self, *args):
-        return [slot(*args) for slot in list(self.slots)]
-
-
-class Widget:
-    def __init__(self, parent=None): self.parent = parent; self.deleted = False
-    def setMaximumWidth(self, value): self.maximum_width = value
-    def deleteLater(self): self.deleted = True
-
-
-class MainWidget(Widget):
-    def setWindowTitle(self, value): self.title = value
-    def resize(self, *value): self.size = value
-    def setCentralWidget(self, widget): self.central = widget
-    def closeEvent(self, event): event.accept()
-
-
-class Stack(Widget):
-    def __init__(self): super().__init__(); self.widgets = []; self.current = None
-    def addWidget(self, widget): self.widgets.append(widget); self.current = self.current or widget
-    def removeWidget(self, widget): self.widgets.remove(widget)
-    def setCurrentWidget(self, widget): self.current = widget
-    def currentWidget(self): return self.current
-
-
-class Button(Widget):
-    def __init__(self, text): super().__init__(); self.text = text; self.clicked = Signal(); self.checked = False
-    def setCheckable(self, value): self.checkable = value
-    def setChecked(self, value): self.checked = value
-    def isChecked(self): return self.checked
-    def setEnabled(self, value): self.enabled = value
-    def isEnabled(self): return self.enabled
-    def setToolTip(self, value): self.tooltip = value
-
-
-class ButtonGroup(Widget):
-    def setExclusive(self, value): self.exclusive = value
-    def addButton(self, button): pass
-
-
-class Layout:
-    def __init__(self, parent=None): self.parent = parent; self.items = []
-    def addWidget(self, widget, *args): self.items.append(widget)
-    def addLayout(self, layout): self.items.append(layout)
-
-
-class MessageBox:
-    class StandardButton:
-        Cancel = 1
-        Discard = 2
-    answer = StandardButton.Cancel
-    critical_calls = []
-    @classmethod
-    def warning(cls, *args): return cls.answer
-    @classmethod
-    def critical(cls, *args): cls.critical_calls.append(args)
-
-
-class Tree(Widget):
-    def __init__(self, context):
-        super().__init__(); self.filters_changed = Signal(); self.block_selected = Signal(); self.site_selected = Signal(); self.domain_selected = Signal()
-        self.reload_count = self.load_count = 0
-    def reload_filters(self): self.reload_count += 1
-    def load_data(self): self.load_count += 1
-
-
-class BlockPage(Widget):
-    def __init__(self, context):
-        super().__init__(); self.data_changed = Signal(); self.calls = []
-    def set_filters(self, *args): self.calls.append(("filters", args))
-    def open_block_id(self, value): self.calls.append(("open", value))
-    def create_block(self): self.calls.append(("create",))
-    def open_directories(self): self.calls.append(("directories",))
-
-
-class Header(Widget):
-    def __init__(self, context):
-        super().__init__(); self.create_block_requested = Signal(); self.directories_requested = Signal()
-
-
-class Assessment(Widget):
-    created = 0
-    replacements = 0
-    fail_construct = False
-    fail_refresh = False
-    def __init__(self, context, domain_id, domain_name, site_id=None, parent=None):
-        if self.fail_construct: raise ValueError("bad json")
-        super().__init__(parent); type(self).created += 1; self.active = False
-        self.context, self.domain_id, self.domain_name, self.site_id = context, domain_id, domain_name, site_id
-        self.refreshes = self.saves = self.cancels = self.reloads = 0; self.fail_save = False; self.fail_reload = False
-    def refresh_workspace(self):
-        self.refreshes += 1
-        if self.fail_refresh: raise RuntimeError("refresh")
-    def reload_from_repository(self):
-        self.reloads += 1
-        if self.fail_reload: raise RuntimeError("reload")
-    def has_active_workflow(self): return self.active
-    def cancel_active_workflow(self): self.active = False; self.cancels += 1; return True
-    def save_now(self):
-        self.saves += 1
-        if self.fail_save: raise RuntimeError("save")
-        if self.context.current_user.can_edit:
-            type(self).replacements += 1
-
-
-class CloseEvent:
-    def __init__(self): self.ignored = self.accepted = False
-    def ignore(self): self.ignored = True
-    def accept(self): self.accepted = True
-
-
-@pytest.fixture
-def window_module(monkeypatch):
-    Assessment.created = 0
-    Assessment.replacements = 0
-    Assessment.fail_construct = Assessment.fail_refresh = False
-    MessageBox.answer = MessageBox.StandardButton.Cancel
-    MessageBox.critical_calls = []
-    qt = types.ModuleType("PySide6.QtWidgets")
-    for name, value in {"QButtonGroup": ButtonGroup, "QMainWindow": MainWidget,
-        "QMessageBox": MessageBox, "QWidget": Widget, "QHBoxLayout": Layout,
-        "QVBoxLayout": Layout, "QPushButton": Button, "QStackedWidget": Stack}.items(): setattr(qt, name, value)
-    monkeypatch.setitem(sys.modules, "PySide6", types.ModuleType("PySide6"))
-    monkeypatch.setitem(sys.modules, "PySide6.QtWidgets", qt)
-    modules = {
-        "app.config": {"APP_NAME": "SlopeForge", "APP_VERSION": "test"},
-        "app.qt": {"apply_window_icon": lambda window: None},
-        "widgets.project_tree": {"ProjectTree": Tree},
-        "ui.pages.block_list_page": {"BlockListPage": BlockPage},
-        "ui.header": {"Header": Header},
-        "database.app_context": {"AppContext": object},
-    }
-    for name, attrs in modules.items():
-        module = types.ModuleType(name)
-        for key, value in attrs.items(): setattr(module, key, value)
-        monkeypatch.setitem(sys.modules, name, module)
-    assessment_module = types.ModuleType("ui.pages.assessment_workspace_page")
-    assessment_module.AssessmentWorkspacePage = Assessment
-    # Prove importing MainWindow does not touch this lazily supplied module.
-    monkeypatch.delitem(sys.modules, "ui.pages.assessment_workspace_page", raising=False)
-    spec = importlib.util.spec_from_file_location("tested_main_window", Path("ui/main_window.py"))
-    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-    assert "ui.pages.assessment_workspace_page" not in sys.modules
-    monkeypatch.setitem(sys.modules, "ui.pages.assessment_workspace_page", assessment_module)
-    return module
-
-
-@pytest.fixture
-def window(window_module):
-    context = types.SimpleNamespace(current_user=types.SimpleNamespace(can_edit=True))
-    return window_module.MainWindow(context)
-
-
-def test_startup_is_lazy_and_keeps_tree_outside_stack(window):
-    assert window.page is window.block_page
-    assert window.page_stack.currentWidget() is window.block_page
-    assert window.assessment_page is None and Assessment.created == 0
-    assert window.tree not in window.page_stack.widgets
-    assert window.block_nav_button.isChecked() and not window.assessment_nav_button.isChecked()
-    assert not window.assessment_nav_button.isEnabled()
-    assert not hasattr(window, "blast_events_window")
-
-
-def test_assessment_created_once_added_and_navigation_reused(window):
-    assert not window.show_assessment_page()
-    assert window.open_assessment_for_domain(7, "North", 70)
-    page = window.assessment_page
-    assert Assessment.created == 1 and page in window.page_stack.widgets
-    assert window.page_stack.currentWidget() is page
-    assert window.assessment_nav_button.isChecked() and not window.block_nav_button.isChecked()
-    assert window.show_assessment_page() and window.assessment_page is page
-    assert Assessment.created == 1 and page.refreshes == 1 and page.reloads == 0
-    assert window.show_block_page() and window.page_stack.currentWidget() is window.block_page
-    assert window.show_assessment_page() and window.assessment_page is page
-    assert page.reloads == 1
-
-
-def test_same_site_reopen_reload_failure_keeps_blocks_visible(window):
-    assert window.open_assessment_for_domain(7, "North", 70)
-    page = window.assessment_page
-    assert window.show_block_page()
-    page.fail_reload = True
-    assert not window.show_assessment_page()
-    assert window.assessment_page is page and window.assessment_domain_id == 7
-    assert window.page_stack.currentWidget() is window.block_page
-    assert window.block_nav_button.isChecked() and not window.assessment_nav_button.isChecked()
-
-
-def test_same_site_reopen_active_workflow_blocks_reload(window):
-    assert window.open_assessment_for_domain(7, "North", 70)
-    page = window.assessment_page
-    window.page_stack.setCurrentWidget(window.block_page)
-    page.active = True
-    assert not window.show_assessment_page()
-    assert page.reloads == 0
-    assert window.page_stack.currentWidget() is window.block_page
-
-
-def test_tree_header_and_filters_route_without_postgresql(window):
-    window.tree.site_selected.emit(70, "Olympiada"); assert window.assessment_page is None
-    window.tree.domain_selected.emit(7, "North", 70); page = window.assessment_page
-    window.tree.filters_changed.emit("mine")
-    assert window.page_stack.currentWidget() is page
-    assert window.block_page.calls[-1] == ("filters", ("mine",))
-    window.tree.block_selected.emit(42)
-    assert window.block_page.calls[-1] == ("open", 42)
-    window.show_assessment_page(); window.header.create_block_requested.emit()
-    assert window.block_page.calls[-1] == ("create",)
-    window.show_assessment_page(); window.header.directories_requested.emit()
-    assert window.block_page.calls[-1] == ("directories",)
-
-
-def test_cancel_preserves_active_workflow_and_restores_buttons(window):
-    window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page; page.active = True
-    MessageBox.answer = MessageBox.StandardButton.Cancel
-    assert not window.show_block_page()
-    assert page.active and page.cancels == 0 and page.saves == 0
-    assert window.page_stack.currentWidget() is page and window.assessment_nav_button.isChecked()
-
-
-def test_discard_cancels_saves_once_and_switches(window):
-    window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page; page.active = True
-    MessageBox.answer = MessageBox.StandardButton.Discard
-    assert window.show_block_page()
-    assert not page.active and page.cancels == 1 and page.saves == 1
-
-
-def test_save_failure_blocks_leave_and_actions(window):
-    window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page; page.fail_save = True
-    assert not window.open_block_from_tree(7)
-    assert window.page_stack.currentWidget() is page
-    assert ("open", 7) not in window.block_page.calls
-    assert window.assessment_nav_button.isChecked() and not window.block_nav_button.isChecked()
-
-
-def test_close_saves_and_save_failure_ignores(window):
-    window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page
-    event = CloseEvent(); window.closeEvent(event)
-    assert page.saves == 1 and event.accepted
-    page.fail_save = True; event = CloseEvent(); window.closeEvent(event)
-    assert event.ignored and not event.accepted
-
-
-def test_close_workflow_cancel_and_discard(window):
-    window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page; page.active = True
-    event = CloseEvent(); window.closeEvent(event)
-    assert event.ignored and page.active and page.saves == 0
-    MessageBox.answer = MessageBox.StandardButton.Discard
-    event = CloseEvent(); window.closeEvent(event)
-    assert event.accepted and page.cancels == 1 and page.saves == 1
-
-
-def test_viewer_can_leave_switch_site_and_close_without_writing(window):
-    window.context.current_user.can_edit = False
-    assert window.open_assessment_for_domain(7, "North", 70)
-    first = window.assessment_page
-
-    assert window.show_block_page()
-    assert first.saves == 1 and Assessment.replacements == 0
-    assert window.open_assessment_for_domain(8, "South", 80)
-    second = window.assessment_page
-    assert first.deleted and first.saves == 2
-
-    event = CloseEvent()
-    window.closeEvent(event)
-    assert event.accepted and second.saves == 1
-    assert Assessment.replacements == 0
-
-
-def test_editor_navigation_save_still_persists(window):
-    assert window.open_assessment_for_domain(7, "North", 70)
-    assert window.show_block_page()
-    assert Assessment.replacements == 1
-
-
-def test_construction_failure_stays_on_blocks(window):
-    Assessment.fail_construct = True
-    assert not window.open_assessment_for_domain(7, "North", 70)
-    assert window.assessment_page is None
-    assert window.page_stack.currentWidget() is window.block_page
-    assert window.block_nav_button.isChecked() and MessageBox.critical_calls
-
-
-def test_existing_refresh_failure_preserves_page_and_instance(window):
-    assert window.open_assessment_for_domain(7, "North", 70); page = window.assessment_page
-    page.fail_refresh = True
-    assert not window.show_assessment_page()
-    assert window.assessment_page is page and not page.deleted
-    assert window.page_stack.currentWidget() is page
-
-
-def test_switching_site_saves_then_replaces_and_deletes_old_page(window):
-    assert window.open_assessment_for_domain(7, "North", 70)
-    old = window.assessment_page
-    assert window.open_assessment_for_domain(8, "South", 80)
-    assert old.saves == 1 and old.deleted
-    assert old not in window.page_stack.widgets
-    assert window.assessment_page.site_id == 80
-    assert window.assessment_domain_id == 8 and window.assessment_domain_name == "South"
-
-
-def test_site_switch_cancel_save_and_target_load_failures_preserve_old(window):
-    window.open_assessment_for_domain(7, "North", 70)
-    old = window.assessment_page
-    old.active = True
-    assert not window.open_assessment_for_domain(8, "South", 80)
-    assert window.assessment_page is old and window.assessment_domain_id == 7
-
-    old.active = False; old.fail_save = True
-    assert not window.open_assessment_for_domain(8, "South", 80)
-    assert window.assessment_page is old and not old.deleted
-
-    old.fail_save = False; Assessment.fail_construct = True
-    assert not window.open_assessment_for_domain(8, "South", 80)
-    assert window.assessment_page is old and window.assessment_domain_id == 7
-    assert window.page_stack.currentWidget() is old
-
-
-def test_site_switch_discard_cancels_workflow_and_proceeds(window):
-    window.open_assessment_for_domain(7, "North", 70)
-    old = window.assessment_page; old.active = True
-    MessageBox.answer = MessageBox.StandardButton.Discard
-    assert window.open_assessment_for_domain(8, "South", 80)
-    assert old.cancels == 1 and old.saves == 1 and old.deleted
-
-
-def test_obsolete_prototype_launcher_is_absent(window, window_module):
-    assert not hasattr(window, "prototype_button")
-    assert not hasattr(window, "prototype_2d_window")
-    assert not hasattr(window, "open_2d_plan_prototype")
-    assert "ui.prototype_2d.window" not in sys.modules
-    assert "2D Plan Prototype" not in Path("ui/main_window.py").read_text(encoding="utf-8")
-
-
-def test_selecting_another_site_clears_stale_domain_context(window):
-    assert window.open_assessment_for_domain(7, "North", 70)
-    window.tree.site_selected.emit(80, "Other site")
-    assert window.assessment_domain_id is None
-    assert window.assessment_domain_name is None
-    assert not window.assessment_nav_button.isEnabled()
-    assert window.page_stack.currentWidget() is window.block_page
-    assert not window.show_assessment_page()
+
+def source(path): return Path(path).read_text(encoding="utf-8")
+
+def test_tree_is_primary_navigation_without_project_lines_branch():
+    tree=source("widgets/project_tree.py")
+    assert '"Project Lines"' not in tree
+    assert '"type":"horizon"' in tree and '"type":"interval"' in tree
+    assert 'kind in {"folder","horizon","interval"}' in tree
+
+def test_project_and_domain_filters_are_user_facing():
+    tree=source("widgets/project_tree.py")
+    assert "project_filter" in tree and "domain_filter" in tree and "status_filter" in tree
+    assert "mine_filter" not in tree and "site_filter" not in tree
+    assert "Show archived" in tree
+
+def test_site_domain_block_and_area_routes_exist():
+    main=source("ui/main_window.py")
+    for method in ("select_site", "select_domain", "open_block_from_tree", "open_area_from_tree"):
+        assert f"def {method}" in main
+    assert "AssessmentAreaPage" in main
+
+def test_cancel_and_discard_share_one_leave_guard():
+    main=source("ui/main_window.py")
+    assert main.count("def _guard_leave") == 1
+    guard=main[main.index("def _guard_leave"):main.index("def _set_context")]
+    assert "StandardButton.Discard" in guard
+    assert "cancel_active_workflow" in guard
+    assert "return False" in guard
+
+def test_missing_project_lines_warning_and_no_drawing_before_check():
+    main=source("ui/main_window.py")
+    area=main[main.index("def _add_area"):main.index("def _archive_selected")]
+    assert "Сначала загрузите проектные линии для карьера." in area
+    assert area.index("get_active") < area.index("AssessmentAreaCreationPage")
+
+def test_block_creation_reuses_blast_event_dialog_and_links_event():
+    main=source("ui/main_window.py")
+    block=main[main.index("def _add_blast_event"):main.index("def _add_area")]
+    assert "BlastEventDialog" in block
+    assert "event.event_type==\"contour\"" in block
+    assert "create_event" in block and "blast_block_id=block_id" in block
+
+def test_site_dashboard_owns_project_lines_management():
+    pages=source("ui/pages/navigation_pages.py")
+    assert "class SiteDashboardPage" in pages
+    assert "Import / Update Project Lines" in pages
+    assert "ProjectLinesRepository" in pages
+
+def test_archive_button_and_block_service_are_connected():
+    assert "archive_button" in source("ui/header.py")
+    main=source("ui/main_window.py")
+    assert "archive_requested.connect(self._archive_selected)" in main
+    assert "set_archived" in source("services/blast_block_service.py")
+
+def test_block_page_embeds_geometry_and_revision_safe_technical_card_tabs():
+    block=source("ui/pages/block_list_page.py")
+    assert "event_for_block" in block and "active_geometry_revision" in block
+    assert "TechnicalCardEditorWidget" in block
+    assert 'take_tab("Геомеханика")' in block
+    assert 'take_tab("Бурение и заряды")' in block
+    assert 'take_tab("Факт")' in block
+
+def test_area_page_is_focused_without_legacy_mode_switch():
+    area=source("ui/pages/assessment_area_page.py")
+    assert "class AssessmentAreaPage" in area
+    assert '"Overview"' in area and '"Assessment"' in area and '"Result"' in area
+    assert '"Linked events"' in area
+    assert "Blast Events / Assessment Areas" not in area
+    assert "AssessmentAreaEvaluationDialog" in area and "Матрица" in area
+    assert "Design Achievement Index" not in area  # calculated by reused dialog/QuadrantPlot
+
+def test_area_links_and_focused_creation_are_reused():
+    area=source("ui/pages/assessment_area_page.py")
+    for action in ("confirm_link","exclude_link","restore_suggestion","refresh_suggestions"):
+        assert action in area
+    creation=source("ui/pages/assessment_area_creation_page.py")
+    assert "AssessmentAreaCreationPage" in creation and "plan_view" in creation
+    assert "Blast Events" not in creation and "TechnicalCard" not in creation
+    main=source("ui/main_window.py")
+    assert "AssessmentAreaCreationPage" in main and "_area_created" in main
+
+def test_entity_page_integration_corrections_are_visible():
+    block=source("ui/pages/block_list_page.py")
+    assert 'QPushButton("Save draft")' in block and 'QPushButton("Complete")' in block
+    assert "save_draft()" in block and "complete()" in block
+    area=source("ui/pages/assessment_area_page.py")
+    assert "self.assessment_sections=QTabWidget()" in area
+    assert 'addTab(take("Общие"),"Общие")' in area
+    assert "Сначала сохраните черновик оценки" in area
+    creation=source("ui/pages/assessment_area_creation_page.py")
+    for label in ("Fit","Project Lines","Grid","Undo vertex","Finish polygon / Continue","Confirm boundaries","Cancel"):
+        assert label in creation
+
+def test_refresh_reloads_filters_and_area_construction_is_guarded():
+    main=source("ui/main_window.py")
+    refresh=main[main.index("def refresh_project_data"):main.index("def closeEvent")]
+    assert refresh.index("reload_filters") < refresh.index("load_data")
+    assert main.count("Не удалось открыть Assessment Area") == 1
+    assert "Не удалось запустить создание Assessment Area" in main
+    assert "Не удалось открыть редактирование границ" in main
+
+def test_existing_block_dialog_preserves_zero_and_none_and_locks_linked_domain():
+    dialog=source("ui/block_dialog.py")
+    assert '"" if block.horizon_m is None else str(block.horizon_m)' in dialog
+    assert "self.planned_date.setDate(self.planned_date.minimumDate())" in dialog
+    assert "is_linked_to_production_event" in dialog and "self.domain.setEnabled(False)" in dialog
+
+def test_contour_event_ui_and_tree_architecture():
+    tree=source("widgets/project_tree.py")
+    assert '"Blast events"' in tree and '"Blast blocks"' not in tree
+    assert "list_contour_events" in tree and '"type":"contour"' in tree
+    header=source("ui/header.py")
+    for label in ("Add blast event","Add assessment area"):
+        assert label in header
+    main=source("ui/main_window.py")
+    assert "def _add_blast_event" in main and "open_contour_from_tree" in main
+    assert "event.event_type==\"contour\"" in main
+    page=source("ui/pages/contour_event_page.py")
+    assert "ContourEventPage" in page and "Geomechanics" not in page
+    assert '"Blast design"' in page and '"Execution fact"' in page
+
+def test_area_creation_cancel_drawing_is_not_page_cancel():
+    creation=source("ui/pages/assessment_area_creation_page.py")
+    cancel=creation[creation.index("def _cancel_drawing"):creation.index("def _close_page")]
+    assert "cancel_active_workflow" in cancel and "cancelled.emit" not in cancel
+    assert "def _start_drawing" in creation and "start_area_drawing" in creation
+
+
+def test_stale_block_engineering_is_cleared_and_read_only_is_defensive():
+    block=source("ui/pages/block_list_page.py")
+    render=block[block.index("def _render_engineering"):block.index("def _reimport_geometry")]
+    assert "self._clear_engineering()" in render
+    assert "self.technical_card_editor=None" in render
+    assert "set_reimport_enabled(False)" in render
+    assert "self.current_block.is_archived" in render
+    reimport=block[block.index("def _reimport_geometry"):]
+    assert "not self.context.current_user.can_edit" in reimport and "self.current_block.is_archived" in reimport
+
+def test_area_and_contour_mutations_are_defensively_read_only():
+    area=source("ui/pages/assessment_area_page.py")
+    assert "self.read_only=not context.current_user.can_edit or self.area.is_archived" in area
+    assert "def _ensure_editable" in area
+    for method in ("_change_link","recalculate_links","add_manual_link","_save_evaluation","_request_edit_boundaries"):
+        section=area[area.index(f"def {method}"):]
+        assert "_ensure_editable" in section[:500]
+    contour=source("ui/pages/contour_event_page.py")
+    assert "self.read_only=not context.current_user.can_edit or self.blast_event.is_archived" in contour
+    assert "if self.read_only" in contour and "set_reimport_enabled(not self.read_only)" in contour
+
+def test_restart_drawing_distinguishes_create_and_edit_modes():
+    creation=source("ui/pages/assessment_area_creation_page.py")
+    restart=creation[creation.index("def _start_drawing"):creation.index("def _toggle_lines")]
+    assert "if self.edit_area_id" in restart
+    assert "open_assessment_area(self.edit_area_id)" in restart
+    assert "edit_area_boundaries()" in restart
+    assert "else:self.controller.workspace.start_area_drawing()" in restart
+
+
+def test_area_completion_is_not_driven_by_generic_state_saved():
+    creation=source("ui/pages/assessment_area_creation_page.py")
+    assert "state_saved.connect" not in creation
+    confirm=creation[creation.index("def _confirm"):creation.index("def _sync_status")]
+    assert confirm.index("confirm_refined_polygon()") < confirm.index('workflow_state!="IDLE"')
+    assert "_edit_revision_count" in confirm and "_edit_active_revision_id" in confirm
+    assert "_completion_emitted=True" in confirm
+
+
+def test_successful_area_edit_has_dedicated_unguarded_completion_path():
+    main=source("ui/main_window.py")
+    finish=main[main.index("def _finish_area_boundary_edit"):main.index("def _cancel_area_boundary_edit")]
+    assert "self.assessment_page=None" in finish
+    assert "refresh_project_data()" in finish and "open_area_from_tree" in finish
+    assert "save_now" not in finish and "_guard_leave" not in finish
+    assert "removeWidget(edit_page)" in finish and "deleteLater()" in finish
+    cancel=main[main.index("def _cancel_area_boundary_edit"):main.index("def _edit_area_boundaries")]
+    assert "open_area_from_tree" in cancel

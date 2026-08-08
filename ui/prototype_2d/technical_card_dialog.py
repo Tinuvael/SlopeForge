@@ -70,12 +70,15 @@ class TechnicalCardDialog(QDialog):
 
     def _geomechanics_tab(self):
         layout = self._scroll_tab("Геомеханика"); geo = self.revision.geomechanical_parameters
+        identity = QGroupBox("Порода и геотехнический контекст"); form = QFormLayout(identity)
+        self.lithology = QLineEdit(geo.lithology); self.geotechnical_domain = QLineEdit(geo.geotechnical_domain)
+        form.addRow("Литология", self.lithology); form.addRow("Геотехнический домен", self.geotechnical_domain); layout.addWidget(identity)
         strength = QGroupBox("Прочность массива"); form = QFormLayout(strength)
-        self.strength_class = QLineEdit(geo.rock_strength_class_text); self.ucs = _number(geo.representative_ucs_mpa, "МПа")
-        form.addRow("Локальный класс прочности", self.strength_class); form.addRow("Представительный UCS", self.ucs); layout.addWidget(strength)
+        self.strength_class = QLineEdit(geo.rock_strength_class_text); self.ucs = _number(geo.representative_ucs_mpa, "МПа"); self.ucs_min = _number(geo.ucs_min_mpa,"МПа"); self.ucs_max = _number(geo.ucs_max_mpa,"МПа")
+        form.addRow("Локальный класс прочности", self.strength_class); form.addRow("Представительный UCS", self.ucs); form.addRow("Минимальный UCS",self.ucs_min); form.addRow("Максимальный UCS",self.ucs_max); layout.addWidget(strength)
         quality = QGroupBox("Качество массива"); form = QFormLayout(quality)
-        self.rqd = _number(geo.rqd_representative_percent, "%"); self.rock_properties = QLineEdit(geo.rock_mass_properties_text)
-        form.addRow("Представительный RQD", self.rqd); form.addRow("Описание свойств массива", self.rock_properties); layout.addWidget(quality)
+        self.rqd = _number(geo.rqd_representative_percent, "%"); self.rqd_min=_number(geo.rqd_min_percent,"%"); self.rqd_max=_number(geo.rqd_max_percent,"%"); self.rock_properties = QLineEdit(geo.rock_mass_properties_text); self.fracturing=QLineEdit(geo.fracturing_description); self.water=QLineEdit(geo.water_condition); self.geo_notes=QTextEdit(geo.geomechanical_notes)
+        form.addRow("Представительный RQD", self.rqd); form.addRow("Минимальный RQD",self.rqd_min); form.addRow("Максимальный RQD",self.rqd_max); form.addRow("Описание свойств массива", self.rock_properties); form.addRow("Трещиноватость",self.fracturing); form.addRow("Водные условия",self.water); form.addRow("Геомеханические примечания",self.geo_notes); layout.addWidget(quality)
 
     def _drilling_tab(self, title):
         self.drilling_layout = self._scroll_tab(title); self.group_cards = QWidget(); self.group_cards_layout = QVBoxLayout(self.group_cards)
@@ -263,13 +266,19 @@ class TechnicalCardDialog(QDialog):
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.horizontalHeader().setStretchLastSection(True); layout.addWidget(table)
 
     def _save(self, status):
+        if self.read_only:
+            QMessageBox.warning(self, "Read only", "Archived entities and Viewer accounts cannot change the Technical Card.")
+            return False
         self.revision.common_parameters.block_name = self.block_name.text(); self.revision.common_parameters.comments = self.comments.text()
         if self.revision.production_parameters:
             p=self.revision.production_parameters; p.design_bench_height_m=None if self.bench_height.value()==self.bench_height.minimum() else self.bench_height.value(); p.total_explosive_mass_kg=None if self.explosive.value()==self.explosive.minimum() else self.explosive.value()
-            g=self.revision.geomechanical_parameters; g.rock_strength_class_text=self.strength_class.text(); g.representative_ucs_mpa=None if self.ucs.value()==self.ucs.minimum() else self.ucs.value(); g.rqd_representative_percent=None if self.rqd.value()==self.rqd.minimum() else self.rqd.value(); g.rock_mass_properties_text=self.rock_properties.text()
+            g=self.revision.geomechanical_parameters; g.lithology=self.lithology.text(); g.geotechnical_domain=self.geotechnical_domain.text(); g.rock_strength_class_text=self.strength_class.text(); g.representative_ucs_mpa=None if self.ucs.value()==self.ucs.minimum() else self.ucs.value(); g.ucs_min_mpa=None if self.ucs_min.value()==self.ucs_min.minimum() else self.ucs_min.value(); g.ucs_max_mpa=None if self.ucs_max.value()==self.ucs_max.minimum() else self.ucs_max.value(); g.rqd_representative_percent=None if self.rqd.value()==self.rqd.minimum() else self.rqd.value(); g.rqd_min_percent=None if self.rqd_min.value()==self.rqd_min.minimum() else self.rqd_min.value(); g.rqd_max_percent=None if self.rqd_max.value()==self.rqd_max.minimum() else self.rqd_max.value(); g.rock_mass_properties_text=self.rock_properties.text(); g.fracturing_description=self.fracturing.text(); g.water_condition=self.water.text(); g.geomechanical_notes=self.geo_notes.toPlainText()
         actual=self.revision.actual_execution; actual.completion_status=self.completion_status.currentData(); actual.actual_blast_date=self.actual_date.text().strip() or None; actual.execution_notes=self.execution_notes.toPlainText(); actual.recalculate()
         warnings=actual.completion_warnings()
         if warnings: QMessageBox.warning(self,"Фактическое исполнение","Карточка будет сохранена. Предупреждения:\n• " + "\n• ".join(warnings))
         try: self.save_callback(self.card, self.revision, status)
-        except ValueError as exc: QMessageBox.warning(self, "Проверка карточки", str(exc)); return
-        self.accept()
+        except ValueError as exc: QMessageBox.warning(self, "Проверка карточки", str(exc)); return False
+        except Exception as exc:
+            QMessageBox.critical(self, "Техническая карточка", f"Не удалось сохранить изменения. Данные остаются в форме.\n\n{exc}")
+            return False
+        self.accept(); return True
