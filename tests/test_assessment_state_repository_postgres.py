@@ -74,7 +74,7 @@ def assessment_context(session_factory):
             orm.AssessmentWorkspace.domain_id == context.domain_id))
         if workspace: session.delete(workspace); session.flush()
         session.query(orm.ProjectLinesDataset).filter_by(site_id=context.site_id).delete()
-        session.query(BlastBlock).filter_by(site_id=context.site_id).delete()
+        session.query(BlastBlock).filter_by(domain_id=context.domain_id).delete()
         session.query(Domain).filter_by(id=context.domain_id).delete()
         session.query(Site).filter_by(id=context.site_id).delete()
         session.query(Mine).filter_by(id=context.mine_id).delete()
@@ -150,7 +150,7 @@ def test_second_replace_recreates_rows_and_removes_omitted_state(session_factory
 
 def test_real_cascade_graph_preserves_foundation_and_clears_block_link(session_factory, assessment_context):
     with session_factory.begin() as session:
-        block = BlastBlock(site_id=assessment_context.site_id, block_number="B-1", status="planned")
+        block = BlastBlock(domain_id=assessment_context.domain_id, block_number="B-1", status="planned")
         session.add(block); session.flush(); block_id = block.id
     repository = AssessmentStateRepository(session_factory)
     state = build_rich_state()
@@ -230,3 +230,84 @@ def test_cross_area_evaluation_geometry_corruption_is_detected(session_factory, 
                 assessment_area_geometry_revision_id=other_geometry))
     with pytest.raises(AssessmentPersistenceCorruptionError, match="another Assessment Area"):
         AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
+
+
+def test_optional_production_link_snapshot_persists_as_sql_null(session_factory, assessment_context):
+    """Production suggestions intentionally have no frozen intersection snapshot."""
+    repository=AssessmentStateRepository(session_factory); state=build_rich_state(); persist_project_lines(session_factory,assessment_context.site_id,state)
+    active=next(link for link in state.assessment_areas[0].event_links if link.id=="LINK-ACTIVE")
+    active.frozen_intersection_geometry=None
+    saved=repository.replace_for_domain(assessment_context.domain_id,state)
+    restored=next(link for link in saved.state.assessment_areas[0].event_links if link.id=="LINK-ACTIVE")
+    contour_snapshot=next(link for link in saved.state.assessment_areas[0].event_links if link.id=="LINK-OLD")
+    assert restored.frozen_intersection_geometry is None
+    assert contour_snapshot.frozen_intersection_geometry is not None
+    with session_factory() as session:
+        row=session.scalar(select(orm.AssessmentEventLink).where(orm.AssessmentEventLink.domain_id=="LINK-ACTIVE"))
+        assert row.frozen_intersection_geometry_json is None
+
+
+def test_real_block_page_embeds_engineering_and_persists_ucs(session_factory, assessment_context, tmp_path):
+    widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
+    from database.app_context import AppContext,CurrentUser
+    from ui.pages.block_list_page import BlockListPage
+    app=widgets.QApplication.instance() or widgets.QApplication([])
+    with session_factory.begin() as session:
+        block=BlastBlock(domain_id=assessment_context.domain_id,block_number="QT-BLOCK",status="planned")
+        session.add(block); session.flush(); block_id=block.id
+    state=build_rich_state(); production=next(e for e in state.blast_events if e.event_type=="production"); production.blast_block_id=block_id
+    persist_project_lines(session_factory,assessment_context.site_id,state); AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id,state)
+    context=AppContext(session_factory,CurrentUser(1,"qt-editor","Qt Editor","editor"),tmp_path)
+    page=BlockListPage(context); page.resize(1400,900); page.show(); page.open_block_id(block_id); app.processEvents()
+    editor=page.technical_card_editor.editor
+    page.tabs.setCurrentWidget(page.geomechanics_tab); app.processEvents()
+    assert page.geomechanics_tab.isVisibleTo(page)
+    for control in (editor.lithology,editor.geotechnical_domain,editor.strength_class,editor.ucs,editor.ucs_min,editor.ucs_max,editor.rqd,editor.rqd_min,editor.rqd_max,editor.rock_properties,editor.fracturing,editor.water,editor.geo_notes):
+        assert page.geomechanics_tab.isAncestorOf(control) and control.isVisibleTo(page.geomechanics_tab)
+    page.tabs.setCurrentWidget(page.design_tab); app.processEvents(); assert page.design_tab.isVisibleTo(page) and editor.group_cards_layout.count()>=1
+    burden=page.design_tab.findChild(widgets.QDoubleSpinBox,"burden_m"); spacing=page.design_tab.findChild(widgets.QDoubleSpinBox,"spacing_m")
+    assert burden is not None and burden.isVisibleTo(page.design_tab); assert spacing is not None and spacing.isVisibleTo(page.design_tab)
+    page.tabs.setCurrentWidget(page.execution_tab); app.processEvents(); assert page.execution_tab.isVisibleTo(page)
+    assert page.execution_tab.isAncestorOf(editor.completion_status) and editor.completion_status.isVisibleTo(page.execution_tab) and editor.actual_summary_widgets
+    editor.ucs.setValue(147.0); page._save_technical_card_draft()
+    reloaded=AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state
+    card=next(c for c in reloaded.technical_cards if c.blast_event_id==production.id)
+    assert card.active_revision().geomechanical_parameters.representative_ucs_mpa==147.0
+    page.deleteLater(); app.processEvents()
+
+
+def test_focused_area_edit_boundaries_round_trip_preserves_entity_graph(session_factory, assessment_context, tmp_path, monkeypatch):
+    widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
+    from database.app_context import AppContext,CurrentUser
+    from ui.main_window import MainWindow
+    app=widgets.QApplication.instance() or widgets.QApplication([])
+    state=build_rich_state(); persist_project_lines(session_factory,assessment_context.site_id,state); repository=AssessmentStateRepository(session_factory); repository.replace_for_domain(assessment_context.domain_id,state)
+    original=repository.load_for_domain(assessment_context.domain_id).state; area=original.assessment_areas[0]; area_id=area.id; revision_ids=[r.id for r in area.geometry_revisions]; evaluation_ids=[e.id for e in original.evaluations]; attachment_ids=[a.id for a in original.attachments]
+    context=AppContext(session_factory,CurrentUser(1,"area-editor","Area Editor","editor"),tmp_path)
+    window=MainWindow(context); window.show(); window._set_context(assessment_context.site_id,"Project",assessment_context.domain_id,"North",area_id=area_id)
+    assert window.open_area_from_tree(area_id,assessment_context.domain_id,assessment_context.site_id,"North")
+    window._edit_area_boundaries(area_id); focused=window.assessment_page; app.processEvents(); assert focused.controller.workspace.workflow_state=="REFINING"
+    warnings=[]
+    monkeypatch.setattr(widgets.QMessageBox,"warning",lambda *args,**kwargs:(warnings.append(args),widgets.QMessageBox.StandardButton.Cancel)[1])
+    focused._close_page(); app.processEvents()
+    assert warnings and window.assessment_page is focused and window.page_stack.currentWidget() is focused
+    focused._cancel_drawing(); assert focused.controller.workspace.workflow_state=="IDLE"
+    focused._start_drawing(); assert focused.controller.workspace.workflow_state=="REFINING" and focused.controller.workspace.selected_area.id==area_id
+    saved_signals=[]; focused.controller.state_saved.connect(lambda:saved_signals.append(True)); completed=[]; focused.area_created.connect(completed.append)
+    focused.controller.workspace._save(); assert saved_signals==[True] and completed==[]
+    save_now_calls=[]; monkeypatch.setattr(focused,"save_now",lambda:save_now_calls.append(True))
+    def confirm_after_persistence():
+        edited=focused.controller.workspace.selected_area; polygon=edited.selection_polygon_frozen; candidates=focused.controller.workspace.area_service.generate_candidates(polygon)
+        focused.controller.workspace.area_service.revise_area(edited,selection_polygon=polygon,selected_fragments=candidates)
+        focused.controller.workspace.link_service.refresh_suggestions(edited); focused.controller.workspace._save(); focused.controller.workspace.cancel_area_drawing()
+    monkeypatch.setattr(focused.controller.workspace,"confirm_refined_polygon",confirm_after_persistence)
+    warning_count=len(warnings); focused._confirm(); app.processEvents()
+    assert completed==[area_id] and len(warnings)==warning_count and save_now_calls==[]
+    assert window.assessment_page is None and window.area_page.area.id==area_id and window.page_stack.indexOf(focused)==-1
+    reloaded=repository.load_for_domain(assessment_context.domain_id).state
+    assert [a.id for a in reloaded.assessment_areas]==[area_id]
+    saved_area=reloaded.assessment_areas[0]; assert len(saved_area.geometry_revisions)==len(revision_ids)+1
+    assert set(revision_ids).issubset({r.id for r in saved_area.geometry_revisions})
+    assert saved_area.active_geometry_revision().source_dataset_id in {d.id for d in reloaded.datasets}
+    assert [e.id for e in reloaded.evaluations]==evaluation_ids and [a.id for a in reloaded.attachments]==attachment_ids
+    window.close(); app.processEvents()

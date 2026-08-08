@@ -60,6 +60,7 @@ def _state_from_workspace(workspace: orm.AssessmentWorkspace | None,
                 "is_active": revision.is_active})
         events.append({"id": row.domain_id, "name": row.name, "event_type": row.event_type,
             "event_date": row.event_date.isoformat() if row.event_date else None, "elevation": float(row.elevation_m),
+            "blast_block_id": row.blast_block_id,
             "geometry_revisions": revisions,
             "active_geometry_revision_id": next((x.domain_id for x in row.geometry_revisions if x.is_active), None),
             "is_archived": row.is_archived, "archived_at": row.archived_at.isoformat() if row.archived_at else None,
@@ -209,7 +210,7 @@ class AssessmentStateRepository:
         for item in state.blast_events:
             row = orm.BlastEvent(workspace=workspace, domain_id=item.id, name=item.name,
                 event_type=item.event_type, event_date=item.event_date, elevation_m=item.elevation,
-                blast_block_id=None, is_archived=item.is_archived, archived_at=item.archived_at,
+                blast_block_id=item.blast_block_id, is_archived=item.is_archived, archived_at=item.archived_at,
                 archive_reason=item.archive_reason)
             session.add(row); events[item.id] = row
             for revision in item.geometry_revisions:

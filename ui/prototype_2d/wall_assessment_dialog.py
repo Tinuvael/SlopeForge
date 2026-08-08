@@ -376,6 +376,9 @@ class AssessmentAreaEvaluationDialog(QDialog):
         return "Автоматический порог матрицы"
 
     def save(self, status):
+        if self.read_only:
+            QMessageBox.warning(self, "Read only", "Archived Assessment Areas and Viewer accounts cannot change the evaluation.")
+            return False
         try:
             revision = self.collect()
             calculate_revision(revision, require_complete=status == "completed")

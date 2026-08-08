@@ -86,6 +86,11 @@ def test_workspace_and_top_level_domain_uniqueness():
     assert fk("assessment_workspaces", "domain_id").ondelete == "RESTRICT"
 
 
+def test_optional_frozen_link_geometry_uses_sql_null():
+    column = table("assessment_event_links").c.frozen_intersection_geometry_json
+    assert column.type.none_as_null is True
+
+
 def test_domain_and_site_scoped_project_lines_foundation():
     assert ("site_id", "name") in uniques("domains")
     assert fk("domains", "site_id").column.table.name == "sites"
@@ -93,7 +98,10 @@ def test_domain_and_site_scoped_project_lines_foundation():
     assert "is_archived" in table("project_lines_datasets").c
     assert "archived_at" in table("project_lines_datasets").c
     assert "NOT (is_archived AND is_active)" in checks("project_lines_datasets")
-    assert fk("blast_blocks", "site_id").column.table.name == "sites"
+    assert "site_id" not in table("blast_blocks").c
+    assert fk("blast_blocks", "domain_id").column.table.name == "domains"
+    assert "is_archived" in table("blast_blocks").c
+    assert "archived_at" in table("blast_blocks").c
     assert "horizons" not in Base.metadata.tables
 
 
