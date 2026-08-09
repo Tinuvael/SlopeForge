@@ -1,3 +1,5 @@
+
+from app.localization import tr
 from PySide6.QtWidgets import QComboBox, QDialog, QFormLayout, QDialogButtonBox
 
 from prototype_2d.csv_importer import FIELD_LABELS, LOGICAL_FIELDS, detect_columns
@@ -6,7 +8,7 @@ from prototype_2d.csv_importer import FIELD_LABELS, LOGICAL_FIELDS, detect_colum
 class ColumnMappingDialog(QDialog):
     def __init__(self, headers: list[str], parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Datamine column mapping")
+        self.setWindowTitle(tr("Datamine column mapping"))
         self._combos = {}
         detected = detect_columns(headers)
         layout = QFormLayout(self)

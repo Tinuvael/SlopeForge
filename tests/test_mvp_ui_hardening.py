@@ -9,7 +9,7 @@ def source(path: str) -> str:
 
 def test_header_uses_project_terminology_and_real_find_shortcut():
     header = source("ui/header.py")
-    assert 'QPushButton("Add")' in header
+    assert 'QPushButton(tr("Add"))' in header
     assert 'addAction("Add project")' in header
     assert 'QPushButton("Add ▼")' not in header
     assert "QKeySequence.StandardKey.Find" in header

@@ -1,5 +1,7 @@
 """Reusable photo/document manager for BlastEvents and evaluations."""
 from __future__ import annotations
+
+from app.localization import tr
 from ui.presentation_labels import domain_message
 
 from datetime import date
@@ -16,18 +18,18 @@ from prototype_2d.entity_attachments import ATTACHMENT_CATEGORIES, PHOTO_EXTENSI
 
 class AttachmentMetadataDialog(QDialog):
     def __init__(self, owner_type, kind, attachment=None, parent=None):
-        super().__init__(parent); self.setWindowTitle("File details")
+        super().__init__(parent); self.setWindowTitle(tr("File details"))
         form = QFormLayout(self); self.title = QLineEdit(attachment.title if attachment else "")
         self.file_date = QDateEdit(); self.file_date.setCalendarPopup(True)
         value = attachment.file_date if attachment else date.today(); self.file_date.setDate(QDate(value.year, value.month, value.day))
         self.category = QComboBox()
         for code, label in ATTACHMENT_CATEGORIES[(owner_type, kind)]: self.category.addItem(label, code)
         if attachment: self.category.setCurrentIndex(max(0, self.category.findData(attachment.subtype)))
-        self.custom = QLineEdit(attachment.custom_subtype if attachment else ""); self.custom.setPlaceholderText("Custom category")
+        self.custom = QLineEdit(attachment.custom_subtype if attachment else ""); self.custom.setPlaceholderText(tr("Custom category"))
         self.description = QTextEdit(attachment.description if attachment else ""); self.description.setMaximumHeight(100)
         self.category.currentIndexChanged.connect(lambda: self.custom.setVisible(self.category.currentData() == "other"))
         form.addRow("Title", self.title); form.addRow("Date", self.file_date); form.addRow("Category", self.category); form.addRow("Custom category", self.custom); form.addRow("Description", self.description)
-        buttons = QHBoxLayout(); ok = QPushButton("Save"); cancel = QPushButton("Cancel"); ok.clicked.connect(self.accept); cancel.clicked.connect(self.reject); buttons.addStretch(); buttons.addWidget(ok); buttons.addWidget(cancel); form.addRow(buttons)
+        buttons = QHBoxLayout(); ok = QPushButton(tr("Save")); cancel = QPushButton(tr("Cancel")); ok.clicked.connect(self.accept); cancel.clicked.connect(self.reject); buttons.addStretch(); buttons.addWidget(ok); buttons.addWidget(cancel); form.addRow(buttons)
         self.custom.setVisible(self.category.currentData() == "other")
 
     def values(self):
@@ -59,12 +61,12 @@ class EntityAttachmentDialog(QDialog):
     def __init__(self, service, owner_type, owner_id, parent=None, read_only=False, unsaved=False):
         super().__init__(parent); self.service, self.owner_type, self.owner_id = service, owner_type, owner_id
         self.read_only, self.unsaved = read_only, unsaved
-        self.setWindowTitle("Photos and documents"); self.resize(1000, 600); root = QVBoxLayout(self)
+        self.setWindowTitle(tr("Photos and documents")); self.resize(1000, 600); root = QVBoxLayout(self)
         if owner_type == "assessment_evaluation":
-            info = QLabel("Files belong to the assessment and are shared by all revisions."); info.setStyleSheet("background:#eef5ff;padding:8px"); root.addWidget(info)
+            info = QLabel(tr("Files belong to the assessment and are shared by all revisions.")); info.setStyleSheet("background:#eef5ff;padding:8px"); root.addWidget(info)
         if unsaved:
-            warning = QLabel("Save an assessment draft before adding files."); warning.setStyleSheet("color:#9b5c00"); root.addWidget(warning)
-        sort = QHBoxLayout(); sort.addWidget(QLabel("Sort by:")); self.sort_combo = QComboBox(); self.sort_combo.addItems(["Date", "Title", "Category", "Size"]); self.sort_combo.currentIndexChanged.connect(self.refresh); sort.addWidget(self.sort_combo); sort.addStretch(); root.addLayout(sort)
+            warning = QLabel(tr("Save an assessment draft before adding files.")); warning.setStyleSheet("color:#9b5c00"); root.addWidget(warning)
+        sort = QHBoxLayout(); sort.addWidget(QLabel(tr("Sort by:"))); self.sort_combo = QComboBox(); self.sort_combo.addItems(["Date", "Title", "Category", "Size"]); self.sort_combo.currentIndexChanged.connect(self.refresh); sort.addWidget(self.sort_combo); sort.addStretch(); root.addLayout(sort)
         self.tabs = QTabWidget(); root.addWidget(self.tabs)
         self.tables = {}
         self.mutation_buttons = []
@@ -77,7 +79,7 @@ class EntityAttachmentDialog(QDialog):
                     button.setEnabled(not read_only and not unsaved)
                     self.mutation_buttons.append(button)
             actions.addStretch(); layout.addLayout(actions); self.tables[kind] = table; self.tabs.addTab(page, caption)
-        close = QPushButton("Close"); close.clicked.connect(self.accept); root.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight); self.refresh()
+        close = QPushButton(tr("Close")); close.clicked.connect(self.accept); root.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight); self.refresh()
 
     def _items(self, kind):
         values = self.service.list_for_owner(self.owner_type, self.owner_id, kind)
@@ -92,7 +94,7 @@ class EntityAttachmentDialog(QDialog):
         for kind, table in self.tables.items():
             items = self._items(kind); table.setRowCount(len(items))
             for row, item in enumerate(items):
-                missing = self.service.is_missing(item); preview = QLabel("File is missing" if missing else "")
+                missing = self.service.is_missing(item); preview = QLabel(tr("File is missing") if missing else "")
                 if kind == "photo" and not missing:
                     pix = QPixmap(str(self.service.resolve_path(item))); preview.setPixmap(pix.scaled(80, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
                 table.setCellWidget(row, 0, preview)

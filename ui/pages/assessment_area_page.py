@@ -1,3 +1,5 @@
+
+from app.localization import tr
 """Normal entity page for one Assessment Area (the legacy workspace is not shown)."""
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QHBoxLayout,QInputDialog,QLabel,QMessageBox,QPushButton,QTableWidget,QTableWidgetItem,
@@ -15,7 +17,7 @@ class AssessmentAreaPage(QWidget):
     def _overview(self):
         page=QWidget(); layout=QVBoxLayout(page); rev=self.area.active_geometry_revision(); meta=QLabel(f"Domain: {self.domain_name} | Elevation: {rev.lower_elevation:g}–{rev.upper_elevation:g} | Date: {self.area.assessment_date} | Geometry revision: {rev.revision_number} | Dataset: {rev.source_dataset_id}"); meta.setWordWrap(True); layout.addWidget(meta)
         self.plan=PlanGeometryWidget(); dataset=next((d for d in self.controller.state.datasets if d.id==rev.source_dataset_id),None); self.plan.set_geometry(rev.final_geometry_frozen,dataset.lines if dataset else [],f"Interval {rev.lower_elevation:g}–{rev.upper_elevation:g}"); layout.addWidget(self.plan)
-        self.edit_boundaries_button=QPushButton("Edit boundaries"); self.edit_boundaries_button.setEnabled(not self.read_only); self.edit_boundaries_button.clicked.connect(self._request_edit_boundaries); layout.addWidget(self.edit_boundaries_button); self.tabs.addTab(page,"Overview")
+        self.edit_boundaries_button=QPushButton(tr("Edit boundaries")); self.edit_boundaries_button.setEnabled(not self.read_only); self.edit_boundaries_button.clicked.connect(self._request_edit_boundaries); layout.addWidget(self.edit_boundaries_button); self.tabs.addTab(page,"Overview")
     def _assessment(self):
         evaluation,draft=self.controller.evaluation_draft(self.area); self.evaluation=evaluation
         self.evaluation_editor=AssessmentAreaEvaluationDialog(self.area,evaluation,draft,self.controller.save_evaluation,None,read_only=self.read_only)
@@ -24,7 +26,7 @@ class AssessmentAreaPage(QWidget):
             for i in range(source.count()):
                 if source.tabText(i)==title: page=source.widget(i); source.removeTab(i); return page
             return QWidget()
-        assessment=QWidget(); layout=QVBoxLayout(assessment); self.assessment_sections=QTabWidget(); self.assessment_sections.addTab(take("General"),"General"); self.assessment_sections.addTab(take("Geometry"),"Geometry"); self.assessment_sections.addTab(take("Face condition"),"Face condition"); layout.addWidget(self.assessment_sections); controls=QHBoxLayout(); self.save_evaluation_button=QPushButton("Save draft"); self.complete_evaluation_button=QPushButton("Complete assessment"); self.save_evaluation_button.setEnabled(not self.read_only); self.complete_evaluation_button.setEnabled(not self.read_only); self.save_evaluation_button.clicked.connect(lambda:self._save_evaluation("draft")); self.complete_evaluation_button.clicked.connect(lambda:self._save_evaluation("completed")); controls.addStretch(); controls.addWidget(self.save_evaluation_button); controls.addWidget(self.complete_evaluation_button); layout.addLayout(controls); self.tabs.addTab(assessment,"Assessment")
+        assessment=QWidget(); layout=QVBoxLayout(assessment); self.assessment_sections=QTabWidget(); self.assessment_sections.addTab(take("General"),"General"); self.assessment_sections.addTab(take("Geometry"),"Geometry"); self.assessment_sections.addTab(take("Face condition"),"Face condition"); layout.addWidget(self.assessment_sections); controls=QHBoxLayout(); self.save_evaluation_button=QPushButton(tr("Save draft")); self.complete_evaluation_button=QPushButton(tr("Complete assessment")); self.save_evaluation_button.setEnabled(not self.read_only); self.complete_evaluation_button.setEnabled(not self.read_only); self.save_evaluation_button.clicked.connect(lambda:self._save_evaluation("draft")); self.complete_evaluation_button.clicked.connect(lambda:self._save_evaluation("completed")); controls.addStretch(); controls.addWidget(self.save_evaluation_button); controls.addWidget(self.complete_evaluation_button); layout.addLayout(controls); self.tabs.addTab(assessment,"Assessment")
         self.result=take("Matrix"); self.tabs.addTab(self.result,"Result"); self.history=take("History")
     def _linked_events(self):
         page=QWidget(); layout=QVBoxLayout(page); self.links_table=QTableWidget(0,8); self.links_table.setHorizontalHeaderLabels(["Status","Source","BlastEvent","Type","Elevation","Revision","State","Spatial match"]); layout.addWidget(self.links_table)

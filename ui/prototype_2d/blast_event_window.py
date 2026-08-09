@@ -1,3 +1,5 @@
+
+from app.localization import tr
 """Compatibility window around the embeddable assessment workspace."""
 from pathlib import Path
 
@@ -44,7 +46,7 @@ class BlastEventWindow(QMainWindow):
             self.state, self.storage_path, save_callback, self
         )
         self.setCentralWidget(self.workspace)
-        self.setWindowTitle("SlopeForge — 2D Assessment Workspace")
+        self.setWindowTitle(tr("SlopeForge — 2D Assessment Workspace"))
         self.resize(1300, 800)
         self.setMinimumSize(1000, 650)
         apply_window_icon(self)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.localization import tr
+
 from PySide6.QtWidgets import QComboBox, QDialog, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget
 
 from database.app_context import CurrentUser
@@ -18,7 +20,7 @@ class DirectoryDialog(QDialog):
         self.selected_mine_id = None
         self.selected_site_id = None
         self.selected_domain_id = None
-        self.setWindowTitle("Directories")
+        self.setWindowTitle(tr("Directories"))
         self.resize(760, 520)
         layout = QVBoxLayout(self)
         tabs = QTabWidget(); layout.addWidget(tabs)
@@ -35,8 +37,8 @@ class DirectoryDialog(QDialog):
         form = QFormLayout(); self.mine_name = QLineEdit(); self.mine_desc = QTextEdit(); self.mine_desc.setMaximumHeight(70)
         form.addRow("Name *", self.mine_name); form.addRow("Description", self.mine_desc); layout.addLayout(form)
         buttons = QHBoxLayout(); buttons.addStretch()
-        add = QPushButton("Create"); add.clicked.connect(self._save_new_mine)
-        upd = QPushButton("Save changes"); upd.clicked.connect(self._update_mine)
+        add = QPushButton(tr("Create")); add.clicked.connect(self._save_new_mine)
+        upd = QPushButton(tr("Save changes")); upd.clicked.connect(self._update_mine)
         add.setEnabled(self.user.can_edit); upd.setEnabled(self.user.can_edit)
         buttons.addWidget(add); buttons.addWidget(upd); layout.addLayout(buttons)
         return w
@@ -49,8 +51,8 @@ class DirectoryDialog(QDialog):
         form = QFormLayout(); self.site_mine = QComboBox(); self.site_name = QLineEdit(); self.site_desc = QTextEdit(); self.site_desc.setMaximumHeight(70)
         form.addRow("Mine *", self.site_mine); form.addRow("Name *", self.site_name); form.addRow("Description", self.site_desc); layout.addLayout(form)
         buttons = QHBoxLayout(); buttons.addStretch()
-        add = QPushButton("Create"); add.clicked.connect(self._save_new_site)
-        upd = QPushButton("Save changes"); upd.clicked.connect(self._update_site)
+        add = QPushButton(tr("Create")); add.clicked.connect(self._save_new_site)
+        upd = QPushButton(tr("Save changes")); upd.clicked.connect(self._update_site)
         add.setEnabled(self.user.can_edit); upd.setEnabled(self.user.can_edit)
         buttons.addWidget(add); buttons.addWidget(upd); layout.addLayout(buttons)
         return w
@@ -66,8 +68,8 @@ class DirectoryDialog(QDialog):
         form.addRow("Site *", self.domain_site); form.addRow("Name *", self.domain_name)
         form.addRow("Description", self.domain_desc); layout.addLayout(form)
         buttons = QHBoxLayout(); buttons.addStretch()
-        add = QPushButton("Create"); add.clicked.connect(self._save_new_domain)
-        upd = QPushButton("Save changes"); upd.clicked.connect(self._update_domain)
+        add = QPushButton(tr("Create")); add.clicked.connect(self._save_new_domain)
+        upd = QPushButton(tr("Save changes")); upd.clicked.connect(self._update_domain)
         add.setEnabled(self.user.can_edit); upd.setEnabled(self.user.can_edit)
         buttons.addWidget(add); buttons.addWidget(upd); layout.addLayout(buttons)
         return w

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.localization import tr
+
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout
 
 from services.user_admin_service import UserAdminError, UserAdminService
@@ -11,7 +13,7 @@ class UserEditDialog(QDialog):
         self.service = service
         self.actor = actor
         self.user = user
-        self.setWindowTitle("Create user" if user is None else "Edit user")
+        self.setWindowTitle(tr("Create user") if user is None else "Edit user")
         self.setFixedWidth(420)
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -20,8 +22,8 @@ class UserEditDialog(QDialog):
         self.role = QComboBox(); self.role.addItems(["admin", "editor", "viewer"])
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.repeat = QLineEdit(); self.repeat.setEchoMode(QLineEdit.EchoMode.Password)
-        self.is_active = QCheckBox("Active")
-        self.must_change = QCheckBox("Require password change on next sign-in")
+        self.is_active = QCheckBox(tr("Active"))
+        self.must_change = QCheckBox(tr("Require password change on next sign-in"))
         form.addRow("Username *", self.username)
         form.addRow("Full name", self.full_name)
         form.addRow("Role", self.role)
@@ -32,8 +34,8 @@ class UserEditDialog(QDialog):
         form.addRow("", self.must_change)
         layout.addLayout(form)
         buttons = QHBoxLayout(); buttons.addStretch()
-        save = QPushButton("Save"); save.clicked.connect(self.save)
-        cancel = QPushButton("Cancel"); cancel.clicked.connect(self.reject)
+        save = QPushButton(tr("Save")); save.clicked.connect(self.save)
+        cancel = QPushButton(tr("Cancel")); cancel.clicked.connect(self.reject)
         buttons.addWidget(cancel); buttons.addWidget(save)
         layout.addLayout(buttons)
         self.is_active.setChecked(True)
@@ -59,14 +61,14 @@ class PasswordDialog(QDialog):
     def __init__(self, service: UserAdminService, actor, user_id: int):
         super().__init__()
         self.service = service; self.actor = actor; self.user_id = user_id
-        self.setWindowTitle("Change password")
+        self.setWindowTitle(tr("Change password"))
         layout = QVBoxLayout(self); form = QFormLayout()
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.repeat = QLineEdit(); self.repeat.setEchoMode(QLineEdit.EchoMode.Password)
-        self.must_change = QCheckBox("Require password change on next sign-in")
+        self.must_change = QCheckBox(tr("Require password change on next sign-in"))
         form.addRow("New password", self.password); form.addRow("Repeat password", self.repeat); form.addRow("", self.must_change)
         layout.addLayout(form)
-        save = QPushButton("Save"); save.clicked.connect(self.save); layout.addWidget(save)
+        save = QPushButton(tr("Save")); save.clicked.connect(self.save); layout.addWidget(save)
 
     def save(self) -> None:
         try:

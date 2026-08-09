@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from app.localization import tr
 from ui.presentation_labels import domain_message
 
 from PySide6.QtCore import Signal
@@ -74,7 +76,7 @@ class BlockPage(QWidget):
         self.tabs.addTab(self.history_tab, "History")
         left.addWidget(self.tabs)
         engineering_actions = QHBoxLayout(); engineering_actions.addStretch()
-        self.save_engineering_draft = QPushButton("Save draft"); self.complete_engineering = QPushButton("Complete")
+        self.save_engineering_draft = QPushButton(tr("Save draft")); self.complete_engineering = QPushButton(tr("Complete"))
         self.save_engineering_draft.setEnabled(False); self.complete_engineering.setEnabled(False)
         self.save_engineering_draft.clicked.connect(self._save_technical_card_draft); self.complete_engineering.clicked.connect(self._complete_technical_card)
         engineering_actions.addWidget(self.save_engineering_draft); engineering_actions.addWidget(self.complete_engineering); left.addLayout(engineering_actions)
@@ -109,8 +111,8 @@ class BlockPage(QWidget):
         self.refresh()
 
     def _make_attachment_tab(self,kind):
-        page=QWidget(); layout=QVBoxLayout(page); label=QLabel("No photos yet" if kind=="photo" else "No documents yet")
-        button=QPushButton("Manage photos" if kind=="photo" else "Manage documents")
+        page=QWidget(); layout=QVBoxLayout(page); label=QLabel(tr("No photos yet") if kind=="photo" else "No documents yet")
+        button=QPushButton(tr("Manage photos") if kind=="photo" else "Manage documents")
         button.setEnabled(False); button.clicked.connect(lambda _checked=False,k=kind:self._open_attachments(k))
         layout.addWidget(label); layout.addWidget(button); layout.addStretch(); return page,label,button
 

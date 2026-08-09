@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.localization import tr
+
 from PySide6.QtWidgets import QCheckBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout
 
 from app.config import APP_NAME
@@ -16,7 +18,7 @@ class FirstAdminDialog(QDialog):
         self.setWindowTitle(f"Initial setup {APP_NAME}")
         self.setFixedWidth(420)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("There are no users in the database. Create the first administrator."))
+        layout.addWidget(QLabel(tr("There are no users in the database. Create the first administrator.")))
         form = QFormLayout()
         self.username = QLineEdit()
         self.full_name = QLineEdit()
@@ -28,7 +30,7 @@ class FirstAdminDialog(QDialog):
         form.addRow("Repeat password *", self.password_repeat)
         layout.addLayout(form)
         buttons = QHBoxLayout(); buttons.addStretch()
-        create = QPushButton("Create administrator")
+        create = QPushButton(tr("Create administrator"))
         create.clicked.connect(self._create)
         buttons.addWidget(create)
         layout.addLayout(buttons)
@@ -62,11 +64,11 @@ class LoginDialog(QDialog):
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow("Username", self.username)
         form.addRow("Password", self.password)
-        self.remember = QCheckBox("Remember me on this computer")
+        self.remember = QCheckBox(tr("Remember me on this computer"))
         layout.addLayout(form)
         layout.addWidget(self.remember)
         buttons = QHBoxLayout(); buttons.addStretch()
-        login = QPushButton("Sign in")
+        login = QPushButton(tr("Sign in"))
         login.clicked.connect(self._login)
         buttons.addWidget(login)
         layout.addLayout(buttons)

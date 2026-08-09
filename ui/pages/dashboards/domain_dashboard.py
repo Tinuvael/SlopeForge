@@ -1,3 +1,5 @@
+
+from app.localization import tr
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QGridLayout,QHeaderView,QLabel,QScrollArea,QTabWidget,QTableWidget,QTableWidgetItem,QVBoxLayout,QWidget
 from app.icons.ui.ui_icons import ui_icon
@@ -10,7 +12,7 @@ class DomainDashboardPage(QWidget):
     block_requested=Signal(int); contour_requested=Signal(str); assessment_area_requested=Signal(str)
     def __init__(self,context,domain_id,name=None):
         super().__init__(); self.snapshot=DashboardRepository(context.session_factory).domain_snapshot(domain_id); d=self.snapshot.domain
-        root=QVBoxLayout(self); h=QLabel(name or d.name); h.setStyleSheet("font-size:24px;font-weight:700"); root.addWidget(h); root.addWidget(QLabel("Domain overview")); self.tabs=QTabWidget(); root.addWidget(self.tabs); self.tabs.addTab(self._overview(),ui_icon("analytics"),"Overview"); self.tabs.addTab(self._blasts(),ui_icon("blast-blocks"),"Blast events"); self.tabs.addTab(self._areas(),ui_icon("assessment-area"),"Assessment areas"); self.tabs.addTab(self._analytics(),ui_icon("analytics"),"Analytics"); self.tabs.addTab(DashboardPlanOverviewWidget(self.snapshot),ui_icon("map"),"Map")
+        root=QVBoxLayout(self); h=QLabel(name or d.name); h.setStyleSheet("font-size:24px;font-weight:700"); root.addWidget(h); root.addWidget(QLabel(tr("Domain overview"))); self.tabs=QTabWidget(); root.addWidget(self.tabs); self.tabs.addTab(self._overview(),ui_icon("analytics"),"Overview"); self.tabs.addTab(self._blasts(),ui_icon("blast-blocks"),"Blast events"); self.tabs.addTab(self._areas(),ui_icon("assessment-area"),"Assessment areas"); self.tabs.addTab(self._analytics(),ui_icon("analytics"),"Analytics"); self.tabs.addTab(DashboardPlanOverviewWidget(self.snapshot),ui_icon("map"),"Map")
     def _table(self,headers,rows):
         t=QTableWidget(len(rows),len(headers)); t.setHorizontalHeaderLabels(headers); t.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         for r,row in enumerate(rows):

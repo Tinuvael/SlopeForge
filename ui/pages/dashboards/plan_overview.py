@@ -1,3 +1,5 @@
+
+from app.localization import tr
 """Isolated read-only Domain plan projection."""
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QBrush, QPainter, QPainterPath, QPen
@@ -8,10 +10,10 @@ from .widgets import quadrant_presentation
 class DashboardPlanOverviewWidget(QWidget):
     def __init__(self,snapshot):
         super().__init__(); self.snapshot=snapshot; box=QVBoxLayout(self); controls=QHBoxLayout()
-        self.fit_button=QPushButton("Fit"); self.fit_button.setIcon(ui_icon("fit-view")); controls.addWidget(self.fit_button)
-        self.project_lines_checkbox=QCheckBox("Project Lines"); self.project_lines_checkbox.setChecked(True); controls.addWidget(self.project_lines_checkbox); controls.addStretch(); box.addLayout(controls)
+        self.fit_button=QPushButton(tr("Fit")); self.fit_button.setIcon(ui_icon("fit-view")); controls.addWidget(self.fit_button)
+        self.project_lines_checkbox=QCheckBox(tr("Project Lines")); self.project_lines_checkbox.setChecked(True); controls.addWidget(self.project_lines_checkbox); controls.addStretch(); box.addLayout(controls)
         self.scene=QGraphicsScene(self); self.view=QGraphicsView(self.scene); self.view.setRenderHint(QPainter.RenderHint.Antialiasing); self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag); self.view.setMinimumHeight(220); self.view.setStyleSheet("border:1px solid #E2E8F0;background:#F8FAFC"); box.addWidget(self.view)
-        self.empty_label=QLabel("No plan geometry yet",self.view.viewport()); self.empty_label.setStyleSheet("color:#64748B;background:transparent"); self.empty_label.hide()
+        self.empty_label=QLabel(tr("No plan geometry yet"),self.view.viewport()); self.empty_label.setStyleSheet("color:#64748B;background:transparent"); self.empty_label.hide()
         self._project_items=[]; self._render(); self.fit_button.clicked.connect(self.fit); self.project_lines_checkbox.toggled.connect(self._toggle_project_lines)
     @staticmethod
     def _path(points,close=False):

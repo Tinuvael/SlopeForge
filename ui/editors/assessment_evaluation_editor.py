@@ -1,6 +1,8 @@
 """Usable, revision-safe Qt editor for Assessment Area wall assessments."""
 from __future__ import annotations
 
+from app.localization import tr
+
 from copy import deepcopy
 from PySide6.QtCore import QDate, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
@@ -33,7 +35,7 @@ class NullableDoubleSpinBox(QDoubleSpinBox):
         self.setSpecialValueText("—")
         self.setValue(self._sentinel)
         self.valueChanged.connect(lambda _value: self.nullableValueChanged.emit(self.nullable_value()))
-        self.setToolTip("Required for completion. Clear resets the value to —.")
+        self.setToolTip(tr("Required for completion. Clear resets the value to —."))
 
     def nullable_value(self):
         return None if self.value() == self.minimum() else float(self.value())
@@ -96,10 +98,10 @@ class CriterionEditor(QWidget):
         if criterion.kind in ("numeric", "damage"):
             self.input = NullableDoubleSpinBox(100 if criterion.id == "visible_drillhole_traces" else 999)
             self.input.nullableValueChanged.connect(self.changed)
-            self.clear_button = QPushButton("Clear"); self.clear_button.clicked.connect(self.input.clear_value)
+            self.clear_button = QPushButton(tr("Clear")); self.clear_button.clicked.connect(self.input.clear_value)
             top.addWidget(self.input); top.addWidget(self.clear_button)
         else:
-            self.input = QComboBox(); self.input.addItem("— select observation —", None)
+            self.input = QComboBox(); self.input.addItem(tr("— select observation —"), None)
             for option in criterion.options:
                 self.input.addItem(f"{option_label(option.id, option.label)} — {option.score:g} points", option.id)
             self.input.currentIndexChanged.connect(self.changed); top.addWidget(self.input, 1)
@@ -107,15 +109,15 @@ class CriterionEditor(QWidget):
         if criterion.help_text:
             help_label = QLabel(CRITERION_HELP.get(criterion.id, criterion.help_text)); help_label.setWordWrap(True); help_label.setStyleSheet("color:#555"); root.addWidget(help_label)
         self.validation = QLabel(); self.validation.setWordWrap(True); self.validation.setStyleSheet("color:#a33"); root.addWidget(self.validation)
-        self.override_toggle = QCheckBox("Override score manually")
+        self.override_toggle = QCheckBox(tr("Override score manually"))
         self.override_toggle.toggled.connect(self._toggle_override); self.override_toggle.toggled.connect(self.changed); root.addWidget(self.override_toggle)
         self.override_panel = QWidget(); override = QFormLayout(self.override_panel); override.setContentsMargins(18, 0, 0, 0)
-        self.auto_score = QLabel("—")
+        self.auto_score = QLabel(tr("—"))
         self.manual_score = NullableDoubleSpinBox(criterion.maximum_score)
         self.manual_score.nullableValueChanged.connect(self.changed)
         self.reason = QLineEdit(); self.reason.textChanged.connect(self.changed)
         self.notes = QTextEdit(); self.notes.setMaximumHeight(55); self.notes.textChanged.connect(self.changed)
-        self.accepted = QLabel("—")
+        self.accepted = QLabel(tr("—"))
         override.addRow("Automatic score", self.auto_score)
         override.addRow(f"Manual score (0–{criterion.maximum_score:g})", self.manual_score)
         override.addRow("Reason (required)", self.reason)
@@ -163,7 +165,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         root = QVBoxLayout(self); self.tabs = QTabWidget(); root.addWidget(self.tabs)
         self._general(); self._geometry(); self._condition(); self._matrix(); self._events(); self._attachments(); self._history()
         buttons = QHBoxLayout(); buttons.addStretch()
-        self.draft_button = QPushButton("Save draft"); self.complete_button = QPushButton("Complete assessment"); self.cancel_button = QPushButton("Close" if read_only else "Cancel")
+        self.draft_button = QPushButton(tr("Save draft")); self.complete_button = QPushButton(tr("Complete assessment")); self.cancel_button = QPushButton(tr("Close") if read_only else "Cancel")
         self.draft_button.clicked.connect(lambda: self.save("draft")); self.complete_button.clicked.connect(lambda: self.save("completed")); self.cancel_button.clicked.connect(self.reject)
         for button in (self.draft_button, self.complete_button, self.cancel_button): buttons.addWidget(button)
         self.draft_button.setVisible(not read_only); self.complete_button.setVisible(not read_only); root.addLayout(buttons)
@@ -187,7 +189,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         page = QWidget(); form = QFormLayout(page)
         self.date = QDateEdit(); self.date.setCalendarPopup(True)
         self.inspector = QLineEdit(); self.override_reason = QLineEdit()
-        self.detected = QLabel("Contour drilling detected from a confirmed link" if self.draft.controlled_blasting_present else "No confirmed contour event found")
+        self.detected = QLabel(tr("Contour drilling detected from a confirmed link") if self.draft.controlled_blasting_present else "No confirmed contour event found")
         self.comments = QTextEdit(); self.recommendations = QTextEdit()
         revision = next(r for r in self.area.geometry_revisions if r.id == self.draft.assessment_area_geometry_revision_id)
         form.addRow("Assessment date", self.date); form.addRow("Inspector", self.inspector)
@@ -203,8 +205,8 @@ class AssessmentAreaEvaluationDialog(QDialog):
     def _geometry(self):
         scroll = QScrollArea(); scroll.setWidgetResizable(True); page = QWidget(); form = QFormLayout(page)
         self.da = self._nullable(90); self.aa = self._nullable(90); self.db = self._nullable(); self.ab = self._nullable(); self.toe = self._nullable()
-        self.shortfall = QLabel("—"); self.deficit = QLabel("—")
-        self.angle_score = QLabel("Required"); self.berm_score = QLabel("Required"); self.toe_score = QLabel("Required")
+        self.shortfall = QLabel(tr("—")); self.deficit = QLabel(tr("—"))
+        self.angle_score = QLabel(tr("Required")); self.berm_score = QLabel(tr("Required")); self.toe_score = QLabel(tr("Required"))
         self.method = QLineEdit(); self.measure_notes = QTextEdit()
         self.geometry_editors = {}
         for criterion in self.template.section(DESIGN).criteria:
@@ -219,7 +221,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         form.addRow("Design berm width, m", self.db); form.addRow("Actual berm width, m", self.ab)
         form.addRow("Width deficit from design, m", self.deficit); form.addRow("Berm score", self.berm_score); form.addRow("", self.geometry_editors["berm_width"])
         form.addRow("Actual toe deviation from design, m", self.toe); form.addRow("Toe score", self.toe_score); form.addRow("", self.geometry_editors["toe_position"])
-        toe_help = QLabel("Enter the absolute distance between actual and design toe positions."); toe_help.setWordWrap(True); form.addRow("", toe_help)
+        toe_help = QLabel(tr("Enter the absolute distance between actual and design toe positions.")); toe_help.setWordWrap(True); form.addRow("", toe_help)
         rules = QLabel(self._geometry_rules()); rules.setWordWrap(True); rules.setStyleSheet("background:#f3f5f7;padding:10px"); form.addRow("Scoring rules", rules)
         form.addRow("Measurement method", self.method); form.addRow("Measurement notes", self.measure_notes)
         scroll.setWidget(page); self.tabs.addTab(scroll, "Geometry")
@@ -263,17 +265,17 @@ class AssessmentAreaEvaluationDialog(QDialog):
             values = (revision.revision_number, revision.assessment_date or "—", revision.status, revision.assessment_area_geometry_revision_id, revision.matrix_template_id, "—" if revision.design_achievement_index is None else f"{revision.design_achievement_index:.3f}", "—" if revision.face_condition_index is None else f"{revision.face_condition_index:.3f}", result_label(revision.result_label) or "—")
             for column, value in enumerate(values): self.history.setItem(row, column, QTableWidgetItem(str(value)))
         self.history.cellDoubleClicked.connect(self._open_history)
-        container = QWidget(); layout = QVBoxLayout(container); hint = QLabel("Double-click a row to open a read-only historical revision."); layout.addWidget(hint); layout.addWidget(self.history); self.tabs.addTab(container, "History")
+        container = QWidget(); layout = QVBoxLayout(container); hint = QLabel(tr("Double-click a row to open a read-only historical revision.")); layout.addWidget(hint); layout.addWidget(self.history); self.tabs.addTab(container, "History")
 
     def _attachments(self):
         page = QWidget(); layout = QVBoxLayout(page)
-        info = QLabel("Files belong to the assessment and are shared by all revisions."); info.setWordWrap(True); layout.addWidget(info)
+        info = QLabel(tr("Files belong to the assessment and are shared by all revisions.")); info.setWordWrap(True); layout.addWidget(info)
         if self.attachment_service is None:
-            layout.addWidget(QLabel("File storage is unavailable."))
+            layout.addWidget(QLabel(tr("File storage is unavailable.")))
         else:
             photos, documents = self.attachment_service.counts("assessment_evaluation", self.evaluation.id)
             self.attachment_counts = QLabel(f"Photos: {photos}    Documents: {documents}"); layout.addWidget(self.attachment_counts)
-            manage = QPushButton("Photos and documents"); manage.clicked.connect(self._open_attachments); layout.addWidget(manage)
+            manage = QPushButton(tr("Photos and documents")); manage.clicked.connect(self._open_attachments); layout.addWidget(manage)
         layout.addStretch(); self.tabs.addTab(page, "Photos and documents")
 
     def _open_attachments(self):
@@ -334,16 +336,16 @@ class AssessmentAreaEvaluationDialog(QDialog):
         preview = self.collect(); self._preview = preview
         if mark_dirty: self._dirty = True; self._update_title()
         d = preview.design_inputs
-        self.shortfall.setText("—" if d["bench_angle_shortfall_deg"] is None else f'{d["bench_angle_shortfall_deg"]:g}')
-        self.deficit.setText("—" if d["berm_width_deficit_m"] is None else f'{d["berm_width_deficit_m"]:g}')
+        self.shortfall.setText(tr("—") if d["bench_angle_shortfall_deg"] is None else f'{d["bench_angle_shortfall_deg"]:g}')
+        self.deficit.setText(tr("—") if d["berm_width_deficit_m"] is None else f'{d["berm_width_deficit_m"]:g}')
         by_id = {r.criterion_id: r for r in preview.criterion_results}
         for label, cid in ((self.angle_score, "bench_angle"), (self.berm_score, "berm_width"), (self.toe_score, "toe_position")):
-            result = by_id[cid]; label.setText("Required" if result.accepted_score is None else f"{result.accepted_score:g} of {result.maximum_score:g}")
+            result = by_id[cid]; label.setText(tr("Required") if result.accepted_score is None else f"{result.accepted_score:g} of {result.maximum_score:g}")
             editor = self.geometry_editors[cid]
-            editor.auto_score.setText("—" if result.automatic_score is None else f"{result.automatic_score:g}")
-            editor.accepted.setText("—" if result.accepted_score is None else f"{result.accepted_score:g}")
+            editor.auto_score.setText(tr("—") if result.automatic_score is None else f"{result.automatic_score:g}")
+            editor.accepted.setText(tr("—") if result.accepted_score is None else f"{result.accepted_score:g}")
         for cid, editor in self.editors.items():
-            result = by_id[cid]; editor.auto_score.setText("—" if result.automatic_score is None else f"{result.automatic_score:g}"); editor.accepted.setText("—" if result.accepted_score is None else f"{result.accepted_score:g}")
+            result = by_id[cid]; editor.auto_score.setText(tr("—") if result.automatic_score is None else f"{result.automatic_score:g}"); editor.accepted.setText(tr("—") if result.accepted_score is None else f"{result.accepted_score:g}")
             value = result.raw_numeric_value
             if cid == "damage" and value is not None and 1 <= value <= 5:
                 editor.validation.setText(DAMAGE_WARNING + " An expert score and reason are required.")
@@ -351,8 +353,8 @@ class AssessmentAreaEvaluationDialog(QDialog):
                     initializing = self._initializing; self._initializing = True
                     editor.override_toggle.setChecked(True)
                     self._initializing = initializing
-            elif result.accepted_score is None: editor.validation.setText("Required")
-            elif cid == "damage" and value is not None: editor.validation.setText("Maximum applied: fewer than 1 feature/m²." if value < 1 else "0 points applied: more than 5 features/m².")
+            elif result.accepted_score is None: editor.validation.setText(tr("Required"))
+            elif cid == "damage" and value is not None: editor.validation.setText(tr("Maximum applied: fewer than 1 feature/m².") if value < 1 else "0 points applied: more than 5 features/m².")
             else: editor.validation.setText("")
         self._fill_table(self.design_table, [by_id[c.id] for c in self.template.section(DESIGN).criteria])
         self._fill_table(self.condition_table, [by_id[c.id] for c in self.template.section(CONDITION).criteria])

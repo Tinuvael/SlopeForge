@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.localization import tr
+
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from database.app_context import AppContext
@@ -15,11 +17,11 @@ class UserAdminPage(QWidget):
         self.service = UserAdminService(context.session_factory)
         layout = QVBoxLayout(self)
         buttons = QHBoxLayout()
-        self.create = QPushButton("Create user")
-        self.edit = QPushButton("Edit user")
-        self.password = QPushButton("Change password")
-        self.toggle = QPushButton("Activate / block")
-        self.revoke = QPushButton("End all saved sessions")
+        self.create = QPushButton(tr("Create user"))
+        self.edit = QPushButton(tr("Edit user"))
+        self.password = QPushButton(tr("Change password"))
+        self.toggle = QPushButton(tr("Activate / block"))
+        self.revoke = QPushButton(tr("End all saved sessions"))
         for button in (self.create, self.edit, self.password, self.toggle, self.revoke):
             buttons.addWidget(button)
         buttons.addStretch(); layout.addLayout(buttons)

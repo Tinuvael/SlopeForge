@@ -1,3 +1,5 @@
+
+from app.localization import tr
 from ui.presentation_labels import domain_message
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFileDialog,QGridLayout,QHeaderView,QLabel,QMessageBox,QPushButton,QScrollArea,QTabWidget,QTableWidget,QTableWidgetItem,QVBoxLayout,QWidget
@@ -13,7 +15,7 @@ class SiteDashboardPage(QWidget):
     domain_requested=Signal(int)
     def __init__(self,context,site_id,name):
         super().__init__(); self.context=context; self.site_id=site_id; self.repo=DashboardRepository(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory); self.snapshot=self.repo.site_snapshot(site_id)
-        root=QVBoxLayout(self); title=QLabel(name); title.setStyleSheet("font-size:24px;font-weight:700;color:#0F172A"); root.addWidget(title); root.addWidget(QLabel("Overall project overview")); self.tabs=QTabWidget(); root.addWidget(self.tabs); self._populate_tabs()
+        root=QVBoxLayout(self); title=QLabel(name); title.setStyleSheet("font-size:24px;font-weight:700;color:#0F172A"); root.addWidget(title); root.addWidget(QLabel(tr("Overall project overview"))); self.tabs=QTabWidget(); root.addWidget(self.tabs); self._populate_tabs()
     def _populate_tabs(self):
         while self.tabs.count():
             widget=self.tabs.widget(0); self.tabs.removeTab(0); widget.deleteLater()
@@ -41,7 +43,7 @@ class SiteDashboardPage(QWidget):
         recent=[(name,when or "—") for name,when in self.snapshot.recent]; box.addWidget(section("Recent activity",self._table(["Record","Changed"],recent) if recent else EmptyStateWidget("No recent activity"))); page.setWidget(body); return page
     def _domains(self): return self._table(["Domain","Blast events","Production","Contour","Assessment areas","Completed","Average DAI","Average FCI"],self._domain_rows(),[d.domain.id for d in self.snapshot.domains])
     def _lines(self):
-        w=QWidget(); box=QVBoxLayout(w); active=self.snapshot.active_dataset; box.addWidget(QLabel(f"Active Dataset: {active.name} • {active.source_file_name} • {active.imported_at:%Y-%m-%d %H:%M}" if active else "No Project Lines loaded")); rows=[(x.name,x.imported_at.strftime("%Y-%m-%d %H:%M"),x.source_file_name,"Active" if x.is_active else "Inactive") for x in self.snapshot.datasets]; box.addWidget(self._table(["Dataset","Imported","Source file","State"],rows)); self.import_button=QPushButton("Import / Update Project Lines"); self.import_button.setIcon(ui_icon("import","blue")); self.import_button.setVisible(self.context.current_user.can_edit); self.import_button.clicked.connect(self.import_lines); box.addWidget(self.import_button); return w
+        w=QWidget(); box=QVBoxLayout(w); active=self.snapshot.active_dataset; box.addWidget(QLabel(f"Active Dataset: {active.name} • {active.source_file_name} • {active.imported_at:%Y-%m-%d %H:%M}" if active else "No Project Lines loaded")); rows=[(x.name,x.imported_at.strftime("%Y-%m-%d %H:%M"),x.source_file_name,"Active" if x.is_active else "Inactive") for x in self.snapshot.datasets]; box.addWidget(self._table(["Dataset","Imported","Source file","State"],rows)); self.import_button=QPushButton(tr("Import / Update Project Lines")); self.import_button.setIcon(ui_icon("import","blue")); self.import_button.setVisible(self.context.current_user.can_edit); self.import_button.clicked.connect(self.import_lines); box.addWidget(self.import_button); return w
     def _analytics(self):
         w=QWidget(); box=QVBoxLayout(w); box.addWidget(CompactChart({d.domain.name:d.domain.completed for d in self.snapshot.domains if d.domain.completed})); return w
     def import_lines(self):

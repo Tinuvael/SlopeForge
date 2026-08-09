@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.localization import tr
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
@@ -70,11 +72,11 @@ class BlockHeaderWidget(CardFrame):
     def __init__(self):
         super().__init__()
         top = QHBoxLayout()
-        self.title = QLabel("Select a block")
+        self.title = QLabel(tr("Select a block"))
         self.title.setObjectName("BlockTitle")
-        self.status = QLabel("—")
+        self.status = QLabel(tr("—"))
         self.status.setObjectName("StatusBadge")
-        self.edit_button = QPushButton("Edit")
+        self.edit_button = QPushButton(tr("Edit"))
         top.addWidget(self.title)
         top.addWidget(self.status)
         top.addStretch()
@@ -90,8 +92,8 @@ class BlockHeaderWidget(CardFrame):
                 item.widget().deleteLater()
         self.edit_button.setEnabled(bool(block and can_edit))
         if block is None:
-            self.title.setText("Select a block")
-            self.status.setText("—")
+            self.title.setText(tr("Select a block"))
+            self.status.setText(tr("—"))
             return
         self.title.setText(f"Block {block.block_number}")
         self.status.setText(STATUS_LABELS.get(block.status, block.status))
@@ -155,7 +157,7 @@ class BlockOverviewWidget(QWidget):
 class BlockSchemePlaceholder(CardFrame):
     def __init__(self):
         super().__init__("Block scheme")
-        self.box = QLabel("Block scheme is not loaded yet")
+        self.box = QLabel(tr("Block scheme is not loaded yet"))
         self.box.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.box.setMinimumHeight(220)
         self.box.setObjectName("SchemePlaceholder")
@@ -174,7 +176,7 @@ class CompactInfoCards(QWidget):
         self.cards = []
         for title in ("Geomechanical parameters", "Blast design parameters", "Execution fact"):
             card = CardFrame(title)
-            label = QLabel("—")
+            label = QLabel(tr("—"))
             label.setObjectName("MutedText")
             card.layout.addWidget(label)
             card.layout.addStretch()
@@ -183,7 +185,7 @@ class CompactInfoCards(QWidget):
 
     def set_block(self, block: BlastBlockRow | None) -> None:
         for label in self.cards:
-            label.setText("—")
+            label.setText(tr("—"))
 
 
 class BlockSummaryWidget(CardFrame):
@@ -213,7 +215,7 @@ class AttachmentPreviewWidget(CardFrame):
     def __init__(self, title: str):
         super().__init__(title)
         header = QHBoxLayout()
-        self.add_button = QPushButton("Manage")
+        self.add_button = QPushButton(tr("Manage"))
         self.add_button.setEnabled(False)
         header.addStretch()
         header.addWidget(self.add_button)

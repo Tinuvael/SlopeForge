@@ -40,7 +40,7 @@ def test_map_geometry_decoder_supports_persisted_plan_types():
 
 def test_plan_overview_is_read_only_and_has_required_controls():
     plan=source("ui/pages/dashboards/plan_overview.py")
-    assert 'QPushButton("Fit")' in plan and 'QCheckBox("Project Lines")' in plan
+    assert 'QPushButton(tr("Fit"))' in plan and 'QCheckBox(tr("Project Lines"))' in plan
     for forbidden in ("Reimport","Draw","Confirm","edit_vertices","setFlag"):
         assert forbidden not in plan
 

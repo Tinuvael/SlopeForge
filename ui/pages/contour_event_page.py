@@ -1,3 +1,5 @@
+
+from app.localization import tr
 """Focused page for a contour BlastEvent (there is deliberately no BlastBlock)."""
 from ui.presentation_labels import domain_message
 from PySide6.QtWidgets import QFileDialog,QHBoxLayout,QLabel,QMessageBox,QPushButton,QTabWidget,QVBoxLayout,QWidget
@@ -14,7 +16,7 @@ class ContourEventPage(QWidget):
         card,draft=self.controller.technical_card_draft(self.blast_event); self.editor=TechnicalCardEditorWidget(self.blast_event,card,draft,self.controller.save_technical_card,self,self.read_only); layout.addWidget(self.editor.take_tab("General"))
         self.tabs.addTab(BlastDesignEditorWidget(self.editor.take_tab("Contour drilling")),"Blast design"); self.tabs.addTab(ActualExecutionEditorWidget(self.editor.take_tab("Execution fact")),"Execution fact")
         for title in ("Photos","Documents"): self.tabs.addTab(self._attachments(title),title)
-        self.tabs.addTab(self.editor.take_tab("Revision history"),"History"); actions=QHBoxLayout(); actions.addStretch(); self.draft_button=QPushButton("Save draft"); self.complete_button=QPushButton("Complete"); self.draft_button.setEnabled(not self.read_only); self.complete_button.setEnabled(not self.read_only); self.draft_button.clicked.connect(self.save_draft); self.complete_button.clicked.connect(self.complete); actions.addWidget(self.draft_button); actions.addWidget(self.complete_button); root.addLayout(actions)
+        self.tabs.addTab(self.editor.take_tab("Revision history"),"History"); actions=QHBoxLayout(); actions.addStretch(); self.draft_button=QPushButton(tr("Save draft")); self.complete_button=QPushButton(tr("Complete")); self.draft_button.setEnabled(not self.read_only); self.complete_button.setEnabled(not self.read_only); self.draft_button.clicked.connect(self.save_draft); self.complete_button.clicked.connect(self.complete); actions.addWidget(self.draft_button); actions.addWidget(self.complete_button); root.addLayout(actions)
     def _attachments(self,title):
         page=QWidget(); layout=QVBoxLayout(page); button=QPushButton(f"Manage {title.lower()}")
         def open_dialog():

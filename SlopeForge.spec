@@ -9,6 +9,7 @@ icon_path = project_root / "app" / "icons" / "slopeforge_icon.ico"
 # Keep runtime assets available for resource_path() both from source and PyInstaller.
 datas = [
     (str(project_root / "app" / "icons"), "app/icons"),
+    (str(project_root / "translations"), "translations"),
 ]
 
 if (project_root / "data").exists():
