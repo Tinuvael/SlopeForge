@@ -2570,5 +2570,17 @@
             <source>ezdxf is required to import DXF geometry</source>
             <translation>Для импорта геометрии DXF требуется ezdxf</translation>
         </message>
+        <message>
+            <source>Could not import geometry file: </source>
+            <translation>Не удалось импортировать файл геометрии: </translation>
+        </message>
+        <message>
+            <source>Geometry file contains no valid contour drillholes</source>
+            <translation>Файл геометрии не содержит допустимых контурных скважин</translation>
+        </message>
+        <message>
+            <source>Geometry file contains no suitable lines</source>
+            <translation>Файл геометрии не содержит подходящих линий</translation>
+        </message>
     </context>
 </TS>
