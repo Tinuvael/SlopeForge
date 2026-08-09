@@ -2582,5 +2582,89 @@
             <source>Geometry file contains no suitable lines</source>
             <translation>Файл геометрии не содержит подходящих линий</translation>
         </message>
+        <message>
+            <source>Domain geometry</source>
+            <translation>Геометрия домена</translation>
+        </message>
+        <message>
+            <source>No geometry defined</source>
+            <translation>Геометрия не задана</translation>
+        </message>
+        <message>
+            <source>Import geometry</source>
+            <translation>Импортировать геометрию</translation>
+        </message>
+        <message>
+            <source>Draw geometry</source>
+            <translation>Нарисовать геометрию</translation>
+        </message>
+        <message>
+            <source>Replace / Import</source>
+            <translation>Заменить / Импортировать</translation>
+        </message>
+        <message>
+            <source>Clear geometry</source>
+            <translation>Очистить геометрию</translation>
+        </message>
+        <message>
+            <source>Add polygon</source>
+            <translation>Добавить полигон</translation>
+        </message>
+        <message>
+            <source>Delete selected polygon</source>
+            <translation>Удалить выбранный полигон</translation>
+        </message>
+        <message>
+            <source>Imported polygons: %1</source>
+            <translation>Импортировано полигонов: %1</translation>
+        </message>
+        <message>
+            <source>Skipped open lines: %1</source>
+            <translation>Пропущено незамкнутых линий: %1</translation>
+        </message>
+        <message>
+            <source>Skipped degenerate lines: %1</source>
+            <translation>Пропущено вырожденных линий: %1</translation>
+        </message>
+        <message>
+            <source>Drawn</source>
+            <translation>Нарисовано</translation>
+        </message>
+        <message>
+            <source>No valid closed Domain polygons were found in the geometry file.</source>
+            <translation>В файле геометрии не найдено допустимых замкнутых полигонов домена.</translation>
+        </message>
+        <message>
+            <source>Domain geometry editor</source>
+            <translation>Редактор геометрии домена</translation>
+        </message>
+        <message>
+            <source>Finish polygon</source>
+            <translation>Завершить полигон</translation>
+        </message>
+        <message>
+            <source>A polygon requires at least three vertices.</source>
+            <translation>Полигон должен содержать не менее трёх вершин.</translation>
+        </message>
+        <message>
+            <source>At least one polygon is required.</source>
+            <translation>Требуется хотя бы один полигон.</translation>
+        </message>
+        <message>
+            <source>%1 polygons</source>
+            <translation>Полигонов: %1</translation>
+        </message>
+        <message>
+            <source>Source: %1</source>
+            <translation>Источник: %1</translation>
+        </message>
+        <message>
+            <source>Select Domain geometry file</source>
+            <translation>Выберите файл геометрии домена</translation>
+        </message>
+        <message>
+            <source>Clear the current Domain geometry?</source>
+            <translation>Очистить текущую геометрию домена?</translation>
+        </message>
     </context>
 </TS>

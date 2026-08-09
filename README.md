@@ -55,3 +55,7 @@ source-controlled Russian catalogue. SlopeForge reads this XML file through a
 Qt translator adapter, so normal source execution does not require Qt Linguist,
 `pyside6-lrelease`, or a precompiled `.qm` file. A future packaged release may
 optionally compile TS to QM as a build-time optimization.
+
+### Domain Geometry
+
+A Domain may optionally have a lightweight plan-view reference footprint. It can be imported from CSV/DXF or drawn manually, and may contain multiple disconnected polygons. Imported 3D geometry is projected to XY. Domain Geometry is visual context only: it does not create 3D solids or automatically assign any object to a Domain.

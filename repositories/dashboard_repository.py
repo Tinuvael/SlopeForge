@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy import select
-from database.models import BlastBlock, Domain
+from database.models import BlastBlock, Domain, DomainGeometry
 from database import assessment_models as a
 
 @dataclass(frozen=True)
@@ -23,6 +23,14 @@ class MapGeometry:
     quadrant: str | None = None
 
 @dataclass(frozen=True)
+class DomainMapGeometry:
+    domain_id: int
+    domain_name: str
+    points: tuple[tuple[float, float], ...]
+    palette_index: int
+    is_current: bool = False
+
+@dataclass(frozen=True)
 class DomainSummary:
     id: int; name: str; production: int = 0; contour: int = 0; areas: int = 0
     completed: int = 0; drafts: int = 0; average_dai: float | None = None; average_fci: float | None = None
@@ -38,6 +46,9 @@ class DomainDashboardSnapshot:
     production_geometries: tuple[MapGeometry, ...] = ()
     contour_geometries: tuple[MapGeometry, ...] = ()
     assessment_geometries: tuple[MapGeometry, ...] = ()
+    domain_geometries: tuple[DomainMapGeometry, ...] = ()
+    geometry_source_kind: str | None = None
+    geometry_source_file_name: str | None = None
 
 @dataclass(frozen=True)
 class SiteDashboardSnapshot:
@@ -60,6 +71,11 @@ class SiteDashboardSnapshot:
     def average_dai(self): return self._average("dai")
     @property
     def average_fci(self): return self._average("fci")
+    @property
+    def domain_geometries(self):
+        if not self.domains: return ()
+        # Every Domain snapshot contains the same set-based Project context.
+        return tuple(DomainMapGeometry(g.domain_id,g.domain_name,g.points,g.palette_index,False) for g in self.domains[0].domain_geometries)
 
 def _number(v):
     if v is None: return "—"
@@ -106,7 +122,14 @@ class DashboardRepository:
                 target=production_geometries if event.event_type=="production" and event.blast_block_id in active_block_ids else contour_geometries if event.event_type=="contour" else None
                 if target is not None: target.append(MapGeometry(event.blast_block_id if event.blast_block_id else event.id,points))
             assessment_geometries=tuple(MapGeometry(area.id,_geometry_points(geo.final_geometry_json),ev.result_quadrant if ev and ev.status=="completed" else None) for area,geo,ev in rows if _geometry_points(geo.final_geometry_json))
-            return DomainDashboardSnapshot(summary,areas,blasts,intervals,quadrants,recent,project_lines,tuple(production_geometries),tuple(contour_geometries),assessment_geometries)
+            domain_rows=s.execute(select(Domain,DomainGeometry).outerjoin(DomainGeometry).where(Domain.site_id==domain.site_id).order_by(Domain.name,Domain.id)).all()
+            domain_geometries=[]; current_geometry=None
+            for palette_index,(map_domain,geometry) in enumerate(domain_rows):
+                if map_domain.id==domain_id: current_geometry=geometry
+                for polygon in geometry.polygons_json if geometry else ():
+                    points=_geometry_points(polygon)
+                    if points: domain_geometries.append(DomainMapGeometry(map_domain.id,map_domain.name,points,palette_index,map_domain.id==domain_id))
+            return DomainDashboardSnapshot(summary,areas,blasts,intervals,quadrants,recent,project_lines,tuple(production_geometries),tuple(contour_geometries),assessment_geometries,tuple(domain_geometries),current_geometry.source_kind if current_geometry else None,current_geometry.source_file_name if current_geometry else None)
     def site_snapshot(self, site_id: int) -> SiteDashboardSnapshot:
         with self.session_factory() as s:
             ids=list(s.scalars(select(Domain.id).where(Domain.site_id==site_id).order_by(Domain.name)))

@@ -9,6 +9,7 @@ from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetServic
 from repositories.dashboard_repository import DashboardRepository
 from repositories.project_lines_repository import ProjectLinesRepository
 from .charts import CompactChart
+from .plan_overview import DashboardPlanOverviewWidget
 from .widgets import EmptyStateWidget,MetricCard,metric,quadrant_presentation,section
 
 class SiteDashboardPage(QWidget):
@@ -19,7 +20,12 @@ class SiteDashboardPage(QWidget):
     def _populate_tabs(self):
         while self.tabs.count():
             widget=self.tabs.widget(0); self.tabs.removeTab(0); widget.deleteLater()
-        self.tabs.addTab(self._overview(),ui_icon("analytics"),tr("Overview")); self.tabs.addTab(self._domains(),ui_icon("domain"),tr("Domains")); self.tabs.addTab(self._lines(),ui_icon("project-lines"),tr("Project Lines")); self.tabs.addTab(self._analytics(),ui_icon("analytics"),tr("Analytics"))
+        self.tabs.addTab(self._overview(),ui_icon("analytics"),tr("Overview")); self.tabs.addTab(self._domains(),ui_icon("domain"),tr("Domains")); self.tabs.addTab(self._lines(),ui_icon("project-lines"),tr("Project Lines")); self.tabs.addTab(self._analytics(),ui_icon("analytics"),tr("Analytics")); self.tabs.addTab(DashboardPlanOverviewWidget(self._map_snapshot()),ui_icon("map"),tr("Map"))
+    def _map_snapshot(self):
+        from types import SimpleNamespace
+        domains=self.snapshot.domains
+        first=domains[0] if domains else None
+        return SimpleNamespace(domain_geometries=self.snapshot.domain_geometries,project_lines=first.project_lines if first else (),production_geometries=tuple(g for d in domains for g in d.production_geometries),contour_geometries=tuple(g for d in domains for g in d.contour_geometries),assessment_geometries=tuple(g for d in domains for g in d.assessment_geometries))
     def refresh(self):
         current=self.tabs.currentIndex(); self.snapshot=self.repo.site_snapshot(self.site_id); self._populate_tabs(); self.tabs.setCurrentIndex(max(0,min(current,self.tabs.count()-1)))
     def _table(self,headers,rows,ids=None):

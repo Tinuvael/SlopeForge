@@ -11,10 +11,11 @@ class DashboardPlanOverviewWidget(QWidget):
     def __init__(self,snapshot):
         super().__init__(); self.snapshot=snapshot; box=QVBoxLayout(self); controls=QHBoxLayout()
         self.fit_button=QPushButton(tr("Fit")); self.fit_button.setIcon(ui_icon("fit-view")); controls.addWidget(self.fit_button)
+        self.domains_checkbox=QCheckBox(tr("Domains")); self.domains_checkbox.setChecked(True); controls.addWidget(self.domains_checkbox)
         self.project_lines_checkbox=QCheckBox(tr("Project Lines")); self.project_lines_checkbox.setChecked(True); controls.addWidget(self.project_lines_checkbox); controls.addStretch(); box.addLayout(controls)
         self.scene=QGraphicsScene(self); self.view=QGraphicsView(self.scene); self.view.setRenderHint(QPainter.RenderHint.Antialiasing); self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag); self.view.setMinimumHeight(220); self.view.setStyleSheet("border:1px solid #E2E8F0;background:#F8FAFC"); box.addWidget(self.view)
         self.empty_label=QLabel(tr("No plan geometry yet"),self.view.viewport()); self.empty_label.setStyleSheet("color:#64748B;background:transparent"); self.empty_label.hide()
-        self._project_items=[]; self._render(); self.fit_button.clicked.connect(self.fit); self.project_lines_checkbox.toggled.connect(self._toggle_project_lines)
+        self._project_items=[]; self._domain_items=[]; self._render(); self.fit_button.clicked.connect(self.fit); self.project_lines_checkbox.toggled.connect(self._toggle_project_lines); self.domains_checkbox.toggled.connect(self._toggle_domains)
     @staticmethod
     def _path(points,close=False):
         path=QPainterPath(); path.moveTo(points[0][0],-points[0][1])
@@ -28,6 +29,10 @@ class DashboardPlanOverviewWidget(QWidget):
         item.setBrush(QBrush(fill_color) if fill_color else QBrush(Qt.BrushStyle.NoBrush)); self.scene.addItem(item)
         if project:self._project_items.append(item)
     def _render(self):
+        palette=("#64748B","#0F766E","#7C3AED","#B45309","#0369A1","#9F1239")
+        for geometry in getattr(self.snapshot,"domain_geometries",()):
+            color=QColor(palette[geometry.palette_index % len(palette)]); color.setAlpha(55 if geometry.is_current else 22)
+            item=QGraphicsPathItem(self._path(geometry.points,close=True)); item.setPen(QPen(QColor(color.red(),color.green(),color.blue(),150 if geometry.is_current else 70),2 if geometry.is_current else 1)); item.setBrush(QBrush(color)); item.setZValue(-100); item.setToolTip(geometry.domain_name); self.scene.addItem(item); self._domain_items.append(item)
         for geometry in self.snapshot.project_lines:self._add_path(geometry,"#CBD5E1",1,project=True)
         for geometry in self.snapshot.production_geometries:self._add_path(geometry,"#2563EB",2,"#2563EB")
         for geometry in self.snapshot.contour_geometries:
@@ -38,6 +43,9 @@ class DashboardPlanOverviewWidget(QWidget):
         self.empty_label.setVisible(not bool(self.scene.items())); self.empty_label.adjustSize(); self.empty_label.move(16,16); self.fit()
     def _toggle_project_lines(self,visible):
         for item in self._project_items:item.setVisible(visible)
+        self.fit()
+    def _toggle_domains(self,visible):
+        for item in self._domain_items:item.setVisible(visible)
         self.fit()
     def fit(self):
         rect=self.scene.itemsBoundingRect()

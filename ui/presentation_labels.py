@@ -118,6 +118,7 @@ DOMAIN_MESSAGES = {
     "ezdxf is required to import DXF geometry": "ezdxf is required to import DXF geometry",
     "Файл геометрии не содержит валидных контурных скважин": "Geometry file contains no valid contour drillholes",
     "Файл геометрии не содержит подходящих линий": "Geometry file contains no suitable lines",
+    "No valid closed Domain polygons were found in the geometry file.": "No valid closed Domain polygons were found in the geometry file.",
     "Неизвестный тип владельца файла": "Unknown attachment owner type",
     "Некорректный ID владельца": "Invalid attachment owner ID",
     "Неизвестный тип файла": "Unknown attachment kind",
