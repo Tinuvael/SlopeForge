@@ -4,7 +4,7 @@ from datetime import datetime,timezone
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine,func,select
+from sqlalchemy import create_engine,event,func,select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -58,6 +58,21 @@ def test_current_geometry_lifecycle_and_domain_isolation(repository_context):
     repo.clear(a); assert repo.get_for_domain(a) is None
 
 
+@pytest.mark.parametrize("invalid",[
+    PlanPolygon((PlanPoint(0,0),PlanPoint(4,4),PlanPoint(0,4),PlanPoint(4,0),PlanPoint(0,0))),
+    PlanPolygon((PlanPoint(0,0),PlanPoint(1,0),PlanPoint(2,0),PlanPoint(0,0))),
+    PlanPolygon((PlanPoint(0,0),PlanPoint(2,0),PlanPoint(2,0),PlanPoint(0,2),PlanPoint(0,0))),
+    PlanPolygon((PlanPoint(0,0),PlanPoint(float("nan"),0),PlanPoint(0,2),PlanPoint(0,0))),
+    PlanPolygon((PlanPoint(0,0),PlanPoint(float("inf"),0),PlanPoint(0,2),PlanPoint(0,0))),
+    PlanPolygon((PlanPoint(0,0),PlanPoint(2,float("-inf")),PlanPoint(0,2),PlanPoint(0,0))),
+])
+def test_invalid_replacement_is_rejected_without_changing_existing_geometry(repository_context,invalid):
+    repo,_,(_,_,domain_id,_)=repository_context
+    existing=repo.replace_drawn(domain_id,[polygon(100)])
+    with pytest.raises(ValueError): repo.replace_drawn(domain_id,[invalid])
+    assert repo.get_for_domain(domain_id)==existing
+
+
 def test_dashboard_domain_context_palette_and_project_lines(repository_context):
     repo,factory,(_,site,a,b)=repository_context
     repo.replace_drawn(a,[polygon()]); repo.replace_drawn(b,[polygon(10)])
@@ -68,6 +83,23 @@ def test_dashboard_domain_context_palette_and_project_lines(repository_context):
     site_snapshot=dashboard.site_snapshot(site)
     assert len(site_snapshot.domain_geometries)==2 and len(site_snapshot.project_lines)==1
     assert site_snapshot.production==0 and site_snapshot.contour==0 and site_snapshot.areas==0
+
+
+def test_site_snapshot_loads_site_domain_geometry_once(repository_context):
+    repo,factory,(_,site,a,b)=repository_context
+    repo.replace_drawn(a,[polygon()]); repo.replace_imported(b,[polygon(10)],"domains.csv")
+    statements=[]
+    engine=factory.kw["bind"]
+    def capture(_connection,_cursor,statement,_parameters,_context,_executemany):
+        if "domain_geometries" in statement.lower(): statements.append(statement)
+    event.listen(engine,"before_cursor_execute",capture)
+    try: snapshot=DashboardRepository(factory).site_snapshot(site)
+    finally: event.remove(engine,"before_cursor_execute",capture)
+    assert len(statements)==1
+    assert len(snapshot.domains)==2
+    assert [g.is_current for g in snapshot.domains[0].domain_geometries]==[True,False]
+    assert [g.is_current for g in snapshot.domains[1].domain_geometries]==[False,True]
+    assert snapshot.domains[1].geometry_source_file_name=="domains.csv"
 
 
 def test_site_project_lines_exist_without_domains(repository_context):

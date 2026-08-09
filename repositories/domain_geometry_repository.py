@@ -5,6 +5,7 @@ from typing import Callable, Sequence
 from sqlalchemy.orm import Session
 from database.models import Domain, DomainGeometry
 from prototype_2d.domain import PlanPolygon
+from prototype_2d.geometry import validate_simple_polygon
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,8 @@ class DomainGeometryRepository:
     def _replace(self, domain_id: int, polygons: Sequence[PlanPolygon], kind: str, filename: str | None) -> StoredDomainGeometry:
         if not polygons:
             raise ValueError("Domain Geometry requires at least one polygon")
+        for polygon in polygons:
+            validate_simple_polygon(polygon)
         with self._session_factory.begin() as session:
             if session.get(Domain, domain_id) is None:
                 raise LookupError(f"Domain {domain_id} not found")
