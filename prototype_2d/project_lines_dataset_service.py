@@ -9,6 +9,10 @@ from .domain import AssessmentDomainState, ProjectLinesDataset, utc_now
 from .models import DatamineLine
 
 
+class ProjectLinesImportError(ValueError):
+    """The source file cannot produce a usable Project Lines Dataset."""
+
+
 class ProjectLinesDatasetService:
     """Создаёт наборы, хранит историю и управляет активной версией."""
 
@@ -26,6 +30,8 @@ class ProjectLinesDatasetService:
     ) -> tuple[ProjectLinesDataset, LineGeometryImportResult]:
         path = Path(source_path)
         result = import_line_geometry(path, column_mapping=column_mapping, delimiter_choice=delimiter_choice)
+        if not result.lines:
+            raise ProjectLinesImportError("Geometry file contains no suitable lines")
         dataset = self.create_dataset(
             name=name or path.stem,
             source_file_name=path.name,

@@ -11,7 +11,10 @@ from prototype_2d.blast_geometry import build_contour_geometry, build_production
 from prototype_2d.domain import AssessmentDomainState
 from prototype_2d.dxf_importer import DxfImportError, import_dxf_polylines
 from prototype_2d.line_geometry_importer import LineGeometryImportError, import_line_geometry
-from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
+from prototype_2d.project_lines_dataset_service import (
+    ProjectLinesDatasetService,
+    ProjectLinesImportError,
+)
 
 
 def save(tmp_path, build, name="geometry.dxf"):
@@ -94,6 +97,24 @@ def test_polygon_mesh_and_polyface_are_skipped(tmp_path):
     result = import_dxf_polylines(save(tmp_path, build, "unsupported-polylines.dxf"))
     assert result.lines == []
     assert result.summary.skipped_unsupported_entity_count == 2
+
+
+def test_supported_polyline_imports_alongside_unsupported_entity(tmp_path):
+    def build(msp):
+        msp.add_line((0, 0), (1, 1))
+        msp.add_lwpolyline([(0, 0), (2, 0)], dxfattribs={"elevation": 610})
+    result = import_dxf_polylines(save(tmp_path, build, "mixed.dxf"))
+    assert len(result.lines) == 1
+    assert result.lines[0].is_horizontal
+    assert result.summary.skipped_unsupported_entity_count == 1
+
+
+def test_project_lines_rejects_dxf_with_only_unsupported_entities(tmp_path):
+    path = save(tmp_path, lambda msp: msp.add_line((0, 0), (1, 1)), "empty.dxf")
+    state = AssessmentDomainState()
+    with pytest.raises(ProjectLinesImportError, match="no suitable lines"):
+        ProjectLinesDatasetService(state).import_dataset(path)
+    assert state.datasets == []
 
 
 def test_project_lines_service_and_case_insensitive_dispatch(tmp_path):

@@ -17,9 +17,14 @@ if "test" not in (make_url(URL).database or "").lower():
 
 from database import assessment_models as orm
 from database.models import Domain, Mine, Site
-from prototype_2d.domain import ProjectLinesDataset
+from prototype_2d.domain import AssessmentDomainState, ProjectLinesDataset
+from prototype_2d.project_lines_dataset_service import (
+    ProjectLinesDatasetService,
+    ProjectLinesImportError,
+)
 from repositories.assessment_state_repository import AssessmentStateRepository
 from repositories.project_lines_repository import ProjectLinesRepository
+import ezdxf
 
 
 @pytest.fixture
@@ -89,6 +94,69 @@ def test_atomic_import_rolls_back_row_when_activation_fails(context, monkeypatch
 
     assert [row.domain_id for row in repo.list_for_site(ids[1])] == ["D-X"]
     assert repo.get_active(ids[1]).domain_id == "D-X"
+
+
+def test_repeated_dashboard_style_import_allocates_new_site_dataset_id(context):
+    factory, ids = context
+    repo = ProjectLinesRepository(factory)
+    first = dataset("D-001")
+    second = dataset("D-001")  # a fresh AssessmentDomainState proposes D-001 again
+
+    repo.import_dataset(ids[1], first, make_active=True)
+    repo.import_dataset(ids[1], second, make_active=True)
+
+    rows = repo.list_for_site(ids[1])
+    assert [row.domain_id for row in rows] == ["D-001", "D-002"]
+    assert first.id == "D-001" and second.id == "D-002"
+    assert [row.source_file_name for row in rows] == ["D-001.csv", "D-001.csv"]
+    assert sum(row.is_active for row in rows) == 1
+    assert not rows[0].is_active and rows[1].is_active
+
+
+def test_empty_import_does_not_change_persisted_active_dataset(context, monkeypatch):
+    factory, ids = context
+    repo = ProjectLinesRepository(factory)
+    repo.import_dataset(ids[1], dataset("D-001"), make_active=True)
+    monkeypatch.setattr(
+        "prototype_2d.project_lines_dataset_service.import_line_geometry",
+        lambda *args, **kwargs: type("EmptyResult", (), {"lines": []})(),
+    )
+
+    with pytest.raises(ProjectLinesImportError, match="no suitable lines"):
+        ProjectLinesDatasetService(AssessmentDomainState()).import_dataset("empty.dxf")
+
+    rows = repo.list_for_site(ids[1])
+    assert len(rows) == 1 and rows[0].domain_id == "D-001" and rows[0].is_active
+
+
+def test_csv_to_dxf_and_same_file_reimports_create_history(context, tmp_path):
+    factory, ids = context
+    repo = ProjectLinesRepository(factory)
+    csv_path = tmp_path / "project.csv"
+    csv_path.write_text("X,Y,Z,SID\n0,0,600,L1\n1,0,600,L1\n", encoding="utf-8")
+    document = ezdxf.new()
+    document.modelspace().add_lwpolyline(
+        [(0, 0), (2, 0)], dxfattribs={"elevation": 610}
+    )
+    dxf_path = tmp_path / "project.dxf"
+    document.saveas(dxf_path)
+
+    sources = (csv_path, dxf_path, dxf_path)
+    datasets = []
+    for source in sources:
+        imported, _ = ProjectLinesDatasetService(
+            AssessmentDomainState()
+        ).import_dataset(source)
+        repo.import_dataset(ids[1], imported, make_active=True)
+        datasets.append(imported)
+
+    rows = repo.list_for_site(ids[1])
+    assert [row.domain_id for row in rows] == ["D-001", "D-002", "D-003"]
+    assert [item.id for item in datasets] == ["D-001", "D-002", "D-003"]
+    assert [row.source_file_name for row in rows] == [
+        "project.csv", "project.dxf", "project.dxf"
+    ]
+    assert [row.is_active for row in rows] == [False, False, True]
 
 
 def test_domains_share_one_site_history_but_sites_are_isolated(context):

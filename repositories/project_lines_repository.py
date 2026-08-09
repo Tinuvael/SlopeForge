@@ -33,8 +33,12 @@ class ProjectLinesRepository:
                        *, make_active: bool = True) -> orm.ProjectLinesDataset:
         """Insert and optionally activate a Dataset in one transaction."""
         with self._session_factory.begin() as session:
-            if session.get(Site, site_id) is None:
+            # Serialize ID allocation per Site.  Dashboard imports are built from
+            # a fresh domain state and may initially propose D-001 every time.
+            site = session.scalar(select(Site).where(Site.id == site_id).with_for_update())
+            if site is None:
                 raise ValueError(f"Site {site_id} does not exist")
+            dataset.id = self._available_domain_id(session, site_id, dataset.id)
             row = orm.ProjectLinesDataset(site_id=site_id, domain_id=dataset.id, name=dataset.name,
                 imported_at=dataset.imported_at, source_file_name=dataset.source_file_name,
                 is_active=False, is_archived=False,
@@ -46,6 +50,18 @@ class ProjectLinesRepository:
                 session.flush()
             row_id = row.id
         return self._get_row(row_id)
+
+    @staticmethod
+    def _available_domain_id(session: Session, site_id: int, proposed_id: str) -> str:
+        used = set(session.scalars(select(orm.ProjectLinesDataset.domain_id).where(
+            orm.ProjectLinesDataset.site_id == site_id
+        )))
+        if proposed_id not in used:
+            return proposed_id
+        number = 1
+        while f"D-{number:03d}" in used:
+            number += 1
+        return f"D-{number:03d}"
 
     @staticmethod
     def _activate_imported_dataset(session: Session, site_id: int,
