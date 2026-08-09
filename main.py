@@ -1,3 +1,5 @@
+
+from app.localization import tr
 import logging
 import sys
 from pathlib import Path
@@ -29,7 +31,7 @@ def show_startup_error(message: str, server: str | None) -> None:
         "Run migrations: python -m database.cli migrate",
         "If the database does not exist yet: python -m database.cli prepare-db",
     ])
-    QMessageBox.critical(None, "PostgreSQL unavailable", "\n\n".join(details))
+    QMessageBox.critical(None, tr("PostgreSQL unavailable"), "\n\n".join(details))
 
 
 def main():
@@ -88,7 +90,7 @@ def main():
     except Exception:
         logging.exception("Unexpected startup failure during stage: %s", startup_stage)
         splash.close_with_fade()
-        QMessageBox.critical(None, "Startup error", f"Unexpected startup error. Details were written to {LOG_PATH}.")
+        QMessageBox.critical(None, tr("Startup error"), f"Unexpected startup error. Details were written to {LOG_PATH}.")
         return 1
 
 

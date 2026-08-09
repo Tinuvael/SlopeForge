@@ -28,7 +28,7 @@ class AttachmentMetadataDialog(QDialog):
         self.custom = QLineEdit(attachment.custom_subtype if attachment else ""); self.custom.setPlaceholderText(tr("Custom category"))
         self.description = QTextEdit(attachment.description if attachment else ""); self.description.setMaximumHeight(100)
         self.category.currentIndexChanged.connect(lambda: self.custom.setVisible(self.category.currentData() == "other"))
-        form.addRow("Title", self.title); form.addRow("Date", self.file_date); form.addRow("Category", self.category); form.addRow("Custom category", self.custom); form.addRow("Description", self.description)
+        form.addRow(tr("Title"), self.title); form.addRow(tr("Date"), self.file_date); form.addRow(tr("Category"), self.category); form.addRow(tr("Custom category"), self.custom); form.addRow(tr("Description"), self.description)
         buttons = QHBoxLayout(); ok = QPushButton(tr("Save")); cancel = QPushButton(tr("Cancel")); ok.clicked.connect(self.accept); cancel.clicked.connect(self.reject); buttons.addStretch(); buttons.addWidget(ok); buttons.addWidget(cancel); form.addRow(buttons)
         self.custom.setVisible(self.category.currentData() == "other")
 
@@ -71,7 +71,7 @@ class EntityAttachmentDialog(QDialog):
         self.tables = {}
         self.mutation_buttons = []
         for kind, caption in (("photo", "Photos"), ("document", "Documents")):
-            page = QWidget(); layout = QVBoxLayout(page); table = QTableWidget(); table.setColumnCount(7); table.setHorizontalHeaderLabels(["Preview", "Title", "Date", "Category", "Original file", "Description", "Size"]); table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.cellDoubleClicked.connect(lambda row, _col, k=kind: self.open_selected(k, row)); layout.addWidget(table)
+            page = QWidget(); layout = QVBoxLayout(page); table = QTableWidget(); table.setColumnCount(7); table.setHorizontalHeaderLabels([tr("Preview"), tr("Title"), tr("Date"), tr("Category"), tr("Original file"), tr("Description"), tr("Size")]); table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.cellDoubleClicked.connect(lambda row, _col, k=kind: self.open_selected(k, row)); layout.addWidget(table)
             actions = QHBoxLayout()
             for text, handler in (("Add", lambda _=False, k=kind: self.add(k)), ("Open", lambda _=False, k=kind: self.open_selected(k)), ("Open folder", self.open_folder), ("Edit metadata", lambda _=False, k=kind: self.edit(k)), ("Delete", lambda _=False, k=kind: self.delete(k))):
                 button = QPushButton(text); button.clicked.connect(handler); actions.addWidget(button)
@@ -114,16 +114,16 @@ class EntityAttachmentDialog(QDialog):
         filters = "Photos (*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff)" if kind == "photo" else "Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip);;All files (*)"
         paths, selected_filter = QFileDialog.getOpenFileNames(self, "Add files", "", filters)
         if not paths: return
-        if kind == "photo" and any(Path(p).suffix.lower() not in PHOTO_EXTENSIONS for p in paths): QMessageBox.warning(self, "Format", "The selected photo format is not supported."); return
-        if kind == "document" and selected_filter == "All files (*)" and QMessageBox.question(self, "Other format", "SlopeForge may not be able to preview this file. Add it anyway?") != QMessageBox.StandardButton.Yes: return
+        if kind == "photo" and any(Path(p).suffix.lower() not in PHOTO_EXTENSIONS for p in paths): QMessageBox.warning(self, tr("Format"), tr("The selected photo format is not supported.")); return
+        if kind == "document" and selected_filter == "All files (*)" and QMessageBox.question(self, tr("Other format"), tr("SlopeForge may not be able to preview this file. Add it anyway?")) != QMessageBox.StandardButton.Yes: return
         editor = AttachmentMetadataDialog(self.owner_type, kind, parent=self)
         if editor.exec() != QDialog.DialogCode.Accepted: return
         try: self.service.add_files(self.owner_type, self.owner_id, kind, paths, editor.values()); self.refresh()
-        except Exception as exc: QMessageBox.critical(self, "Copy error", domain_message(str(exc)))
+        except Exception as exc: QMessageBox.critical(self, tr("Copy error"), domain_message(str(exc)))
     def open_selected(self, kind, row=None):
         item = self._selected(kind, row)
         if not item: return
-        if self.service.is_missing(item): QMessageBox.warning(self, "File is missing", "The file is missing from disk."); return
+        if self.service.is_missing(item): QMessageBox.warning(self, tr("File is missing"), tr("The file is missing from disk.")); return
         if kind == "photo": PhotoViewer(self.service, [a for a in self._items(kind) if not self.service.is_missing(a)], [a.id for a in self._items(kind) if not self.service.is_missing(a)].index(item.id), self).exec()
         else: self.service.open_file(item)
     def open_folder(self): self.service.open_owner_folder(self.owner_type, self.owner_id)
@@ -138,4 +138,4 @@ class EntityAttachmentDialog(QDialog):
         box = QMessageBox(QMessageBox.Icon.Warning, "Delete", "The file will be removed from the database and disk.", parent=self); delete = box.addButton("Delete", QMessageBox.ButtonRole.DestructiveRole); box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole); box.exec()
         if box.clickedButton() is delete:
             try: self.service.delete_attachment(item.id); self.refresh()
-            except Exception as exc: QMessageBox.critical(self, "Delete error", domain_message(str(exc)))
+            except Exception as exc: QMessageBox.critical(self, tr("Delete error"), domain_message(str(exc)))

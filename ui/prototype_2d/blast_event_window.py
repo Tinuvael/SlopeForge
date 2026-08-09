@@ -74,8 +74,8 @@ class BlastEventWindow(QMainWindow):
         if self.workspace.has_active_workflow():
             answer = QMessageBox.warning(
                 self,
-                "Несохранённая геометрия",
-                "Имеются несохранённые изменения геометрии.",
+                tr("Unsaved geometry"),
+                tr("There are unsaved geometry changes."),
                 QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Discard,
                 QMessageBox.StandardButton.Cancel,
             )
@@ -88,7 +88,7 @@ class BlastEventWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(
                 self,
-                "Ошибка сохранения",
+                tr("Save error"),
                 f"Не удалось сохранить данные. Окно останется открытым.\n\n{exc}",
             )
             event.ignore()

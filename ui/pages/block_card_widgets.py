@@ -51,7 +51,7 @@ class CardFrame(QFrame):
         self.layout.setContentsMargins(14, 12, 14, 12)
         self.layout.setSpacing(8)
         if title:
-            label = QLabel(title)
+            label = QLabel(tr(title))
             label.setObjectName("CardTitle")
             self.layout.addWidget(label)
 
@@ -61,7 +61,7 @@ class EmptySection(QWidget):
         super().__init__()
         layout = QVBoxLayout(self)
         layout.addStretch()
-        label = QLabel(text)
+        label = QLabel(tr(text))
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setObjectName("MutedText")
         layout.addWidget(label)
@@ -95,15 +95,15 @@ class BlockHeaderWidget(CardFrame):
             self.title.setText(tr("Select a block"))
             self.status.setText(tr("—"))
             return
-        self.title.setText(f"Block {block.block_number}")
-        self.status.setText(STATUS_LABELS.get(block.status, block.status))
+        self.title.setText(f"{tr('Block')} {block.block_number}")
+        self.status.setText(tr(STATUS_LABELS.get(block.status, block.status).title()))
         values = [
-            f"ID: {block.id}",
-            f"Horizon: {format_decimal(block.horizon_m)}",
-            f"Project / Quarry: {block.site_name}",
-            f"Domain: {block.domain_name}",
-            f"Created: {format_datetime(block.created_at)}",
-            f"Updated: {format_datetime(block.updated_at)}",
+            f"{tr('ID')}: {block.id}",
+            f"{tr('Horizon')}: {format_decimal(block.horizon_m)}",
+            f"{tr('Project / Quarry')}: {block.site_name}",
+            f"{tr('Domain')}: {block.domain_name}",
+            f"{tr('Created')}: {format_datetime(block.created_at)}",
+            f"{tr('Updated')}: {format_datetime(block.updated_at)}",
         ]
         for value in values:
             badge = QLabel(value)
@@ -117,7 +117,7 @@ class BlockOverviewWidget(QWidget):
         super().__init__()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.info = CardFrame("General information")
+        self.info = CardFrame(tr("General information"))
         self.grid = QGridLayout()
         self.info.layout.addLayout(self.grid)
         self.scheme = PlanGeometryWidget()
@@ -139,13 +139,13 @@ class BlockOverviewWidget(QWidget):
                 ("Horizon", format_decimal(block.horizon_m)),
                 ("Project / Quarry", block.site_name),
                 ("Domain", block.domain_name),
-                ("Status", STATUS_LABELS.get(block.status, block.status)),
+                ("Status", tr(STATUS_LABELS.get(block.status, block.status).title())),
                 ("Comment", block.comment),
             ]
         else:
             rows = [("Block", "—")]
         for row, (name, value) in enumerate(rows):
-            left = QLabel(name)
+            left = QLabel(tr(name))
             left.setObjectName("MutedText")
             right = QLabel(_dash(value))
             right.setWordWrap(True)
@@ -207,7 +207,7 @@ class BlockSummaryWidget(CardFrame):
             ("History records", audit_count),
         ]
         for row, (name, value) in enumerate(rows):
-            self.grid.addWidget(QLabel(name), row, 0)
+            self.grid.addWidget(QLabel(tr(name)), row, 0)
             self.grid.addWidget(QLabel(_dash(value)), row, 1)
 
 
@@ -243,7 +243,7 @@ class AuditPreviewWidget(CardFrame):
     def __init__(self, title: str = "Change history"):
         super().__init__(title)
         self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["Date", "User", "Action", "Field", "Old", "New"])
+        self.table.setHorizontalHeaderLabels([tr("Date"), tr("User"), tr("Action"), tr("Field"), tr("Old"), tr("New")])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.layout.addWidget(self.table)
 
@@ -254,7 +254,7 @@ class AuditPreviewWidget(CardFrame):
             values = [
                 format_datetime(entry.created_at),
                 entry.user_display_name,
-                ACTION_LABELS.get(entry.action, entry.action),
+                tr(ACTION_LABELS.get(entry.action, entry.action)),
                 AUDIT_FIELD_LABELS.get(entry.field_name or "", entry.field_name or ""),
                 entry.old_value or "",
                 entry.new_value or "",

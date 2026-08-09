@@ -13,7 +13,7 @@ class BlockDialog(QDialog):
         if domain:
             for item in domain_repo.list_for_site(domain.site_id): self.domain.addItem(item.name,item.id)
             self.domain.setCurrentIndex(max(0,self.domain.findData(selected)))
-        form.addRow("Domain *",self.domain); form.addRow("Block number *",self.block_number); form.addRow("Horizon, m",self.horizon); form.addRow("Planned blast date",self.planned_date); form.addRow("Status",self.status); form.addRow("Comment",self.comment); layout.addLayout(form)
+        form.addRow(tr("Domain *"),self.domain); form.addRow(tr("Block number *"),self.block_number); form.addRow(tr("Horizon, m"),self.horizon); form.addRow(tr("Planned blast date"),self.planned_date); form.addRow(tr("Status"),self.status); form.addRow(tr("Comment"),self.comment); layout.addLayout(form)
         if block:
             self.block_number.setText(block.block_number); self.horizon.setText("" if block.horizon_m is None else str(block.horizon_m)); self.status.setCurrentIndex(max(0,self.status.findData(block.status))); self.comment.setPlainText(block.comment or "")
             if block.planned_blast_date: d=block.planned_blast_date; self.planned_date.setDate(QDate(d.year,d.month,d.day))
@@ -25,4 +25,4 @@ class BlockDialog(QDialog):
         return BlastBlockInput(self.domain.currentData(),self.block_number.text(),self.horizon.text(),planned,self.status.currentData(),self.comment.toPlainText())
     def _save(self):
         try: self.saved_block_id=self.service.update_block(self.block.id,self._input(),self.user) if self.block else self.service.create_block(self._input(),self.user); self.accept()
-        except (ValidationError,PermissionDenied,ValueError) as exc: QMessageBox.warning(self,"Could not save block",str(exc))
+        except (ValidationError,PermissionDenied,ValueError) as exc: QMessageBox.warning(self,tr("Could not save block"),str(exc))

@@ -24,10 +24,10 @@ class FirstAdminDialog(QDialog):
         self.full_name = QLineEdit()
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_repeat = QLineEdit(); self.password_repeat.setEchoMode(QLineEdit.EchoMode.Password)
-        form.addRow("Username *", self.username)
-        form.addRow("Full name", self.full_name)
-        form.addRow("Password *", self.password)
-        form.addRow("Repeat password *", self.password_repeat)
+        form.addRow(tr("Username *"), self.username)
+        form.addRow(tr("Full name"), self.full_name)
+        form.addRow(tr("Password *"), self.password)
+        form.addRow(tr("Repeat password *"), self.password_repeat)
         layout.addLayout(form)
         buttons = QHBoxLayout(); buttons.addStretch()
         create = QPushButton(tr("Create administrator"))
@@ -37,16 +37,16 @@ class FirstAdminDialog(QDialog):
 
     def _create(self) -> None:
         if not self.username.text().strip():
-            QMessageBox.warning(self, "Check input", "Username is required.")
+            QMessageBox.warning(self, tr("Check input"), tr("Username is required."))
             return
         if self.password.text() != self.password_repeat.text():
-            QMessageBox.warning(self, "Check input", "Passwords do not match.")
+            QMessageBox.warning(self, tr("Check input"), tr("Passwords do not match."))
             return
         try:
             self.current_user = self.auth_service.create_first_admin(self.username.text(), self.full_name.text().strip() or None, self.password.text())
             self.accept()
         except (AuthError, ValueError) as exc:
-            QMessageBox.critical(self, "Could not create administrator", str(exc))
+            QMessageBox.critical(self, tr("Could not create administrator"), str(exc))
 
 
 class LoginDialog(QDialog):
@@ -62,8 +62,8 @@ class LoginDialog(QDialog):
         form = QFormLayout()
         self.username = QLineEdit()
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
-        form.addRow("Username", self.username)
-        form.addRow("Password", self.password)
+        form.addRow(tr("Username"), self.username)
+        form.addRow(tr("Password"), self.password)
         self.remember = QCheckBox(tr("Remember me on this computer"))
         layout.addLayout(form)
         layout.addWidget(self.remember)
@@ -79,4 +79,4 @@ class LoginDialog(QDialog):
             self.remember_requested = self.remember.isChecked()
             self.accept()
         except AuthError as exc:
-            QMessageBox.warning(self, "Sign in failed", str(exc))
+            QMessageBox.warning(self, tr("Sign in failed"), str(exc))

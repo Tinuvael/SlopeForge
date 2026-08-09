@@ -70,7 +70,7 @@ class DatasetHistoryDialog(QDialog):
         self.resize(760, 320)
         layout = QVBoxLayout(self)
         self.table = QTableWidget(len(datasets), 5)
-        self.table.setHorizontalHeaderLabels(["ID", "Title", "Original file", "Import date", "Status"])
+        self.table.setHorizontalHeaderLabels([tr("ID"), tr("Title"), tr("Original file"), tr("Import date"), tr("Status")])
         for row, dataset in enumerate(datasets):
             values = [dataset.id, dataset.name, dataset.source_file_name,
                       dataset.imported_at.isoformat(sep=" ", timespec="minutes"),
@@ -165,8 +165,8 @@ class AssessmentWorkspaceWidget(QWidget):
         self.mode_tabs = QTabWidget()
         events_page = QWidget(); events_layout = QVBoxLayout(events_page)
         areas_page = QWidget(); areas_layout = QVBoxLayout(areas_page)
-        self.mode_tabs.addTab(events_page, "Blast Events")
-        self.mode_tabs.addTab(areas_page, "Assessment Areas")
+        self.mode_tabs.addTab(events_page, tr("Blast Events"))
+        self.mode_tabs.addTab(areas_page, tr("Assessment Areas"))
         self.mode_tabs.currentChanged.connect(self._mode_changed)
         left_layout.addWidget(self.mode_tabs, 1)
         self.filter_combo = QComboBox()
@@ -456,7 +456,7 @@ class AssessmentWorkspaceWidget(QWidget):
             card = self.technical_card_service.card_for_event(self.selected_event.id)
             revision = card.active_revision() if card else None
             if card is None or revision is None:
-                QMessageBox.information(self, "Technical Card", "Technical Card has not been created yet")
+                QMessageBox.information(self, tr("Technical Card"), tr("Technical Card has not been created yet"))
                 return
             revision = deepcopy(revision)
         else:
@@ -660,20 +660,20 @@ class AssessmentWorkspaceWidget(QWidget):
             self.draw_geometry()
             if first_import:
                 self.plan_view.fit_to_extent()
-            QMessageBox.information(self, "Project Lines import", import_summary_text(result.summary) + f"\nDataset: {dataset.id}")
+            QMessageBox.information(self, tr("Project Lines import"), import_summary_text(result.summary) + f"\nDataset: {dataset.id}")
         except Exception as exc:
             # Parsing changes the aggregate before PostgreSQL persistence.  On any
             # failure restore the exact Site snapshot so no fake Dataset remains.
             self.state.datasets[:] = previous_datasets
             self.refresh_datasets()
             self.draw_geometry()
-            QMessageBox.warning(self, "Import error", domain_message(str(exc)))
+            QMessageBox.warning(self, tr("Import error"), domain_message(str(exc)))
         finally:
             QGuiApplication.restoreOverrideCursor()
 
     def show_dataset_history(self):
         if not self.state.datasets:
-            QMessageBox.information(self, "History Dataset", "Project Lines are not loaded")
+            QMessageBox.information(self, tr("History Dataset"), tr("Project Lines are not loaded"))
             return
         dialog = DatasetHistoryDialog(self.state.datasets, self)
         if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selected_dataset_id():
@@ -693,9 +693,9 @@ class AssessmentWorkspaceWidget(QWidget):
             self._save()
             self.refresh_events()
             if self.service.last_import_warning:
-                QMessageBox.warning(self, "Production CSV", self.service.last_import_warning)
+                QMessageBox.warning(self, tr("Production CSV"), self.service.last_import_warning)
         except Exception as exc:
-            QMessageBox.warning(self, "Could not create blast event", domain_message(str(exc)))
+            QMessageBox.warning(self, tr("Could not create blast event"), domain_message(str(exc)))
 
     def reimport_geometry(self):
         self._ensure_can_edit()
@@ -710,9 +710,9 @@ class AssessmentWorkspaceWidget(QWidget):
             self._render_card()
             self.draw_geometry()
             if self.service.last_import_warning:
-                QMessageBox.warning(self, "Production CSV", self.service.last_import_warning)
+                QMessageBox.warning(self, tr("Production CSV"), self.service.last_import_warning)
         except Exception as exc:
-            QMessageBox.warning(self, "Reimport error", domain_message(str(exc)))
+            QMessageBox.warning(self, tr("Reimport error"), domain_message(str(exc)))
 
     def toggle_archive(self):
         self._ensure_can_edit()
@@ -735,7 +735,7 @@ class AssessmentWorkspaceWidget(QWidget):
         try:
             result = self.link_service.refresh_suggestions(self.selected_area)
             self._save(); self._render_card(); self.draw_geometry()
-            QMessageBox.information(self, "Links Assessment Area",
+            QMessageBox.information(self, tr("Links Assessment Area"),
                 f"Active events scanned: {result.active_events_scanned}\n"
                 f"Without active geometry: {result.events_without_active_geometry}\n"
                 f"Rejected by elevation: {result.events_rejected_by_elevation}\n"
@@ -747,7 +747,7 @@ class AssessmentWorkspaceWidget(QWidget):
                 f"Preserved decisions: {result.protected_existing_links}\n"
                 f"Total links for active revision: {result.total_links_for_active_area_revision}")
         except ValueError as exc:
-            QMessageBox.warning(self, "Links Assessment Area", domain_message(str(exc)))
+            QMessageBox.warning(self, tr("Links Assessment Area"), domain_message(str(exc)))
 
     def show_area_links(self):
         if not self.selected_area: return
@@ -776,7 +776,7 @@ class AssessmentWorkspaceWidget(QWidget):
     def start_area_drawing(self):
         self._ensure_can_edit()
         if self.state.active_dataset() is None:
-            QMessageBox.warning(self, "Assessment Area", "Load or select an active dataset first")
+            QMessageBox.warning(self, tr("Assessment Area"), tr("Load or select an active dataset first"))
             return
         self.clear_highlighted_link(redraw=False)
         self._previous_selected_area = self.selected_area; self._editing_area = None
@@ -829,7 +829,7 @@ class AssessmentWorkspaceWidget(QWidget):
             self._refresh_refinement_candidates(); self.draw_geometry()
             self.statusBar().showMessage("Drag vertices. Press Enter or Confirm boundaries to continue; Esc cancels.")
         except (ValueError, IndexError) as exc:
-            QMessageBox.warning(self, "Invalid assessment area", domain_message(str(exc)))
+            QMessageBox.warning(self, tr("Invalid assessment area"), domain_message(str(exc)))
 
     def _current_draft_polygon(self):
         return PlanPolygon(tuple(self._drawing_vertices + [self._drawing_vertices[0]]))
@@ -886,10 +886,10 @@ class AssessmentWorkspaceWidget(QWidget):
                 scan_text = f"Revision saved, but linked-event search failed: {domain_message(str(exc))}"
             self.selected_area = area; self._previous_selected_area = area
             self._save(); self.cancel_area_drawing(); self.refresh_areas()
-            QMessageBox.information(self, "Linked-event search", scan_text)
+            QMessageBox.information(self, tr("Linked-event search"), scan_text)
         except (ValueError, IndexError) as exc:
             self.workflow_state = "REFINING"
-            QMessageBox.warning(self, "Invalid assessment area", domain_message(str(exc)))
+            QMessageBox.warning(self, tr("Invalid assessment area"), domain_message(str(exc)))
 
     finish_area_drawing = enter_refinement  # compatibility for older tests
 
@@ -1008,7 +1008,7 @@ class AssessmentEventLinksDialog(QDialog):
         self.filter.currentIndexChanged.connect(self.refresh); layout.addWidget(self.filter)
         self.row_count_label = QLabel(); layout.addWidget(self.row_count_label)
         self.table = QTableWidget(0, 8); self.table.setHorizontalHeaderLabels([
-            "Status", "Source", "BlastEvent", "Type", "Elevation", "Revision", "State", "Spatial match"])
+            tr("Status"), tr("Source"), tr("BlastEvent"), tr("Type"), tr("Elevation"), tr("Revision"), tr("State"), tr("Spatial match")])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.setSortingEnabled(True)
@@ -1060,7 +1060,7 @@ class AssessmentEventLinksDialog(QDialog):
         link = self.selected_link()
         if link:
             try: action(self.area, link.id); self.refresh()
-            except ValueError as exc: QMessageBox.warning(self, "Links", domain_message(str(exc)))
+            except ValueError as exc: QMessageBox.warning(self, tr("Links"), domain_message(str(exc)))
     def confirm(self): self._change(self.service.confirm_link)
     def exclude(self): self._change(self.service.exclude_link)
     def restore(self): self._change(self.service.restore_suggestion)
@@ -1084,7 +1084,7 @@ class ManualAssessmentEventLinkDialog(QDialog):
                        and e.active_geometry_revision() is not None]
         self.setWindowTitle(tr("Add BlastEvent manually")); self.resize(820, 420)
         layout = QVBoxLayout(self); self.table = QTableWidget(len(self.events), 6)
-        self.table.setHorizontalHeaderLabels(["BlastEvent", "Type", "Elevation", "Revision", "Elevation matches", "Geometry matches"])
+        self.table.setHorizontalHeaderLabels([tr("BlastEvent"), tr("Type"), tr("Elevation"), tr("Revision"), tr("Elevation matches"), tr("Geometry matches")])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         for row, event in enumerate(self.events):
             candidate = service.evaluate_event(area, event)
@@ -1102,11 +1102,11 @@ class ManualAssessmentEventLinkDialog(QDialog):
         failures = []
         if not candidate.elevation_matches: failures.append("elevation outside range")
         if not candidate.spatial_matches: failures.append("no spatial match")
-        if failures and QMessageBox.warning(self, "Manual link",
+        if failures and QMessageBox.warning(self, tr("Manual link"),
                 "Automatic conditions are not met: " + ", ".join(failures) + ". Add anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes: return
         try: self.service.add_manual_link(self.area, event.id); self.accept()
-        except ValueError as exc: QMessageBox.warning(self, "Manual link", domain_message(str(exc)))
+        except ValueError as exc: QMessageBox.warning(self, tr("Manual link"), domain_message(str(exc)))
 
 
 class AssessmentCandidateDialog(QDialog):
@@ -1116,10 +1116,10 @@ class AssessmentCandidateDialog(QDialog):
         layout = QVBoxLayout(self); form = QFormLayout()
         self.area_name = QLineEdit(); self.area_name.setPlaceholderText(tr("For example: Area 600–620"))
         self.area_date = QDateEdit(QDate.currentDate()); self.area_date.setCalendarPopup(True)
-        form.addRow("Title", self.area_name); form.addRow("Assessment date", self.area_date); layout.addLayout(form)
+        form.addRow(tr("Title"), self.area_name); form.addRow(tr("Assessment date"), self.area_date); layout.addLayout(form)
         layout.addWidget(QLabel(tr("Select no more than one fragment per elevation and at least two elevations:")))
         self.table = QTableWidget(len(candidates), 6)
-        self.table.setHorizontalHeaderLabels(["Include", "Elevation", "SID", "Fragment", "Length", "Points"])
+        self.table.setHorizontalHeaderLabels([tr("Include"), tr("Elevation"), tr("SID"), tr("Fragment"), tr("Length"), tr("Points")])
         counts = {}; [counts.__setitem__(item.elevation, counts.get(item.elevation, 0) + 1) for item in candidates]
         for row, candidate in enumerate(candidates):
             check = QCheckBox(); check.setChecked(counts[candidate.elevation] == 1)
@@ -1137,7 +1137,7 @@ class AssessmentCandidateDialog(QDialog):
 
     def _accept_checked(self):
         try: AssessmentAreaService.validate_selection(self.selected_candidates())
-        except ValueError as exc: QMessageBox.warning(self, "Horizon selection", domain_message(str(exc))); return
+        except ValueError as exc: QMessageBox.warning(self, tr("Horizon selection"), domain_message(str(exc))); return
         self.accept()
 
 
@@ -1170,11 +1170,11 @@ class BlastEventDialog(QDialog):
         elevation_row = QHBoxLayout(); elevation_row.addWidget(self.elevation); elevation_row.addWidget(auto)
         self.auto_status = QLabel(tr("Select CSV to detect the horizon automatically"))
         self.auto_status.setWordWrap(True)
-        form.addRow("Title *", self.name)
-        form.addRow("Type *", self.kind)
-        form.addRow("Date", self.date)
-        form.addRow("Horizon *", elevation_row)
-        form.addRow("CSV Datamine *", row)
+        form.addRow(tr("Title *"), self.name)
+        form.addRow(tr("Type *"), self.kind)
+        form.addRow(tr("Date"), self.date)
+        form.addRow(tr("Horizon *"), elevation_row)
+        form.addRow(tr("CSV Datamine *"), row)
         form.addRow("", self.auto_status)
         layout.addLayout(form)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
@@ -1205,7 +1205,7 @@ class BlastEventDialog(QDialog):
         except BlastEventValidationError as exc:
             self.preview = None
             self.auto_status.setText(f"Automatic detection failed: {domain_message(str(exc))}")
-            QMessageBox.warning(self, "Automatic horizon detection", domain_message(str(exc)))
+            QMessageBox.warning(self, tr("Automatic horizon detection"), domain_message(str(exc)))
             return False
         self.preview = preview
         if force_override or not self.elevation_is_manual:

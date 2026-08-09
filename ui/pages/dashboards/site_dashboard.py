@@ -19,7 +19,7 @@ class SiteDashboardPage(QWidget):
     def _populate_tabs(self):
         while self.tabs.count():
             widget=self.tabs.widget(0); self.tabs.removeTab(0); widget.deleteLater()
-        self.tabs.addTab(self._overview(),ui_icon("analytics"),"Overview"); self.tabs.addTab(self._domains(),ui_icon("domain"),"Domains"); self.tabs.addTab(self._lines(),ui_icon("project-lines"),"Project Lines"); self.tabs.addTab(self._analytics(),ui_icon("analytics"),"Analytics")
+        self.tabs.addTab(self._overview(),ui_icon("analytics"),tr("Overview")); self.tabs.addTab(self._domains(),ui_icon("domain"),tr("Domains")); self.tabs.addTab(self._lines(),ui_icon("project-lines"),tr("Project Lines")); self.tabs.addTab(self._analytics(),ui_icon("analytics"),tr("Analytics"))
     def refresh(self):
         current=self.tabs.currentIndex(); self.snapshot=self.repo.site_snapshot(self.site_id); self._populate_tabs(); self.tabs.setCurrentIndex(max(0,min(current,self.tabs.count()-1)))
     def _table(self,headers,rows,ids=None):
@@ -31,23 +31,25 @@ class SiteDashboardPage(QWidget):
         return table
     def _metrics(self):
         s=self.snapshot; w=QWidget(); g=QGridLayout(w); pct=round(100*s.completed/s.areas) if s.areas else 0
-        cards=[MetricCard("Blast events",s.production+s.contour,f"Production {s.production} • Contour {s.contour}","blast-blocks"),MetricCard("Assessment areas",s.areas,"Active areas","assessment-area"),MetricCard("Evaluated",f"{s.completed} / {s.areas}",f"{pct}% • Drafts {s.drafts}","check"),MetricCard("Average DAI",metric(s.average_dai),"Completed evaluations","analytics"),MetricCard("Average FCI",metric(s.average_fci),"Completed evaluations","analytics")]
+        event_detail = tr("Production: %1 • Contour: %2").replace("%1", str(s.production)).replace("%2", str(s.contour))
+        evaluation_detail = tr("%1% • Drafts: %2").replace("%1", str(pct)).replace("%2", str(s.drafts))
+        cards=[MetricCard(tr("Blast events"),s.production+s.contour,event_detail,"blast-blocks"),MetricCard(tr("Assessment areas"),s.areas,tr("Active areas"),"assessment-area"),MetricCard(tr("Evaluated"),f"{s.completed} / {s.areas}",evaluation_detail,"check"),MetricCard(tr("Average DAI"),metric(s.average_dai),tr("Completed evaluations"),"analytics"),MetricCard(tr("Average FCI"),metric(s.average_fci),tr("Completed evaluations"),"analytics")]
         for i,c in enumerate(cards): g.addWidget(c,0,i)
         return w
     def _domain_rows(self):
         return [(d.domain.name,d.domain.blast_events,d.domain.production,d.domain.contour,d.domain.areas,d.domain.completed,metric(d.domain.average_dai),metric(d.domain.average_fci)) for d in self.snapshot.domains]
     def _overview(self):
-        page=QScrollArea(); page.setWidgetResizable(True); body=QWidget(); box=QVBoxLayout(body); box.addWidget(self._metrics()); table=self._table(["Domain","Blast events","Production","Contour","Assessment areas","Completed","Average DAI","Average FCI"],self._domain_rows(),[d.domain.id for d in self.snapshot.domains]); box.addWidget(section("Domain summary",table))
-        quadrants={}; [quadrants.update({k:quadrants.get(k,0)+v}) for d in self.snapshot.domains for k,v in d.quadrants.items()]; box.addWidget(section("Assessment result distribution",CompactChart(quadrants,"donut")))
-        problem_areas=[(a,d.domain.name) for d in self.snapshot.domains for a in d.areas if a.status=="completed" and quadrant_presentation(a.quadrant).requires_attention]; problem_areas.sort(key=lambda item:quadrant_presentation(item[0].quadrant).severity,reverse=True); problems=[(a.name,domain,a.interval,metric(a.dai),metric(a.fci),a.assessment_date or "—") for a,domain in problem_areas[:5]]; box.addWidget(section("Areas requiring attention",self._table(["Area","Domain","Interval","DAI","FCI","Date"],problems) if problems else EmptyStateWidget("No areas requiring attention")))
-        recent=[(name,when or "—") for name,when in self.snapshot.recent]; box.addWidget(section("Recent activity",self._table(["Record","Changed"],recent) if recent else EmptyStateWidget("No recent activity"))); page.setWidget(body); return page
-    def _domains(self): return self._table(["Domain","Blast events","Production","Contour","Assessment areas","Completed","Average DAI","Average FCI"],self._domain_rows(),[d.domain.id for d in self.snapshot.domains])
+        page=QScrollArea(); page.setWidgetResizable(True); body=QWidget(); box=QVBoxLayout(body); box.addWidget(self._metrics()); table=self._table([tr("Domain"),tr("Blast events"),tr("Production"),tr("Contour"),tr("Assessment areas"),tr("Completed"),tr("Average DAI"),tr("Average FCI")],self._domain_rows(),[d.domain.id for d in self.snapshot.domains]); box.addWidget(section(tr("Domain summary"),table))
+        quadrants={}; [quadrants.update({k:quadrants.get(k,0)+v}) for d in self.snapshot.domains for k,v in d.quadrants.items()]; box.addWidget(section(tr("Assessment result distribution"),CompactChart(quadrants,"donut")))
+        problem_areas=[(a,d.domain.name) for d in self.snapshot.domains for a in d.areas if a.status=="completed" and quadrant_presentation(a.quadrant).requires_attention]; problem_areas.sort(key=lambda item:quadrant_presentation(item[0].quadrant).severity,reverse=True); problems=[(a.name,domain,a.interval,metric(a.dai),metric(a.fci),a.assessment_date or "—") for a,domain in problem_areas[:5]]; box.addWidget(section(tr("Areas requiring attention"),self._table([tr("Area"),tr("Domain"),tr("Interval"),tr("DAI"),tr("FCI"),tr("Date")],problems) if problems else EmptyStateWidget(tr("No areas requiring attention"))))
+        recent=[(name,when or "—") for name,when in self.snapshot.recent]; box.addWidget(section(tr("Recent activity"),self._table([tr("Record"),tr("Changed")],recent) if recent else EmptyStateWidget(tr("No recent activity")))); page.setWidget(body); return page
+    def _domains(self): return self._table([tr("Domain"),tr("Blast events"),tr("Production"),tr("Contour"),tr("Assessment areas"),tr("Completed"),tr("Average DAI"),tr("Average FCI")],self._domain_rows(),[d.domain.id for d in self.snapshot.domains])
     def _lines(self):
-        w=QWidget(); box=QVBoxLayout(w); active=self.snapshot.active_dataset; box.addWidget(QLabel(f"Active Dataset: {active.name} • {active.source_file_name} • {active.imported_at:%Y-%m-%d %H:%M}" if active else "No Project Lines loaded")); rows=[(x.name,x.imported_at.strftime("%Y-%m-%d %H:%M"),x.source_file_name,"Active" if x.is_active else "Inactive") for x in self.snapshot.datasets]; box.addWidget(self._table(["Dataset","Imported","Source file","State"],rows)); self.import_button=QPushButton(tr("Import / Update Project Lines")); self.import_button.setIcon(ui_icon("import","blue")); self.import_button.setVisible(self.context.current_user.can_edit); self.import_button.clicked.connect(self.import_lines); box.addWidget(self.import_button); return w
+        w=QWidget(); box=QVBoxLayout(w); active=self.snapshot.active_dataset; box.addWidget(QLabel(f"{tr('Active Dataset')}: {active.name} • {active.source_file_name} • {active.imported_at:%Y-%m-%d %H:%M}" if active else tr("No Project Lines loaded"))); rows=[(x.name,x.imported_at.strftime("%Y-%m-%d %H:%M"),x.source_file_name,tr("Active") if x.is_active else tr("Inactive")) for x in self.snapshot.datasets]; box.addWidget(self._table([tr("Dataset"),tr("Imported"),tr("Source file"),tr("State")],rows)); self.import_button=QPushButton(tr("Import / Update Project Lines")); self.import_button.setIcon(ui_icon("import","blue")); self.import_button.setVisible(self.context.current_user.can_edit); self.import_button.clicked.connect(self.import_lines); box.addWidget(self.import_button); return w
     def _analytics(self):
         w=QWidget(); box=QVBoxLayout(w); box.addWidget(CompactChart({d.domain.name:d.domain.completed for d in self.snapshot.domains if d.domain.completed})); return w
     def import_lines(self):
         path,_=QFileDialog.getOpenFileName(self,"Datamine CSV — Project Lines","","CSV (*.csv)")
         if not path:return
         try: dataset,_=ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(path); self.lines_repo.import_dataset(self.site_id,dataset,make_active=True); self.refresh()
-        except Exception as exc: QMessageBox.warning(self,"Import error",domain_message(str(exc)))
+        except Exception as exc: QMessageBox.warning(self,tr("Import error"),domain_message(str(exc)))

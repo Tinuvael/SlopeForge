@@ -28,19 +28,19 @@ class AssessmentAreaCreationPage(QWidget):
                 if not self.controller.open_assessment_area(self.edit_area_id): raise ValueError("Assessment Area is not available")
                 self.controller.workspace.edit_area_boundaries()
             else:self.controller.workspace.start_area_drawing()
-        except Exception as exc: QMessageBox.critical(self,"Assessment Area",f"Could not start boundary editing.\n\n{domain_message(str(exc))}")
+        except Exception as exc: QMessageBox.critical(self,tr("Assessment Area"),f"Could not start boundary editing.\n\n{domain_message(str(exc))}")
         self._sync_status()
     def _toggle_lines(self,shown):self.controller.workspace.lines_checkbox.setChecked(shown); self.controller.workspace.draw_geometry()
     def _toggle_grid(self,shown):self.controller.workspace.grid_button.setChecked(shown); self.controller.workspace.draw_geometry()
     def _workflow_action(self,key):self.controller.workspace._drawing_key(key); self._sync_status()
     def _continue(self):
         try:self.controller.workspace.finish_area_drawing()
-        except Exception as exc:QMessageBox.critical(self,"Assessment Area",f"Could not start boundary refinement.\n\n{domain_message(str(exc))}")
+        except Exception as exc:QMessageBox.critical(self,tr("Assessment Area"),f"Could not start boundary refinement.\n\n{domain_message(str(exc))}")
         self._sync_status()
     def _confirm(self):
         if self._completion_emitted:return
         try:self.controller.workspace.confirm_refined_polygon()
-        except Exception as exc:QMessageBox.critical(self,"Assessment Area",f"Could not save the new boundaries.\n\n{domain_message(str(exc))}")
+        except Exception as exc:QMessageBox.critical(self,tr("Assessment Area"),f"Could not save the new boundaries.\n\n{domain_message(str(exc))}")
         self._sync_status()
         if self.controller.workspace.workflow_state!="IDLE":return
         completed_id=None

@@ -24,12 +24,12 @@ class UserEditDialog(QDialog):
         self.repeat = QLineEdit(); self.repeat.setEchoMode(QLineEdit.EchoMode.Password)
         self.is_active = QCheckBox(tr("Active"))
         self.must_change = QCheckBox(tr("Require password change on next sign-in"))
-        form.addRow("Username *", self.username)
-        form.addRow("Full name", self.full_name)
-        form.addRow("Role", self.role)
+        form.addRow(tr("Username *"), self.username)
+        form.addRow(tr("Full name"), self.full_name)
+        form.addRow(tr("Role"), self.role)
         if user is None:
-            form.addRow("Temporary password *", self.password)
-            form.addRow("Repeat password *", self.repeat)
+            form.addRow(tr("Temporary password *"), self.password)
+            form.addRow(tr("Repeat password *"), self.repeat)
         form.addRow("", self.is_active)
         form.addRow("", self.must_change)
         layout.addLayout(form)
@@ -54,7 +54,7 @@ class UserEditDialog(QDialog):
                 self.service.update_user(self.actor, self.user.id, self.full_name.text().strip() or None, self.role.currentText(), self.is_active.isChecked(), self.must_change.isChecked())
             self.accept()
         except (UserAdminError, PermissionError) as exc:
-            QMessageBox.warning(self, "Could not save user", str(exc))
+            QMessageBox.warning(self, tr("Could not save user"), str(exc))
 
 
 class PasswordDialog(QDialog):
@@ -66,7 +66,7 @@ class PasswordDialog(QDialog):
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.repeat = QLineEdit(); self.repeat.setEchoMode(QLineEdit.EchoMode.Password)
         self.must_change = QCheckBox(tr("Require password change on next sign-in"))
-        form.addRow("New password", self.password); form.addRow("Repeat password", self.repeat); form.addRow("", self.must_change)
+        form.addRow(tr("New password"), self.password); form.addRow(tr("Repeat password"), self.repeat); form.addRow("", self.must_change)
         layout.addLayout(form)
         save = QPushButton(tr("Save")); save.clicked.connect(self.save); layout.addWidget(save)
 
@@ -75,4 +75,4 @@ class PasswordDialog(QDialog):
             self.service.change_password(self.actor, self.user_id, self.password.text(), self.repeat.text(), self.must_change.isChecked())
             self.accept()
         except (UserAdminError, PermissionError) as exc:
-            QMessageBox.warning(self, "Could not change password", str(exc))
+            QMessageBox.warning(self, tr("Could not change password"), str(exc))
