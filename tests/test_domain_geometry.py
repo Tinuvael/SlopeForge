@@ -1,12 +1,23 @@
 from pathlib import Path
 import pytest
-from prototype_2d.domain import PlanPoint
+from prototype_2d.domain import PlanPoint,PlanPolygon
 from prototype_2d.domain_geometry import DomainGeometryValidationError,build_domain_polygons
+from prototype_2d.geometry import validate_simple_polygon
 from prototype_2d.line_geometry_importer import import_line_geometry
 from prototype_2d.models import DatamineLine,DataminePoint
 
 def line(points,identifier="L",order=0):
     return DatamineLine(identifier,[DataminePoint(x,y,z,i) for i,(x,y,z) in enumerate(points)],import_order=order)
+
+@pytest.mark.parametrize("coordinate,index",[
+    (float("nan"),0), (float("nan"),1), (float("inf"),0), (float("-inf"),1),
+])
+def test_validate_simple_polygon_rejects_non_finite_coordinates(coordinate,index):
+    values=[[0.0,0.0],[4.0,0.0],[0.0,4.0]]
+    values[1][index]=coordinate
+    points=tuple(PlanPoint(x,y) for x,y in values)
+    with pytest.raises(ValueError,match="coordinates must be finite"):
+        validate_simple_polygon(PlanPolygon(points+(points[0],)))
 
 def test_horizontal_and_non_planar_xy_projection_are_closed_without_mutation():
     horizontal=line([(0,0,10),(2,0,10),(2,2,10),(0,0,10)])

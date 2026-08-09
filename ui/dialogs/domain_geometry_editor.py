@@ -40,8 +40,16 @@ class DomainGeometryEditorDialog(QDialog):
         self.fit_button.clicked.connect(self.fit); self.lines_toggle.toggled.connect(self._rerender_preserving_edits); self.grid_toggle.toggled.connect(self._rerender_preserving_edits); self.add_button.clicked.connect(self.start_polygon); self.undo_button.clicked.connect(self.undo_vertex); self.finish_button.clicked.connect(self.finish_polygon); self.delete_button.clicked.connect(self.delete_selected); self.save_button.clicked.connect(self.save); self.cancel_button.clicked.connect(self.reject); self.render(preserve_view=False); self.fit()
     def _warning(self,message): QMessageBox.warning(self,tr("Domain geometry"),domain_message(str(message)))
     def _rerender_preserving_edits(self,*_): self._sync_handles(); self.render()
+    def _set_drawing_mode(self,active):
+        self.drawing=active
+        if active:
+            self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
+            self.view.viewport().setCursor(Qt.CursorShape.CrossCursor)
+        else:
+            self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+            self.view.viewport().unsetCursor()
     def start_polygon(self):
-        self._sync_handles(); self.drawing=True; self.vertices=[]; self.selected_index=None; self.render()
+        self._sync_handles(); self._set_drawing_mode(True); self.vertices=[]; self.selected_index=None; self.render()
     def add_vertex(self,x,y): self.vertices.append(PlanPoint(x,y)); self.render()
     def undo_vertex(self):
         if self.drawing and self.vertices:self.vertices.pop(); self.render()
@@ -50,7 +58,10 @@ class DomainGeometryEditorDialog(QDialog):
         polygon=PlanPolygon(tuple(self.vertices+[self.vertices[0]]))
         try: validate_simple_polygon(polygon)
         except ValueError as exc: self._warning(exc); return
-        self.polygons.append(polygon); self.selected_index=len(self.polygons)-1; self.vertices=[]; self.drawing=False; self.render()
+        self.polygons.append(polygon); self.selected_index=len(self.polygons)-1; self.vertices=[]; self._set_drawing_mode(False); self.render()
+    def reject(self):
+        self._set_drawing_mode(False)
+        super().reject()
     def delete_selected(self):
         self._sync_handles()
         if self.selected_index is not None: self.polygons.pop(self.selected_index); self.selected_index=None; self.render()
@@ -73,7 +84,9 @@ class DomainGeometryEditorDialog(QDialog):
         center=self.view.mapToScene(self.view.viewport().rect().center()) if preserve_view else None
         self.scene.clear(); self.handles=[]; self._line_items=[]
         if self.lines_toggle.isChecked():
-            for geometry in self.project_lines:self._path(geometry.points,"#CBD5E1",1,None,-10)
+            for geometry in self.project_lines:
+                item=self._path(geometry.points,"#94A3B8",1,None,-10,cosmetic=True,opacity=0.45)
+                self._line_items.append(item)
         for index,polygon in enumerate(self.polygons):
             item=self._path(tuple((point.x,point.y) for point in polygon.ring),"#0F766E",2 if index==self.selected_index else 1.3,"#99F6E4",0); item.mousePressEvent=lambda event,i=index:self._select(i)
         if self.selected_index is not None:
@@ -83,10 +96,15 @@ class DomainGeometryEditorDialog(QDialog):
         if preserve_view:
             self.view.setTransform(transform); self.view.centerOn(center)
         self.view.viewport().update()
-    def _path(self,points,color,width,fill,z):
+    def _path(self,points,color,width,fill,z,cosmetic=False,opacity=1.0):
         path=QPainterPath(); x,y=points[0]; path.moveTo(x,-y)
         for x,y in points[1:]:path.lineTo(x,-y)
-        item=QGraphicsPathItem(path); item.setPen(QPen(QColor(color),width)); fill_color=QColor(fill) if fill else QColor(Qt.GlobalColor.transparent); fill_color.setAlpha(50); item.setBrush(fill_color); item.setZValue(z); self.scene.addItem(item); return item
+        item=QGraphicsPathItem(path); pen=QPen(QColor(color),width); pen.setCosmetic(cosmetic); item.setPen(pen)
+        if fill:
+            fill_color=QColor(fill); fill_color.setAlpha(50); item.setBrush(QBrush(fill_color))
+        else:
+            item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setOpacity(opacity); item.setZValue(z); self.scene.addItem(item); return item
     def fit(self):
         rect=self.scene.itemsBoundingRect()
         if not rect.isNull():self.view.fitInView(rect.adjusted(-10,-10,10,10),Qt.AspectRatioMode.KeepAspectRatio)

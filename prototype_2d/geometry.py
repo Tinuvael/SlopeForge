@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from math import hypot
+from math import hypot, isfinite
 
 from .models import DatamineLine
 from .domain import PlanLineString, PlanMultiPoint, PlanPoint, PlanPolygon
@@ -100,6 +100,8 @@ def polygon_self_intersects(polygon: PlanPolygon, tolerance: float = GEOMETRY_TO
 
 
 def validate_simple_polygon(polygon: PlanPolygon, tolerance: float = GEOMETRY_TOLERANCE) -> None:
+    if any(not isfinite(point.x) or not isfinite(point.y) for point in polygon.ring):
+        raise ValueError("Polygon coordinates must be finite")
     vertices = polygon.ring[:-1]
     if len({(point.x, point.y) for point in vertices}) < 3:
         raise ValueError("Полигон должен содержать минимум три различные вершины")
