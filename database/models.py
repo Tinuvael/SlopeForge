@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import (
     BigInteger, Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Index, func,
     Integer, Numeric, String, Text, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import JSONB
 
 from .base import Base, TimestampMixin
 
@@ -68,6 +69,27 @@ class Domain(TimestampMixin, Base):
         back_populates="domain", uselist=False
     )
     blast_blocks: Mapped[list["BlastBlock"]] = relationship(back_populates="domain")
+    geometry: Mapped[Optional["DomainGeometry"]] = relationship(
+        back_populates="domain", uselist=False, cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class DomainGeometry(TimestampMixin, Base):
+    """The single current, plan-view reference footprint for a Domain."""
+    __tablename__ = "domain_geometries"
+    __table_args__ = (
+        CheckConstraint("jsonb_typeof(polygons_json) = 'array'", name="ck_domain_geometries_polygons_array"),
+        CheckConstraint("source_kind IN ('imported', 'drawn')", name="ck_domain_geometries_source_kind"),
+        UniqueConstraint("domain_id", name="uq_domain_geometries_domain_id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    domain_id: Mapped[int] = mapped_column(
+        ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    polygons_json: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    source_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_file_name: Mapped[Optional[str]] = mapped_column(String(255))
+    domain: Mapped[Domain] = relationship(back_populates="geometry")
 
 
 class BlastBlock(TimestampMixin, Base):

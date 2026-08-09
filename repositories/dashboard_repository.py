@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy import select
-from database.models import BlastBlock, Domain
+from database.models import BlastBlock, Domain, DomainGeometry
 from database import assessment_models as a
 
 @dataclass(frozen=True)
@@ -23,6 +23,26 @@ class MapGeometry:
     quadrant: str | None = None
 
 @dataclass(frozen=True)
+class DomainMapGeometry:
+    domain_id: int
+    domain_name: str
+    points: tuple[tuple[float, float], ...]
+    palette_index: int
+    is_current: bool = False
+
+@dataclass(frozen=True)
+class _SiteDomainGeometryProjection:
+    geometries: tuple[DomainMapGeometry, ...]
+    metadata: tuple[tuple[int, str, str | None], ...]
+
+    def for_domain(self, domain_id: int):
+        geometries=tuple(DomainMapGeometry(
+            item.domain_id,item.domain_name,item.points,item.palette_index,item.domain_id==domain_id
+        ) for item in self.geometries)
+        source=next(((kind,filename) for current_id,kind,filename in self.metadata if current_id==domain_id),(None,None))
+        return geometries,source[0],source[1]
+
+@dataclass(frozen=True)
 class DomainSummary:
     id: int; name: str; production: int = 0; contour: int = 0; areas: int = 0
     completed: int = 0; drafts: int = 0; average_dai: float | None = None; average_fci: float | None = None
@@ -38,11 +58,15 @@ class DomainDashboardSnapshot:
     production_geometries: tuple[MapGeometry, ...] = ()
     contour_geometries: tuple[MapGeometry, ...] = ()
     assessment_geometries: tuple[MapGeometry, ...] = ()
+    domain_geometries: tuple[DomainMapGeometry, ...] = ()
+    geometry_source_kind: str | None = None
+    geometry_source_file_name: str | None = None
 
 @dataclass(frozen=True)
 class SiteDashboardSnapshot:
     site_id: int; domains: list[DomainDashboardSnapshot]; active_dataset: object | None; datasets: list[object]
     recent: list[tuple[str, datetime | date | None]] = field(default_factory=list)
+    project_lines: tuple[MapGeometry, ...] = ()
     @property
     def production(self): return sum(x.domain.production for x in self.domains)
     @property
@@ -60,6 +84,11 @@ class SiteDashboardSnapshot:
     def average_dai(self): return self._average("dai")
     @property
     def average_fci(self): return self._average("fci")
+    @property
+    def domain_geometries(self):
+        if not self.domains: return ()
+        # Every Domain snapshot contains the same set-based Project context.
+        return tuple(DomainMapGeometry(g.domain_id,g.domain_name,g.points,g.palette_index,False) for g in self.domains[0].domain_geometries)
 
 def _number(v):
     if v is None: return "—"
@@ -68,6 +97,8 @@ def _number(v):
 class DashboardRepository:
     def __init__(self, session_factory): self.session_factory=session_factory
     def domain_snapshot(self, domain_id: int) -> DomainDashboardSnapshot:
+        return self._domain_snapshot(domain_id)
+    def _domain_snapshot(self, domain_id: int, site_geometry: _SiteDomainGeometryProjection | None = None) -> DomainDashboardSnapshot:
         with self.session_factory() as s:
             domain=s.get(Domain,domain_id)
             if domain is None: raise LookupError(f"Domain {domain_id} not found")
@@ -96,7 +127,7 @@ class DashboardRepository:
             recent=sorted(activity,key=lambda x:x[1].timestamp() if isinstance(x[1],datetime) else 0,reverse=True)[:10]
 
             dataset=s.scalar(select(a.ProjectLinesDataset).where(a.ProjectLinesDataset.site_id==domain.site_id,a.ProjectLinesDataset.is_active.is_(True)))
-            project_lines=tuple(MapGeometry(str(line.get("source_id",index)),tuple((float(p["x"]),float(p["y"])) for p in line.get("points",[]))) for index,line in enumerate(dataset.lines_json if dataset else []) if len(line.get("points",[]))>=2)
+            project_lines=_project_line_geometries(dataset)
             active_block_ids={x.id for x in blocks}
             geometry_rows=s.execute(select(a.BlastEvent,a.BlastEventGeometryRevision).join(a.BlastEvent.workspace).join(a.BlastEvent.geometry_revisions).where(a.AssessmentWorkspace.domain_id==domain_id,a.BlastEvent.is_archived.is_(False),a.BlastEventGeometryRevision.is_active.is_(True))).all()
             production_geometries=[]; contour_geometries=[]
@@ -106,17 +137,40 @@ class DashboardRepository:
                 target=production_geometries if event.event_type=="production" and event.blast_block_id in active_block_ids else contour_geometries if event.event_type=="contour" else None
                 if target is not None: target.append(MapGeometry(event.blast_block_id if event.blast_block_id else event.id,points))
             assessment_geometries=tuple(MapGeometry(area.id,_geometry_points(geo.final_geometry_json),ev.result_quadrant if ev and ev.status=="completed" else None) for area,geo,ev in rows if _geometry_points(geo.final_geometry_json))
-            return DomainDashboardSnapshot(summary,areas,blasts,intervals,quadrants,recent,project_lines,tuple(production_geometries),tuple(contour_geometries),assessment_geometries)
+            if site_geometry is None: site_geometry=_load_site_domain_geometry(s,domain.site_id)
+            domain_geometries,source_kind,source_file_name=site_geometry.for_domain(domain_id)
+            return DomainDashboardSnapshot(summary,areas,blasts,intervals,quadrants,recent,project_lines,tuple(production_geometries),tuple(contour_geometries),assessment_geometries,domain_geometries,source_kind,source_file_name)
     def site_snapshot(self, site_id: int) -> SiteDashboardSnapshot:
         with self.session_factory() as s:
             ids=list(s.scalars(select(Domain.id).where(Domain.site_id==site_id).order_by(Domain.name)))
             datasets=list(s.scalars(select(a.ProjectLinesDataset).where(a.ProjectLinesDataset.site_id==site_id).order_by(a.ProjectLinesDataset.imported_at.desc())))
+            active=next((x for x in datasets if x.is_active),None)
+            project_lines=_project_line_geometries(active)
+            site_geometry=_load_site_domain_geometry(s,site_id)
             for row in datasets: s.expunge(row)
-        domains=[self.domain_snapshot(i) for i in ids]
+        domains=[self._domain_snapshot(i,site_geometry) for i in ids]
         activity=[(f"Project Lines: {x.name}",x.imported_at) for x in datasets]
         activity += [item for domain in domains for item in domain.recent]
         activity.sort(key=lambda x:x[1].timestamp() if isinstance(x[1],datetime) else 0,reverse=True)
-        return SiteDashboardSnapshot(site_id,domains,next((x for x in datasets if x.is_active),None),datasets,activity[:10])
+        return SiteDashboardSnapshot(site_id,domains,active,datasets,activity[:10],project_lines)
+
+def _load_site_domain_geometry(session,site_id: int) -> _SiteDomainGeometryProjection:
+    rows=session.execute(select(Domain,DomainGeometry).outerjoin(DomainGeometry).where(
+        Domain.site_id==site_id
+    ).order_by(Domain.name,Domain.id)).all()
+    geometries=[]; metadata=[]
+    for palette_index,(domain,geometry) in enumerate(rows):
+        if geometry is not None:
+            metadata.append((domain.id,geometry.source_kind,geometry.source_file_name))
+            for polygon in geometry.polygons_json:
+                points=_geometry_points(polygon)
+                if points: geometries.append(DomainMapGeometry(domain.id,domain.name,points,palette_index))
+    return _SiteDomainGeometryProjection(tuple(geometries),tuple(metadata))
+
+def _project_line_geometries(dataset) -> tuple[MapGeometry,...]:
+    return tuple(MapGeometry(str(line.get("source_id",index)),tuple(
+        (float(point["x"]),float(point["y"])) for point in line.get("points",[])
+    )) for index,line in enumerate(dataset.lines_json if dataset else []) if len(line.get("points",[]))>=2)
 
 def _geometry_points(value) -> tuple[tuple[float,float],...]:
     """Decode the persisted GeoJSON-like plan types into detached XY tuples."""
