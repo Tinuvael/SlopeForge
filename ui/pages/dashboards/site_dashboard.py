@@ -24,8 +24,7 @@ class SiteDashboardPage(QWidget):
     def _map_snapshot(self):
         from types import SimpleNamespace
         domains=self.snapshot.domains
-        first=domains[0] if domains else None
-        return SimpleNamespace(domain_geometries=self.snapshot.domain_geometries,project_lines=first.project_lines if first else (),production_geometries=tuple(g for d in domains for g in d.production_geometries),contour_geometries=tuple(g for d in domains for g in d.contour_geometries),assessment_geometries=tuple(g for d in domains for g in d.assessment_geometries))
+        return SimpleNamespace(domain_geometries=self.snapshot.domain_geometries,project_lines=self.snapshot.project_lines,production_geometries=tuple(g for d in domains for g in d.production_geometries),contour_geometries=tuple(g for d in domains for g in d.contour_geometries),assessment_geometries=tuple(g for d in domains for g in d.assessment_geometries))
     def refresh(self):
         current=self.tabs.currentIndex(); self.snapshot=self.repo.site_snapshot(self.site_id); self._populate_tabs(); self.tabs.setCurrentIndex(max(0,min(current,self.tabs.count()-1)))
     def _table(self,headers,rows,ids=None):

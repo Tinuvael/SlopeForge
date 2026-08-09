@@ -80,10 +80,11 @@ class DomainGeometry(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("jsonb_typeof(polygons_json) = 'array'", name="ck_domain_geometries_polygons_array"),
         CheckConstraint("source_kind IN ('imported', 'drawn')", name="ck_domain_geometries_source_kind"),
+        UniqueConstraint("domain_id", name="uq_domain_geometries_domain_id"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     domain_id: Mapped[int] = mapped_column(
-        ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+        ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, index=True
     )
     polygons_json: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
     source_kind: Mapped[str] = mapped_column(String(20), nullable=False)

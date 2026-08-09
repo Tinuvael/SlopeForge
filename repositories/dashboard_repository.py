@@ -54,6 +54,7 @@ class DomainDashboardSnapshot:
 class SiteDashboardSnapshot:
     site_id: int; domains: list[DomainDashboardSnapshot]; active_dataset: object | None; datasets: list[object]
     recent: list[tuple[str, datetime | date | None]] = field(default_factory=list)
+    project_lines: tuple[MapGeometry, ...] = ()
     @property
     def production(self): return sum(x.domain.production for x in self.domains)
     @property
@@ -112,7 +113,7 @@ class DashboardRepository:
             recent=sorted(activity,key=lambda x:x[1].timestamp() if isinstance(x[1],datetime) else 0,reverse=True)[:10]
 
             dataset=s.scalar(select(a.ProjectLinesDataset).where(a.ProjectLinesDataset.site_id==domain.site_id,a.ProjectLinesDataset.is_active.is_(True)))
-            project_lines=tuple(MapGeometry(str(line.get("source_id",index)),tuple((float(p["x"]),float(p["y"])) for p in line.get("points",[]))) for index,line in enumerate(dataset.lines_json if dataset else []) if len(line.get("points",[]))>=2)
+            project_lines=_project_line_geometries(dataset)
             active_block_ids={x.id for x in blocks}
             geometry_rows=s.execute(select(a.BlastEvent,a.BlastEventGeometryRevision).join(a.BlastEvent.workspace).join(a.BlastEvent.geometry_revisions).where(a.AssessmentWorkspace.domain_id==domain_id,a.BlastEvent.is_archived.is_(False),a.BlastEventGeometryRevision.is_active.is_(True))).all()
             production_geometries=[]; contour_geometries=[]
@@ -134,12 +135,19 @@ class DashboardRepository:
         with self.session_factory() as s:
             ids=list(s.scalars(select(Domain.id).where(Domain.site_id==site_id).order_by(Domain.name)))
             datasets=list(s.scalars(select(a.ProjectLinesDataset).where(a.ProjectLinesDataset.site_id==site_id).order_by(a.ProjectLinesDataset.imported_at.desc())))
+            active=next((x for x in datasets if x.is_active),None)
+            project_lines=_project_line_geometries(active)
             for row in datasets: s.expunge(row)
         domains=[self.domain_snapshot(i) for i in ids]
         activity=[(f"Project Lines: {x.name}",x.imported_at) for x in datasets]
         activity += [item for domain in domains for item in domain.recent]
         activity.sort(key=lambda x:x[1].timestamp() if isinstance(x[1],datetime) else 0,reverse=True)
-        return SiteDashboardSnapshot(site_id,domains,next((x for x in datasets if x.is_active),None),datasets,activity[:10])
+        return SiteDashboardSnapshot(site_id,domains,active,datasets,activity[:10],project_lines)
+
+def _project_line_geometries(dataset) -> tuple[MapGeometry,...]:
+    return tuple(MapGeometry(str(line.get("source_id",index)),tuple(
+        (float(point["x"]),float(point["y"])) for point in line.get("points",[])
+    )) for index,line in enumerate(dataset.lines_json if dataset else []) if len(line.get("points",[]))>=2)
 
 def _geometry_points(value) -> tuple[tuple[float,float],...]:
     """Decode the persisted GeoJSON-like plan types into detached XY tuples."""

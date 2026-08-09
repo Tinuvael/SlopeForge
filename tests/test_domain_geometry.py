@@ -46,3 +46,17 @@ def test_real_dxf_importer_projects_2d_and_nonplanar_3d(tmp_path):
     path=tmp_path/'domains.dxf'; doc.saveas(path)
     result=build_domain_polygons(import_line_geometry(path).lines)
     assert len(result.polygons)==2
+
+def test_self_intersecting_import_is_skipped_but_valid_peer_survives():
+    valid=line([(0,0,0),(4,0,0),(4,4,0),(0,4,0),(0,0,9)],"valid")
+    bow_tie=line([(10,10,0),(14,14,1),(10,13,2),(13,10,3),(10,10,4)],"bow")
+    result=build_domain_polygons([valid,bow_tie])
+    assert len(result.polygons)==1
+    assert result.polygons[0].ring[0]==PlanPoint(0,0)
+    assert result.skipped_degenerate_lines==1
+
+
+def test_all_self_intersecting_import_keeps_clear_validation_error():
+    bow_tie=line([(0,0,0),(4,4,1),(0,3,2),(3,0,3),(0,0,4)])
+    with pytest.raises(DomainGeometryValidationError,match="No valid closed Domain polygons"):
+        build_domain_polygons([bow_tie])

@@ -5,6 +5,7 @@ from math import hypot
 from typing import Sequence
 
 from .domain import PlanPoint, PlanPolygon
+from .geometry import validate_simple_polygon
 from .models import DatamineLine
 
 DOMAIN_CLOSURE_TOLERANCE_M = 0.05
@@ -45,7 +46,13 @@ def build_domain_polygons(
         if len(distinct) < 3 or area <= DOMAIN_MIN_AREA_M2:
             degenerate_count += 1
             continue
-        polygons.append(PlanPolygon(vertices + (vertices[0],)))
+        polygon = PlanPolygon(vertices + (vertices[0],))
+        try:
+            validate_simple_polygon(polygon)
+        except ValueError:
+            degenerate_count += 1
+            continue
+        polygons.append(polygon)
     if not polygons:
         raise DomainGeometryValidationError(
             "No valid closed Domain polygons were found in the geometry file."
