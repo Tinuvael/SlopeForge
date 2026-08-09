@@ -3,6 +3,8 @@
 The keys stored in the database/domain snapshots are deliberately not changed.
 """
 
+import re
+
 TECHNICAL_GROUP_LABELS = {
     "main_pattern": "Main pattern",
     "inner_buffer": "Inner buffer row",
@@ -15,6 +17,8 @@ TECHNICAL_GROUP_LABELS = {
     "auxiliary": "Auxiliary holes",
     "contour_line": "Contour row",
     "presplit_line": "Presplit line",
+    "midsplit_line": "Midsplit line",
+    "postsplit_line": "Postsplit line",
     "line_drilling": "Line drilling",
     "trim_row": "Trim row",
     "other": "Other type",
@@ -91,6 +95,27 @@ DOMAIN_MESSAGES = {
     "Для диапазона 1–5 укажите явное решение и причину": "For the range 1–5, provide an explicit score and reason",
     "Архивная Assessment Area доступна только для чтения": "Archived Assessment Areas are read-only",
     "Для ручного выбора матрицы укажите причину": "Provide a reason for manual matrix selection",
+    "Сначала загрузите и выберите активный Dataset": "Load and select an active dataset first",
+    "На одной отметке можно выбрать только один фрагмент": "Select only one fragment at each elevation",
+    "Выберите фрагменты минимум на двух разных отметках": "Select fragments at least at two different elevations",
+    "Нет активного Dataset": "There is no active dataset",
+    "Сначала восстановите Assessment Area из архива": "Restore the Assessment Area before editing it",
+    "Архивное событие или событие без геометрии нельзя связать": "Archived events and events without geometry cannot be linked",
+    "Это событие уже связано с активной ревизией Assessment Area": "This event is already linked to the active Assessment Area revision",
+    "Связь активной ревизии не найдена": "The active-revision link was not found",
+    "Связи архивной Assessment Area доступны только для чтения": "Links of an archived Assessment Area are read-only",
+    "Полигон должен содержать минимум три различные вершины": "The polygon must contain at least three distinct vertices",
+    "Соседние вершины полигона совпадают": "Adjacent polygon vertices must not coincide",
+    "Площадь полигона равна нулю": "The polygon area is zero",
+    "Границы полигона пересекают сами себя": "The polygon boundary intersects itself",
+    "Укажите название события": "Enter a blast event name",
+    "Выберите тип события: production или contour": "Select the blast event type: production or contour",
+    "Укажите горизонт события": "Enter the blast event horizon",
+    "Не удалось прочитать файл как UTF-8. Сохраните CSV в UTF-8 или UTF-8 BOM.": "Could not read the file as UTF-8. Save the CSV as UTF-8 or UTF-8 BOM.",
+    "Неизвестный тип владельца файла": "Unknown attachment owner type",
+    "Некорректный ID владельца": "Invalid attachment owner ID",
+    "Неизвестный тип файла": "Unknown attachment kind",
+    "Путь файла выходит за каталог данных": "The attachment path is outside the data directory",
 }
 
 TECHNICAL_TEXT_LABELS = {
@@ -128,7 +153,68 @@ def result_label(value: str | None) -> str:
 
 
 def domain_message(value: str) -> str:
-    return DOMAIN_MESSAGES.get(value, value)
+    """Translate known domain validation text without altering domain values.
+
+    Prefix handling keeps useful dynamic details (IDs, column names and nested
+    exceptions) while ensuring normal UI error paths remain English.
+    """
+    exact = DOMAIN_MESSAGES.get(value)
+    if exact is not None:
+        return exact
+    prefixes = {
+        "Не заполнено: ": "Missing required fields: ",
+        "Не удалось импортировать CSV: ": "Could not import CSV: ",
+        "Не удалось прочитать CSV: ": "Could not read CSV: ",
+        "Не сопоставлены обязательные колонки: ": "Required columns are not mapped: ",
+        "Перенесён старый фактический метраж группы ": "Migrated legacy actual drilling length for group ",
+    }
+    for prefix, translated in prefixes.items():
+        if value.startswith(prefix):
+            detail = value[len(prefix):]
+            if prefix == "Не заполнено: ":
+                fields = {
+                    "Дата оценки": "Assessment date", "Инспектор": "Inspector",
+                    "Недобор угла относительно проекта, °": CRITERION_LABELS["bench_angle"],
+                    "Уменьшение ширины относительно проекта, м": CRITERION_LABELS["berm_width"],
+                    "Отклонение фактической подошвы от проектной, м": CRITERION_LABELS["toe_position"],
+                    "Потеря / разрушение бровки, м": CRITERION_LABELS["crest_loss"],
+                    "Открытые трещины взрывного происхождения": CRITERION_LABELS["open_cracks"],
+                    "Признаки взрывного повреждения ранее ненарушенной породы, шт/м²": CRITERION_LABELS["damage"],
+                    "Видимые следы контурных скважин, %": CRITERION_LABELS["visible_drillhole_traces"],
+                    "Свободные блоки и неустойчивые обломки на откосе": CRITERION_LABELS["loose_blocks"],
+                    "Фактический профиль откоса": CRITERION_LABELS["face_profile"],
+                }
+                for source in sorted(fields, key=len, reverse=True):
+                    detail = detail.replace(source, fields[source])
+            else:
+                detail = domain_message(detail)
+            return translated + detail
+    if value.startswith("Dataset ") and value.endswith(" не найден"):
+        return value[:-len(" не найден")] + " was not found"
+    if value.startswith("BlastEvent ") and value.endswith(" не найден"):
+        return value[:-len(" не найден")] + " was not found"
+    if "; " in value:
+        parts = [domain_message(part) for part in value.split("; ")]
+        if all(not re.search(r"[А-Яа-яЁё]", part) for part in parts):
+            return "; ".join(parts)
+    if re.search(r"[А-Яа-яЁё]", value):
+        return "Validation failed. Check the entered data."
+    return value
+
+
+def import_summary_text(summary) -> str:
+    """Render the active Datamine import summary without domain-localized text."""
+    delimiter = {",": "comma", ";": "semicolon", "\t": "tab"}.get(summary.delimiter, summary.delimiter)
+    return "\n".join((
+        f"File: {summary.file_name}",
+        f"Delimiter: {delimiter}",
+        f"Encoding: {summary.encoding}",
+        f"Rows: {summary.total_rows}",
+        f"Valid points: {summary.valid_points}",
+        f"Skipped rows: {summary.skipped_rows}",
+        f"Failed rows: {summary.failed_rows}",
+        f"Lines: {summary.line_count}",
+    ))
 
 
 def technical_text(value: str) -> str:

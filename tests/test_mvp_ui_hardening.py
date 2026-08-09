@@ -253,3 +253,40 @@ def test_repeated_transient_navigation_keeps_stack_bounded():
         app.processEvents()
         assert window.page_stack.count() <= 2
     window.close()
+
+
+def test_all_technical_card_catalogue_keys_have_english_presentation_labels():
+    import re
+    from prototype_2d.technical_card import (
+        CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS, PRODUCTION_GROUP_TYPES,
+    )
+    from ui.presentation_labels import CONTROLLED_BLASTING_LABELS, technical_group_label
+
+    for catalogue in (PRODUCTION_GROUP_TYPES, CONTOUR_GROUP_TYPES):
+        for key in catalogue:
+            label = technical_group_label(key)
+            assert label
+            assert label != key
+            assert label != key.replace("_", " ")
+            assert not re.search(r"[А-Яа-яЁё]", label)
+    for key in CONTROLLED_BLASTING_METHODS:
+        label = CONTROLLED_BLASTING_LABELS.get(key, "")
+        assert label and label != key and label != key.replace("_", " ")
+        assert not re.search(r"[А-Яа-яЁё]", label)
+
+
+def test_dynamic_domain_validation_messages_are_presented_in_english():
+    from ui.presentation_labels import domain_message
+
+    assert domain_message("Не заполнено: Дата оценки, Инспектор") == "Missing required fields: Assessment date, Inspector"
+    assert domain_message("Не удалось импортировать CSV: Не удалось прочитать файл как UTF-8. Сохраните CSV в UTF-8 или UTF-8 BOM.") == (
+        "Could not import CSV: Could not read the file as UTF-8. Save the CSV as UTF-8 or UTF-8 BOM."
+    )
+    assert domain_message("Dataset 'D-1' не найден") == "Dataset 'D-1' was not found"
+    assert domain_message("BlastEvent 'E-1' не найден") == "BlastEvent 'E-1' was not found"
+    incomplete = domain_message("Не заполнено: Недобор угла относительно проекта, °, Дата оценки, Инспектор")
+    assert incomplete.startswith("Missing required fields: Bench face angle shortfall")
+    assert not __import__("re").search(r"[А-Яа-яЁё]", incomplete)
+    assert domain_message("Добавьте группу бурения; Выберите метод контурного взрывания") == (
+        "Add a drilling group; Select a controlled blasting method"
+    )

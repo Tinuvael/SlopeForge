@@ -1,3 +1,4 @@
+from ui.presentation_labels import domain_message
 from PySide6.QtWidgets import QMainWindow,QMessageBox,QStackedWidget,QVBoxLayout,QHBoxLayout,QWidget
 from app.config import APP_NAME,APP_VERSION
 from app.qt import apply_window_icon
@@ -56,7 +57,7 @@ class MainWindow(QMainWindow):
             self.assessment_domain_id = None
             self.assessment_site_id = None
             return True
-        except Exception as exc: QMessageBox.critical(self,"Save error",f"Could not save data.\n\n{exc}"); return False
+        except Exception as exc: QMessageBox.critical(self,"Save error",f"Could not save data.\n\n{domain_message(str(exc))}"); return False
     def _set_context(self,site_id,site_name=None,domain_id=None,domain_name=None,block_id=None,area_id=None,contour_id=None):
         self.selected_site_id=site_id; self.selected_site_name=site_name or self.selected_site_name; self.selected_domain_id=domain_id; self.selected_domain_name=domain_name; self.selected_block_id=block_id; self.selected_contour_event_id=contour_id; self.selected_assessment_area_id=area_id; self._update_add(); self.header.set_archive_context(area_id is not None or contour_id is not None)
     def _update_add(self):
@@ -67,7 +68,7 @@ class MainWindow(QMainWindow):
             from ui.pages.dashboards import SiteDashboardPage
             page=SiteDashboardPage(self.context,site_id,site_name)
         except Exception as exc:
-            QMessageBox.critical(self,"Could not open project dashboard",str(exc)); return False
+            QMessageBox.critical(self,"Could not open project dashboard",domain_message(str(exc))); return False
         page.domain_requested.connect(lambda domain_id:self._open_domain_dashboard(domain_id,site_id,site_name))
         self._activate_page(page); self._set_context(site_id,site_name); return True
     def _open_domain_dashboard(self,domain_id,site_id,site_name):
@@ -78,7 +79,7 @@ class MainWindow(QMainWindow):
             from ui.pages.dashboards import DomainDashboardPage
             page=DomainDashboardPage(self.context,domain_id,domain_name)
         except Exception as exc:
-            QMessageBox.critical(self,"Could not open domain dashboard",str(exc)); return False
+            QMessageBox.critical(self,"Could not open domain dashboard",domain_message(str(exc))); return False
         page.block_requested.connect(lambda block_id:self.open_block_from_tree(block_id,domain_id,site_id))
         page.contour_requested.connect(lambda event_id:self.open_contour_from_tree(event_id,domain_id,site_id,domain_name))
         page.assessment_area_requested.connect(lambda area_id:self.open_area_from_tree(area_id,domain_id,site_id,domain_name))
@@ -93,7 +94,7 @@ class MainWindow(QMainWindow):
         from ui.pages.assessment_area_page import AssessmentAreaPage
         try: page=AssessmentAreaPage(self.context,domain_id,domain_name,area_id)
         except Exception as exc:
-            QMessageBox.critical(self,"Assessment Area",f"Could not open the assessment area. The current page was preserved.\n\n{exc}"); return False
+            QMessageBox.critical(self,"Assessment Area",f"Could not open the assessment area. The current page was preserved.\n\n{domain_message(str(exc))}"); return False
         page.edit_boundaries_requested.connect(self._edit_area_boundaries)
         self._activate_page(page)
         domain=self.domain_repo.get(domain_id); self.assessment_page=None; self.area_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,area_id=area_id); return True
@@ -101,7 +102,7 @@ class MainWindow(QMainWindow):
         if not self._guard_leave(): return False
         from ui.pages.contour_event_page import ContourEventPage
         try: page=ContourEventPage(self.context,domain_id,domain_name,event_id)
-        except Exception as exc: QMessageBox.critical(self,"Contour blast",f"Could not open the contour blast.\n\n{exc}"); return False
+        except Exception as exc: QMessageBox.critical(self,"Contour blast",f"Could not open the contour blast.\n\n{domain_message(str(exc))}"); return False
         self._activate_page(page)
         domain=self.domain_repo.get(domain_id); self.contour_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,contour_id=event_id); self.header.set_archive_context(True,page.blast_event.is_archived); return True
     def _add_project(self):
@@ -117,9 +118,9 @@ class MainWindow(QMainWindow):
             if dataset:
                 try: self.lines_repo.import_dataset(site_id,dataset,make_active=True)
                 except Exception as exc:
-                    QMessageBox.warning(self,"Project created without lines",f"The project was created, but Project Lines were not saved: {exc}\nImport them again from the project page.")
+                    QMessageBox.warning(self,"Project created without lines",f"The project was created, but Project Lines were not saved: {domain_message(str(exc))}\nImport them again from the project page.")
             self.refresh_project_data(); self.select_site(site_id,d.name.text())
-        except Exception as exc: QMessageBox.warning(self,"Could not create project",str(exc))
+        except Exception as exc: QMessageBox.warning(self,"Could not create project",domain_message(str(exc)))
     def _add_domain(self):
         if self.selected_site_id is None:return
         from ui.add_dialog import AddDialog
@@ -153,7 +154,7 @@ class MainWindow(QMainWindow):
                 with self.context.session_factory.begin() as session:
                     row=session.get(BlastBlock,block_id)
                     if row: session.delete(row)
-            QMessageBox.warning(self,"Could not create blast event",str(exc))
+            QMessageBox.warning(self,"Could not create blast event",domain_message(str(exc)))
     def _add_area(self):
         if self.selected_domain_id is None:return
         if not self.lines_repo.get_active(self.selected_site_id):
@@ -162,7 +163,7 @@ class MainWindow(QMainWindow):
         from ui.pages.assessment_area_creation_page import AssessmentAreaCreationPage
         try: page=AssessmentAreaCreationPage(self.context,self.selected_domain_id,self.selected_domain_name,self.selected_site_id)
         except Exception as exc:
-            QMessageBox.critical(self,"Assessment Area",f"Could not start assessment area creation. The current page was preserved.\n\n{exc}"); return
+            QMessageBox.critical(self,"Assessment Area",f"Could not start assessment area creation. The current page was preserved.\n\n{domain_message(str(exc))}"); return
         page.area_created.connect(lambda area_id:self._area_created(area_id,page)); page.cancelled.connect(lambda:self.select_domain(self.selected_domain_id,self.selected_domain_name,self.selected_site_id,self.selected_site_name))
         self._activate_page(page); self.assessment_page=page; self.assessment_domain_id=self.selected_domain_id
     def _area_created(self,area_id,creation_page):
@@ -188,7 +189,7 @@ class MainWindow(QMainWindow):
         from ui.pages.assessment_area_creation_page import AssessmentAreaCreationPage
         try: page=AssessmentAreaCreationPage(self.context,self.selected_domain_id,self.selected_domain_name,self.selected_site_id,edit_area_id=area_id)
         except Exception as exc:
-            QMessageBox.critical(self,"Assessment Area",f"Could not open boundary editing. The current page was preserved.\n\n{exc}"); return
+            QMessageBox.critical(self,"Assessment Area",f"Could not open boundary editing. The current page was preserved.\n\n{domain_message(str(exc))}"); return
         page.area_created.connect(lambda completed_id:self._finish_area_boundary_edit(completed_id,page)); page.cancelled.connect(lambda:self._cancel_area_boundary_edit(area_id,page)); self._activate_page(page); self.assessment_page=page; self.assessment_domain_id=self.selected_domain_id; self.assessment_site_id=self.selected_site_id
     def _archive_selected(self):
         if self.selected_block_id is not None:

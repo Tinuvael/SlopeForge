@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ui.presentation_labels import domain_message, import_summary_text
 
 from copy import deepcopy
 from collections.abc import Callable
@@ -17,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from prototype_2d.blast_event_service import BlastEventService, BlastEventValidationError
-from prototype_2d.csv_importer import DatamineCsvError, detect_columns, missing_required, read_text, sniff_delimiter
+from prototype_2d.csv_importer import detect_columns, missing_required, read_text, sniff_delimiter
 from prototype_2d.domain import AssessmentDomainState, BlastEvent, PlanMultiPoint, PlanPoint, PlanPolygon
 from prototype_2d.assessment_area_service import AssessmentAreaService
 from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
@@ -657,14 +658,14 @@ class AssessmentWorkspaceWidget(QWidget):
             self.draw_geometry()
             if first_import:
                 self.plan_view.fit_to_extent()
-            QMessageBox.information(self, "Project Lines import", result.summary.to_text() + f"\nDataset: {dataset.id}")
+            QMessageBox.information(self, "Project Lines import", import_summary_text(result.summary) + f"\nDataset: {dataset.id}")
         except Exception as exc:
             # Parsing changes the aggregate before PostgreSQL persistence.  On any
             # failure restore the exact Site snapshot so no fake Dataset remains.
             self.state.datasets[:] = previous_datasets
             self.refresh_datasets()
             self.draw_geometry()
-            QMessageBox.warning(self, "Import error", str(exc))
+            QMessageBox.warning(self, "Import error", domain_message(str(exc)))
         finally:
             QGuiApplication.restoreOverrideCursor()
 
@@ -692,7 +693,7 @@ class AssessmentWorkspaceWidget(QWidget):
             if self.service.last_import_warning:
                 QMessageBox.warning(self, "Production CSV", self.service.last_import_warning)
         except Exception as exc:
-            QMessageBox.warning(self, "Could not create blast event", str(exc))
+            QMessageBox.warning(self, "Could not create blast event", domain_message(str(exc)))
 
     def reimport_geometry(self):
         self._ensure_can_edit()
@@ -709,7 +710,7 @@ class AssessmentWorkspaceWidget(QWidget):
             if self.service.last_import_warning:
                 QMessageBox.warning(self, "Production CSV", self.service.last_import_warning)
         except Exception as exc:
-            QMessageBox.warning(self, "Reimport error", str(exc))
+            QMessageBox.warning(self, "Reimport error", domain_message(str(exc)))
 
     def toggle_archive(self):
         self._ensure_can_edit()
@@ -744,7 +745,7 @@ class AssessmentWorkspaceWidget(QWidget):
                 f"Preserved decisions: {result.protected_existing_links}\n"
                 f"Total links for active revision: {result.total_links_for_active_area_revision}")
         except ValueError as exc:
-            QMessageBox.warning(self, "Links Assessment Area", str(exc))
+            QMessageBox.warning(self, "Links Assessment Area", domain_message(str(exc)))
 
     def show_area_links(self):
         if not self.selected_area: return
@@ -826,7 +827,7 @@ class AssessmentWorkspaceWidget(QWidget):
             self._refresh_refinement_candidates(); self.draw_geometry()
             self.statusBar().showMessage("Drag vertices. Press Enter or Confirm boundaries to continue; Esc cancels.")
         except (ValueError, IndexError) as exc:
-            QMessageBox.warning(self, "Invalid assessment area", str(exc))
+            QMessageBox.warning(self, "Invalid assessment area", domain_message(str(exc)))
 
     def _current_draft_polygon(self):
         return PlanPolygon(tuple(self._drawing_vertices + [self._drawing_vertices[0]]))
@@ -880,13 +881,13 @@ class AssessmentWorkspaceWidget(QWidget):
                 scan_text = (f"Production: {scan.production_candidates}; Contour: {scan.contour_candidates}; "
                              f"suggestions: {scan.suggestions_added}")
             except Exception as exc:
-                scan_text = f"Revision saved, but linked-event search failed: {exc}"
+                scan_text = f"Revision saved, but linked-event search failed: {domain_message(str(exc))}"
             self.selected_area = area; self._previous_selected_area = area
             self._save(); self.cancel_area_drawing(); self.refresh_areas()
             QMessageBox.information(self, "Linked-event search", scan_text)
         except (ValueError, IndexError) as exc:
             self.workflow_state = "REFINING"
-            QMessageBox.warning(self, "Invalid assessment area", str(exc))
+            QMessageBox.warning(self, "Invalid assessment area", domain_message(str(exc)))
 
     finish_area_drawing = enter_refinement  # compatibility for older tests
 
@@ -1057,7 +1058,7 @@ class AssessmentEventLinksDialog(QDialog):
         link = self.selected_link()
         if link:
             try: action(self.area, link.id); self.refresh()
-            except ValueError as exc: QMessageBox.warning(self, "Links", str(exc))
+            except ValueError as exc: QMessageBox.warning(self, "Links", domain_message(str(exc)))
     def confirm(self): self._change(self.service.confirm_link)
     def exclude(self): self._change(self.service.exclude_link)
     def restore(self): self._change(self.service.restore_suggestion)
@@ -1103,7 +1104,7 @@ class ManualAssessmentEventLinkDialog(QDialog):
                 "Automatic conditions are not met: " + ", ".join(failures) + ". Add anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes: return
         try: self.service.add_manual_link(self.area, event.id); self.accept()
-        except ValueError as exc: QMessageBox.warning(self, "Manual link", str(exc))
+        except ValueError as exc: QMessageBox.warning(self, "Manual link", domain_message(str(exc)))
 
 
 class AssessmentCandidateDialog(QDialog):
@@ -1134,7 +1135,7 @@ class AssessmentCandidateDialog(QDialog):
 
     def _accept_checked(self):
         try: AssessmentAreaService.validate_selection(self.selected_candidates())
-        except ValueError as exc: QMessageBox.warning(self, "Horizon selection", str(exc)); return
+        except ValueError as exc: QMessageBox.warning(self, "Horizon selection", domain_message(str(exc))); return
         self.accept()
 
 
@@ -1201,8 +1202,8 @@ class BlastEventDialog(QDialog):
             preview = self.service.inspect_event_geometry(self.kind.currentText(), path)
         except BlastEventValidationError as exc:
             self.preview = None
-            self.auto_status.setText(f"Automatic detection failed: {exc}")
-            QMessageBox.warning(self, "Automatic horizon detection", str(exc))
+            self.auto_status.setText(f"Automatic detection failed: {domain_message(str(exc))}")
+            QMessageBox.warning(self, "Automatic horizon detection", domain_message(str(exc)))
             return False
         self.preview = preview
         if force_override or not self.elevation_is_manual:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ui.presentation_labels import domain_message
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget
@@ -9,7 +10,6 @@ from repositories.blast_block_repository import BlastBlockRepository, BlastBlock
 from repositories.domain_repository import DomainRepository
 from services.blast_block_service import BlastBlockService
 from ui.block_dialog import BlockDialog
-from ui.directory_dialog import DirectoryDialog
 from ui.pages.block_card_widgets import (
     AttachmentPreviewWidget,
     AuditPreviewWidget,
@@ -137,10 +137,6 @@ class BlockPage(QWidget):
             self.refresh()
             self.data_changed.emit()
 
-    def open_directories(self) -> None:
-        self.refresh()
-        self.data_changed.emit()
-
     def _render_current_block(self) -> None:
         block = self.current_block
         audit_entries = self.audit_repo.list_for_block(block.id) if block else []
@@ -233,4 +229,4 @@ class BlockPage(QWidget):
         try:
             from prototype_2d.blast_event_service import BlastEventService
             BlastEventService(self.entity_controller.state).reimport_geometry(event,path); self.entity_controller.save(); self._render_engineering(self.current_block)
-        except Exception as exc:QMessageBox.warning(self,"Geometry import",str(exc))
+        except Exception as exc:QMessageBox.warning(self,"Geometry import",domain_message(str(exc)))

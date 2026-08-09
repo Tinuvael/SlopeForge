@@ -1,5 +1,6 @@
 """Reusable photo/document manager for BlastEvents and evaluations."""
 from __future__ import annotations
+from ui.presentation_labels import domain_message
 
 from datetime import date
 from pathlib import Path
@@ -116,7 +117,7 @@ class EntityAttachmentDialog(QDialog):
         editor = AttachmentMetadataDialog(self.owner_type, kind, parent=self)
         if editor.exec() != QDialog.DialogCode.Accepted: return
         try: self.service.add_files(self.owner_type, self.owner_id, kind, paths, editor.values()); self.refresh()
-        except Exception as exc: QMessageBox.critical(self, "Copy error", str(exc))
+        except Exception as exc: QMessageBox.critical(self, "Copy error", domain_message(str(exc)))
     def open_selected(self, kind, row=None):
         item = self._selected(kind, row)
         if not item: return
@@ -135,4 +136,4 @@ class EntityAttachmentDialog(QDialog):
         box = QMessageBox(QMessageBox.Icon.Warning, "Delete", "The file will be removed from the database and disk.", parent=self); delete = box.addButton("Delete", QMessageBox.ButtonRole.DestructiveRole); box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole); box.exec()
         if box.clickedButton() is delete:
             try: self.service.delete_attachment(item.id); self.refresh()
-            except Exception as exc: QMessageBox.critical(self, "Delete error", str(exc))
+            except Exception as exc: QMessageBox.critical(self, "Delete error", domain_message(str(exc)))

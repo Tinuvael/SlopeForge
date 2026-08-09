@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 from prototype_2d.wall_assessment import (
     CONDITION, DESIGN, AssessmentCriterionResult, AssessmentMatrixTemplate,
-    calculate_revision, score_numeric,
+    calculate_revision,
 )
 from ui.presentation_labels import (
     CRITERION_HELP, criterion_label, domain_message, matrix_label, option_label, result_label,

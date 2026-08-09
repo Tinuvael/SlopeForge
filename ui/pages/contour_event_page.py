@@ -1,4 +1,5 @@
 """Focused page for a contour BlastEvent (there is deliberately no BlastBlock)."""
+from ui.presentation_labels import domain_message
 from PySide6.QtWidgets import QFileDialog,QHBoxLayout,QLabel,QMessageBox,QPushButton,QTabWidget,QVBoxLayout,QWidget
 from prototype_2d.blast_event_service import BlastEventService
 from ui.pages.entity_page_controller import EntityPageController
@@ -25,7 +26,7 @@ class ContourEventPage(QWidget):
         path,_=QFileDialog.getOpenFileName(self,"Reimport contour geometry","","CSV (*.csv)")
         if not path:return
         try: BlastEventService(self.controller.state).reimport_geometry(self.blast_event,path); self.controller.save()
-        except Exception as exc: QMessageBox.warning(self,"Contour geometry",str(exc))
+        except Exception as exc: QMessageBox.warning(self,"Contour geometry",domain_message(str(exc)))
     def save_draft(self):
         if self.read_only: QMessageBox.warning(self,"Read only","This contour event is read-only."); return False
         return self.editor.save_draft()

@@ -1,3 +1,4 @@
+from ui.presentation_labels import domain_message
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFileDialog,QGridLayout,QHeaderView,QLabel,QMessageBox,QPushButton,QScrollArea,QTabWidget,QTableWidget,QTableWidgetItem,QVBoxLayout,QWidget
 from app.icons.ui.ui_icons import ui_icon
@@ -47,4 +48,4 @@ class SiteDashboardPage(QWidget):
         path,_=QFileDialog.getOpenFileName(self,"Datamine CSV — Project Lines","","CSV (*.csv)")
         if not path:return
         try: dataset,_=ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(path); self.lines_repo.import_dataset(self.site_id,dataset,make_active=True); self.refresh()
-        except Exception as exc: QMessageBox.warning(self,"Import error",str(exc))
+        except Exception as exc: QMessageBox.warning(self,"Import error",domain_message(str(exc)))
