@@ -250,7 +250,7 @@ def test_optional_production_link_snapshot_persists_as_sql_null(session_factory,
 def test_real_block_page_embeds_engineering_and_persists_ucs(session_factory, assessment_context, tmp_path):
     widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
     from database.app_context import AppContext,CurrentUser
-    from ui.pages.block_list_page import BlockListPage
+    from ui.pages.block_page import BlockPage
     app=widgets.QApplication.instance() or widgets.QApplication([])
     with session_factory.begin() as session:
         block=BlastBlock(domain_id=assessment_context.domain_id,block_number="QT-BLOCK",status="planned")
@@ -258,7 +258,7 @@ def test_real_block_page_embeds_engineering_and_persists_ucs(session_factory, as
     state=build_rich_state(); production=next(e for e in state.blast_events if e.event_type=="production"); production.blast_block_id=block_id
     persist_project_lines(session_factory,assessment_context.site_id,state); AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id,state)
     context=AppContext(session_factory,CurrentUser(1,"qt-editor","Qt Editor","editor"),tmp_path)
-    page=BlockListPage(context); page.resize(1400,900); page.show(); page.open_block_id(block_id); app.processEvents()
+    page=BlockPage(context); page.resize(1400,900); page.show(); page.open_block_id(block_id); app.processEvents()
     editor=page.technical_card_editor.editor
     page.tabs.setCurrentWidget(page.geomechanics_tab); app.processEvents()
     assert page.geomechanics_tab.isVisibleTo(page)
@@ -311,3 +311,23 @@ def test_focused_area_edit_boundaries_round_trip_preserves_entity_graph(session_
     assert saved_area.active_geometry_revision().source_dataset_id in {d.id for d in reloaded.datasets}
     assert [e.id for e in reloaded.evaluations]==evaluation_ids and [a.id for a in reloaded.attachments]==attachment_ids
     window.close(); app.processEvents()
+
+
+def test_zero_revision_evaluation_container_round_trips(session_factory, assessment_context):
+    from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+
+    state = build_rich_state()
+    state.evaluations = []
+    state.attachments = [item for item in state.attachments if item.owner_type != "assessment_evaluation"]
+    area = state.assessment_areas[0]
+    owner = AssessmentAreaEvaluationService(state).create_evaluation(area)
+    state.evaluations.append(owner)
+    repository = AssessmentStateRepository(session_factory)
+    repository.replace_for_domain(assessment_context.domain_id, state)
+
+    reloaded = repository.load_for_domain(assessment_context.domain_id).state
+    owners = [item for item in reloaded.evaluations if item.assessment_area_id == area.id]
+    assert len(owners) == 1
+    assert owners[0].id == owner.id
+    assert owners[0].revisions == []
+    assert owners[0].active_revision_id is None

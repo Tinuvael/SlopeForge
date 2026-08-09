@@ -11,6 +11,7 @@ class AreaNavigationRow:
     name: str
     lower_elevation: Decimal
     upper_elevation: Decimal
+    is_archived: bool
 
 @dataclass(frozen=True)
 class ContourEventNavigationRow:
@@ -22,16 +23,22 @@ class ContourEventNavigationRow:
 
 class NavigationRepository:
     def __init__(self, session_factory): self.session_factory = session_factory
-    def list_active_areas(self):
+    def list_areas(self, show_archived=False):
         active = orm.AssessmentAreaGeometryRevision.is_active.is_(True)
         with self.session_factory() as session:
             stmt = (select(orm.AssessmentArea.domain_id, orm.AssessmentWorkspace.domain_id, orm.AssessmentArea.name,
-                     orm.AssessmentAreaGeometryRevision.lower_elevation_m, orm.AssessmentAreaGeometryRevision.upper_elevation_m)
+                     orm.AssessmentAreaGeometryRevision.lower_elevation_m, orm.AssessmentAreaGeometryRevision.upper_elevation_m,
+                     orm.AssessmentArea.is_archived)
                     .join(orm.AssessmentArea.workspace).join(orm.AssessmentArea.geometry_revisions)
-                    .where(orm.AssessmentArea.is_archived.is_(False), active)
+                    .where(active)
                     .order_by(orm.AssessmentWorkspace.domain_id, orm.AssessmentAreaGeometryRevision.lower_elevation_m,
                               orm.AssessmentAreaGeometryRevision.upper_elevation_m, orm.AssessmentArea.name))
+            if not show_archived: stmt = stmt.where(orm.AssessmentArea.is_archived.is_(False))
             return [AreaNavigationRow(*row) for row in session.execute(stmt)]
+
+    def list_active_areas(self):
+        """Compatibility name for callers that only need current areas."""
+        return self.list_areas(False)
     def list_contour_events(self, show_archived=False):
         with self.session_factory() as session:
             stmt=(select(orm.BlastEvent.domain_id,orm.AssessmentWorkspace.domain_id,

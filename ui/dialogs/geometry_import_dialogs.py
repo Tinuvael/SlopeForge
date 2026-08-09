@@ -6,7 +6,7 @@ from prototype_2d.csv_importer import FIELD_LABELS, LOGICAL_FIELDS, detect_colum
 class ColumnMappingDialog(QDialog):
     def __init__(self, headers: list[str], parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Сопоставление колонок Datamine")
+        self.setWindowTitle("Datamine column mapping")
         self._combos = {}
         detected = detect_columns(headers)
         layout = QFormLayout(self)

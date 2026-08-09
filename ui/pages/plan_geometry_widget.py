@@ -3,7 +3,7 @@ from PySide6.QtCore import QPointF,Signal
 from PySide6.QtGui import QPainterPath,QPen,QColor
 from PySide6.QtWidgets import QCheckBox,QGraphicsScene,QHBoxLayout,QLabel,QPushButton,QVBoxLayout,QWidget
 from prototype_2d.domain import PlanMultiPoint,PlanPolygon
-from ui.prototype_2d.plan_view import PrototypePlanView
+from ui.widgets.plan_view import PrototypePlanView
 
 class PlanGeometryWidget(QWidget):
     reimport_requested=Signal()

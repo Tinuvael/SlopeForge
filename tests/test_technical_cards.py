@@ -120,7 +120,7 @@ def test_revision_remains_on_historical_geometry_after_reimport():
 def test_technical_card_dialog_does_not_shadow_qt_event_method():
     """Regression: assigning BlastEvent to QDialog.event broke every show()."""
     QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
-    from ui.prototype_2d.technical_card_dialog import TechnicalCardDialog
+    from ui.editors.technical_card_editor import TechnicalCardDialog
 
     app = QApplication.instance() or QApplication([])
     blast = event()

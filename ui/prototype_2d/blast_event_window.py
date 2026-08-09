@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QMainWindow, QMessageBox
 
 from app.qt import apply_window_icon
 from prototype_2d.blast_event_storage import load_blast_event_state, save_blast_event_state
-from ui.prototype_2d.assessment_workspace import (
+from ui.widgets.assessment_workspace import (
     ASSESSMENT_HANDLE_ROLE,
     ASSESSMENT_SELECTION_ROLE,
     BLAST_CONTEXT_ROLE,

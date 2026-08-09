@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QHBoxLayout,QInputDialog,QLabel,QMessageBox,QPush
                                QTabWidget,QVBoxLayout,QWidget)
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
-from ui.prototype_2d.wall_assessment_dialog import AssessmentAreaEvaluationDialog
+from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog
 
 class AssessmentAreaPage(QWidget):
     edit_boundaries_requested=Signal(str)
@@ -24,8 +24,8 @@ class AssessmentAreaPage(QWidget):
             for i in range(source.count()):
                 if source.tabText(i)==title: page=source.widget(i); source.removeTab(i); return page
             return QWidget()
-        assessment=QWidget(); layout=QVBoxLayout(assessment); self.assessment_sections=QTabWidget(); self.assessment_sections.addTab(take("Общие"),"Общие"); self.assessment_sections.addTab(take("Геометрия"),"Геометрия"); self.assessment_sections.addTab(take("Состояние борта"),"Состояние борта"); layout.addWidget(self.assessment_sections); controls=QHBoxLayout(); self.save_evaluation_button=QPushButton("Сохранить черновик"); self.complete_evaluation_button=QPushButton("Завершить оценку"); self.save_evaluation_button.setEnabled(not self.read_only); self.complete_evaluation_button.setEnabled(not self.read_only); self.save_evaluation_button.clicked.connect(lambda:self._save_evaluation("draft")); self.complete_evaluation_button.clicked.connect(lambda:self._save_evaluation("completed")); controls.addStretch(); controls.addWidget(self.save_evaluation_button); controls.addWidget(self.complete_evaluation_button); layout.addLayout(controls); self.tabs.addTab(assessment,"Assessment")
-        self.result=take("Матрица"); self.tabs.addTab(self.result,"Result"); self.history=take("История")
+        assessment=QWidget(); layout=QVBoxLayout(assessment); self.assessment_sections=QTabWidget(); self.assessment_sections.addTab(take("General"),"General"); self.assessment_sections.addTab(take("Geometry"),"Geometry"); self.assessment_sections.addTab(take("Face condition"),"Face condition"); layout.addWidget(self.assessment_sections); controls=QHBoxLayout(); self.save_evaluation_button=QPushButton("Save draft"); self.complete_evaluation_button=QPushButton("Complete assessment"); self.save_evaluation_button.setEnabled(not self.read_only); self.complete_evaluation_button.setEnabled(not self.read_only); self.save_evaluation_button.clicked.connect(lambda:self._save_evaluation("draft")); self.complete_evaluation_button.clicked.connect(lambda:self._save_evaluation("completed")); controls.addStretch(); controls.addWidget(self.save_evaluation_button); controls.addWidget(self.complete_evaluation_button); layout.addLayout(controls); self.tabs.addTab(assessment,"Assessment")
+        self.result=take("Matrix"); self.tabs.addTab(self.result,"Result"); self.history=take("History")
     def _linked_events(self):
         page=QWidget(); layout=QVBoxLayout(page); self.links_table=QTableWidget(0,8); self.links_table.setHorizontalHeaderLabels(["Status","Source","BlastEvent","Type","Elevation","Revision","State","Spatial match"]); layout.addWidget(self.links_table)
         actions=QHBoxLayout();
@@ -60,17 +60,23 @@ class AssessmentAreaPage(QWidget):
         event=self.controller.links.event(link.blast_event_id); revision=event.active_geometry_revision(); area_revision=self.area.active_geometry_revision(); dataset=next((d for d in self.controller.state.datasets if d.id==area_revision.source_dataset_id),None)
         self.plan.set_geometry(revision.plan_geometry if revision else area_revision.final_geometry_frozen,dataset.lines if dataset else [],f"{event.name} | {event.elevation:g}"); self.tabs.setCurrentIndex(0)
     def _attachment_tab(self,title):
-        page=QWidget(); layout=QVBoxLayout(page); hint=QLabel(); manage=QPushButton(f"Manage {title.lower()}"); self.attachment_controls=getattr(self,"attachment_controls",[]); self.attachment_controls.append((manage,hint)); layout.addWidget(hint)
+        kind="photo" if title=="Photos" else "document"
+        page=QWidget(); layout=QVBoxLayout(page); hint=QLabel(); manage=QPushButton(f"Manage {title.lower()}"); self.attachment_controls=getattr(self,"attachment_controls",[]); self.attachment_controls.append((kind,manage,hint)); layout.addWidget(hint)
         def open_dialog():
-            from ui.prototype_2d.entity_attachment_dialog import EntityAttachmentDialog
-            EntityAttachmentDialog(self.controller.attachments,"assessment_evaluation",self.evaluation.id,self,read_only=self.read_only).exec()
+            from ui.dialogs.entity_attachment_dialog import EntityAttachmentDialog
+            self.evaluation=self.controller.ensure_evaluation_owner(self.area,self.evaluation)
+            dialog=EntityAttachmentDialog(self.controller.attachments,"assessment_evaluation",self.evaluation.id,self,read_only=self.read_only)
+            dialog.tabs.setCurrentIndex(0 if kind=="photo" else 1); dialog.exec(); self._refresh_attachment_controls()
         manage.clicked.connect(open_dialog); layout.addWidget(manage); layout.addStretch(); self.tabs.addTab(page,title); self._refresh_attachment_controls()
     def _save_evaluation(self,status):
         if not self._ensure_editable():return
         if self.evaluation_editor.save(status): self._refresh_attachment_controls()
     def _refresh_attachment_controls(self):
-        saved=self.evaluation in self.controller.state.evaluations
-        for button,hint in getattr(self,"attachment_controls",[]): button.setEnabled(saved and not self.read_only); hint.setText("" if saved else "Сначала сохраните черновик оценки")
+        persisted=self.evaluation in self.controller.state.evaluations
+        for kind,button,hint in getattr(self,"attachment_controls",[]):
+            count=len(self.controller.attachments.list_for_owner("assessment_evaluation",self.evaluation.id,kind)) if persisted else 0
+            button.setEnabled(not self.read_only or persisted)
+            hint.setText(f"{count} {'photo' if kind=='photo' else 'document'}{'s' if count!=1 else ''}" if count else ("No photos yet" if kind=="photo" else "No documents yet"))
     def _ensure_editable(self):
         if self.read_only: QMessageBox.warning(self,"Read only","Archived Assessment Areas and Viewer accounts are read-only."); return False
         return True

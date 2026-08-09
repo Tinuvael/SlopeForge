@@ -10,7 +10,7 @@ from prototype_2d.domain import AssessmentDomainState
 def _widget(state=None, save_callback=lambda: None, storage_path=None, read_only=False,
             persist_dataset_callback=None, set_active_dataset_callback=None):
     QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
-    from ui.prototype_2d.assessment_workspace import AssessmentWorkspaceWidget
+    from ui.widgets.assessment_workspace import AssessmentWorkspaceWidget
 
     app = QApplication.instance() or QApplication([])
     return AssessmentWorkspaceWidget(
@@ -37,7 +37,7 @@ def test_workspace_uses_injected_state_and_persistence():
 
 
 def test_workspace_does_not_import_json_storage_functions():
-    source = Path("ui/prototype_2d/assessment_workspace.py").read_text(encoding="utf-8")
+    source = Path("ui/widgets/assessment_workspace.py").read_text(encoding="utf-8")
     assert "load_blast_event_state" not in source
     assert "save_blast_event_state" not in source
 

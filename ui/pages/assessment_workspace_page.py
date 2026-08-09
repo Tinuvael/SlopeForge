@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 from database.app_context import AppContext
 from repositories.assessment_state_repository import AssessmentStateRepository
 from repositories.project_lines_repository import ProjectLinesRepository
-from ui.prototype_2d.assessment_workspace import AssessmentWorkspaceWidget
+from ui.widgets.assessment_workspace import AssessmentWorkspaceWidget
 
 
 class AssessmentWorkspacePage(QWidget):
@@ -54,7 +54,7 @@ class AssessmentWorkspacePage(QWidget):
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.domain_label = QLabel(f"Домен: {domain_name or domain_id}", self)
+        self.domain_label = QLabel(f"Domain: {domain_name or domain_id}", self)
         layout.addWidget(self.domain_label)
         layout.addWidget(self.workspace)
 

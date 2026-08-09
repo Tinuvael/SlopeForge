@@ -10,7 +10,7 @@ from prototype_2d.domain import (AssessmentArea, AssessmentAreaGeometryRevision,
  AssessmentEventLink, BlastEvent, PlanPoint, PlanPolygon)
 from prototype_2d.wall_assessment import (AssessmentAreaEvaluationService, AssessmentCriterionResult,
  CONDITION, DESIGN, calculate_revision)
-from ui.prototype_2d.wall_assessment_dialog import AssessmentAreaEvaluationDialog, DAMAGE_WARNING, NullableDoubleSpinBox
+from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog, DAMAGE_WARNING, NullableDoubleSpinBox
 
 
 def app(): return QApplication.instance() or QApplication([])

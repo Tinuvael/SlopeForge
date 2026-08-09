@@ -1,13 +1,13 @@
 """Reusable embedded views backed by the existing TechnicalCardDialog editor."""
 from PySide6.QtWidgets import QHBoxLayout,QPushButton,QVBoxLayout,QWidget
-from ui.prototype_2d.technical_card_dialog import TechnicalCardDialog
+from ui.editors.technical_card_editor import TechnicalCardDialog
 
 class TechnicalCardEditorWidget(QWidget):
     """Hosts the proven revision editor without duplicating any editor logic."""
     def __init__(self,event,card,revision,save_callback,parent=None,read_only=False):
         super().__init__(parent); self.editor=TechnicalCardDialog(event,card,revision,save_callback,None,read_only)
         layout=QVBoxLayout(self); self.tabs=self.editor.tabs; self.tabs.setParent(self); layout.addWidget(self.tabs)
-        actions=QHBoxLayout(); actions.addStretch(); self.draft=QPushButton("Сохранить черновик"); self.complete=QPushButton("Завершить")
+        actions=QHBoxLayout(); actions.addStretch(); self.draft=QPushButton("Save draft"); self.complete=QPushButton("Complete")
         self.draft.clicked.connect(lambda:self.editor._save("draft")); self.complete.clicked.connect(lambda:self.editor._save("completed")); self.draft.setEnabled(not read_only); self.complete.setEnabled(not read_only); actions.addWidget(self.draft); actions.addWidget(self.complete); layout.addLayout(actions)
     def take_tab(self,title):
         for index in range(self.tabs.count()):
