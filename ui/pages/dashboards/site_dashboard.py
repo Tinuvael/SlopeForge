@@ -6,14 +6,19 @@ from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetServic
 from repositories.dashboard_repository import DashboardRepository
 from repositories.project_lines_repository import ProjectLinesRepository
 from .charts import CompactChart
-from .widgets import EmptyStateWidget,MetricCard,metric,section
+from .widgets import EmptyStateWidget,MetricCard,metric,quadrant_presentation,section
 
 class SiteDashboardPage(QWidget):
     domain_requested=Signal(int)
     def __init__(self,context,site_id,name):
         super().__init__(); self.context=context; self.site_id=site_id; self.repo=DashboardRepository(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory); self.snapshot=self.repo.site_snapshot(site_id)
-        root=QVBoxLayout(self); title=QLabel(name); title.setStyleSheet("font-size:24px;font-weight:700;color:#0F172A"); root.addWidget(title); root.addWidget(QLabel("Overall project overview")); self.tabs=QTabWidget(); root.addWidget(self.tabs)
+        root=QVBoxLayout(self); title=QLabel(name); title.setStyleSheet("font-size:24px;font-weight:700;color:#0F172A"); root.addWidget(title); root.addWidget(QLabel("Overall project overview")); self.tabs=QTabWidget(); root.addWidget(self.tabs); self._populate_tabs()
+    def _populate_tabs(self):
+        while self.tabs.count():
+            widget=self.tabs.widget(0); self.tabs.removeTab(0); widget.deleteLater()
         self.tabs.addTab(self._overview(),ui_icon("analytics"),"Overview"); self.tabs.addTab(self._domains(),ui_icon("domain"),"Domains"); self.tabs.addTab(self._lines(),ui_icon("project-lines"),"Project Lines"); self.tabs.addTab(self._analytics(),ui_icon("analytics"),"Analytics")
+    def refresh(self):
+        current=self.tabs.currentIndex(); self.snapshot=self.repo.site_snapshot(self.site_id); self._populate_tabs(); self.tabs.setCurrentIndex(max(0,min(current,self.tabs.count()-1)))
     def _table(self,headers,rows,ids=None):
         table=QTableWidget(len(rows),len(headers)); table.setHorizontalHeaderLabels(headers); table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         for r,row in enumerate(rows):
@@ -31,8 +36,8 @@ class SiteDashboardPage(QWidget):
     def _overview(self):
         page=QScrollArea(); page.setWidgetResizable(True); body=QWidget(); box=QVBoxLayout(body); box.addWidget(self._metrics()); table=self._table(["Domain","Blast events","Production","Contour","Assessment areas","Completed","Average DAI","Average FCI"],self._domain_rows(),[d.domain.id for d in self.snapshot.domains]); box.addWidget(section("Domain summary",table))
         quadrants={}; [quadrants.update({k:quadrants.get(k,0)+v}) for d in self.snapshot.domains for k,v in d.quadrants.items()]; box.addWidget(section("Assessment result distribution",CompactChart(quadrants,"donut")))
-        problems=[(a.name,d.domain.name,a.interval,metric(a.dai),metric(a.fci),a.assessment_date or "—") for d in self.snapshot.domains for a in d.areas if a.status=="completed" and a.quadrant][:5]; box.addWidget(section("Areas requiring attention",self._table(["Area","Domain","Interval","DAI","FCI","Date"],problems) if problems else EmptyStateWidget("No completed evaluations yet")))
-        recent=[(name,when or "—") for d in self.snapshot.domains for name,when in d.recent][:10]; box.addWidget(section("Recent activity",self._table(["Record","Changed"],recent) if recent else EmptyStateWidget("No recent activity"))); page.setWidget(body); return page
+        problem_areas=[(a,d.domain.name) for d in self.snapshot.domains for a in d.areas if a.status=="completed" and quadrant_presentation(a.quadrant).requires_attention]; problem_areas.sort(key=lambda item:quadrant_presentation(item[0].quadrant).severity,reverse=True); problems=[(a.name,domain,a.interval,metric(a.dai),metric(a.fci),a.assessment_date or "—") for a,domain in problem_areas[:5]]; box.addWidget(section("Areas requiring attention",self._table(["Area","Domain","Interval","DAI","FCI","Date"],problems) if problems else EmptyStateWidget("No areas requiring attention")))
+        recent=[(name,when or "—") for name,when in self.snapshot.recent]; box.addWidget(section("Recent activity",self._table(["Record","Changed"],recent) if recent else EmptyStateWidget("No recent activity"))); page.setWidget(body); return page
     def _domains(self): return self._table(["Domain","Blast events","Production","Contour","Assessment areas","Completed","Average DAI","Average FCI"],self._domain_rows(),[d.domain.id for d in self.snapshot.domains])
     def _lines(self):
         w=QWidget(); box=QVBoxLayout(w); active=self.snapshot.active_dataset; box.addWidget(QLabel(f"Active Dataset: {active.name} • {active.source_file_name} • {active.imported_at:%Y-%m-%d %H:%M}" if active else "No Project Lines loaded")); rows=[(x.name,x.imported_at.strftime("%Y-%m-%d %H:%M"),x.source_file_name,"Active" if x.is_active else "Inactive") for x in self.snapshot.datasets]; box.addWidget(self._table(["Dataset","Imported","Source file","State"],rows)); self.import_button=QPushButton("Import / Update Project Lines"); self.import_button.setIcon(ui_icon("import","blue")); self.import_button.setVisible(self.context.current_user.can_edit); self.import_button.clicked.connect(self.import_lines); box.addWidget(self.import_button); return w
@@ -41,5 +46,5 @@ class SiteDashboardPage(QWidget):
     def import_lines(self):
         path,_=QFileDialog.getOpenFileName(self,"CSV Datamine — проектные линии","","CSV (*.csv)")
         if not path:return
-        try: dataset,_=ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(path); self.lines_repo.import_dataset(self.site_id,dataset,make_active=True)
+        try: dataset,_=ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(path); self.lines_repo.import_dataset(self.site_id,dataset,make_active=True); self.refresh()
         except Exception as exc: QMessageBox.warning(self,"Ошибка импорта",str(exc))

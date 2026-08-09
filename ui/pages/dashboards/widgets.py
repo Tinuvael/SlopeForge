@@ -1,14 +1,22 @@
-from PySide6.QtCore import Qt
+from dataclasses import dataclass
 from PySide6.QtWidgets import QFrame,QHBoxLayout,QLabel,QVBoxLayout,QWidget
 from app.icons.ui.ui_icons import ui_icon
 
+@dataclass(frozen=True)
+class QuadrantPresentation:
+    label: str
+    color: str
+    severity: int
+    requires_attention: bool
+
 QUADRANTS={
-    "good_design_good_face": ("Good design / good face", "#16A34A"),
-    "good_design_poor_face": ("Good design / poor face", "#EA580C"),
-    "poor_design_good_face": ("Poor design / good face", "#EA580C"),
-    "poor_design_poor_face": ("Poor design / poor face", "#DC2626"),
+    "good_results": QuadrantPresentation("Хорошие результаты", "#16A34A", 0, False),
+    "geometry_achieved_condition_insufficient": QuadrantPresentation("Геометрия достигнута, состояние недостаточно", "#EA580C", 2, True),
+    "condition_good_geometry_unacceptable": QuadrantPresentation("Состояние хорошее, геометрия неприемлема", "#EA580C", 2, True),
+    "unacceptable": QuadrantPresentation("Неприемлемые результаты", "#DC2626", 3, True),
 }
-def quadrant_presentation(value): return QUADRANTS.get(value,(value.replace("_"," ").title() if value else "—","#64748B"))
+def quadrant_presentation(value):
+    return QUADRANTS.get(value,QuadrantPresentation(value.replace("_"," ").title() if value else "—","#64748B",0,False))
 def metric(value): return "—" if value is None else f"{value:.2f}"
 
 class MetricCard(QFrame):

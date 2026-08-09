@@ -39,15 +39,21 @@ class MainWindow(QMainWindow):
     def _update_add(self):
         active=bool(self.selected_site_id and self.lines_repo.get_active(self.selected_site_id)); self.header.update_add_availability(self.selected_site_id is not None,self.selected_domain_id is not None,active)
     def select_site(self,site_id,site_name):
-        from ui.pages.dashboards import SiteDashboardPage
-        page=SiteDashboardPage(self.context,site_id,site_name)
+        try:
+            from ui.pages.dashboards import SiteDashboardPage
+            page=SiteDashboardPage(self.context,site_id,site_name)
+        except Exception as exc:
+            QMessageBox.critical(self,"Не удалось открыть dashboard проекта",str(exc)); return False
         page.domain_requested.connect(lambda domain_id:self._open_domain_dashboard(domain_id,site_id,site_name))
         if self._show(page): self._set_context(site_id,site_name)
     def _open_domain_dashboard(self,domain_id,site_id,site_name):
         domain=self.domain_repo.get(domain_id); self.select_domain(domain_id,domain.name,site_id,site_name)
     def select_domain(self,domain_id,domain_name,site_id,site_name):
-        from ui.pages.dashboards import DomainDashboardPage
-        page=DomainDashboardPage(self.context,domain_id,domain_name)
+        try:
+            from ui.pages.dashboards import DomainDashboardPage
+            page=DomainDashboardPage(self.context,domain_id,domain_name)
+        except Exception as exc:
+            QMessageBox.critical(self,"Не удалось открыть dashboard домена",str(exc)); return False
         page.block_requested.connect(lambda block_id:self.open_block_from_tree(block_id,domain_id,site_id))
         page.contour_requested.connect(lambda event_id:self.open_contour_from_tree(event_id,domain_id,site_id,domain_name))
         page.assessment_area_requested.connect(lambda area_id:self.open_area_from_tree(area_id,domain_id,site_id,domain_name))

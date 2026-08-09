@@ -17,6 +17,12 @@ class BlastRow:
     id: int | str; entity_type: str; name: str; horizon: str; event_date: date | None; status: str
 
 @dataclass(frozen=True)
+class MapGeometry:
+    entity_id: int | str
+    points: tuple[tuple[float, float], ...]
+    quadrant: str | None = None
+
+@dataclass(frozen=True)
 class DomainSummary:
     id: int; name: str; production: int = 0; contour: int = 0; areas: int = 0
     completed: int = 0; drafts: int = 0; average_dai: float | None = None; average_fci: float | None = None
@@ -28,10 +34,15 @@ class DomainDashboardSnapshot:
     domain: DomainSummary; areas: list[AreaRow] = field(default_factory=list)
     blasts: list[BlastRow] = field(default_factory=list); intervals: dict[str, int] = field(default_factory=dict)
     quadrants: dict[str, int] = field(default_factory=dict); recent: list[tuple[str, datetime | date | None]] = field(default_factory=list)
+    project_lines: tuple[MapGeometry, ...] = ()
+    production_geometries: tuple[MapGeometry, ...] = ()
+    contour_geometries: tuple[MapGeometry, ...] = ()
+    assessment_geometries: tuple[MapGeometry, ...] = ()
 
 @dataclass(frozen=True)
 class SiteDashboardSnapshot:
     site_id: int; domains: list[DomainDashboardSnapshot]; active_dataset: object | None; datasets: list[object]
+    recent: list[tuple[str, datetime | date | None]] = field(default_factory=list)
     @property
     def production(self): return sum(x.domain.production for x in self.domains)
     @property
@@ -64,7 +75,7 @@ class DashboardRepository:
             contours=list(s.scalars(select(a.BlastEvent).join(a.BlastEvent.workspace).where(a.AssessmentWorkspace.domain_id==domain_id,a.BlastEvent.event_type=="contour",a.BlastEvent.is_archived.is_(False))))
             rows=s.execute(select(a.AssessmentArea,a.AssessmentAreaGeometryRevision,a.AssessmentAreaEvaluationRevision)
                 .join(a.AssessmentArea.workspace).join(a.AssessmentArea.geometry_revisions)
-                .outerjoin(a.AssessmentAreaEvaluation,a.AssessmentAreaEvaluation.assessment_area_id==a.AssessmentArea.id)
+                .outerjoin(a.AssessmentAreaEvaluation,(a.AssessmentAreaEvaluation.assessment_area_id==a.AssessmentArea.id)&a.AssessmentAreaEvaluation.is_archived.is_(False))
                 .outerjoin(a.AssessmentAreaEvaluationRevision,(a.AssessmentAreaEvaluationRevision.evaluation_id==a.AssessmentAreaEvaluation.id)&a.AssessmentAreaEvaluationRevision.is_active.is_(True))
                 .where(a.AssessmentWorkspace.domain_id==domain_id,a.AssessmentArea.is_archived.is_(False),a.AssessmentAreaGeometryRevision.is_active.is_(True))).all()
             areas=[]; intervals={}; quadrants={}
@@ -73,18 +84,47 @@ class DashboardRepository:
                 intervals[interval]=intervals.get(interval,0)+1
                 status=ev.status if ev else None; q=ev.result_quadrant if ev and status=="completed" else None
                 if q: quadrants[q]=quadrants.get(q,0)+1
-                areas.append(AreaRow(area.domain_id,area.name,interval,(ev.assessment_date if ev else area.assessment_date),status,float(ev.design_achievement_index) if ev and ev.design_achievement_index is not None else None,float(ev.face_condition_index) if ev and ev.face_condition_index is not None else None,q))
+                areas.append(AreaRow(area.id,area.name,interval,(ev.assessment_date if ev else area.assessment_date),status,float(ev.design_achievement_index) if ev and ev.design_achievement_index is not None else None,float(ev.face_condition_index) if ev and ev.face_condition_index is not None else None,q))
             completed=[x for x in areas if x.status=="completed"]
             avg=lambda key: (sum(v)/len(v) if (v:=[getattr(x,key) for x in completed if getattr(x,key) is not None]) else None)
             summary=DomainSummary(domain.id,domain.name,len(blocks),len(contours),len(areas),len(completed),sum(x.status=="draft" for x in areas),avg("dai"),avg("fci"))
             blasts=[BlastRow(x.id,"Production",x.block_number,_number(x.horizon_m),x.planned_blast_date,x.status) for x in blocks]
-            blasts += [BlastRow(x.domain_id,"Contour",x.name,_number(x.elevation_m),x.event_date,"—") for x in contours]
-            recent=sorted([(x.name,x.updated_at) for x in areas if False] + [(f"Block {x.block_number}",x.updated_at) for x in blocks]+[(x.name,x.updated_at) for x in contours],key=lambda x:x[1] or datetime.min,reverse=True)[:10]
-            return DomainDashboardSnapshot(summary,areas,blasts,intervals,quadrants,recent)
+            blasts += [BlastRow(x.id,"Contour",x.name,_number(x.elevation_m),x.event_date,"—") for x in contours]
+            activity=[(f"Assessment Area: {area.name}",area.updated_at) for area,_,_ in rows]
+            activity += [(f"Evaluation: {area.name}",ev.created_at) for area,_,ev in rows if ev is not None]
+            activity += [(f"Block {x.block_number}",x.updated_at) for x in blocks]+[(x.name,x.updated_at) for x in contours]
+            recent=sorted(activity,key=lambda x:x[1].timestamp() if isinstance(x[1],datetime) else 0,reverse=True)[:10]
+
+            dataset=s.scalar(select(a.ProjectLinesDataset).where(a.ProjectLinesDataset.site_id==domain.site_id,a.ProjectLinesDataset.is_active.is_(True)))
+            project_lines=tuple(MapGeometry(str(line.get("source_id",index)),tuple((float(p["x"]),float(p["y"])) for p in line.get("points",[]))) for index,line in enumerate(dataset.lines_json if dataset else []) if len(line.get("points",[]))>=2)
+            active_block_ids={x.id for x in blocks}
+            geometry_rows=s.execute(select(a.BlastEvent,a.BlastEventGeometryRevision).join(a.BlastEvent.workspace).join(a.BlastEvent.geometry_revisions).where(a.AssessmentWorkspace.domain_id==domain_id,a.BlastEvent.is_archived.is_(False),a.BlastEventGeometryRevision.is_active.is_(True))).all()
+            production_geometries=[]; contour_geometries=[]
+            for event,revision in geometry_rows:
+                points=_geometry_points(revision.plan_geometry_json)
+                if not points: continue
+                target=production_geometries if event.event_type=="production" and event.blast_block_id in active_block_ids else contour_geometries if event.event_type=="contour" else None
+                if target is not None: target.append(MapGeometry(event.blast_block_id if event.blast_block_id else event.id,points))
+            assessment_geometries=tuple(MapGeometry(area.id,_geometry_points(geo.final_geometry_json),ev.result_quadrant if ev and ev.status=="completed" else None) for area,geo,ev in rows if _geometry_points(geo.final_geometry_json))
+            return DomainDashboardSnapshot(summary,areas,blasts,intervals,quadrants,recent,project_lines,tuple(production_geometries),tuple(contour_geometries),assessment_geometries)
     def site_snapshot(self, site_id: int) -> SiteDashboardSnapshot:
         with self.session_factory() as s:
             ids=list(s.scalars(select(Domain.id).where(Domain.site_id==site_id).order_by(Domain.name)))
             datasets=list(s.scalars(select(a.ProjectLinesDataset).where(a.ProjectLinesDataset.site_id==site_id).order_by(a.ProjectLinesDataset.imported_at.desc())))
             for row in datasets: s.expunge(row)
         domains=[self.domain_snapshot(i) for i in ids]
-        return SiteDashboardSnapshot(site_id,domains,next((x for x in datasets if x.is_active),None),datasets)
+        activity=[(f"Project Lines: {x.name}",x.imported_at) for x in datasets]
+        activity += [item for domain in domains for item in domain.recent]
+        activity.sort(key=lambda x:x[1].timestamp() if isinstance(x[1],datetime) else 0,reverse=True)
+        return SiteDashboardSnapshot(site_id,domains,next((x for x in datasets if x.is_active),None),datasets,activity[:10])
+
+def _geometry_points(value) -> tuple[tuple[float,float],...]:
+    """Decode the persisted GeoJSON-like plan types into detached XY tuples."""
+    if not isinstance(value,dict): return ()
+    coordinates=value.get("coordinates",[])
+    if value.get("type")=="Polygon": coordinates=coordinates[0] if coordinates else []
+    if value.get("type") in {"Polygon","LineString","MultiPoint"}:
+        return tuple((float(x),float(y)) for x,y in coordinates)
+    if value.get("type")=="Point" and len(coordinates)==2:
+        return ((float(coordinates[0]),float(coordinates[1])),)
+    return ()
