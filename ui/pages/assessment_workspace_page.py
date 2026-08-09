@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 from database.app_context import AppContext
 from repositories.assessment_state_repository import AssessmentStateRepository
 from repositories.project_lines_repository import ProjectLinesRepository
-from ui.prototype_2d.assessment_workspace import AssessmentWorkspaceWidget
+from ui.widgets.assessment_workspace import AssessmentWorkspaceWidget
 
 
 class AssessmentWorkspacePage(QWidget):

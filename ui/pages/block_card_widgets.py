@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from repositories.attachment_repository import AttachmentRow
 from repositories.audit_log_repository import AuditLogEntryRow
 from repositories.blast_block_repository import BlastBlockRow
 from services.blast_block_service import AUDIT_FIELD_LABELS, STATUS_LABELS
@@ -222,7 +221,7 @@ class AttachmentPreviewWidget(CardFrame):
         self.content = QVBoxLayout()
         self.layout.addLayout(self.content)
 
-    def set_items(self, items: list[AttachmentRow], empty_text: str) -> None:
+    def set_items(self, items: list, empty_text: str) -> None:
         while self.content.count():
             item = self.content.takeAt(0)
             if item.widget():

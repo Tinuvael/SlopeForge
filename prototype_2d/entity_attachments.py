@@ -16,10 +16,10 @@ KIND_FOLDERS = {"photo": "photos", "document": "documents"}
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
 ATTACHMENT_CATEGORIES = {
-    ("blast_event", "photo"): [("before_blast", "До взрыва"), ("drilling", "Бурение"), ("charging", "Заряжание"), ("initiation", "Монтаж взрывной сети"), ("after_blast", "После взрыва"), ("muckpile", "Развал"), ("final_wall", "Итоговый борт"), ("contour_drilling", "Контурное бурение"), ("other", "Другое")],
-    ("blast_event", "document"): [("blast_design", "Проект / паспорт БВР"), ("drilling_report", "Отчёт по бурению"), ("charging_report", "Отчёт по заряжанию"), ("initiation_scheme", "Схема инициирования"), ("survey", "Маркшейдерская съёмка"), ("as_built_survey", "Исполнительная съёмка"), ("geomechanical", "Геомеханические материалы"), ("inspection_act", "Акт осмотра"), ("other", "Другое")],
-    ("assessment_evaluation", "photo"): [("general_view", "Общий вид"), ("crest", "Бровка"), ("toe", "Подошва"), ("face", "Поверхность откоса"), ("drillhole_traces", "Следы контурных скважин"), ("cracks", "Трещины"), ("loose_blocks", "Свободные блоки / вывалы"), ("berm", "Берма"), ("water", "Вода"), ("measurement", "Проведение измерений"), ("other", "Другое")],
-    ("assessment_evaluation", "document"): [("as_built_survey", "Исполнительная съёмка"), ("measurement_report", "Результаты измерений"), ("assessment_form", "Лист оценки"), ("inspection_act", "Акт осмотра"), ("wall_report", "Отчёт по состоянию борта"), ("recommendation", "Рекомендации"), ("other", "Другое")],
+    ("blast_event", "photo"): [("before_blast", "Before blast"), ("drilling", "Drilling"), ("charging", "Charging"), ("initiation", "Initiation system installation"), ("after_blast", "After blast"), ("muckpile", "Muckpile"), ("final_wall", "Final wall"), ("contour_drilling", "Contour drilling"), ("other", "Other")],
+    ("blast_event", "document"): [("blast_design", "Blast design"), ("drilling_report", "Drilling report"), ("charging_report", "Charging report"), ("initiation_scheme", "Initiation scheme"), ("survey", "Survey"), ("as_built_survey", "As-built survey"), ("geomechanical", "Geomechanical materials"), ("inspection_act", "Inspection record"), ("other", "Other")],
+    ("assessment_evaluation", "photo"): [("general_view", "General view"), ("crest", "Crest"), ("toe", "Toe"), ("face", "Face"), ("drillhole_traces", "Contour drillhole traces"), ("cracks", "Cracks"), ("loose_blocks", "Loose blocks / rockfall"), ("berm", "Berm"), ("water", "Water"), ("measurement", "Measurements"), ("other", "Other")],
+    ("assessment_evaluation", "document"): [("as_built_survey", "As-built survey"), ("measurement_report", "Measurement report"), ("assessment_form", "Assessment form"), ("inspection_act", "Inspection record"), ("wall_report", "Wall condition report"), ("recommendation", "Recommendations"), ("other", "Other")],
 }
 
 

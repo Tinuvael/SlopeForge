@@ -26,8 +26,8 @@ def test_dashboard_slots_guard_constructor_failures():
     main=source("ui/main_window.py")
     site=main[main.index("def select_site"):main.index("def _open_domain_dashboard")]
     domain=main[main.index("def select_domain"):main.index("def open_block_from_tree")]
-    assert "try:" in site and "Не удалось открыть dashboard проекта" in site
-    assert "try:" in domain and "Не удалось открыть dashboard домена" in domain
+    assert "try:" in site and "Could not open project dashboard" in site
+    assert "try:" in domain and "Could not open domain dashboard" in domain
     assert site.index("except Exception") < site.index("_set_context")
     assert domain.index("except Exception") < domain.index("_set_context")
 

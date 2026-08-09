@@ -25,19 +25,19 @@ class AssessmentAreaCreationPage(QWidget):
                 if not self.controller.open_assessment_area(self.edit_area_id): raise ValueError("Assessment Area is not available")
                 self.controller.workspace.edit_area_boundaries()
             else:self.controller.workspace.start_area_drawing()
-        except Exception as exc: QMessageBox.critical(self,"Assessment Area",f"Не удалось начать редактирование границ.\n\n{exc}")
+        except Exception as exc: QMessageBox.critical(self,"Assessment Area",f"Could not start boundary editing.\n\n{exc}")
         self._sync_status()
     def _toggle_lines(self,shown):self.controller.workspace.lines_checkbox.setChecked(shown); self.controller.workspace.draw_geometry()
     def _toggle_grid(self,shown):self.controller.workspace.grid_button.setChecked(shown); self.controller.workspace.draw_geometry()
     def _workflow_action(self,key):self.controller.workspace._drawing_key(key); self._sync_status()
     def _continue(self):
         try:self.controller.workspace.finish_area_drawing()
-        except Exception as exc:QMessageBox.critical(self,"Assessment Area",f"Не удалось перейти к уточнению границ.\n\n{exc}")
+        except Exception as exc:QMessageBox.critical(self,"Assessment Area",f"Could not start boundary refinement.\n\n{exc}")
         self._sync_status()
     def _confirm(self):
         if self._completion_emitted:return
         try:self.controller.workspace.confirm_refined_polygon()
-        except Exception as exc:QMessageBox.critical(self,"Assessment Area",f"Не удалось сохранить новые границы.\n\n{exc}")
+        except Exception as exc:QMessageBox.critical(self,"Assessment Area",f"Could not save the new boundaries.\n\n{exc}")
         self._sync_status()
         if self.controller.workspace.workflow_state!="IDLE":return
         completed_id=None
@@ -52,7 +52,7 @@ class AssessmentAreaCreationPage(QWidget):
             self.area_created.emit(completed_id)
     def _sync_status(self):
         state=self.controller.workspace.workflow_state; active=state!="IDLE"; self.start.setEnabled(not active); self.back_vertex.setEnabled(state=="DRAWING"); self.finish.setEnabled(state=="DRAWING"); self.confirm.setEnabled(state=="REFINING"); self.cancel_drawing.setEnabled(active)
-        instructions={"DRAWING":"Шаг 1: добавьте вершины. Undo отменяет последнюю вершину; Finish продолжает.","REFINING":"Шаг 2: уточните вершины и нажмите Confirm boundaries.","CANDIDATE_CONFIRMATION":"Шаг 3: выберите интервалы и подтвердите сохранение.","IDLE":"Панорамируйте или масштабируйте план, затем нажмите Draw boundaries."}; self.step_status.setText(instructions.get(state,state))
+        instructions={"DRAWING":"Step 1: add vertices. Undo removes the last vertex; Finish continues.","REFINING":"Step 2: refine vertices and click Confirm boundaries.","CANDIDATE_CONFIRMATION":"Step 3: select intervals and confirm.","IDLE":"Pan or zoom the plan, then click Draw boundaries."}; self.step_status.setText(instructions.get(state,state))
     def has_active_workflow(self):return self.controller.has_active_workflow()
     def cancel_active_workflow(self):return self.controller.cancel_active_workflow()
     def save_now(self):return self.controller.save_now()

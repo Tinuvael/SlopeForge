@@ -250,7 +250,7 @@ def test_optional_production_link_snapshot_persists_as_sql_null(session_factory,
 def test_real_block_page_embeds_engineering_and_persists_ucs(session_factory, assessment_context, tmp_path):
     widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
     from database.app_context import AppContext,CurrentUser
-    from ui.pages.block_list_page import BlockListPage
+    from ui.pages.block_page import BlockPage
     app=widgets.QApplication.instance() or widgets.QApplication([])
     with session_factory.begin() as session:
         block=BlastBlock(domain_id=assessment_context.domain_id,block_number="QT-BLOCK",status="planned")
@@ -258,7 +258,7 @@ def test_real_block_page_embeds_engineering_and_persists_ucs(session_factory, as
     state=build_rich_state(); production=next(e for e in state.blast_events if e.event_type=="production"); production.blast_block_id=block_id
     persist_project_lines(session_factory,assessment_context.site_id,state); AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id,state)
     context=AppContext(session_factory,CurrentUser(1,"qt-editor","Qt Editor","editor"),tmp_path)
-    page=BlockListPage(context); page.resize(1400,900); page.show(); page.open_block_id(block_id); app.processEvents()
+    page=BlockPage(context); page.resize(1400,900); page.show(); page.open_block_id(block_id); app.processEvents()
     editor=page.technical_card_editor.editor
     page.tabs.setCurrentWidget(page.geomechanics_tab); app.processEvents()
     assert page.geomechanics_tab.isVisibleTo(page)

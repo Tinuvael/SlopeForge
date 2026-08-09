@@ -15,7 +15,7 @@ from prototype_2d.wall_assessment import (
     calculate_revision, score_numeric,
 )
 
-DAMAGE_WARNING = "Для диапазона 1–5 признаков/м² внутренней матрицей не задан автоматический балл."
+DAMAGE_WARNING = "The matrix has no automatic score for the range of 1–5 features/m²."
 
 
 class NullableDoubleSpinBox(QDoubleSpinBox):
@@ -30,7 +30,7 @@ class NullableDoubleSpinBox(QDoubleSpinBox):
         self.setSpecialValueText("—")
         self.setValue(self._sentinel)
         self.valueChanged.connect(lambda _value: self.nullableValueChanged.emit(self.nullable_value()))
-        self.setToolTip("Поле обязательно для завершения. Кнопка «Очистить» возвращает значение —.")
+        self.setToolTip("Required for completion. Clear resets the value to —.")
 
     def nullable_value(self):
         return None if self.value() == self.minimum() else float(self.value())
@@ -64,10 +64,10 @@ class QuadrantPlot(QWidget):
         y = self.template.design_achievement_threshold
         px, py = rect.left() + x * rect.width(), rect.bottom() - y * rect.height()
         regions = (
-            (QRectF(rect.left(), rect.top(), px-rect.left(), py-rect.top()), "#f6df72", "Геометрия достигнута\nСостояние недостаточно"),
-            (QRectF(px, rect.top(), rect.right()-px, py-rect.top()), "#8bd17c", "Хорошие\nрезультаты"),
-            (QRectF(rect.left(), py, px-rect.left(), rect.bottom()-py), "#ef7770", "Неприемлемо"),
-            (QRectF(px, py, rect.right()-px, rect.bottom()-py), "#f2b764", "Состояние хорошее\nГеометрия неприемлема"),
+            (QRectF(rect.left(), rect.top(), px-rect.left(), py-rect.top()), "#f6df72", "Geometry achieved\nCondition insufficient"),
+            (QRectF(px, rect.top(), rect.right()-px, py-rect.top()), "#8bd17c", "Good\nresults"),
+            (QRectF(rect.left(), py, px-rect.left(), rect.bottom()-py), "#ef7770", "Unacceptable"),
+            (QRectF(px, py, rect.right()-px, rect.bottom()-py), "#f2b764", "Condition good\nGeometry unacceptable"),
         )
         for region, colour, label in regions:
             painter.fillRect(region, QColor(colour))
@@ -93,18 +93,18 @@ class CriterionEditor(QWidget):
         if criterion.kind in ("numeric", "damage"):
             self.input = NullableDoubleSpinBox(100 if criterion.id == "visible_drillhole_traces" else 999)
             self.input.nullableValueChanged.connect(self.changed)
-            self.clear_button = QPushButton("Очистить"); self.clear_button.clicked.connect(self.input.clear_value)
+            self.clear_button = QPushButton("Clear"); self.clear_button.clicked.connect(self.input.clear_value)
             top.addWidget(self.input); top.addWidget(self.clear_button)
         else:
-            self.input = QComboBox(); self.input.addItem("— выберите наблюдение —", None)
+            self.input = QComboBox(); self.input.addItem("— select observation —", None)
             for option in criterion.options:
-                self.input.addItem(f"{option.label} — {option.score:g} балл.", option.id)
+                self.input.addItem(f"{option.label} — {option.score:g} points", option.id)
             self.input.currentIndexChanged.connect(self.changed); top.addWidget(self.input, 1)
         root.addLayout(top)
         if criterion.help_text:
             help_label = QLabel(criterion.help_text); help_label.setWordWrap(True); help_label.setStyleSheet("color:#555"); root.addWidget(help_label)
         self.validation = QLabel(); self.validation.setWordWrap(True); self.validation.setStyleSheet("color:#a33"); root.addWidget(self.validation)
-        self.override_toggle = QCheckBox("Изменить балл вручную")
+        self.override_toggle = QCheckBox("Override score manually")
         self.override_toggle.toggled.connect(self._toggle_override); self.override_toggle.toggled.connect(self.changed); root.addWidget(self.override_toggle)
         self.override_panel = QWidget(); override = QFormLayout(self.override_panel); override.setContentsMargins(18, 0, 0, 0)
         self.auto_score = QLabel("—")
@@ -113,11 +113,11 @@ class CriterionEditor(QWidget):
         self.reason = QLineEdit(); self.reason.textChanged.connect(self.changed)
         self.notes = QTextEdit(); self.notes.setMaximumHeight(55); self.notes.textChanged.connect(self.changed)
         self.accepted = QLabel("—")
-        override.addRow("Автоматический балл", self.auto_score)
-        override.addRow(f"Ручной балл (0–{criterion.maximum_score:g})", self.manual_score)
-        override.addRow("Обоснование (обязательно)", self.reason)
-        override.addRow("Примечания", self.notes)
-        override.addRow("Принятый балл", self.accepted)
+        override.addRow("Automatic score", self.auto_score)
+        override.addRow(f"Manual score (0–{criterion.maximum_score:g})", self.manual_score)
+        override.addRow("Reason (required)", self.reason)
+        override.addRow("Notes", self.notes)
+        override.addRow("Accepted score", self.accepted)
         root.addWidget(self.override_panel); self.override_panel.hide()
 
     def _toggle_override(self, checked):
@@ -160,7 +160,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         root = QVBoxLayout(self); self.tabs = QTabWidget(); root.addWidget(self.tabs)
         self._general(); self._geometry(); self._condition(); self._matrix(); self._events(); self._attachments(); self._history()
         buttons = QHBoxLayout(); buttons.addStretch()
-        self.draft_button = QPushButton("Сохранить черновик"); self.complete_button = QPushButton("Завершить оценку"); self.cancel_button = QPushButton("Закрыть" if read_only else "Отмена")
+        self.draft_button = QPushButton("Save draft"); self.complete_button = QPushButton("Complete assessment"); self.cancel_button = QPushButton("Close" if read_only else "Cancel")
         self.draft_button.clicked.connect(lambda: self.save("draft")); self.complete_button.clicked.connect(lambda: self.save("completed")); self.cancel_button.clicked.connect(self.reject)
         for button in (self.draft_button, self.complete_button, self.cancel_button): buttons.addWidget(button)
         self.draft_button.setVisible(not read_only); self.complete_button.setVisible(not read_only); root.addLayout(buttons)
@@ -172,8 +172,8 @@ class AssessmentAreaEvaluationDialog(QDialog):
         if read_only: self._set_read_only()
 
     def _base_title(self):
-        suffix = f" — ревизия {self.draft.revision_number} ({self.draft.status})" if self.draft.revision_number else ""
-        return "Оценка борта" + suffix
+        suffix = f" — revision {self.draft.revision_number} ({self.draft.status})" if self.draft.revision_number else ""
+        return "Face assessment" + suffix
 
     def _connect_general_signals(self):
         self.date.dateChanged.connect(self._changed); self.inspector.textChanged.connect(self._changed)
@@ -184,15 +184,15 @@ class AssessmentAreaEvaluationDialog(QDialog):
         page = QWidget(); form = QFormLayout(page)
         self.date = QDateEdit(); self.date.setCalendarPopup(True)
         self.inspector = QLineEdit(); self.override_reason = QLineEdit()
-        self.detected = QLabel("Контурное бурение обнаружено по подтверждённой связи" if self.draft.controlled_blasting_present else "Подтверждённое контурное событие не найдено")
+        self.detected = QLabel("Contour drilling detected from a confirmed link" if self.draft.controlled_blasting_present else "No confirmed contour event found")
         self.comments = QTextEdit(); self.recommendations = QTextEdit()
         revision = next(r for r in self.area.geometry_revisions if r.id == self.draft.assessment_area_geometry_revision_id)
-        form.addRow("Дата оценки", self.date); form.addRow("Инспектор", self.inspector)
-        form.addRow("Assessment Area ID", QLabel(self.area.id)); form.addRow("Ревизия геометрии", QLabel(revision.id))
-        form.addRow("Отметки", QLabel(f"{revision.lower_elevation:g} — {revision.upper_elevation:g}"))
-        form.addRow("Матрица", QLabel(f"{self.template.name} ({self.template.id})")); form.addRow("Обнаружение", self.detected)
-        form.addRow("Причина ручного выбора матрицы", self.override_reason); form.addRow("Комментарии", self.comments); form.addRow("Рекомендации", self.recommendations)
-        self.tabs.addTab(page, "Общие")
+        form.addRow("Assessment date", self.date); form.addRow("Inspector", self.inspector)
+        form.addRow("Assessment Area ID", QLabel(self.area.id)); form.addRow("Geometry revision", QLabel(revision.id))
+        form.addRow("Elevations", QLabel(f"{revision.lower_elevation:g} — {revision.upper_elevation:g}"))
+        form.addRow("Matrix", QLabel(f"{self.template.name} ({self.template.id})")); form.addRow("Detection", self.detected)
+        form.addRow("Manual matrix selection reason", self.override_reason); form.addRow("Comments", self.comments); form.addRow("Recommendations", self.recommendations)
+        self.tabs.addTab(page, "General")
 
     def _nullable(self, maximum=999):
         control = NullableDoubleSpinBox(maximum); control.nullableValueChanged.connect(self._changed); return control
@@ -201,84 +201,84 @@ class AssessmentAreaEvaluationDialog(QDialog):
         scroll = QScrollArea(); scroll.setWidgetResizable(True); page = QWidget(); form = QFormLayout(page)
         self.da = self._nullable(90); self.aa = self._nullable(90); self.db = self._nullable(); self.ab = self._nullable(); self.toe = self._nullable()
         self.shortfall = QLabel("—"); self.deficit = QLabel("—")
-        self.angle_score = QLabel("Требуется заполнение"); self.berm_score = QLabel("Требуется заполнение"); self.toe_score = QLabel("Требуется заполнение")
+        self.angle_score = QLabel("Required"); self.berm_score = QLabel("Required"); self.toe_score = QLabel("Required")
         self.method = QLineEdit(); self.measure_notes = QTextEdit()
         self.geometry_editors = {}
         for criterion in self.template.section(DESIGN).criteria:
             editor = CriterionEditor(criterion)
-            editor.title.setText(f"Экспертная корректировка: {criterion.name}")
+            editor.title.setText(f"Expert override: {criterion.name}")
             editor.input.hide()
             if editor.clear_button: editor.clear_button.hide()
             editor.changed.connect(self._changed)
             self.geometry_editors[criterion.id] = editor
-        form.addRow("Проектный угол откоса уступа, °", self.da); form.addRow("Фактический угол откоса уступа, °", self.aa)
-        form.addRow("Недобор угла относительно проекта, °", self.shortfall); form.addRow("Баллы за угол", self.angle_score); form.addRow("", self.geometry_editors["bench_angle"])
-        form.addRow("Проектная ширина бермы, м", self.db); form.addRow("Фактическая ширина бермы, м", self.ab)
-        form.addRow("Уменьшение ширины относительно проекта, м", self.deficit); form.addRow("Баллы за берму", self.berm_score); form.addRow("", self.geometry_editors["berm_width"])
-        form.addRow("Отклонение фактической подошвы от проектной, м", self.toe); form.addRow("Баллы за подошву", self.toe_score); form.addRow("", self.geometry_editors["toe_position"])
-        toe_help = QLabel("Введите абсолютное расстояние между фактическим и проектным положением подошвы."); toe_help.setWordWrap(True); form.addRow("", toe_help)
-        rules = QLabel(self._geometry_rules()); rules.setWordWrap(True); rules.setStyleSheet("background:#f3f5f7;padding:10px"); form.addRow("Критерии присвоения баллов", rules)
-        form.addRow("Метод измерения", self.method); form.addRow("Примечания к измерениям", self.measure_notes)
-        scroll.setWidget(page); self.tabs.addTab(scroll, "Геометрия")
+        form.addRow("Design bench face angle, °", self.da); form.addRow("Actual bench face angle, °", self.aa)
+        form.addRow("Angle shortfall from design, °", self.shortfall); form.addRow("Angle score", self.angle_score); form.addRow("", self.geometry_editors["bench_angle"])
+        form.addRow("Design berm width, m", self.db); form.addRow("Actual berm width, m", self.ab)
+        form.addRow("Width deficit from design, m", self.deficit); form.addRow("Berm score", self.berm_score); form.addRow("", self.geometry_editors["berm_width"])
+        form.addRow("Actual toe deviation from design, m", self.toe); form.addRow("Toe score", self.toe_score); form.addRow("", self.geometry_editors["toe_position"])
+        toe_help = QLabel("Enter the absolute distance between actual and design toe positions."); toe_help.setWordWrap(True); form.addRow("", toe_help)
+        rules = QLabel(self._geometry_rules()); rules.setWordWrap(True); rules.setStyleSheet("background:#f3f5f7;padding:10px"); form.addRow("Scoring rules", rules)
+        form.addRow("Measurement method", self.method); form.addRow("Measurement notes", self.measure_notes)
+        scroll.setWidget(page); self.tabs.addTab(scroll, "Geometry")
 
     def _geometry_rules(self):
         if self.template.id == "controlled_blasting_v1":
-            angle = "соответствует проекту или круче — 50; недобор ≤3° — 25; >3–5° — 10; >5° — 0"
-            toe = "соответствует проекту — 10; <1 м — 8; 1–<2 м — 5; ≥2 м — 0"
+            angle = "meets design or is steeper — 50; shortfall ≤3° — 25; >3–5° — 10; >5° — 0"
+            toe = "meets design — 10; <1 m — 8; 1–<2 m — 5; ≥2 m — 0"
         else:
-            angle = "соответствует проекту — 40; далее минус 4 балла за каждый начатый градус; ≥10° — 0 (2,4° оценивается как 3°)"
-            toe = "соответствует проекту — 20; <1 м — 15; 1–<2 м — 5; ≥2 м — 0"
-        return (f"Угол: {angle}.\nБерма: соответствует проекту или больше — 40; уменьшение <1 м — 35; "
-                f"1–<2 м — 25; 2–<3 м — 15; ≥3 м — 0.\nПодошва: {toe}.")
+            angle = "meets design — 40; then minus 4 points per started degree; ≥10° — 0 (2,4° is scored as 3°)"
+            toe = "meets design — 20; <1 m — 15; 1–<2 m — 5; ≥2 m — 0"
+        return (f"Angle: {angle}.\nBerm: meets or exceeds design — 40; deficit <1 m — 35; "
+                f"1–<2 m — 25; 2–<3 m — 15; ≥3 m — 0.\nToe: {toe}.")
 
     def _condition(self):
         scroll = QScrollArea(); scroll.setWidgetResizable(True); page = QWidget(); layout = QVBoxLayout(page); self.editors = {}
         visible_rules = ">=80%: 20; 70–<80%: 15; 60–<70%: 12; 50–<60%: 8; 30–<50%: 5; 10–<30%: 2; <10%: 0."
-        crest_rules = "0 м: 15; >0–<1 м: 12; 1–<2 м: 10; 2–<3 м: 5; ≥3 м: 0."
+        crest_rules = "0 m: 15; >0–<1 m: 12; 1–<2 m: 10; 2–<3 m: 5; ≥3 m: 0."
         for criterion in self.template.section(CONDITION).criteria:
             editor = CriterionEditor(criterion); editor.changed.connect(self._changed); self.editors[criterion.id] = editor; layout.addWidget(editor)
             if criterion.id == "visible_drillhole_traces": editor.validation.setToolTip(visible_rules); editor.title.setToolTip(visible_rules)
             if criterion.id == "crest_loss": editor.validation.setToolTip(crest_rules); editor.title.setToolTip(crest_rules)
-        layout.addStretch(); scroll.setWidget(page); self.tabs.addTab(scroll, "Состояние борта")
+        layout.addStretch(); scroll.setWidget(page); self.tabs.addTab(scroll, "Face condition")
 
     def _matrix(self):
         page = QWidget(); layout = QVBoxLayout(page); tables = QHBoxLayout(); self.design_table = QTableWidget(); self.condition_table = QTableWidget()
-        headers = ["Критерий", "Введено / выбрано", "Порог / категория", "Авто", "Ручной", "Принято", "Макс.", "Примечание"]
-        for table, title in ((self.design_table, "Результаты проектирования"), (self.condition_table, "Показатели состояния борта")):
+        headers = ["Criterion", "Entered / selected", "Threshold / category", "Auto", "Manual", "Accepted", "Max.", "Note"]
+        for table, title in ((self.design_table, "Design results"), (self.condition_table, "Face condition results")):
             box = QVBoxLayout(); box.addWidget(QLabel(f"<b>{title}</b>")); table.setColumnCount(len(headers)); table.setHorizontalHeaderLabels(headers); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); box.addWidget(table); tables.addLayout(box)
-        layout.addLayout(tables); self.summary = QLabel(); self.summary.setWordWrap(True); layout.addWidget(self.summary); self.plot = QuadrantPlot(); layout.addWidget(self.plot); self.tabs.addTab(page, "Матрица")
+        layout.addLayout(tables); self.summary = QLabel(); self.summary.setWordWrap(True); layout.addWidget(self.summary); self.plot = QuadrantPlot(); layout.addWidget(self.plot); self.tabs.addTab(page, "Matrix")
 
     def _events(self):
-        table = QTableWidget(len(self.draft.linked_event_snapshots), 4); table.setHorizontalHeaderLabels(["BlastEvent", "Тип", "Отметка", "Ревизия карточки"]); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table = QTableWidget(len(self.draft.linked_event_snapshots), 4); table.setHorizontalHeaderLabels(["BlastEvent", "Type", "Elevation", "Card revision"]); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         for row, event in enumerate(self.draft.linked_event_snapshots):
             for column, value in enumerate((event.blast_event_name, event.event_type, f"{event.event_elevation:g}", event.technical_card_revision_id or "—")): table.setItem(row, column, QTableWidgetItem(value))
-        self.tabs.addTab(table, "Связанные события")
+        self.tabs.addTab(table, "Linked events")
 
     def _history(self):
-        self.history = QTableWidget(len(self.evaluation.revisions), 8); self.history.setHorizontalHeaderLabels(["№", "Дата", "Статус", "Геометрия", "Матрица", "Design", "Condition", "Результат"]); self.history.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.history = QTableWidget(len(self.evaluation.revisions), 8); self.history.setHorizontalHeaderLabels(["№", "Date", "Status", "Geometry", "Matrix", "Design", "Condition", "Result"]); self.history.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         for row, revision in enumerate(self.evaluation.revisions):
             values = (revision.revision_number, revision.assessment_date or "—", revision.status, revision.assessment_area_geometry_revision_id, revision.matrix_template_id, "—" if revision.design_achievement_index is None else f"{revision.design_achievement_index:.3f}", "—" if revision.face_condition_index is None else f"{revision.face_condition_index:.3f}", revision.result_label or "—")
             for column, value in enumerate(values): self.history.setItem(row, column, QTableWidgetItem(str(value)))
         self.history.cellDoubleClicked.connect(self._open_history)
-        container = QWidget(); layout = QVBoxLayout(container); hint = QLabel("Дважды щёлкните строку, чтобы открыть историческую ревизию только для чтения."); layout.addWidget(hint); layout.addWidget(self.history); self.tabs.addTab(container, "История")
+        container = QWidget(); layout = QVBoxLayout(container); hint = QLabel("Double-click a row to open a read-only historical revision."); layout.addWidget(hint); layout.addWidget(self.history); self.tabs.addTab(container, "History")
 
     def _attachments(self):
         page = QWidget(); layout = QVBoxLayout(page)
-        info = QLabel("Файлы относятся ко всей оценке и общие для всех её ревизий."); info.setWordWrap(True); layout.addWidget(info)
+        info = QLabel("Files belong to the assessment and are shared by all revisions."); info.setWordWrap(True); layout.addWidget(info)
         if self.attachment_service is None:
-            layout.addWidget(QLabel("Хранилище файлов недоступно."))
+            layout.addWidget(QLabel("File storage is unavailable."))
         else:
             photos, documents = self.attachment_service.counts("assessment_evaluation", self.evaluation.id)
-            self.attachment_counts = QLabel(f"Фото: {photos}    Документы: {documents}"); layout.addWidget(self.attachment_counts)
-            manage = QPushButton("Фото и документы"); manage.clicked.connect(self._open_attachments); layout.addWidget(manage)
-        layout.addStretch(); self.tabs.addTab(page, "Фото и документы")
+            self.attachment_counts = QLabel(f"Photos: {photos}    Documents: {documents}"); layout.addWidget(self.attachment_counts)
+            manage = QPushButton("Photos and documents"); manage.clicked.connect(self._open_attachments); layout.addWidget(manage)
+        layout.addStretch(); self.tabs.addTab(page, "Photos and documents")
 
     def _open_attachments(self):
-        from ui.prototype_2d.entity_attachment_dialog import EntityAttachmentDialog
+        from ui.dialogs.entity_attachment_dialog import EntityAttachmentDialog
         EntityAttachmentDialog(self.attachment_service, "assessment_evaluation", self.evaluation.id, self,
             read_only=self.read_only or self.area.is_archived, unsaved=self.unsaved).exec()
         photos, documents = self.attachment_service.counts("assessment_evaluation", self.evaluation.id)
-        self.attachment_counts.setText(f"Фото: {photos}    Документы: {documents}")
+        self.attachment_counts.setText(f"Photos: {photos}    Documents: {documents}")
 
     def _open_history(self, row, _column):
         if 0 <= row < len(self.evaluation.revisions):
@@ -335,7 +335,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self.deficit.setText("—" if d["berm_width_deficit_m"] is None else f'{d["berm_width_deficit_m"]:g}')
         by_id = {r.criterion_id: r for r in preview.criterion_results}
         for label, cid in ((self.angle_score, "bench_angle"), (self.berm_score, "berm_width"), (self.toe_score, "toe_position")):
-            result = by_id[cid]; label.setText("Требуется заполнение" if result.accepted_score is None else f"{result.accepted_score:g} из {result.maximum_score:g}")
+            result = by_id[cid]; label.setText("Required" if result.accepted_score is None else f"{result.accepted_score:g} of {result.maximum_score:g}")
             editor = self.geometry_editors[cid]
             editor.auto_score.setText("—" if result.automatic_score is None else f"{result.automatic_score:g}")
             editor.accepted.setText("—" if result.accepted_score is None else f"{result.accepted_score:g}")
@@ -343,19 +343,19 @@ class AssessmentAreaEvaluationDialog(QDialog):
             result = by_id[cid]; editor.auto_score.setText("—" if result.automatic_score is None else f"{result.automatic_score:g}"); editor.accepted.setText("—" if result.accepted_score is None else f"{result.accepted_score:g}")
             value = result.raw_numeric_value
             if cid == "damage" and value is not None and 1 <= value <= 5:
-                editor.validation.setText(DAMAGE_WARNING + " Требуется экспертный балл и обоснование.")
+                editor.validation.setText(DAMAGE_WARNING + " An expert score and reason are required.")
                 if not editor.override_toggle.isChecked():
                     initializing = self._initializing; self._initializing = True
                     editor.override_toggle.setChecked(True)
                     self._initializing = initializing
-            elif result.accepted_score is None: editor.validation.setText("Требуется заполнение")
-            elif cid == "damage" and value is not None: editor.validation.setText("Применён максимум: менее 1 признака/м²." if value < 1 else "Применено 0 баллов: более 5 признаков/м².")
+            elif result.accepted_score is None: editor.validation.setText("Required")
+            elif cid == "damage" and value is not None: editor.validation.setText("Maximum applied: fewer than 1 feature/m²." if value < 1 else "0 points applied: more than 5 features/m².")
             else: editor.validation.setText("")
         self._fill_table(self.design_table, [by_id[c.id] for c in self.template.section(DESIGN).criteria])
         self._fill_table(self.condition_table, [by_id[c.id] for c in self.template.section(CONDITION).criteria])
         design = "—" if preview.design_achievement_index is None else f"{preview.design_achievement_index:.3f}"
         condition = "—" if preview.face_condition_index is None else f"{preview.face_condition_index:.3f}"
-        self.summary.setText(f"Design: {preview.design_achievement_points if preview.design_achievement_points is not None else '—'} / 100; индекс: {design}\nCondition: {preview.face_condition_points if preview.face_condition_points is not None else '—'} / 100; индекс: {condition}\nИтог: {preview.result_label or 'появится после заполнения всех критериев'}")
+        self.summary.setText(f"Design: {preview.design_achievement_points if preview.design_achievement_points is not None else '—'} / 100; index: {design}\nCondition: {preview.face_condition_points if preview.face_condition_points is not None else '—'} / 100; index: {condition}\nResult: {preview.result_label or 'available after all criteria are completed'}")
         self.plot.set_result(self.template, preview.design_achievement_index, preview.face_condition_index)
 
     def _fill_table(self, table, results):
@@ -364,16 +364,16 @@ class AssessmentAreaEvaluationDialog(QDialog):
             definition = self.template.criterion(result.criterion_id); option = next((o for o in definition.options if o.id == result.selected_option_id), None)
             observed = option.label if option else ("—" if result.raw_numeric_value is None else f"{result.raw_numeric_value:g}")
             category = option.label if option else self._applied_rule(result)
-            warning = result.notes or ("Требуется экспертный балл и обоснование" if result.criterion_id == "damage" and result.raw_numeric_value is not None and 1 <= result.raw_numeric_value <= 5 and result.accepted_score is None else "Требуется заполнение" if result.accepted_score is None else "")
+            warning = result.notes or ("An expert score and reason are required" if result.criterion_id == "damage" and result.raw_numeric_value is not None and 1 <= result.raw_numeric_value <= 5 and result.accepted_score is None else "Required" if result.accepted_score is None else "")
             values = (result.criterion_name_snapshot, observed, category, result.automatic_score, result.manual_score, result.accepted_score, result.maximum_score, warning)
             for column, value in enumerate(values):
                 item = QTableWidgetItem("—" if value is None else str(value)); table.setItem(row, column, item)
                 if result.accepted_score is None: item.setBackground(QColor("#ffe2e2"))
 
     def _applied_rule(self, result):
-        if result.raw_numeric_value is None: return "Требуется заполнение"
-        if result.criterion_id == "damage" and 1 <= result.raw_numeric_value <= 5: return "Промежуточный диапазон 1–5 шт/м²"
-        return "Автоматический порог матрицы"
+        if result.raw_numeric_value is None: return "Required"
+        if result.criterion_id == "damage" and 1 <= result.raw_numeric_value <= 5: return "Intermediate range 1–5 features/m²"
+        return "Automatic matrix threshold"
 
     def save(self, status):
         if self.read_only:
@@ -384,18 +384,18 @@ class AssessmentAreaEvaluationDialog(QDialog):
             calculate_revision(revision, require_complete=status == "completed")
             self.save_callback(self.evaluation, revision, status)
         except Exception as exc:  # persistence errors must keep the dialog open
-            QMessageBox.critical(self, "Оценка не сохранена", f"Не удалось сохранить оценку. Изменения остаются в форме.\n\n{exc}")
+            QMessageBox.critical(self, "Assessment not saved", f"Could not save the assessment. Changes remain in the form.\n\n{exc}")
             return False
         self._dirty = False; self._allow_close = True; self._update_title()
-        QMessageBox.information(self, "Оценка сохранена", "Черновик успешно сохранён." if status == "draft" else "Оценка успешно завершена и сохранена.")
+        QMessageBox.information(self, "Assessment saved", "Draft saved." if status == "draft" else "Assessment completed and saved.")
         super().accept(); return True
 
     def _update_title(self): self.setWindowTitle(self._base_title() + (" *" if self._dirty else ""))
 
     def _confirm_close(self):
         if not self._dirty or self.read_only: return "discard"
-        box = QMessageBox(QMessageBox.Icon.Warning, "Несохранённые изменения", "В оценке есть несохранённые изменения.", parent=self)
-        save = box.addButton("Сохранить черновик", QMessageBox.ButtonRole.AcceptRole); discard = box.addButton("Не сохранять", QMessageBox.ButtonRole.DestructiveRole); keep = box.addButton("Продолжить редактирование", QMessageBox.ButtonRole.RejectRole)
+        box = QMessageBox(QMessageBox.Icon.Warning, "Unsaved changes", "The assessment has unsaved changes.", parent=self)
+        save = box.addButton("Save draft", QMessageBox.ButtonRole.AcceptRole); discard = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole); keep = box.addButton("Continue editing", QMessageBox.ButtonRole.RejectRole)
         box.exec(); clicked = box.clickedButton()
         if clicked is save: return "saved" if self.save("draft") else "keep"
         if clicked is discard: return "discard"

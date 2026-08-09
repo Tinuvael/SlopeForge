@@ -1,47 +1,42 @@
 # SlopeForge
 
-Open-source desktop application for building an empirical knowledge base of blasting parameters and final wall quality in open-pit mining.
+SlopeForge is a desktop MVP for managing open-pit blast engineering data and final-wall assessments.
 
-![GitHub Release](https://img.shields.io/github/v/release/Tinuvael/SlopeForge)
-![License](https://img.shields.io/github/license/Tinuvael/SlopeForge)
+## Implemented MVP
 
-## Download
+- Projects (quarries) and Domains with engineering dashboards.
+- Production and contour BlastEvents grouped by virtual Horizons.
+- Production Blocks with general information, geomechanics, blast design, execution facts, and Technical Card revision history.
+- Assessment Areas grouped by virtual Intervals, boundary drawing/refinement, linked blast events, and revision history.
+- Existing DAI and FCI assessment matrices and quadrant presentation.
+- Site-wide Project Lines imported from Datamine CSV files.
+- BlastEvent-owned and assessment-evaluation-owned Photos and Documents.
+- Tree navigation, search, status filters, and archived-item visibility.
+- PostgreSQL persistence through SQLAlchemy and Alembic.
+- Role-aware editor and read-only Viewer experiences.
 
-Download the latest release from the **Releases** page.
+The MVP does not provide PDF/Excel reports, GIS, AI recommendations, TARP, or automatic engineering recommendations.
 
-➡ https://github.com/Tinuvael/SlopeForge/releases/latest
+## Database setup
 
-## Features
+SlopeForge uses PostgreSQL, SQLAlchemy 2.x, psycopg 3, Alembic, environment variables, and Argon2 password hashing. See [docs/database_setup.md](docs/database_setup.md).
 
-- Blast block database
-- Rock mass parameter management
-- Blast design parameter management
-- Final wall quality assessment
-- Photo and document attachment
-- Advanced filtering and search
-- Empirical case history database
-- Data export
+## Development
 
-## Roadmap
+```bash
+pip install -r requirements.txt
+alembic upgrade head
+python main.py
+```
 
-Planned features include:
+Run the test suite without a display server:
 
-- Similar blast block search
-- Statistical analysis
-- Engineering dashboards
-- Empirical blasting parameter recommendations
-- AI-assisted engineering search
-- GIS integration
+```bash
+QT_QPA_PLATFORM=offscreen pytest -q
+```
+
+PostgreSQL integration tests require an explicitly isolated database in `SLOPEFORGE_TEST_DATABASE_URL`; they never use the normal `DATABASE_URL` as a destructive test target.
 
 ## Disclaimer
 
-SlopeForge is an engineering data management and decision-support tool.
-
-The software is intended to assist engineers in collecting, organizing, and analyzing empirical blasting data. It does not replace professional engineering judgement, site-specific investigations, or engineering design. Users are responsible for verifying all engineering decisions and ensuring that the selected blasting parameters are appropriate for their specific conditions.
-
-## PostgreSQL database foundation
-
-The MVP database foundation uses PostgreSQL, SQLAlchemy 2.x, psycopg 3, Alembic, environment variables, and Argon2 password hashing.
-
-See the setup guide: [docs/database_setup.md](docs/database_setup.md).
-
+SlopeForge is an engineering data-management and decision-support tool. It does not replace professional engineering judgement, site-specific investigations, or engineering design. Users are responsible for verifying engineering decisions and the suitability of blasting parameters for their conditions.

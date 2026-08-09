@@ -27,7 +27,7 @@ class ProjectTree(QWidget):
         layout = QVBoxLayout(self); layout.setContentsMargins(8,8,8,8); layout.addWidget(QLabel("Projects"))
         self.tree = QTreeWidget(); self.tree.setHeaderHidden(True); self.tree.itemClicked.connect(self._item_clicked); layout.addWidget(self.tree)
         layout.addWidget(QLabel("Filters"))
-        self.search = QLineEdit(); self.search.setPlaceholderText("Search by block number")
+        self.search = QLineEdit(); self.search.setPlaceholderText("Search blast events...")
         self.project_filter = QComboBox(); self.domain_filter = QComboBox(); self.status_filter = QComboBox()
         self.show_archived = QCheckBox("Show archived"); self.reset_button = QPushButton("Reset filters"); self.reset_button.setIcon(ui_icon("refresh"))
         for widget in (self.search, self.project_filter, self.domain_filter, self.status_filter,
@@ -57,7 +57,7 @@ class ProjectTree(QWidget):
         self.search.clear(); self.project_filter.setCurrentIndex(0); self.status_filter.setCurrentIndex(0); self.show_archived.setChecked(False); self._reload_domains()
     def load_data(self, *_args, **_kwargs):
         self.tree.clear(); areas_by_domain = {}; contours_by_domain={}
-        for area in self.navigation_repo.list_active_areas(): areas_by_domain.setdefault(area.domain_id, []).append(area)
+        for area in self.navigation_repo.list_areas(self.show_archived.isChecked()): areas_by_domain.setdefault(area.domain_id, []).append(area)
         for event in self.navigation_repo.list_contour_events(self.show_archived.isChecked()): contours_by_domain.setdefault(event.domain_id,[]).append(event)
         project_id = self.project_filter.currentData(); domain_id = self.domain_filter.currentData()
         for site in self.site_repo.list_sites():
@@ -87,13 +87,17 @@ class ProjectTree(QWidget):
                     label = f"Interval {_number(area.lower_elevation)}–{_number(area.upper_elevation)}"
                     folder = intervals.get(label)
                     if folder is None: folder = self._item(label, {"type":"interval", **base}); areas_folder.addChild(folder); intervals[label] = folder
-                    folder.addChild(self._item(area.name, {"type":"area","id":area.id, **base}))
+                    text = area.name + (" [Archived]" if area.is_archived else "")
+                    folder.addChild(self._item(text, {"type":"area","id":area.id,"archived":area.is_archived, **base}))
         self.tree.expandToDepth(1)
     @staticmethod
     def _item(text, payload):
         item = QTreeWidgetItem([text]); item.setData(0, Qt.ItemDataRole.UserRole, payload)
         icons={"site":"mine","domain":"domain","folder":"blast-blocks" if text=="Blast events" else "assessment-area","horizon":"horizon","block":"block","contour":"contour","interval":"layers","area":"assessment-area"}
-        item.setIcon(0,ui_icon(icons.get(payload.get("type"),"folder-open"))); return item
+        item.setIcon(0,ui_icon(icons.get(payload.get("type"),"folder-open")))
+        if payload.get("archived"):
+            item.setForeground(0, Qt.GlobalColor.gray)
+        return item
     def _item_clicked(self, item, _column=0):
         p = item.data(0, Qt.ItemDataRole.UserRole) or {}; kind = p.get("type")
         if kind in {"folder","horizon","interval"}: item.setExpanded(not item.isExpanded()); return

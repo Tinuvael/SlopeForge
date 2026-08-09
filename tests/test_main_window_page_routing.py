@@ -33,7 +33,7 @@ def test_cancel_and_discard_share_one_leave_guard():
 def test_missing_project_lines_warning_and_no_drawing_before_check():
     main=source("ui/main_window.py")
     area=main[main.index("def _add_area"):main.index("def _archive_selected")]
-    assert "Сначала загрузите проектные линии для карьера." in area
+    assert "Load Project Lines for the project first." in area
     assert area.index("get_active") < area.index("AssessmentAreaCreationPage")
 
 def test_block_creation_reuses_blast_event_dialog_and_links_event():
@@ -44,7 +44,7 @@ def test_block_creation_reuses_blast_event_dialog_and_links_event():
     assert "create_event" in block and "blast_block_id=block_id" in block
 
 def test_site_dashboard_owns_project_lines_management():
-    pages=source("ui/pages/navigation_pages.py")
+    pages=source("ui/pages/dashboards/site_dashboard.py")
     assert "class SiteDashboardPage" in pages
     assert "Import / Update Project Lines" in pages
     assert "ProjectLinesRepository" in pages
@@ -56,12 +56,12 @@ def test_archive_button_and_block_service_are_connected():
     assert "set_archived" in source("services/blast_block_service.py")
 
 def test_block_page_embeds_geometry_and_revision_safe_technical_card_tabs():
-    block=source("ui/pages/block_list_page.py")
+    block=source("ui/pages/block_page.py")
     assert "event_for_block" in block and "active_geometry_revision" in block
     assert "TechnicalCardEditorWidget" in block
-    assert 'take_tab("Геомеханика")' in block
-    assert 'take_tab("Бурение и заряды")' in block
-    assert 'take_tab("Факт")' in block
+    assert 'take_tab("Geomechanics")' in block
+    assert 'take_tab("Drilling and charging")' in block
+    assert 'take_tab("Execution fact")' in block
 
 def test_area_page_is_focused_without_legacy_mode_switch():
     area=source("ui/pages/assessment_area_page.py")
@@ -69,7 +69,7 @@ def test_area_page_is_focused_without_legacy_mode_switch():
     assert '"Overview"' in area and '"Assessment"' in area and '"Result"' in area
     assert '"Linked events"' in area
     assert "Blast Events / Assessment Areas" not in area
-    assert "AssessmentAreaEvaluationDialog" in area and "Матрица" in area
+    assert "AssessmentAreaEvaluationDialog" in area and "Matrix" in area
     assert "Design Achievement Index" not in area  # calculated by reused dialog/QuadrantPlot
 
 def test_area_links_and_focused_creation_are_reused():
@@ -83,13 +83,13 @@ def test_area_links_and_focused_creation_are_reused():
     assert "AssessmentAreaCreationPage" in main and "_area_created" in main
 
 def test_entity_page_integration_corrections_are_visible():
-    block=source("ui/pages/block_list_page.py")
+    block=source("ui/pages/block_page.py")
     assert 'QPushButton("Save draft")' in block and 'QPushButton("Complete")' in block
     assert "save_draft()" in block and "complete()" in block
     area=source("ui/pages/assessment_area_page.py")
     assert "self.assessment_sections=QTabWidget()" in area
-    assert 'addTab(take("Общие"),"Общие")' in area
-    assert "Сначала сохраните черновик оценки" in area
+    assert 'addTab(take("General"),"General")' in area
+    assert "Save an assessment draft first" in area
     creation=source("ui/pages/assessment_area_creation_page.py")
     for label in ("Fit","Project Lines","Grid","Undo vertex","Finish polygon / Continue","Confirm boundaries","Cancel"):
         assert label in creation
@@ -98,9 +98,9 @@ def test_refresh_reloads_filters_and_area_construction_is_guarded():
     main=source("ui/main_window.py")
     refresh=main[main.index("def refresh_project_data"):main.index("def closeEvent")]
     assert refresh.index("reload_filters") < refresh.index("load_data")
-    assert main.count("Не удалось открыть Assessment Area") == 1
-    assert "Не удалось запустить создание Assessment Area" in main
-    assert "Не удалось открыть редактирование границ" in main
+    assert main.count("Could not open the assessment area") == 1
+    assert "Could not start assessment area creation" in main
+    assert "Could not open boundary editing" in main
 
 def test_existing_block_dialog_preserves_zero_and_none_and_locks_linked_domain():
     dialog=source("ui/block_dialog.py")
@@ -130,7 +130,7 @@ def test_area_creation_cancel_drawing_is_not_page_cancel():
 
 
 def test_stale_block_engineering_is_cleared_and_read_only_is_defensive():
-    block=source("ui/pages/block_list_page.py")
+    block=source("ui/pages/block_page.py")
     render=block[block.index("def _render_engineering"):block.index("def _reimport_geometry")]
     assert "self._clear_engineering()" in render
     assert "self.technical_card_editor=None" in render
