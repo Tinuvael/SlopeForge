@@ -117,6 +117,32 @@ def test_project_lines_rejects_dxf_with_only_unsupported_entities(tmp_path):
     assert state.datasets == []
 
 
+@pytest.mark.parametrize("vertices", [[], [(0, 0)]], ids=["zero-vertices", "one-vertex"])
+def test_project_lines_rejects_degenerate_supported_polylines(tmp_path, vertices):
+    path = save(
+        tmp_path,
+        lambda msp: msp.add_lwpolyline(vertices, dxfattribs={"elevation": 610}),
+        "degenerate.dxf",
+    )
+    state = AssessmentDomainState()
+    with pytest.raises(ProjectLinesImportError, match="no suitable lines"):
+        ProjectLinesDatasetService(state).import_dataset(path)
+    assert state.datasets == []
+
+
+def test_project_lines_mixed_dxf_persists_only_drawable_lines(tmp_path):
+    def build(msp):
+        msp.add_lwpolyline([(0, 0)], dxfattribs={"elevation": 600})
+        msp.add_lwpolyline([(0, 0), (2, 0)], dxfattribs={"elevation": 610})
+    state = AssessmentDomainState()
+    dataset, result = ProjectLinesDatasetService(state).import_dataset(
+        save(tmp_path, build, "mixed-project-lines.dxf")
+    )
+    assert len(result.lines) == 2
+    assert len(dataset.lines) == 1
+    assert len(dataset.lines[0].points) == 2
+
+
 def test_project_lines_service_and_case_insensitive_dispatch(tmp_path):
     def build(msp):
         for z in (600,610,620): msp.add_lwpolyline([(0,z),(10,z)], dxfattribs={"elevation":z})

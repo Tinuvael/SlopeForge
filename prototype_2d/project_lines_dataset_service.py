@@ -30,12 +30,13 @@ class ProjectLinesDatasetService:
     ) -> tuple[ProjectLinesDataset, LineGeometryImportResult]:
         path = Path(source_path)
         result = import_line_geometry(path, column_mapping=column_mapping, delimiter_choice=delimiter_choice)
-        if not result.lines:
+        usable_lines = [line for line in result.lines if len(line.points) >= 2]
+        if not usable_lines:
             raise ProjectLinesImportError("Geometry file contains no suitable lines")
         dataset = self.create_dataset(
             name=name or path.stem,
             source_file_name=path.name,
-            lines=result.lines,
+            lines=usable_lines,
             imported_at=imported_at,
         )
         return dataset, result

@@ -129,6 +129,24 @@ def test_empty_import_does_not_change_persisted_active_dataset(context, monkeypa
     assert len(rows) == 1 and rows[0].domain_id == "D-001" and rows[0].is_active
 
 
+def test_degenerate_dxf_does_not_change_persisted_active_dataset(context, tmp_path):
+    factory, ids = context
+    repo = ProjectLinesRepository(factory)
+    repo.import_dataset(ids[1], dataset("D-001"), make_active=True)
+    document = ezdxf.new()
+    document.modelspace().add_lwpolyline(
+        [(0, 0)], dxfattribs={"elevation": 610}
+    )
+    source = tmp_path / "one-vertex.dxf"
+    document.saveas(source)
+
+    with pytest.raises(ProjectLinesImportError, match="no suitable lines"):
+        ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(source)
+
+    rows = repo.list_for_site(ids[1])
+    assert len(rows) == 1 and rows[0].domain_id == "D-001" and rows[0].is_active
+
+
 def test_csv_to_dxf_and_same_file_reimports_create_history(context, tmp_path):
     factory, ids = context
     repo = ProjectLinesRepository(factory)
