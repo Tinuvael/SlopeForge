@@ -37,7 +37,7 @@ class DomainGeometryEditorDialog(QDialog):
         for widget in (self.fit_button,self.lines_toggle,self.grid_toggle,self.add_button,self.undo_button,self.finish_button,self.delete_button): controls.addWidget(widget)
         controls.addStretch(); root.addLayout(controls); self.scene=QGraphicsScene(self); self.view=_DrawingView(self.scene,self); self.view.setRenderHint(QPainter.RenderHint.Antialiasing); self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag); root.addWidget(self.view)
         actions=QHBoxLayout(); actions.addStretch(); self.save_button=QPushButton(tr("Save")); self.cancel_button=QPushButton(tr("Cancel")); actions.addWidget(self.save_button); actions.addWidget(self.cancel_button); root.addLayout(actions)
-        self.fit_button.clicked.connect(self.fit); self.lines_toggle.toggled.connect(self._rerender_preserving_edits); self.grid_toggle.toggled.connect(self._rerender_preserving_edits); self.add_button.clicked.connect(self.start_polygon); self.undo_button.clicked.connect(self.undo_vertex); self.finish_button.clicked.connect(self.finish_polygon); self.delete_button.clicked.connect(self.delete_selected); self.save_button.clicked.connect(self.save); self.cancel_button.clicked.connect(self.reject); self.render()
+        self.fit_button.clicked.connect(self.fit); self.lines_toggle.toggled.connect(self._rerender_preserving_edits); self.grid_toggle.toggled.connect(self._rerender_preserving_edits); self.add_button.clicked.connect(self.start_polygon); self.undo_button.clicked.connect(self.undo_vertex); self.finish_button.clicked.connect(self.finish_polygon); self.delete_button.clicked.connect(self.delete_selected); self.save_button.clicked.connect(self.save); self.cancel_button.clicked.connect(self.reject); self.render(preserve_view=False); self.fit()
     def _warning(self,message): QMessageBox.warning(self,tr("Domain geometry"),domain_message(str(message)))
     def _rerender_preserving_edits(self,*_): self._sync_handles(); self.render()
     def start_polygon(self):
@@ -68,7 +68,9 @@ class DomainGeometryEditorDialog(QDialog):
             for polygon in self.polygons: validate_simple_polygon(polygon)
         except ValueError as exc: self._warning(exc); return
         self.accept()
-    def render(self):
+    def render(self,preserve_view=True):
+        transform=self.view.transform() if preserve_view else None
+        center=self.view.mapToScene(self.view.viewport().rect().center()) if preserve_view else None
         self.scene.clear(); self.handles=[]; self._line_items=[]
         if self.lines_toggle.isChecked():
             for geometry in self.project_lines:self._path(geometry.points,"#CBD5E1",1,None,-10)
@@ -78,7 +80,9 @@ class DomainGeometryEditorDialog(QDialog):
             for point in self.polygons[self.selected_index].ring[:-1]:
                 handle=QGraphicsEllipseItem(-4,-4,8,8); handle.setPos(point.x,-point.y); handle.setFlag(QGraphicsEllipseItem.GraphicsItemFlag.ItemIsMovable); handle.setBrush(QColor("#0F766E")); handle.setZValue(10); self.scene.addItem(handle); self.handles.append(handle)
         if self.vertices:self._path(tuple((point.x,point.y) for point in self.vertices),"#2563EB",2,None,5)
-        self.view.viewport().update(); self.fit()
+        if preserve_view:
+            self.view.setTransform(transform); self.view.centerOn(center)
+        self.view.viewport().update()
     def _path(self,points,color,width,fill,z):
         path=QPainterPath(); x,y=points[0]; path.moveTo(x,-y)
         for x,y in points[1:]:path.lineTo(x,-y)

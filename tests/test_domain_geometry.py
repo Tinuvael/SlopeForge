@@ -60,3 +60,19 @@ def test_all_self_intersecting_import_keeps_clear_validation_error():
     bow_tie=line([(0,0,0),(4,4,1),(0,3,2),(3,0,3),(0,0,4)])
     with pytest.raises(DomainGeometryValidationError,match="No valid closed Domain polygons"):
         build_domain_polygons([bow_tie])
+
+
+@pytest.mark.parametrize("bad_value",[float("nan"),float("inf"),float("-inf")])
+def test_non_finite_xy_is_skipped_while_valid_polygon_survives(bad_value):
+    invalid=line([(0,0,0),(bad_value,0,0),(1,1,0),(0,0,0)],"invalid")
+    valid=line([(10,10,0),(12,10,0),(10,12,0),(10,10,0)],"valid")
+    result=build_domain_polygons([invalid,valid])
+    assert result.polygons[0].ring[0]==PlanPoint(10,10)
+    assert len(result.polygons)==1 and result.skipped_degenerate_lines==1
+
+
+@pytest.mark.parametrize("bad_value",[float("nan"),float("inf"),float("-inf")])
+def test_all_non_finite_xy_keeps_clear_validation_error(bad_value):
+    invalid=line([(0,0,0),(1,bad_value,0),(1,1,0),(0,0,0)])
+    with pytest.raises(DomainGeometryValidationError,match="No valid closed Domain polygons"):
+        build_domain_polygons([invalid])

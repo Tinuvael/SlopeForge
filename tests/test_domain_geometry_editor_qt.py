@@ -46,3 +46,13 @@ def test_polygon_made_invalid_by_handle_drag_cannot_save(app,monkeypatch):
 def test_cancel_keeps_caller_working_copy_unchanged(app):
     original=polygon(0); dialog=DomainGeometryEditorDialog((original,)); dialog._select(0); dialog.handles[0].setPos(2,-2); dialog.reject()
     assert original.ring[0]==PlanPoint(0,0) and dialog.result()==QDialog.DialogCode.Rejected
+
+
+def test_adding_and_undoing_vertices_preserves_viewport(app):
+    dialog=DomainGeometryEditorDialog((polygon(0),)); dialog.show(); app.processEvents()
+    dialog.view.scale(1.7,1.7); dialog.view.centerOn(23,17)
+    transform=dialog.view.transform(); center=dialog.view.mapToScene(dialog.view.viewport().rect().center())
+    dialog.start_polygon(); dialog.add_vertex(1,1); dialog.add_vertex(2,1); dialog.undo_vertex()
+    after_center=dialog.view.mapToScene(dialog.view.viewport().rect().center())
+    assert dialog.view.transform()==transform
+    assert abs(after_center.x()-center.x())<1 and abs(after_center.y()-center.y())<1

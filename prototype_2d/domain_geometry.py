@@ -1,7 +1,7 @@
 """XY-only conversion of common imported lines into Domain footprints."""
 from __future__ import annotations
 from dataclasses import dataclass
-from math import hypot
+from math import hypot, isfinite
 from typing import Sequence
 
 from .domain import PlanPoint, PlanPolygon
@@ -30,6 +30,9 @@ def build_domain_polygons(
     open_count = degenerate_count = 0
     for line in imported_lines:
         xy = tuple(PlanPoint(float(point.x), float(point.y)) for point in line.points)
+        if not all(isfinite(point.x) and isfinite(point.y) for point in xy):
+            degenerate_count += 1
+            continue
         if len(xy) < 2 or hypot(xy[0].x - xy[-1].x, xy[0].y - xy[-1].y) > tolerance:
             open_count += 1
             continue
