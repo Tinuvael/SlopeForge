@@ -1,7 +1,8 @@
 from types import SimpleNamespace
 import pytest
 try:
-    from PySide6.QtWidgets import QApplication,QDialog,QMessageBox
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication,QDialog,QGraphicsView,QMessageBox
     from prototype_2d.domain import PlanPoint,PlanPolygon
     from ui.dialogs.domain_geometry_editor import DomainGeometryEditorDialog
 except ImportError as exc:
@@ -56,3 +57,35 @@ def test_adding_and_undoing_vertices_preserves_viewport(app):
     after_center=dialog.view.mapToScene(dialog.view.viewport().rect().center())
     assert dialog.view.transform()==transform
     assert abs(after_center.x()-center.x())<1 and abs(after_center.y()-center.y())<1
+
+
+def test_add_polygon_uses_drawing_cursor_and_disables_hand_drag(app):
+    dialog=DomainGeometryEditorDialog((polygon(0),))
+    assert dialog.view.dragMode()==QGraphicsView.DragMode.ScrollHandDrag
+    dialog.start_polygon()
+    assert dialog.drawing
+    assert dialog.view.dragMode()==QGraphicsView.DragMode.NoDrag
+    assert dialog.view.viewport().cursor().shape()==Qt.CursorShape.CrossCursor
+
+
+def test_finishing_or_cancelling_drawing_restores_navigation(app):
+    dialog=DomainGeometryEditorDialog(); dialog.start_polygon()
+    dialog.vertices=[PlanPoint(0,0),PlanPoint(4,0),PlanPoint(0,4)]; dialog.finish_polygon()
+    assert not dialog.drawing
+    assert dialog.view.dragMode()==QGraphicsView.DragMode.ScrollHandDrag
+    assert dialog.view.viewport().cursor().shape()!=Qt.CursorShape.CrossCursor
+    dialog.start_polygon(); dialog.reject()
+    assert not dialog.drawing
+    assert dialog.view.dragMode()==QGraphicsView.DragMode.ScrollHandDrag
+    assert dialog.view.viewport().cursor().shape()!=Qt.CursorShape.CrossCursor
+
+
+def test_project_lines_use_thin_cosmetic_unfilled_background_style(app):
+    lines=(SimpleNamespace(points=((0,0),(20,20))),)
+    dialog=DomainGeometryEditorDialog((polygon(0),),lines)
+    assert len(dialog._line_items)==1
+    item=dialog._line_items[0]
+    assert item.pen().isCosmetic() and item.pen().widthF()==1
+    assert item.opacity()<0.5 and item.brush().style()==Qt.BrushStyle.NoBrush
+    dialog.render()
+    assert len(dialog._line_items)==1
