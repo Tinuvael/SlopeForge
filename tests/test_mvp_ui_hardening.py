@@ -290,3 +290,74 @@ def test_dynamic_domain_validation_messages_are_presented_in_english():
     assert domain_message("Добавьте группу бурения; Выберите метод контурного взрывания") == (
         "Add a drilling group; Select a controlled blasting method"
     )
+
+
+def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
+    from datetime import date, datetime, timezone
+    from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, PlanPoint, PlanPolygon
+    from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+    from ui.pages.entity_page_controller import EntityPageController
+
+    polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(1, 0), PlanPoint(1, 1), PlanPoint(0, 0)))
+    geometry = AssessmentAreaGeometryRevision("AGR-1", "AREA-1", 1, datetime.now(timezone.utc), "DATASET-1", polygon, polygon, 100, 110, ())
+    area = AssessmentArea("AREA-1", "Wall", date.today(), [geometry], geometry.id)
+    state = AssessmentDomainState(assessment_areas=[area])
+    controller = EntityPageController.__new__(EntityPageController)
+    controller.state = state
+    controller.evaluations = AssessmentAreaEvaluationService(state)
+    saves = []
+    controller.save = lambda: saves.append(True)
+
+    transient, _draft = controller.evaluation_draft(area)
+    owner = controller.ensure_evaluation_owner(area, transient)
+    assert owner is transient and owner.revisions == [] and len(state.evaluations) == 1
+    assert saves == [True]
+
+    reused, first_draft = controller.evaluation_draft(area)
+    assert reused is owner and first_draft.evaluation_id == owner.id
+    controller.save_evaluation(reused, first_draft, "draft")
+    assert len(state.evaluations) == 1
+    assert reused.revisions[0].revision_number == 1
+    assert reused.revisions[0].evaluation_id == owner.id
+
+
+def test_assessment_attachment_ui_has_no_saved_revision_gate():
+    area = source("ui/pages/assessment_area_page.py")
+    assert "Save an assessment draft first" not in area
+    assert "ensure_evaluation_owner" in area
+    assert 'dialog.tabs.setCurrentIndex(0 if kind=="photo" else 1)' in area
+
+
+def test_block_attachment_tabs_are_real_and_ordered():
+    block = source("ui/pages/block_page.py")
+    expected = ["General information", "Geomechanics", "Blast design", "Execution fact", "Photos", "Documents", "History"]
+    positions = [block.index(f'"{title}"') for title in expected]
+    assert positions == sorted(positions)
+    assert 'self.tabs.addTab(self.photos_tab, "Photos")' in block
+    assert 'self.tabs.addTab(self.documents_tab, "Documents")' in block
+    assert 'self.tabs.addTab(EmptySection(), "Documents")' not in block
+
+
+def test_block_attachment_tabs_select_the_requested_manager_tab(monkeypatch):
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    import sys
+    from types import ModuleType
+
+    calls = []
+    fake_module = ModuleType("ui.dialogs.entity_attachment_dialog")
+    class FakeTabs:
+        def setCurrentIndex(self, index): calls[-1]["tab"] = index
+    class FakeDialog:
+        def __init__(self, _service, owner_type, owner_id, _parent, read_only):
+            calls.append({"owner_type": owner_type, "owner_id": owner_id, "read_only": read_only})
+            self.tabs = FakeTabs()
+        def exec(self): return 0
+    fake_module.EntityAttachmentDialog = FakeDialog
+    monkeypatch.setitem(sys.modules, "ui.dialogs.entity_attachment_dialog", fake_module)
+    page = _block_page(monkeypatch, can_edit=True, archived=False)
+    page._open_attachments("photo")
+    page._open_attachments("document")
+    assert [(item["owner_type"], item["owner_id"], item["tab"]) for item in calls] == [
+        ("blast_event", "EVENT-7", 0), ("blast_event", "EVENT-7", 1),
+    ]
+    page.close()

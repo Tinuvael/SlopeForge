@@ -311,3 +311,23 @@ def test_focused_area_edit_boundaries_round_trip_preserves_entity_graph(session_
     assert saved_area.active_geometry_revision().source_dataset_id in {d.id for d in reloaded.datasets}
     assert [e.id for e in reloaded.evaluations]==evaluation_ids and [a.id for a in reloaded.attachments]==attachment_ids
     window.close(); app.processEvents()
+
+
+def test_zero_revision_evaluation_container_round_trips(session_factory, assessment_context):
+    from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+
+    state = build_rich_state()
+    state.evaluations = []
+    state.attachments = [item for item in state.attachments if item.owner_type != "assessment_evaluation"]
+    area = state.assessment_areas[0]
+    owner = AssessmentAreaEvaluationService(state).create_evaluation(area)
+    state.evaluations.append(owner)
+    repository = AssessmentStateRepository(session_factory)
+    repository.replace_for_domain(assessment_context.domain_id, state)
+
+    reloaded = repository.load_for_domain(assessment_context.domain_id).state
+    owners = [item for item in reloaded.evaluations if item.assessment_area_id == area.id]
+    assert len(owners) == 1
+    assert owners[0].id == owner.id
+    assert owners[0].revisions == []
+    assert owners[0].active_revision_id is None

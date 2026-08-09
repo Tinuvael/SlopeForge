@@ -2,7 +2,7 @@ from __future__ import annotations
 from ui.presentation_labels import domain_message
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget
 
 from database.app_context import AppContext
 from repositories.audit_log_repository import AuditLogRepository
@@ -66,7 +66,10 @@ class BlockPage(QWidget):
         self.tabs.addTab(self.geomechanics_tab, "Geomechanics")
         self.tabs.addTab(self.design_tab, "Blast design")
         self.tabs.addTab(self.execution_tab, "Execution fact")
-        self.tabs.addTab(EmptySection(), "Documents")
+        self.photos_tab,self.photos_tab_count,self.manage_photos_button=self._make_attachment_tab("photo")
+        self.documents_tab,self.documents_tab_count,self.manage_documents_button=self._make_attachment_tab("document")
+        self.tabs.addTab(self.photos_tab, "Photos")
+        self.tabs.addTab(self.documents_tab, "Documents")
         self.history_tab = AuditPreviewWidget("Change history")
         self.tabs.addTab(self.history_tab, "History")
         left.addWidget(self.tabs)
@@ -104,6 +107,12 @@ class BlockPage(QWidget):
             """
         )
         self.refresh()
+
+    def _make_attachment_tab(self,kind):
+        page=QWidget(); layout=QVBoxLayout(page); label=QLabel("No photos yet" if kind=="photo" else "No documents yet")
+        button=QPushButton("Manage photos" if kind=="photo" else "Manage documents")
+        button.setEnabled(False); button.clicked.connect(lambda _checked=False,k=kind:self._open_attachments(k))
+        layout.addWidget(label); layout.addWidget(button); layout.addStretch(); return page,label,button
 
     def set_filters(self, filters: dict) -> None:
         self.filters = filters
@@ -148,6 +157,10 @@ class BlockPage(QWidget):
         attachments_available = event is not None
         self.photos.add_button.setEnabled(attachments_available)
         self.documents.add_button.setEnabled(attachments_available)
+        self.manage_photos_button.setEnabled(attachments_available)
+        self.manage_documents_button.setEnabled(attachments_available)
+        self.photos_tab_count.setText(f"{photo_count} photo{'s' if photo_count!=1 else ''}" if photo_count else "No photos yet")
+        self.documents_tab_count.setText(f"{document_count} document{'s' if document_count!=1 else ''}" if document_count else "No documents yet")
         self.header.set_block(block, self.context.current_user.can_edit and not block.is_archived if block else False)
         self.overview.set_block(block)
         self.compact_cards.set_block(block)

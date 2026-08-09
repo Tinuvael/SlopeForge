@@ -27,9 +27,20 @@ class EntityPageController:
         except Exception:
             del card.revisions[count:]; card.active_revision_id=active; raise
     def evaluation_draft(self,area):
-        existing=next((e for e in reversed(self.state.evaluations) if e.assessment_area_id==area.id and e.active_revision()),None)
-        if existing:return existing,deepcopy(existing.active_revision())
+        existing=next((e for e in reversed(self.state.evaluations) if e.assessment_area_id==area.id),None)
+        if existing and existing.active_revision():return existing,deepcopy(existing.active_revision())
+        if existing:return self.evaluations.new_draft(existing,area)
         return self.evaluations.new_evaluation(area)
+    def ensure_evaluation_owner(self,area,evaluation=None):
+        existing=next((e for e in self.state.evaluations if e.assessment_area_id==area.id),None)
+        if existing:return existing
+        owner=evaluation or self.evaluations.create_evaluation(area)
+        if owner.assessment_area_id!=area.id:raise ValueError("evaluation owner belongs to another Assessment Area")
+        self.state.evaluations.append(owner)
+        try:self.save()
+        except Exception:
+            self.state.evaluations.remove(owner); raise
+        return owner
     def save_evaluation(self,evaluation,revision,status):
         present=evaluation in self.state.evaluations; count=len(evaluation.revisions); active=evaluation.active_revision_id
         try:

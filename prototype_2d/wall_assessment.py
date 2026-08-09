@@ -215,16 +215,21 @@ class AssessmentAreaEvaluationService:
         confirmed={l.blast_event_id for l in area.event_links if l.status=="confirmed" and l.assessment_area_geometry_revision_id==area.active_geometry_revision_id}
         controlled=any(e.id in confirmed and e.event_type=="contour" for e in self.state.blast_events)
         return ("controlled_blasting_v1" if controlled else "no_controlled_blasting_v1",controlled,"confirmed_link" if controlled else "no_confirmed_contour_link")
-    def new_evaluation(self,area,template_id=None,override_reason=None):
+    def create_evaluation(self, area):
+        """Create an empty Area-owned container without creating a score revision."""
+        if area.is_archived: raise ValueError("Архивная Assessment Area доступна только для чтения")
+        return AssessmentAreaEvaluation(f"AAE-{uuid4()}", area.id)
+    def new_draft(self, evaluation, area, template_id=None, override_reason=None):
+        """Build a transient draft for an existing (possibly empty) container."""
         if area.is_archived: raise ValueError("Архивная Assessment Area доступна только для чтения")
         detected,present,source=self.detect_template(area)
         if template_id and template_id!=detected and not (override_reason or "").strip(): raise ValueError("Для ручного выбора матрицы укажите причину")
-        chosen=template_id or detected; template=get_template(chosen); eid=f"AAE-{uuid4()}"
-        # The evaluation remains transient until the first successful save.  This
-        # prevents Cancel/X from leaving empty placeholders in persisted state.
-        evaluation=AssessmentAreaEvaluation(eid,area.id)
-        revision=AssessmentAreaEvaluationRevision("",eid,0,datetime.now(timezone.utc),date.today(),"","draft",area.active_geometry_revision_id,chosen,template.version,template.to_dict(),chosen=="controlled_blasting_v1","manual_override" if template_id and template_id!=detected else source,linked_event_snapshots=self.snapshot_links(area),change_reason=override_reason or "")
+        chosen=template_id or detected; template=get_template(chosen)
+        revision=AssessmentAreaEvaluationRevision("",evaluation.id,0,datetime.now(timezone.utc),date.today(),"","draft",area.active_geometry_revision_id,chosen,template.version,template.to_dict(),chosen=="controlled_blasting_v1","manual_override" if template_id and template_id!=detected else source,linked_event_snapshots=self.snapshot_links(area),change_reason=override_reason or "")
         return evaluation,revision
+    def new_evaluation(self,area,template_id=None,override_reason=None):
+        evaluation = self.create_evaluation(area)
+        return self.new_draft(evaluation, area, template_id, override_reason)
     def snapshot_links(self,area):
         result=[]
         for link in area.event_links:

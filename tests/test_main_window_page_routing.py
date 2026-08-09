@@ -89,7 +89,8 @@ def test_entity_page_integration_corrections_are_visible():
     area=source("ui/pages/assessment_area_page.py")
     assert "self.assessment_sections=QTabWidget()" in area
     assert 'addTab(take("General"),"General")' in area
-    assert "Save an assessment draft first" in area
+    assert "Save an assessment draft first" not in area
+    assert "ensure_evaluation_owner" in area
     creation=source("ui/pages/assessment_area_creation_page.py")
     for label in ("Fit","Project Lines","Grid","Undo vertex","Finish polygon / Continue","Confirm boundaries","Cancel"):
         assert label in creation
