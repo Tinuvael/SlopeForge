@@ -2,6 +2,10 @@ from pathlib import Path
 
 import ezdxf
 import pytest
+from ezdxf.lldxf.const import (
+    POLYLINE_CURVE_FIT_VERTICES_ADDED,
+    POLYLINE_SPLINE_FIT_VERTICES_ADDED,
+)
 
 from prototype_2d.blast_geometry import build_contour_geometry, build_production_geometry
 from prototype_2d.domain import AssessmentDomainState
@@ -56,6 +60,29 @@ def test_legacy_2d_polyline_bulge_is_rejected(tmp_path):
         line.vertices[0].dxf.bulge = 1
     with pytest.raises(DxfImportError, match="Curved DXF polyline"):
         import_dxf_polylines(save(tmp_path, build, "curved-2d.dxf"))
+
+
+@pytest.mark.parametrize(
+    ("fit_flag", "name"),
+    [
+        (POLYLINE_CURVE_FIT_VERTICES_ADDED, "curve-fit-2d.dxf"),
+        (POLYLINE_SPLINE_FIT_VERTICES_ADDED, "spline-fit-2d.dxf"),
+    ],
+)
+def test_legacy_2d_polyline_fit_flags_are_rejected(tmp_path, fit_flag, name):
+    def build(msp):
+        line = msp.add_polyline2d([(0, 0), (1, 0), (1, 1)])
+        line.dxf.flags |= fit_flag
+    with pytest.raises(DxfImportError, match="Curved DXF polyline"):
+        import_dxf_polylines(save(tmp_path, build, name))
+
+
+def test_legacy_3d_polyline_curve_fit_flag_is_rejected(tmp_path):
+    def build(msp):
+        line = msp.add_polyline3d([(0, 0, 10), (1, 0, 9), (1, 1, 8)])
+        line.dxf.flags |= POLYLINE_CURVE_FIT_VERTICES_ADDED
+    with pytest.raises(DxfImportError, match="Curved DXF polyline"):
+        import_dxf_polylines(save(tmp_path, build, "curve-fit-3d.dxf"))
 
 
 def test_polygon_mesh_and_polyface_are_skipped(tmp_path):

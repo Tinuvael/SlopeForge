@@ -39,6 +39,10 @@ def import_dxf_polylines(path: str | Path) -> DxfImportResult:
     """Read straight LWPOLYLINE/2D POLYLINE/3D POLYLINE entities from modelspace."""
     try:
         import ezdxf
+        from ezdxf.lldxf.const import (
+            POLYLINE_CURVE_FIT_VERTICES_ADDED,
+            POLYLINE_SPLINE_FIT_VERTICES_ADDED,
+        )
     except ImportError as exc:  # dependency error, not an import workaround
         raise DxfImportError("ezdxf is required to import DXF geometry") from exc
 
@@ -67,6 +71,12 @@ def import_dxf_polylines(path: str | Path) -> DxfImportResult:
             if mode not in {"AcDb2dPolyline", "AcDb3dPolyline"}:
                 summary.skipped_unsupported_entity_count += 1
                 continue
+            fitted_curve_flags = (
+                POLYLINE_CURVE_FIT_VERTICES_ADDED
+                | POLYLINE_SPLINE_FIT_VERTICES_ADDED
+            )
+            if int(entity.dxf.get("flags", 0)) & fitted_curve_flags:
+                raise DxfImportError(curved_message)
             if mode == "AcDb2dPolyline" and any(abs(float(v.dxf.get("bulge", 0))) > 1e-12 for v in entity.vertices):
                 raise DxfImportError(curved_message)
             vertices = list(entity.points_in_wcs())
