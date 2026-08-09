@@ -1,3 +1,5 @@
+
+from app.localization import tr
 from PySide6.QtWidgets import (
     QDialog,
     QLabel,
@@ -21,13 +23,13 @@ class AddDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel("Name"))
+        layout.addWidget(QLabel(tr("Name")))
 
         self.name = QLineEdit()
         self.name.setPlaceholderText(f"{item_type} name...")
         layout.addWidget(self.name)
 
-        layout.addWidget(QLabel("Description"))
+        layout.addWidget(QLabel(tr("Description")))
 
         self.description = QTextEdit()
         self.description.setMaximumHeight(80)
@@ -37,8 +39,8 @@ class AddDialog(QDialog):
 
         buttons.addStretch()
 
-        cancel = QPushButton("Cancel")
-        create = QPushButton("Create")
+        cancel = QPushButton(tr("Cancel"))
+        create = QPushButton(tr("Create"))
 
         cancel.clicked.connect(self.reject)
         create.clicked.connect(self.accept)

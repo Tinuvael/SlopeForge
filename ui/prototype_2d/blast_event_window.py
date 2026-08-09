@@ -1,3 +1,5 @@
+
+from app.localization import tr
 """Compatibility window around the embeddable assessment workspace."""
 from pathlib import Path
 
@@ -44,7 +46,7 @@ class BlastEventWindow(QMainWindow):
             self.state, self.storage_path, save_callback, self
         )
         self.setCentralWidget(self.workspace)
-        self.setWindowTitle("SlopeForge — 2D Assessment Workspace")
+        self.setWindowTitle(tr("SlopeForge — 2D Assessment Workspace"))
         self.resize(1300, 800)
         self.setMinimumSize(1000, 650)
         apply_window_icon(self)
@@ -72,8 +74,8 @@ class BlastEventWindow(QMainWindow):
         if self.workspace.has_active_workflow():
             answer = QMessageBox.warning(
                 self,
-                "Несохранённая геометрия",
-                "Имеются несохранённые изменения геометрии.",
+                tr("Unsaved geometry"),
+                tr("There are unsaved geometry changes."),
                 QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Discard,
                 QMessageBox.StandardButton.Cancel,
             )
@@ -86,7 +88,7 @@ class BlastEventWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(
                 self,
-                "Ошибка сохранения",
+                tr("Save error"),
                 f"Не удалось сохранить данные. Окно останется открытым.\n\n{exc}",
             )
             event.ignore()

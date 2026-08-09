@@ -40,3 +40,11 @@ PostgreSQL integration tests require an explicitly isolated database in `SLOPEFO
 ## Disclaimer
 
 SlopeForge is an engineering data-management and decision-support tool. It does not replace professional engineering judgement, site-specific investigations, or engineering design. Users are responsible for verifying engineering decisions and the suitability of blasting parameters for their conditions.
+
+## Translations
+
+English source text is canonical, and `translations/slopeforge_ru.ts` is the
+source-controlled Russian catalogue. SlopeForge reads this XML file through a
+Qt translator adapter, so normal source execution does not require Qt Linguist,
+`pyside6-lrelease`, or a precompiled `.qm` file. A future packaged release may
+optionally compile TS to QM as a build-time optimization.

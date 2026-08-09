@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.localization import tr
+
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from database.app_context import AppContext
@@ -15,16 +17,16 @@ class UserAdminPage(QWidget):
         self.service = UserAdminService(context.session_factory)
         layout = QVBoxLayout(self)
         buttons = QHBoxLayout()
-        self.create = QPushButton("Create user")
-        self.edit = QPushButton("Edit user")
-        self.password = QPushButton("Change password")
-        self.toggle = QPushButton("Activate / block")
-        self.revoke = QPushButton("End all saved sessions")
+        self.create = QPushButton(tr("Create user"))
+        self.edit = QPushButton(tr("Edit user"))
+        self.password = QPushButton(tr("Change password"))
+        self.toggle = QPushButton(tr("Activate / block"))
+        self.revoke = QPushButton(tr("End all saved sessions"))
         for button in (self.create, self.edit, self.password, self.toggle, self.revoke):
             buttons.addWidget(button)
         buttons.addStretch(); layout.addLayout(buttons)
         self.table = QTableWidget(0, 8)
-        self.table.setHorizontalHeaderLabels(["Username", "Full name", "Role", "Active", "Created", "Last login", "Created by", "Updated by"])
+        self.table.setHorizontalHeaderLabels([tr("Username"), tr("Full name"), tr("Role"), tr("Active"), tr("Created"), tr("Last login"), tr("Created by"), tr("Updated by")])
         layout.addWidget(self.table)
         self.create.clicked.connect(self.create_user); self.edit.clicked.connect(self.edit_user); self.password.clicked.connect(self.change_password); self.toggle.clicked.connect(self.toggle_active); self.revoke.clicked.connect(self.revoke_sessions)
         enabled = context.current_user.role == "admin"
@@ -67,4 +69,4 @@ class UserAdminPage(QWidget):
         user = self.selected_user()
         if not user: return
         self.service.revoke_all_sessions(self.context.current_user, user.id)
-        QMessageBox.information(self, "Saved sessions", "Saved sessions were revoked for this user.")
+        QMessageBox.information(self, tr("Saved sessions"), tr("Saved sessions were revoked for this user."))

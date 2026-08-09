@@ -5,6 +5,8 @@ The keys stored in the database/domain snapshots are deliberately not changed.
 
 import re
 
+from app.localization import tr
+
 TECHNICAL_GROUP_LABELS = {
     "main_pattern": "Main pattern",
     "inner_buffer": "Inner buffer row",
@@ -133,23 +135,23 @@ TECHNICAL_TEXT_LABELS = {
 
 
 def technical_group_label(key: str, fallback: str = "") -> str:
-    return TECHNICAL_GROUP_LABELS.get(key, fallback or key)
+    return tr(TECHNICAL_GROUP_LABELS.get(key, fallback or key))
 
 
 def matrix_label(matrix_id: str, fallback: str = "") -> str:
-    return MATRIX_LABELS.get(matrix_id, fallback or matrix_id)
+    return tr(MATRIX_LABELS.get(matrix_id, fallback or matrix_id))
 
 
 def criterion_label(criterion_id: str, fallback: str = "") -> str:
-    return CRITERION_LABELS.get(criterion_id, fallback or criterion_id)
+    return tr(CRITERION_LABELS.get(criterion_id, fallback or criterion_id))
 
 
 def option_label(option_id: str, fallback: str = "") -> str:
-    return OPTION_LABELS.get(option_id, fallback or option_id)
+    return tr(OPTION_LABELS.get(option_id, fallback or option_id))
 
 
 def result_label(value: str | None) -> str:
-    return RESULT_LABELS.get(value or "", value or "")
+    return tr(RESULT_LABELS.get(value or "", value or ""))
 
 
 def domain_message(value: str) -> str:
@@ -160,7 +162,7 @@ def domain_message(value: str) -> str:
     """
     exact = DOMAIN_MESSAGES.get(value)
     if exact is not None:
-        return exact
+        return tr(exact)
     prefixes = {
         "Не заполнено: ": "Missing required fields: ",
         "Не удалось импортировать CSV: ": "Could not import CSV: ",
@@ -185,37 +187,37 @@ def domain_message(value: str) -> str:
                     "Фактический профиль откоса": CRITERION_LABELS["face_profile"],
                 }
                 for source in sorted(fields, key=len, reverse=True):
-                    detail = detail.replace(source, fields[source])
+                    detail = detail.replace(source, tr(fields[source]))
             else:
                 detail = domain_message(detail)
-            return translated + detail
+            return tr(translated) + detail
     if value.startswith("Dataset ") and value.endswith(" не найден"):
-        return value[:-len(" не найден")] + " was not found"
+        return value[:-len(" не найден")] + tr(" was not found")
     if value.startswith("BlastEvent ") and value.endswith(" не найден"):
-        return value[:-len(" не найден")] + " was not found"
+        return value[:-len(" не найден")] + tr(" was not found")
     if "; " in value:
         parts = [domain_message(part) for part in value.split("; ")]
         if all(not re.search(r"[А-Яа-яЁё]", part) for part in parts):
             return "; ".join(parts)
     if re.search(r"[А-Яа-яЁё]", value):
-        return "Validation failed. Check the entered data."
+        return tr("Validation failed. Check the entered data.")
     return value
 
 
 def import_summary_text(summary) -> str:
     """Render the active Datamine import summary without domain-localized text."""
-    delimiter = {",": "comma", ";": "semicolon", "\t": "tab"}.get(summary.delimiter, summary.delimiter)
+    delimiter = tr({",": "comma", ";": "semicolon", "\t": "tab"}.get(summary.delimiter, summary.delimiter))
     return "\n".join((
-        f"File: {summary.file_name}",
-        f"Delimiter: {delimiter}",
-        f"Encoding: {summary.encoding}",
-        f"Rows: {summary.total_rows}",
-        f"Valid points: {summary.valid_points}",
-        f"Skipped rows: {summary.skipped_rows}",
-        f"Failed rows: {summary.failed_rows}",
-        f"Lines: {summary.line_count}",
+        tr("File: %1").replace("%1", summary.file_name),
+        tr("Delimiter: %1").replace("%1", delimiter),
+        tr("Encoding: %1").replace("%1", summary.encoding),
+        tr("Rows: %1").replace("%1", str(summary.total_rows)),
+        tr("Valid points: %1").replace("%1", str(summary.valid_points)),
+        tr("Skipped rows: %1").replace("%1", str(summary.skipped_rows)),
+        tr("Failed rows: %1").replace("%1", str(summary.failed_rows)),
+        tr("Lines: %1").replace("%1", str(summary.line_count)),
     ))
 
 
 def technical_text(value: str) -> str:
-    return TECHNICAL_TEXT_LABELS.get(value, value)
+    return tr(TECHNICAL_TEXT_LABELS.get(value, value))

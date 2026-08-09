@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from PySide6.QtWidgets import QFrame,QHBoxLayout,QLabel,QVBoxLayout,QWidget
 from app.icons.ui.ui_icons import ui_icon
+from app.localization import tr
 
 @dataclass(frozen=True)
 class QuadrantPresentation:
@@ -16,7 +17,8 @@ QUADRANTS={
     "unacceptable": QuadrantPresentation("Unacceptable results", "#DC2626", 3, True),
 }
 def quadrant_presentation(value):
-    return QUADRANTS.get(value,QuadrantPresentation(value.replace("_"," ").title() if value else "—","#64748B",0,False))
+    presentation = QUADRANTS.get(value,QuadrantPresentation(value.replace("_"," ").title() if value else "—","#64748B",0,False))
+    return QuadrantPresentation(tr(presentation.label), presentation.color, presentation.severity, presentation.requires_attention)
 def metric(value): return "—" if value is None else f"{value:.2f}"
 
 class MetricCard(QFrame):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.localization import tr
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
@@ -41,6 +43,6 @@ class AboutDialog(QDialog):
         top.addLayout(text)
         layout.addLayout(top)
 
-        close_button = QPushButton("Close")
+        close_button = QPushButton(tr("Close"))
         close_button.clicked.connect(self.accept)
         layout.addWidget(close_button, alignment=Qt.AlignmentFlag.AlignRight)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.localization import tr
+
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout
 
 from services.user_admin_service import UserAdminError, UserAdminService
@@ -11,7 +13,7 @@ class UserEditDialog(QDialog):
         self.service = service
         self.actor = actor
         self.user = user
-        self.setWindowTitle("Create user" if user is None else "Edit user")
+        self.setWindowTitle(tr("Create user") if user is None else "Edit user")
         self.setFixedWidth(420)
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -20,20 +22,20 @@ class UserEditDialog(QDialog):
         self.role = QComboBox(); self.role.addItems(["admin", "editor", "viewer"])
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.repeat = QLineEdit(); self.repeat.setEchoMode(QLineEdit.EchoMode.Password)
-        self.is_active = QCheckBox("Active")
-        self.must_change = QCheckBox("Require password change on next sign-in")
-        form.addRow("Username *", self.username)
-        form.addRow("Full name", self.full_name)
-        form.addRow("Role", self.role)
+        self.is_active = QCheckBox(tr("Active"))
+        self.must_change = QCheckBox(tr("Require password change on next sign-in"))
+        form.addRow(tr("Username *"), self.username)
+        form.addRow(tr("Full name"), self.full_name)
+        form.addRow(tr("Role"), self.role)
         if user is None:
-            form.addRow("Temporary password *", self.password)
-            form.addRow("Repeat password *", self.repeat)
+            form.addRow(tr("Temporary password *"), self.password)
+            form.addRow(tr("Repeat password *"), self.repeat)
         form.addRow("", self.is_active)
         form.addRow("", self.must_change)
         layout.addLayout(form)
         buttons = QHBoxLayout(); buttons.addStretch()
-        save = QPushButton("Save"); save.clicked.connect(self.save)
-        cancel = QPushButton("Cancel"); cancel.clicked.connect(self.reject)
+        save = QPushButton(tr("Save")); save.clicked.connect(self.save)
+        cancel = QPushButton(tr("Cancel")); cancel.clicked.connect(self.reject)
         buttons.addWidget(cancel); buttons.addWidget(save)
         layout.addLayout(buttons)
         self.is_active.setChecked(True)
@@ -52,25 +54,25 @@ class UserEditDialog(QDialog):
                 self.service.update_user(self.actor, self.user.id, self.full_name.text().strip() or None, self.role.currentText(), self.is_active.isChecked(), self.must_change.isChecked())
             self.accept()
         except (UserAdminError, PermissionError) as exc:
-            QMessageBox.warning(self, "Could not save user", str(exc))
+            QMessageBox.warning(self, tr("Could not save user"), str(exc))
 
 
 class PasswordDialog(QDialog):
     def __init__(self, service: UserAdminService, actor, user_id: int):
         super().__init__()
         self.service = service; self.actor = actor; self.user_id = user_id
-        self.setWindowTitle("Change password")
+        self.setWindowTitle(tr("Change password"))
         layout = QVBoxLayout(self); form = QFormLayout()
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.repeat = QLineEdit(); self.repeat.setEchoMode(QLineEdit.EchoMode.Password)
-        self.must_change = QCheckBox("Require password change on next sign-in")
-        form.addRow("New password", self.password); form.addRow("Repeat password", self.repeat); form.addRow("", self.must_change)
+        self.must_change = QCheckBox(tr("Require password change on next sign-in"))
+        form.addRow(tr("New password"), self.password); form.addRow(tr("Repeat password"), self.repeat); form.addRow("", self.must_change)
         layout.addLayout(form)
-        save = QPushButton("Save"); save.clicked.connect(self.save); layout.addWidget(save)
+        save = QPushButton(tr("Save")); save.clicked.connect(self.save); layout.addWidget(save)
 
     def save(self) -> None:
         try:
             self.service.change_password(self.actor, self.user_id, self.password.text(), self.repeat.text(), self.must_change.isChecked())
             self.accept()
         except (UserAdminError, PermissionError) as exc:
-            QMessageBox.warning(self, "Could not change password", str(exc))
+            QMessageBox.warning(self, tr("Could not change password"), str(exc))

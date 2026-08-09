@@ -59,9 +59,9 @@ def test_block_page_embeds_geometry_and_revision_safe_technical_card_tabs():
     block=source("ui/pages/block_page.py")
     assert "event_for_block" in block and "active_geometry_revision" in block
     assert "TechnicalCardEditorWidget" in block
-    assert 'take_tab("Geomechanics")' in block
-    assert 'take_tab("Drilling and charging")' in block
-    assert 'take_tab("Execution fact")' in block
+    assert 'take_tab(tr("Geomechanics"))' in block
+    assert 'take_tab(tr("Drilling and charging"))' in block
+    assert 'take_tab(tr("Execution fact"))' in block
 
 def test_area_page_is_focused_without_legacy_mode_switch():
     area=source("ui/pages/assessment_area_page.py")
@@ -84,11 +84,11 @@ def test_area_links_and_focused_creation_are_reused():
 
 def test_entity_page_integration_corrections_are_visible():
     block=source("ui/pages/block_page.py")
-    assert 'QPushButton("Save draft")' in block and 'QPushButton("Complete")' in block
+    assert 'QPushButton(tr("Save draft"))' in block and 'QPushButton(tr("Complete"))' in block
     assert "save_draft()" in block and "complete()" in block
     area=source("ui/pages/assessment_area_page.py")
     assert "self.assessment_sections=QTabWidget()" in area
-    assert 'addTab(take("General"),"General")' in area
+    assert 'addTab(take("General"),tr("General"))' in area
     assert "Save an assessment draft first" not in area
     assert "ensure_evaluation_owner" in area
     creation=source("ui/pages/assessment_area_creation_page.py")

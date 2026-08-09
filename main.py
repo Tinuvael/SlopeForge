@@ -1,3 +1,5 @@
+
+from app.localization import tr
 import logging
 import sys
 from pathlib import Path
@@ -6,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.platform import set_windows_app_user_model_id
 from app.qt import apply_application_icon
+from app.localization import install_selected_translator, tr
 from app.splash import SlopeForgeSplash
 from database.app_context import AppContext
 from database.startup import StartupError, initialize_database_runtime
@@ -28,25 +31,26 @@ def show_startup_error(message: str, server: str | None) -> None:
         "Run migrations: python -m database.cli migrate",
         "If the database does not exist yet: python -m database.cli prepare-db",
     ])
-    QMessageBox.critical(None, "PostgreSQL unavailable", "\n\n".join(details))
+    QMessageBox.critical(None, tr("PostgreSQL unavailable"), "\n\n".join(details))
 
 
 def main():
     startup_stage = "application bootstrap"
     set_windows_app_user_model_id()
     app = QApplication(sys.argv)
+    install_selected_translator(app)
     apply_application_icon(app)
     splash = SlopeForgeSplash()
     splash.show()
-    splash.show_status("Loading application…")
+    splash.show_status(tr("Loading application…"))
     try:
         startup_stage = "database initialization"
         logger.info("Startup stage: %s", startup_stage)
-        splash.show_status("Connecting to database…")
+        splash.show_status(tr("Connecting to database…"))
         settings, _engine, session_factory = initialize_database_runtime()
         startup_stage = "authentication initialization"
         logger.info("Startup stage: %s", startup_stage)
-        splash.show_status("Checking database schema…")
+        splash.show_status(tr("Checking database schema…"))
         auth_service = AuthService(session_factory)
         remember_service = RememberTokenService(session_factory)
         startup_stage = "remembered-session lookup"
@@ -70,7 +74,7 @@ def main():
             splash.close_with_fade()
         startup_stage = "MainWindow construction"
         logger.info("Startup stage: %s", startup_stage)
-        splash.show_status("Initializing interface…") if splash.isVisible() else None
+        splash.show_status(tr("Initializing interface…")) if splash.isVisible() else None
         window = MainWindow(AppContext(
             session_factory=session_factory,
             current_user=current_user,
@@ -86,7 +90,7 @@ def main():
     except Exception:
         logging.exception("Unexpected startup failure during stage: %s", startup_stage)
         splash.close_with_fade()
-        QMessageBox.critical(None, "Startup error", f"Unexpected startup error. Details were written to {LOG_PATH}.")
+        QMessageBox.critical(None, tr("Startup error"), f"Unexpected startup error. Details were written to {LOG_PATH}.")
         return 1
 
 

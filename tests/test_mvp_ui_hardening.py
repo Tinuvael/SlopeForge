@@ -9,8 +9,8 @@ def source(path: str) -> str:
 
 def test_header_uses_project_terminology_and_real_find_shortcut():
     header = source("ui/header.py")
-    assert 'QPushButton("Add")' in header
-    assert 'addAction("Add project")' in header
+    assert 'QPushButton(tr("Add"))' in header
+    assert 'addAction(tr("Add project"))' in header
     assert 'QPushButton("Add ▼")' not in header
     assert "QKeySequence.StandardKey.Find" in header
     assert "self.search.selectAll()" in header
@@ -333,8 +333,8 @@ def test_block_attachment_tabs_are_real_and_ordered():
     expected = ["General information", "Geomechanics", "Blast design", "Execution fact", "Photos", "Documents", "History"]
     positions = [block.index(f'"{title}"') for title in expected]
     assert positions == sorted(positions)
-    assert 'self.tabs.addTab(self.photos_tab, "Photos")' in block
-    assert 'self.tabs.addTab(self.documents_tab, "Documents")' in block
+    assert 'self.tabs.addTab(self.photos_tab, tr("Photos"))' in block
+    assert 'self.tabs.addTab(self.documents_tab, tr("Documents"))' in block
     assert 'self.tabs.addTab(EmptySection(), "Documents")' not in block
 
 

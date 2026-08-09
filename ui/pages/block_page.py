@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from app.localization import tr
 from ui.presentation_labels import domain_message
 
 from PySide6.QtCore import Signal
@@ -61,20 +63,20 @@ class BlockPage(QWidget):
         overview_layout.addWidget(self.overview)
         overview_layout.addWidget(self.compact_cards)
         overview_layout.addLayout(bottom)
-        self.tabs.addTab(self.overview_tab, "General information")
+        self.tabs.addTab(self.overview_tab, tr("General information"))
         self.geomechanics_tab = EmptySection(); self.design_tab = EmptySection(); self.execution_tab = EmptySection()
-        self.tabs.addTab(self.geomechanics_tab, "Geomechanics")
-        self.tabs.addTab(self.design_tab, "Blast design")
-        self.tabs.addTab(self.execution_tab, "Execution fact")
+        self.tabs.addTab(self.geomechanics_tab, tr("Geomechanics"))
+        self.tabs.addTab(self.design_tab, tr("Blast design"))
+        self.tabs.addTab(self.execution_tab, tr("Execution fact"))
         self.photos_tab,self.photos_tab_count,self.manage_photos_button=self._make_attachment_tab("photo")
         self.documents_tab,self.documents_tab_count,self.manage_documents_button=self._make_attachment_tab("document")
-        self.tabs.addTab(self.photos_tab, "Photos")
-        self.tabs.addTab(self.documents_tab, "Documents")
+        self.tabs.addTab(self.photos_tab, tr("Photos"))
+        self.tabs.addTab(self.documents_tab, tr("Documents"))
         self.history_tab = AuditPreviewWidget("Change history")
-        self.tabs.addTab(self.history_tab, "History")
+        self.tabs.addTab(self.history_tab, tr("History"))
         left.addWidget(self.tabs)
         engineering_actions = QHBoxLayout(); engineering_actions.addStretch()
-        self.save_engineering_draft = QPushButton("Save draft"); self.complete_engineering = QPushButton("Complete")
+        self.save_engineering_draft = QPushButton(tr("Save draft")); self.complete_engineering = QPushButton(tr("Complete"))
         self.save_engineering_draft.setEnabled(False); self.complete_engineering.setEnabled(False)
         self.save_engineering_draft.clicked.connect(self._save_technical_card_draft); self.complete_engineering.clicked.connect(self._complete_technical_card)
         engineering_actions.addWidget(self.save_engineering_draft); engineering_actions.addWidget(self.complete_engineering); left.addLayout(engineering_actions)
@@ -109,8 +111,8 @@ class BlockPage(QWidget):
         self.refresh()
 
     def _make_attachment_tab(self,kind):
-        page=QWidget(); layout=QVBoxLayout(page); label=QLabel("No photos yet" if kind=="photo" else "No documents yet")
-        button=QPushButton("Manage photos" if kind=="photo" else "Manage documents")
+        page=QWidget(); layout=QVBoxLayout(page); label=QLabel(tr("No photos yet") if kind=="photo" else "No documents yet")
+        button=QPushButton(tr("Manage photos") if kind=="photo" else "Manage documents")
         button.setEnabled(False); button.clicked.connect(lambda _checked=False,k=kind:self._open_attachments(k))
         layout.addWidget(label); layout.addWidget(button); layout.addStretch(); return page,label,button
 
@@ -209,9 +211,9 @@ class BlockPage(QWidget):
         self.overview.scheme.reimport_requested.connect(self._reimport_callback)
         card,revision=self.entity_controller.technical_card_draft(event)
         editor=TechnicalCardEditorWidget(event,card,revision,self.entity_controller.save_technical_card,self,not editable)
-        self.geomechanics_tab=self._replace_tab(self.geomechanics_tab,GeomechanicsEditorWidget(editor.take_tab("Geomechanics")),"Geomechanics")
-        self.design_tab=self._replace_tab(self.design_tab,BlastDesignEditorWidget(editor.take_tab("Drilling and charging")),"Blast design")
-        self.execution_tab=self._replace_tab(self.execution_tab,ActualExecutionEditorWidget(editor.take_tab("Execution fact")),"Execution fact")
+        self.geomechanics_tab=self._replace_tab(self.geomechanics_tab,GeomechanicsEditorWidget(editor.take_tab(tr("Geomechanics"))),"Geomechanics")
+        self.design_tab=self._replace_tab(self.design_tab,BlastDesignEditorWidget(editor.take_tab(tr("Drilling and charging"))),"Blast design")
+        self.execution_tab=self._replace_tab(self.execution_tab,ActualExecutionEditorWidget(editor.take_tab(tr("Execution fact"))),"Execution fact")
         self.technical_card_editor=editor
         self.save_engineering_draft.setEnabled(not editor.editor.read_only); self.complete_engineering.setEnabled(not editor.editor.read_only)
         self.overview.scheme.set_reimport_enabled(editable)
@@ -236,10 +238,10 @@ class BlockPage(QWidget):
 
     def _reimport_geometry(self,event):
         if not self.context.current_user.can_edit or not self.current_block or self.current_block.is_archived:
-            QMessageBox.warning(self,"Read only","Archived Blocks and Viewer accounts cannot reimport geometry."); return
+            QMessageBox.warning(self,tr("Read only"),tr("Archived Blocks and Viewer accounts cannot reimport geometry.")); return
         path,_=QFileDialog.getOpenFileName(self,"Reimport production geometry","","CSV (*.csv)")
         if not path:return
         try:
             from prototype_2d.blast_event_service import BlastEventService
             BlastEventService(self.entity_controller.state).reimport_geometry(event,path); self.entity_controller.save(); self._render_engineering(self.current_block)
-        except Exception as exc:QMessageBox.warning(self,"Geometry import",domain_message(str(exc)))
+        except Exception as exc:QMessageBox.warning(self,tr("Geometry import"),domain_message(str(exc)))
