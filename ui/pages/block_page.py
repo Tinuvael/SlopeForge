@@ -205,7 +205,7 @@ class BlockPage(QWidget):
         editable=self.context.current_user.can_edit and not block.is_archived
         geometry=event.active_geometry_revision(); dataset=self.entity_controller.state.active_dataset(); lines=dataset.lines if dataset else []
         self.overview.scheme.set_geometry(geometry.plan_geometry if geometry else None,lines,
-            f"Horizon {event.elevation:g} | CSV: {geometry.source_file_name if geometry else '—'} | Revision: {geometry.revision_number if geometry else '—'}")
+            f"Horizon {event.elevation:g} | {tr('Source')}: {geometry.source_file_name if geometry else '—'} | Revision: {geometry.revision_number if geometry else '—'}")
         self._disconnect_reimport()
         self._reimport_callback = lambda: self._reimport_geometry(event)
         self.overview.scheme.reimport_requested.connect(self._reimport_callback)
@@ -239,7 +239,7 @@ class BlockPage(QWidget):
     def _reimport_geometry(self,event):
         if not self.context.current_user.can_edit or not self.current_block or self.current_block.is_archived:
             QMessageBox.warning(self,tr("Read only"),tr("Archived Blocks and Viewer accounts cannot reimport geometry.")); return
-        path,_=QFileDialog.getOpenFileName(self,"Reimport production geometry","","CSV (*.csv)")
+        path,_=QFileDialog.getOpenFileName(self,tr("Reimport production geometry"),"",tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
         if not path:return
         try:
             from prototype_2d.blast_event_service import BlastEventService

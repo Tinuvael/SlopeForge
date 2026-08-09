@@ -630,24 +630,26 @@ class AssessmentWorkspaceWidget(QWidget):
 
     def import_project_lines(self):
         self._ensure_can_edit()
-        path, _ = QFileDialog.getOpenFileName(self, "Datamine CSV — Project Lines", "", "CSV (*.csv)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Select Project Lines file"), "", tr("Project Lines (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
         if not path:
             return
         first_import = not self.state.datasets
         previous_datasets = deepcopy(self.state.datasets)
         try:
             QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            text, _ = read_text(Path(path))
-            delimiter = sniff_delimiter(text)
-            headers = csv.DictReader(text.splitlines(), delimiter=delimiter).fieldnames or []
-            mapping = detect_columns(headers)
-            if missing_required(mapping):
-                QGuiApplication.restoreOverrideCursor()
-                dialog = ColumnMappingDialog(headers, self)
-                if not dialog.exec():
-                    return
-                mapping = dialog.mapping()
-                QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            mapping = None
+            if Path(path).suffix.lower() == ".csv":
+                text, _ = read_text(Path(path))
+                delimiter = sniff_delimiter(text)
+                headers = csv.DictReader(text.splitlines(), delimiter=delimiter).fieldnames or []
+                mapping = detect_columns(headers)
+                if missing_required(mapping):
+                    QGuiApplication.restoreOverrideCursor()
+                    dialog = ColumnMappingDialog(headers, self)
+                    if not dialog.exec():
+                        return
+                    mapping = dialog.mapping()
+                    QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             dataset, result = self.dataset_service.import_dataset(path, column_mapping=mapping)
             self.clear_highlighted_link(redraw=False)
             if self._persist_dataset_callback is None:
@@ -693,7 +695,7 @@ class AssessmentWorkspaceWidget(QWidget):
             self._save()
             self.refresh_events()
             if self.service.last_import_warning:
-                QMessageBox.warning(self, tr("Production CSV"), self.service.last_import_warning)
+                QMessageBox.warning(self, tr("Production geometry"), self.service.last_import_warning)
         except Exception as exc:
             QMessageBox.warning(self, tr("Could not create blast event"), domain_message(str(exc)))
 
@@ -701,7 +703,7 @@ class AssessmentWorkspaceWidget(QWidget):
         self._ensure_can_edit()
         if not self.selected_event:
             return
-        path, _ = QFileDialog.getOpenFileName(self, "Select CSV", "", "CSV (*.csv)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Select geometry file"), "", tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
         if not path:
             return
         try:
@@ -710,7 +712,7 @@ class AssessmentWorkspaceWidget(QWidget):
             self._render_card()
             self.draw_geometry()
             if self.service.last_import_warning:
-                QMessageBox.warning(self, tr("Production CSV"), self.service.last_import_warning)
+                QMessageBox.warning(self, tr("Production geometry"), self.service.last_import_warning)
         except Exception as exc:
             QMessageBox.warning(self, tr("Reimport error"), domain_message(str(exc)))
 
@@ -1161,20 +1163,20 @@ class BlastEventDialog(QDialog):
         self.elevation.setDecimals(2)
         self.elevation.valueChanged.connect(self._elevation_changed)
         self.csv = QLineEdit()
-        browse = QPushButton(tr("Select CSV"))
+        browse = QPushButton(tr("Select geometry file"))
         browse.clicked.connect(self._choose_csv)
         row = QHBoxLayout()
         row.addWidget(self.csv)
         row.addWidget(browse)
         auto = QPushButton(tr("Detect automatically")); auto.clicked.connect(self._auto_detect)
         elevation_row = QHBoxLayout(); elevation_row.addWidget(self.elevation); elevation_row.addWidget(auto)
-        self.auto_status = QLabel(tr("Select CSV to detect the horizon automatically"))
+        self.auto_status = QLabel(tr("Select a geometry file to detect the horizon automatically"))
         self.auto_status.setWordWrap(True)
         form.addRow(tr("Title *"), self.name)
         form.addRow(tr("Type *"), self.kind)
         form.addRow(tr("Date"), self.date)
         form.addRow(tr("Horizon *"), elevation_row)
-        form.addRow(tr("CSV Datamine *"), row)
+        form.addRow(tr("Geometry file *"), row)
         form.addRow("", self.auto_status)
         layout.addLayout(form)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
@@ -1184,7 +1186,7 @@ class BlastEventDialog(QDialog):
         self.kind.currentTextChanged.connect(self._event_type_changed)
 
     def _choose_csv(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select CSV", "", "CSV (*.csv)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Select geometry file"), "", tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
         if not path: return
         self.csv.setText(path)
         self._inspect(force_override=True)
@@ -1198,7 +1200,7 @@ class BlastEventDialog(QDialog):
     def _inspect(self, *, force_override: bool) -> bool:
         path = self.csv.text().strip()
         if not path:
-            self.auto_status.setText(tr("Select a CSV first"))
+            self.auto_status.setText(tr("Select a geometry file first"))
             return False
         try:
             preview = self.service.inspect_event_geometry(self.kind.currentText(), path)

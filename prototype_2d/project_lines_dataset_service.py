@@ -4,9 +4,13 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from .csv_importer import ImportResult, import_datamine_csv
+from .line_geometry_importer import LineGeometryImportResult, import_line_geometry
 from .domain import AssessmentDomainState, ProjectLinesDataset, utc_now
 from .models import DatamineLine
+
+
+class ProjectLinesImportError(ValueError):
+    """The source file cannot produce a usable Project Lines Dataset."""
 
 
 class ProjectLinesDatasetService:
@@ -17,19 +21,22 @@ class ProjectLinesDatasetService:
 
     def import_dataset(
         self,
-        csv_path: str | Path,
+        source_path: str | Path,
         *,
         name: str | None = None,
         column_mapping: dict[str, str] | None = None,
         delimiter_choice: str = "Auto",
         imported_at: datetime | None = None,
-    ) -> tuple[ProjectLinesDataset, ImportResult]:
-        path = Path(csv_path)
-        result = import_datamine_csv(path, column_mapping, delimiter_choice)
+    ) -> tuple[ProjectLinesDataset, LineGeometryImportResult]:
+        path = Path(source_path)
+        result = import_line_geometry(path, column_mapping=column_mapping, delimiter_choice=delimiter_choice)
+        usable_lines = [line for line in result.lines if len(line.points) >= 2]
+        if not usable_lines:
+            raise ProjectLinesImportError("Geometry file contains no suitable lines")
         dataset = self.create_dataset(
             name=name or path.stem,
             source_file_name=path.name,
-            lines=result.lines,
+            lines=usable_lines,
             imported_at=imported_at,
         )
         return dataset, result

@@ -114,6 +114,10 @@ DOMAIN_MESSAGES = {
     "Выберите тип события: production или contour": "Select the blast event type: production or contour",
     "Укажите горизонт события": "Enter the blast event horizon",
     "Не удалось прочитать файл как UTF-8. Сохраните CSV в UTF-8 или UTF-8 BOM.": "Could not read the file as UTF-8. Save the CSV as UTF-8 or UTF-8 BOM.",
+    "Curved DXF polyline segments are not supported. Convert them to straight polyline segments before import.": "Curved DXF polyline segments are not supported. Convert them to straight polyline segments before import.",
+    "ezdxf is required to import DXF geometry": "ezdxf is required to import DXF geometry",
+    "Файл геометрии не содержит валидных контурных скважин": "Geometry file contains no valid contour drillholes",
+    "Файл геометрии не содержит подходящих линий": "Geometry file contains no suitable lines",
     "Неизвестный тип владельца файла": "Unknown attachment owner type",
     "Некорректный ID владельца": "Invalid attachment owner ID",
     "Неизвестный тип файла": "Unknown attachment kind",
@@ -163,9 +167,15 @@ def domain_message(value: str) -> str:
     exact = DOMAIN_MESSAGES.get(value)
     if exact is not None:
         return tr(exact)
+    if value.startswith("Could not read DXF: "):
+        return tr("Could not read DXF: %1").replace("%1", value.removeprefix("Could not read DXF: "))
+    unsupported = re.fullmatch(r"Unsupported geometry file extension (.+)\. Use \.csv or \.dxf\.", value)
+    if unsupported:
+        return tr("Unsupported geometry file extension %1. Use .csv or .dxf.").replace("%1", unsupported.group(1))
     prefixes = {
         "Не заполнено: ": "Missing required fields: ",
         "Не удалось импортировать CSV: ": "Could not import CSV: ",
+        "Не удалось импортировать файл геометрии: ": "Could not import geometry file: ",
         "Не удалось прочитать CSV: ": "Could not read CSV: ",
         "Не сопоставлены обязательные колонки: ": "Required columns are not mapped: ",
         "Перенесён старый фактический метраж группы ": "Migrated legacy actual drilling length for group ",
@@ -206,6 +216,18 @@ def domain_message(value: str) -> str:
 
 def import_summary_text(summary) -> str:
     """Render the active Datamine import summary without domain-localized text."""
+    if getattr(summary, "format", None) == "DXF":
+        return "\n".join((
+            tr("File: %1").replace("%1", summary.file_name),
+            tr("Format: DXF"),
+            tr("Imported polylines: %1").replace("%1", str(summary.line_count)),
+            tr("2D polylines: %1").replace("%1", str(summary.polyline_2d_count)),
+            tr("3D polylines: %1").replace("%1", str(summary.polyline_3d_count)),
+            tr("LWPOLYLINE entities: %1").replace("%1", str(summary.lwpolyline_count)),
+            tr("Imported vertices: %1").replace("%1", str(summary.total_vertices)),
+            tr("Skipped unsupported entities: %1").replace("%1", str(summary.skipped_unsupported_entity_count)),
+            tr("Layers: %1").replace("%1", ", ".join(summary.layers) or "—"),
+        ))
     delimiter = tr({",": "comma", ";": "semicolon", "\t": "tab"}.get(summary.delimiter, summary.delimiter))
     return "\n".join((
         tr("File: %1").replace("%1", summary.file_name),

@@ -46,7 +46,7 @@ def test_production_multiple_closed_polygons_reports_clear_import_warning():
     result = build_production_geometry([square(610, source_id="block-1"), square(620, source_id="block-2")])
     assert result.closed_polygon_count == 2
     assert result.multiple_polygons_warning == (
-        "CSV contains 2 production polygons. One BlastEvent currently supports one polygon. "
+        "Geometry file contains 2 production polygons. One BlastEvent currently supports one polygon. "
         "Import the blocks as separate BlastEvents."
     )
     assert result.plan_geometry.ring[0] == result.plan_geometry.ring[-1]
