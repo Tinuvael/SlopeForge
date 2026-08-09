@@ -28,3 +28,6 @@ class SiteDashboardPage(_Dashboard):
         except Exception as exc: QMessageBox.warning(self,"Ошибка импорта",str(exc))
 class DomainDashboardPage(_Dashboard):
     def __init__(self, name): super().__init__(name, "Domain dashboard"); self.layout.addStretch()
+
+# Stable compatibility imports while dashboard code lives in focused modules.
+from ui.pages.dashboards import SiteDashboardPage, DomainDashboardPage

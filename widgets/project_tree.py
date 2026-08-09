@@ -7,6 +7,7 @@ from repositories.blast_block_repository import BlastBlockRepository
 from repositories.site_repository import SiteRepository
 from repositories.domain_repository import DomainRepository
 from repositories.navigation_repository import NavigationRepository
+from app.icons.ui.ui_icons import ui_icon
 
 
 def _number(value):
@@ -28,7 +29,7 @@ class ProjectTree(QWidget):
         layout.addWidget(QLabel("Filters"))
         self.search = QLineEdit(); self.search.setPlaceholderText("Search by block number")
         self.project_filter = QComboBox(); self.domain_filter = QComboBox(); self.status_filter = QComboBox()
-        self.show_archived = QCheckBox("Show archived"); self.reset_button = QPushButton("Reset filters")
+        self.show_archived = QCheckBox("Show archived"); self.reset_button = QPushButton("Reset filters"); self.reset_button.setIcon(ui_icon("refresh"))
         for widget in (self.search, self.project_filter, self.domain_filter, self.status_filter,
                        self.show_archived, self.reset_button): layout.addWidget(widget)
         self.project_filter.currentIndexChanged.connect(self._reload_domains)
@@ -90,7 +91,9 @@ class ProjectTree(QWidget):
         self.tree.expandToDepth(1)
     @staticmethod
     def _item(text, payload):
-        item = QTreeWidgetItem([text]); item.setData(0, Qt.ItemDataRole.UserRole, payload); return item
+        item = QTreeWidgetItem([text]); item.setData(0, Qt.ItemDataRole.UserRole, payload)
+        icons={"site":"mine","domain":"domain","folder":"blast-blocks" if text=="Blast events" else "assessment-area","horizon":"horizon","block":"block","contour":"contour","interval":"layers","area":"assessment-area"}
+        item.setIcon(0,ui_icon(icons.get(payload.get("type"),"folder-open"))); return item
     def _item_clicked(self, item, _column=0):
         p = item.data(0, Qt.ItemDataRole.UserRole) or {}; kind = p.get("type")
         if kind in {"folder","horizon","interval"}: item.setExpanded(not item.isExpanded()); return

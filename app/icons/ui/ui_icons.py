@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from PySide6.QtGui import QIcon
 
-ICON_ROOT = Path(__file__).resolve().parent / "icons" / "ui"
+ICON_ROOT = Path(__file__).resolve().parent
 
 
 def ui_icon(name: str, variant: str = "neutral") -> QIcon:
