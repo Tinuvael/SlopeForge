@@ -27,7 +27,7 @@ class ProductionGeometryResult:
     def multiple_polygons_warning(self) -> str | None:
         if self.closed_polygon_count <= 1:
             return None
-        return (f"CSV contains {self.closed_polygon_count} production polygons. One BlastEvent currently "
+        return (f"Geometry file contains {self.closed_polygon_count} production polygons. One BlastEvent currently "
                 "supports one polygon. Import the blocks as separate BlastEvents.")
 
 

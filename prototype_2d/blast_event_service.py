@@ -8,7 +8,7 @@ from statistics import median
 from uuid import uuid4
 
 from .blast_geometry import BlastGeometryError, build_contour_geometry, build_production_geometry
-from .csv_importer import DatamineCsvError, import_datamine_csv
+from .line_geometry_importer import import_line_geometry
 from .domain import AssessmentDomainState, BlastEvent, BlastEventGeometryRevision
 
 
@@ -55,12 +55,12 @@ class BlastEventService:
             raise BlastEventValidationError("Выберите тип события: production или contour")
         path = Path(csv_path)
         try:
-            result = import_datamine_csv(path)
-        except DatamineCsvError as exc:
-            raise BlastEventValidationError(f"Не удалось импортировать CSV: {exc}") from exc
+            result = import_line_geometry(path)
+        except ValueError as exc:
+            raise BlastEventValidationError(f"Не удалось импортировать файл геометрии: {exc}") from exc
         if not result.lines:
-            message = ("CSV не содержит валидных контурных скважин" if event_type == "contour"
-                       else "CSV не содержит подходящих линий")
+            message = ("Файл геометрии не содержит валидных контурных скважин" if event_type == "contour"
+                       else "Файл геометрии не содержит подходящих линий")
             raise BlastEventValidationError(message)
         try:
             if event_type == "production":
@@ -86,12 +86,12 @@ class BlastEventService:
         self.last_import_warning = None
         path = Path(csv_path)
         try:
-            result = import_datamine_csv(path)
-        except DatamineCsvError as exc:
-            raise BlastEventValidationError(f"Не удалось импортировать CSV: {exc}") from exc
+            result = import_line_geometry(path)
+        except ValueError as exc:
+            raise BlastEventValidationError(f"Не удалось импортировать файл геометрии: {exc}") from exc
         if not result.lines:
-            message = ("CSV не содержит валидных контурных скважин" if event.event_type == "contour"
-                       else "CSV не содержит подходящих линий")
+            message = ("Файл геометрии не содержит валидных контурных скважин" if event.event_type == "contour"
+                       else "Файл геометрии не содержит подходящих линий")
             raise BlastEventValidationError(message)
         try:
             if event.event_type == "production":

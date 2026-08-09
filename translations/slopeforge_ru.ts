@@ -2482,5 +2482,81 @@
             <source>No horizon</source>
             <translation>Без горизонта</translation>
         </message>
+        <message>
+            <source>2D polylines: %1</source>
+            <translation>2D-полилинии: %1</translation>
+        </message>
+        <message>
+            <source>3D polylines: %1</source>
+            <translation>3D-полилинии: %1</translation>
+        </message>
+        <message>
+            <source>Format: DXF</source>
+            <translation>Формат: DXF</translation>
+        </message>
+        <message>
+            <source>Geometry file *</source>
+            <translation>Файл геометрии *</translation>
+        </message>
+        <message>
+            <source>Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)</source>
+            <translation>Файлы геометрии (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)</translation>
+        </message>
+        <message>
+            <source>Imported polylines: %1</source>
+            <translation>Импортировано полилиний: %1</translation>
+        </message>
+        <message>
+            <source>Imported vertices: %1</source>
+            <translation>Импортировано вершин: %1</translation>
+        </message>
+        <message>
+            <source>LWPOLYLINE entities: %1</source>
+            <translation>Объекты LWPOLYLINE: %1</translation>
+        </message>
+        <message>
+            <source>Layers: %1</source>
+            <translation>Слои: %1</translation>
+        </message>
+        <message>
+            <source>Production geometry</source>
+            <translation>Производственная геометрия</translation>
+        </message>
+        <message>
+            <source>Project Lines (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)</source>
+            <translation>Проектные линии (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)</translation>
+        </message>
+        <message>
+            <source>Reimport contour geometry</source>
+            <translation>Переимпортировать контурную геометрию</translation>
+        </message>
+        <message>
+            <source>Reimport production geometry</source>
+            <translation>Переимпортировать производственную геометрию</translation>
+        </message>
+        <message>
+            <source>Select Project Lines file</source>
+            <translation>Выбрать файл проектных линий</translation>
+        </message>
+        <message>
+            <source>Select a geometry file first</source>
+            <translation>Сначала выберите файл геометрии</translation>
+        </message>
+        <message>
+            <source>Select a geometry file to detect the horizon automatically</source>
+            <translation>Выберите файл геометрии для автоматического определения горизонта</translation>
+        </message>
+        <message>
+            <source>Select geometry file</source>
+            <translation>Выбрать файл геометрии</translation>
+        </message>
+        <message>
+            <source>Skipped unsupported entities: %1</source>
+            <translation>Пропущено неподдерживаемых объектов: %1</translation>
+        </message>
+        <message>
+            <source>Curved DXF polyline segments are not supported. Convert them to straight polyline segments before import.</source>
+            <translation>Криволинейные сегменты DXF-полилиний не поддерживаются. Преобразуйте их в прямолинейные сегменты перед импортом.</translation>
+        </message>
     </context>
 </TS>

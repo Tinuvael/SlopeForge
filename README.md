@@ -9,11 +9,18 @@ SlopeForge is a desktop MVP for managing open-pit blast engineering data and fin
 - Production Blocks with general information, geomechanics, blast design, execution facts, and Technical Card revision history.
 - Assessment Areas grouped by virtual Intervals, boundary drawing/refinement, linked blast events, and revision history.
 - Existing DAI and FCI assessment matrices and quadrant presentation.
-- Site-wide Project Lines imported from Datamine CSV files.
+- Site-wide Project Lines imported from Datamine CSV or DXF 2D/3D polylines.
 - BlastEvent-owned and assessment-evaluation-owned Photos and Documents.
 - Tree navigation, search, status filters, and archived-item visibility.
 - PostgreSQL persistence through SQLAlchemy and Alembic.
 - Role-aware editor and read-only Viewer experiences.
+
+## Geometry import formats
+
+Project Lines and Blast geometry accept Datamine CSV and DXF 2D/3D polylines.
+DXF import is intentionally limited to straight `LWPOLYLINE`, 2D `POLYLINE`,
+and 3D `POLYLINE` entities in modelspace. Curved segments are rejected; SPLINE,
+ARC, mesh, polyface, and INSERT entities are not processed.
 
 The MVP does not provide PDF/Excel reports, GIS, AI recommendations, TARP, or automatic engineering recommendations.
 

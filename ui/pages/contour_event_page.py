@@ -12,7 +12,7 @@ class ContourEventPage(QWidget):
     def __init__(self,context,domain_id,domain_name,event_id,parent=None):
         super().__init__(parent); self.context=context; self.controller=EntityPageController(context,domain_id); self.blast_event=next(e for e in self.controller.state.blast_events if e.id==event_id and e.event_type=="contour"); self.read_only=not context.current_user.can_edit or self.blast_event.is_archived
         root=QVBoxLayout(self); root.addWidget(QLabel(f"{tr('Contour blast')}: {self.blast_event.name} | {tr('Domain')}: {domain_name}")); self.tabs=QTabWidget(); root.addWidget(self.tabs)
-        general=QWidget(); layout=QVBoxLayout(general); rev=self.blast_event.active_geometry_revision(); dataset=self.controller.state.active_dataset(); self.plan=PlanGeometryWidget(); self.plan.set_geometry(rev.plan_geometry if rev else None,dataset.lines if dataset else [],f"{tr('Horizon')}: {self.blast_event.elevation:g} | {tr('Date')}: {self.blast_event.event_date or '—'} | CSV: {rev.source_file_name if rev else '—'} | {tr('Revision')}: {rev.revision_number if rev else '—'}"); self.plan.set_reimport_enabled(not self.read_only); self.plan.reimport_requested.connect(self.reimport_geometry); layout.addWidget(self.plan); self.tabs.addTab(general,tr("General information"))
+        general=QWidget(); layout=QVBoxLayout(general); rev=self.blast_event.active_geometry_revision(); dataset=self.controller.state.active_dataset(); self.plan=PlanGeometryWidget(); self.plan.set_geometry(rev.plan_geometry if rev else None,dataset.lines if dataset else [],f"{tr('Horizon')}: {self.blast_event.elevation:g} | {tr('Date')}: {self.blast_event.event_date or '—'} | {tr('Source')}: {rev.source_file_name if rev else '—'} | {tr('Revision')}: {rev.revision_number if rev else '—'}"); self.plan.set_reimport_enabled(not self.read_only); self.plan.reimport_requested.connect(self.reimport_geometry); layout.addWidget(self.plan); self.tabs.addTab(general,tr("General information"))
         card,draft=self.controller.technical_card_draft(self.blast_event); self.editor=TechnicalCardEditorWidget(self.blast_event,card,draft,self.controller.save_technical_card,self,self.read_only); layout.addWidget(self.editor.take_tab(tr("General")))
         self.tabs.addTab(BlastDesignEditorWidget(self.editor.take_tab(tr("Contour drilling"))),tr("Blast design")); self.tabs.addTab(ActualExecutionEditorWidget(self.editor.take_tab(tr("Execution fact"))),tr("Execution fact"))
         for title in ("Photos","Documents"): self.tabs.addTab(self._attachments(title),tr(title))
@@ -25,7 +25,7 @@ class ContourEventPage(QWidget):
         button.clicked.connect(open_dialog); layout.addWidget(button); layout.addStretch(); return page
     def reimport_geometry(self):
         if self.read_only: QMessageBox.warning(self,tr("Read only"),tr("Archived contour events and Viewer accounts are read-only.")); return
-        path,_=QFileDialog.getOpenFileName(self,"Reimport contour geometry","","CSV (*.csv)")
+        path,_=QFileDialog.getOpenFileName(self,tr("Reimport contour geometry"),"",tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
         if not path:return
         try: BlastEventService(self.controller.state).reimport_geometry(self.blast_event,path); self.controller.save()
         except Exception as exc: QMessageBox.warning(self,tr("Contour geometry"),domain_message(str(exc)))
