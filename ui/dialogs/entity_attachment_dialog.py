@@ -66,12 +66,15 @@ class EntityAttachmentDialog(QDialog):
         sort = QHBoxLayout(); sort.addWidget(QLabel("Sort by:")); self.sort_combo = QComboBox(); self.sort_combo.addItems(["Date", "Title", "Category", "Size"]); self.sort_combo.currentIndexChanged.connect(self.refresh); sort.addWidget(self.sort_combo); sort.addStretch(); root.addLayout(sort)
         self.tabs = QTabWidget(); root.addWidget(self.tabs)
         self.tables = {}
+        self.mutation_buttons = []
         for kind, caption in (("photo", "Photos"), ("document", "Documents")):
             page = QWidget(); layout = QVBoxLayout(page); table = QTableWidget(); table.setColumnCount(7); table.setHorizontalHeaderLabels(["Preview", "Title", "Date", "Category", "Original file", "Description", "Size"]); table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.cellDoubleClicked.connect(lambda row, _col, k=kind: self.open_selected(k, row)); layout.addWidget(table)
             actions = QHBoxLayout()
             for text, handler in (("Add", lambda _=False, k=kind: self.add(k)), ("Open", lambda _=False, k=kind: self.open_selected(k)), ("Open folder", self.open_folder), ("Edit metadata", lambda _=False, k=kind: self.edit(k)), ("Delete", lambda _=False, k=kind: self.delete(k))):
                 button = QPushButton(text); button.clicked.connect(handler); actions.addWidget(button)
-                if text in {"Add", "Edit metadata", "Delete"}: button.setEnabled(not read_only and not unsaved)
+                if text in {"Add", "Edit metadata", "Delete"}:
+                    button.setEnabled(not read_only and not unsaved)
+                    self.mutation_buttons.append(button)
             actions.addStretch(); layout.addLayout(actions); self.tables[kind] = table; self.tabs.addTab(page, caption)
         close = QPushButton("Close"); close.clicked.connect(self.accept); root.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight); self.refresh()
 

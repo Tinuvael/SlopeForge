@@ -54,7 +54,7 @@ class AssessmentWorkspacePage(QWidget):
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.domain_label = QLabel(f"Домен: {domain_name or domain_id}", self)
+        self.domain_label = QLabel(f"Domain: {domain_name or domain_id}", self)
         layout.addWidget(self.domain_label)
         layout.addWidget(self.workspace)
 

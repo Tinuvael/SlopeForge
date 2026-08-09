@@ -25,9 +25,12 @@ class MainWindow(QMainWindow):
         central=QWidget(); self.setCentralWidget(central); root=QVBoxLayout(central); root.addWidget(self.header); body=QHBoxLayout(); body.addWidget(self.tree,1); body.addWidget(self.page_stack,4); root.addLayout(body); self._update_add()
     def _show(self,page):
         if not self._guard_leave(): return False
+        self._activate_page(page)
+        return True
+    def _activate_page(self,page):
         self._dispose_transient_page(page)
         if self.page_stack.indexOf(page)<0: self.page_stack.addWidget(page)
-        self.page_stack.setCurrentWidget(page); return True
+        self.page_stack.setCurrentWidget(page)
     def _dispose_transient_page(self, incoming):
         current = self.page_stack.currentWidget()
         if current is None or current is incoming or current is self.block_page or current is self.assessment_page:
@@ -47,23 +50,30 @@ class MainWindow(QMainWindow):
             answer=QMessageBox.warning(self,"Unsaved geometry","There are unsaved geometry changes.",QMessageBox.StandardButton.Cancel|QMessageBox.StandardButton.Discard,QMessageBox.StandardButton.Cancel)
             if answer != QMessageBox.StandardButton.Discard: return False
             page.cancel_active_workflow()
-        try: page.save_now(); return True
+        try:
+            page.save_now()
+            self.assessment_page = None
+            self.assessment_domain_id = None
+            self.assessment_site_id = None
+            return True
         except Exception as exc: QMessageBox.critical(self,"Save error",f"Could not save data.\n\n{exc}"); return False
     def _set_context(self,site_id,site_name=None,domain_id=None,domain_name=None,block_id=None,area_id=None,contour_id=None):
         self.selected_site_id=site_id; self.selected_site_name=site_name or self.selected_site_name; self.selected_domain_id=domain_id; self.selected_domain_name=domain_name; self.selected_block_id=block_id; self.selected_contour_event_id=contour_id; self.selected_assessment_area_id=area_id; self._update_add(); self.header.set_archive_context(area_id is not None or contour_id is not None)
     def _update_add(self):
         active=bool(self.selected_site_id and self.lines_repo.get_active(self.selected_site_id)); self.header.update_add_availability(self.selected_site_id is not None,self.selected_domain_id is not None,active)
     def select_site(self,site_id,site_name):
+        if not self._guard_leave(): return False
         try:
             from ui.pages.dashboards import SiteDashboardPage
             page=SiteDashboardPage(self.context,site_id,site_name)
         except Exception as exc:
             QMessageBox.critical(self,"Could not open project dashboard",str(exc)); return False
         page.domain_requested.connect(lambda domain_id:self._open_domain_dashboard(domain_id,site_id,site_name))
-        if self._show(page): self._set_context(site_id,site_name)
+        self._activate_page(page); self._set_context(site_id,site_name); return True
     def _open_domain_dashboard(self,domain_id,site_id,site_name):
         domain=self.domain_repo.get(domain_id); self.select_domain(domain_id,domain.name,site_id,site_name)
     def select_domain(self,domain_id,domain_name,site_id,site_name):
+        if not self._guard_leave(): return False
         try:
             from ui.pages.dashboards import DomainDashboardPage
             page=DomainDashboardPage(self.context,domain_id,domain_name)
@@ -72,7 +82,7 @@ class MainWindow(QMainWindow):
         page.block_requested.connect(lambda block_id:self.open_block_from_tree(block_id,domain_id,site_id))
         page.contour_requested.connect(lambda event_id:self.open_contour_from_tree(event_id,domain_id,site_id,domain_name))
         page.assessment_area_requested.connect(lambda area_id:self.open_area_from_tree(area_id,domain_id,site_id,domain_name))
-        if self._show(page): self._set_context(site_id,site_name,domain_id,domain_name)
+        self._activate_page(page); self._set_context(site_id,site_name,domain_id,domain_name); return True
     def open_block_from_tree(self,block_id,domain_id=None,site_id=None):
         domain=self.domain_repo.get(domain_id) if domain_id else None
         if self._show(self.block_page):
@@ -80,20 +90,19 @@ class MainWindow(QMainWindow):
         return False
     def open_area_from_tree(self,area_id,domain_id,site_id,domain_name):
         if not self._guard_leave(): return False
-        self._dispose_transient_page(None)
         from ui.pages.assessment_area_page import AssessmentAreaPage
-        try: page=AssessmentAreaPage(self.context,domain_id,domain_name,area_id,self.page_stack)
+        try: page=AssessmentAreaPage(self.context,domain_id,domain_name,area_id)
         except Exception as exc:
             QMessageBox.critical(self,"Assessment Area",f"Could not open the assessment area. The current page was preserved.\n\n{exc}"); return False
         page.edit_boundaries_requested.connect(self._edit_area_boundaries)
-        if self.page_stack.indexOf(page)<0:self.page_stack.addWidget(page)
-        self.page_stack.setCurrentWidget(page)
+        self._activate_page(page)
         domain=self.domain_repo.get(domain_id); self.assessment_page=None; self.area_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,area_id=area_id); return True
     def open_contour_from_tree(self,event_id,domain_id,site_id,domain_name):
+        if not self._guard_leave(): return False
         from ui.pages.contour_event_page import ContourEventPage
-        try: page=ContourEventPage(self.context,domain_id,domain_name,event_id,self.page_stack)
+        try: page=ContourEventPage(self.context,domain_id,domain_name,event_id)
         except Exception as exc: QMessageBox.critical(self,"Contour blast",f"Could not open the contour blast.\n\n{exc}"); return False
-        if not self._show(page):return False
+        self._activate_page(page)
         domain=self.domain_repo.get(domain_id); self.contour_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,contour_id=event_id); self.header.set_archive_context(True,page.blast_event.is_archived); return True
     def _add_project(self):
         from ui.project_dialog import ProjectDialog
@@ -151,13 +160,15 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self,"Project Lines","Load Project Lines for the project first."); self.select_site(self.selected_site_id,self.selected_site_name); return
         if not self._guard_leave(): return
         from ui.pages.assessment_area_creation_page import AssessmentAreaCreationPage
-        try: page=AssessmentAreaCreationPage(self.context,self.selected_domain_id,self.selected_domain_name,self.selected_site_id,self.page_stack)
+        try: page=AssessmentAreaCreationPage(self.context,self.selected_domain_id,self.selected_domain_name,self.selected_site_id)
         except Exception as exc:
             QMessageBox.critical(self,"Assessment Area",f"Could not start assessment area creation. The current page was preserved.\n\n{exc}"); return
         page.area_created.connect(lambda area_id:self._area_created(area_id,page)); page.cancelled.connect(lambda:self.select_domain(self.selected_domain_id,self.selected_domain_name,self.selected_site_id,self.selected_site_name))
-        self.page_stack.addWidget(page); self.assessment_page=page; self.assessment_domain_id=self.selected_domain_id; self.page_stack.setCurrentWidget(page)
+        self._activate_page(page); self.assessment_page=page; self.assessment_domain_id=self.selected_domain_id
     def _area_created(self,area_id,creation_page):
-        self.assessment_page=None; self.refresh_project_data(); self.open_area_from_tree(area_id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name); self.page_stack.removeWidget(creation_page); creation_page.deleteLater()
+        self.assessment_page=None; self.refresh_project_data(); self.open_area_from_tree(area_id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
+        if self.page_stack.indexOf(creation_page)>=0:self.page_stack.removeWidget(creation_page)
+        creation_page.deleteLater()
     def _finish_area_boundary_edit(self,area_id,edit_page):
         """Leave an already-saved edit without running the unsaved-work guard again."""
         if self.assessment_page is edit_page:self.assessment_page=None
@@ -175,10 +186,10 @@ class MainWindow(QMainWindow):
     def _edit_area_boundaries(self,area_id):
         if not self._guard_leave(): return
         from ui.pages.assessment_area_creation_page import AssessmentAreaCreationPage
-        try: page=AssessmentAreaCreationPage(self.context,self.selected_domain_id,self.selected_domain_name,self.selected_site_id,self.page_stack,edit_area_id=area_id)
+        try: page=AssessmentAreaCreationPage(self.context,self.selected_domain_id,self.selected_domain_name,self.selected_site_id,edit_area_id=area_id)
         except Exception as exc:
             QMessageBox.critical(self,"Assessment Area",f"Could not open boundary editing. The current page was preserved.\n\n{exc}"); return
-        page.area_created.connect(lambda completed_id:self._finish_area_boundary_edit(completed_id,page)); page.cancelled.connect(lambda:self._cancel_area_boundary_edit(area_id,page)); self.assessment_page=page; self.assessment_domain_id=self.selected_domain_id; self.assessment_site_id=self.selected_site_id; self.page_stack.addWidget(page); self.page_stack.setCurrentWidget(page)
+        page.area_created.connect(lambda completed_id:self._finish_area_boundary_edit(completed_id,page)); page.cancelled.connect(lambda:self._cancel_area_boundary_edit(area_id,page)); self._activate_page(page); self.assessment_page=page; self.assessment_domain_id=self.selected_domain_id; self.assessment_site_id=self.selected_site_id
     def _archive_selected(self):
         if self.selected_block_id is not None:
             block=self.block_page.current_block; action="Restore" if block.is_archived else "Archive"

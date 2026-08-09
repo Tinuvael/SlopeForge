@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 
 def source(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
@@ -56,3 +58,198 @@ def test_transient_page_lifecycle_is_bounded_and_disconnect_is_targeted():
     block = source("ui/pages/block_page.py")
     assert "disconnect(callback)" in block
     assert "reimport_requested.disconnect()" not in block
+
+
+def _app():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
+def test_header_ctrl_f_focuses_and_selects_search_text():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from types import SimpleNamespace
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from ui.header import Header
+
+    app = _app()
+    context = SimpleNamespace(current_user=SimpleNamespace(can_edit=True))
+    header = Header(context)
+    header.search.setText("C-101")
+    header.show()
+    QTest.keyClick(header, Qt.Key.Key_F, Qt.KeyboardModifier.ControlModifier)
+    app.processEvents()
+    assert header.search.hasFocus()
+    assert header.search.selectedText() == "C-101"
+    header.close()
+
+
+def test_project_tree_search_filters_real_displayed_rows(monkeypatch):
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from types import SimpleNamespace
+    from widgets import project_tree as module
+
+    app = _app()
+    site = SimpleNamespace(id=1, name="Project")
+    domain = SimpleNamespace(id=2, name="Domain")
+    blocks = [
+        SimpleNamespace(id=10, domain_id=2, block_number="P-101", horizon_m=100, status="planned", is_archived=False),
+        SimpleNamespace(id=11, domain_id=2, block_number="P-202", horizon_m=100, status="planned", is_archived=False),
+    ]
+    contours = [SimpleNamespace(id="C1", domain_id=2, name="C-101", elevation=100, is_archived=False)]
+    monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: [site]))
+    monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda _id: [domain]))
+    monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(
+        list_blocks=lambda **kwargs: [b for b in blocks if not kwargs["number_query"] or kwargs["number_query"].lower() in b.block_number.lower()]
+    ))
+    monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
+        list_areas=lambda _archived: [], list_contour_events=lambda _archived: contours
+    ))
+    tree = module.ProjectTree(SimpleNamespace(session_factory=object()))
+    tree.search.setText("C-101")
+    app.processEvents()
+
+    labels = []
+    def collect(item):
+        labels.append(item.text(0))
+        for index in range(item.childCount()): collect(item.child(index))
+    for index in range(tree.tree.topLevelItemCount()): collect(tree.tree.topLevelItem(index))
+    assert "Contour C-101" in labels
+    assert "Block P-101" not in labels and "Block P-202" not in labels
+    tree.close()
+
+
+def _block_page(monkeypatch, *, can_edit, archived):
+    from types import SimpleNamespace
+    from ui.pages import block_page as module
+
+    block = SimpleNamespace(
+        id=7, domain_id=2, block_number="P-7", horizon_m=100, site_name="Project",
+        domain_name="Domain", status="planned", is_archived=archived, created_at=None,
+        updated_at=None, author_name="Engineer", planned_blast_date=None, comment=None,
+    )
+    event = SimpleNamespace(id="EVENT-7")
+    attachments = SimpleNamespace(
+        list_for_owner=lambda *_args: [], counts=lambda *_args: (0, 0)
+    )
+    controller = SimpleNamespace(event_for_block=lambda _id: event, attachments=attachments)
+    monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace())
+    monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace())
+    monkeypatch.setattr(module, "BlastBlockService", lambda *_args: SimpleNamespace(
+        list_blocks=lambda **_kwargs: [block], get_block=lambda _id: block
+    ))
+    monkeypatch.setattr(module, "AuditLogRepository", lambda _factory: SimpleNamespace(list_for_block=lambda _id: []))
+    monkeypatch.setattr(module, "EntityPageController", lambda *_args: controller)
+    monkeypatch.setattr(module.BlockPage, "_render_engineering", lambda self, _block: None)
+    context = SimpleNamespace(
+        session_factory=object(), storage_root=Path("."),
+        current_user=SimpleNamespace(can_edit=can_edit),
+    )
+    return module.BlockPage(context)
+
+
+def test_editable_block_attachment_controls_are_enabled(monkeypatch):
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    page = _block_page(monkeypatch, can_edit=True, archived=False)
+    assert page.photos.add_button.text() == "Manage"
+    assert page.photos.add_button.isEnabled()
+    assert page.documents.add_button.isEnabled()
+    page.close()
+
+
+def test_archived_and_viewer_block_attachment_dialogs_are_read_only(monkeypatch):
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    import sys
+    from types import ModuleType
+
+    captured = []
+    fake_module = ModuleType("ui.dialogs.entity_attachment_dialog")
+    class FakeDialog:
+        def __init__(self, *_args, **kwargs):
+            captured.append(kwargs["read_only"])
+            self.tabs = type("Tabs", (), {"setCurrentIndex": lambda self, _index: None})()
+        def exec(self): return 0
+    fake_module.EntityAttachmentDialog = FakeDialog
+    monkeypatch.setitem(sys.modules, "ui.dialogs.entity_attachment_dialog", fake_module)
+
+    archived = _block_page(monkeypatch, can_edit=True, archived=True)
+    assert archived.photos.add_button.isEnabled()
+    archived._open_attachments("photo")
+    viewer = _block_page(monkeypatch, can_edit=False, archived=False)
+    assert viewer.documents.add_button.isEnabled()
+    viewer._open_attachments("document")
+    assert captured == [True, True]
+    archived.close(); viewer.close()
+
+
+def test_attachment_dialog_disables_all_mutations_in_read_only_mode():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from types import SimpleNamespace
+    from ui.dialogs.entity_attachment_dialog import EntityAttachmentDialog
+
+    _app()
+    service = SimpleNamespace(list_for_owner=lambda *_args: [])
+    dialog = EntityAttachmentDialog(service, "blast_event", "EVENT-1", read_only=True)
+    assert dialog.mutation_buttons
+    assert all(not button.isEnabled() for button in dialog.mutation_buttons)
+    dialog.close()
+
+
+def _bare_main_window():
+    from types import SimpleNamespace
+    from PySide6.QtWidgets import QMainWindow, QStackedWidget, QWidget
+    from ui.main_window import MainWindow
+
+    window = MainWindow.__new__(MainWindow)
+    QMainWindow.__init__(window)
+    window.page_stack = QStackedWidget(window)
+    window.block_page = QWidget()
+    window.page_stack.addWidget(window.block_page)
+    window.assessment_page = None
+    window._guard_leave = lambda: True
+    window.context = SimpleNamespace()
+    window.domain_repo = SimpleNamespace(get=lambda _id: SimpleNamespace(site=SimpleNamespace(name="Project")))
+    window._set_context = lambda *_args, **_kwargs: None
+    return window
+
+
+def test_failed_assessment_page_construction_preserves_current_widget(monkeypatch):
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    import sys
+    from types import ModuleType
+    from PySide6.QtWidgets import QWidget
+    from ui.main_window import MainWindow
+
+    _app()
+    window = _bare_main_window()
+    current = QWidget()
+    window.page_stack.addWidget(current)
+    window.page_stack.setCurrentWidget(current)
+    fake_module = ModuleType("ui.pages.assessment_area_page")
+    class BrokenAreaPage:
+        def __init__(self, *_args, **_kwargs): raise RuntimeError("construction failed")
+    fake_module.AssessmentAreaPage = BrokenAreaPage
+    monkeypatch.setitem(sys.modules, "ui.pages.assessment_area_page", fake_module)
+    monkeypatch.setattr("ui.main_window.QMessageBox.critical", lambda *_args: None)
+
+    assert MainWindow.open_area_from_tree(window, "A1", 2, 1, "Domain") is False
+    assert window.page_stack.currentWidget() is current
+    assert window.page_stack.count() == 2
+    window.close()
+
+
+def test_repeated_transient_navigation_keeps_stack_bounded():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QWidget
+
+    app = _app()
+    window = _bare_main_window()
+    for kind in ("Site", "Domain", "Area", "Contour") * 10:
+        page = QWidget()
+        page.setObjectName(kind)
+        window._activate_page(page)
+        app.sendPostedEvents()
+        app.processEvents()
+        assert window.page_stack.count() <= 2
+    window.close()

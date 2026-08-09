@@ -14,6 +14,9 @@ from prototype_2d.wall_assessment import (
     CONDITION, DESIGN, AssessmentCriterionResult, AssessmentMatrixTemplate,
     calculate_revision, score_numeric,
 )
+from ui.presentation_labels import (
+    CRITERION_HELP, criterion_label, domain_message, matrix_label, option_label, result_label,
+)
 
 DAMAGE_WARNING = "The matrix has no automatic score for the range of 1–5 features/m²."
 
@@ -88,7 +91,7 @@ class CriterionEditor(QWidget):
         super().__init__(parent)
         self.criterion = criterion
         root = QVBoxLayout(self); root.setContentsMargins(0, 2, 0, 8)
-        top = QHBoxLayout(); self.title = QLabel(f"<b>{criterion.name}</b>"); self.title.setWordWrap(True); top.addWidget(self.title, 1)
+        top = QHBoxLayout(); self.title = QLabel(f"<b>{criterion_label(criterion.id, criterion.name)}</b>"); self.title.setWordWrap(True); top.addWidget(self.title, 1)
         self.clear_button = None
         if criterion.kind in ("numeric", "damage"):
             self.input = NullableDoubleSpinBox(100 if criterion.id == "visible_drillhole_traces" else 999)
@@ -98,11 +101,11 @@ class CriterionEditor(QWidget):
         else:
             self.input = QComboBox(); self.input.addItem("— select observation —", None)
             for option in criterion.options:
-                self.input.addItem(f"{option.label} — {option.score:g} points", option.id)
+                self.input.addItem(f"{option_label(option.id, option.label)} — {option.score:g} points", option.id)
             self.input.currentIndexChanged.connect(self.changed); top.addWidget(self.input, 1)
         root.addLayout(top)
         if criterion.help_text:
-            help_label = QLabel(criterion.help_text); help_label.setWordWrap(True); help_label.setStyleSheet("color:#555"); root.addWidget(help_label)
+            help_label = QLabel(CRITERION_HELP.get(criterion.id, criterion.help_text)); help_label.setWordWrap(True); help_label.setStyleSheet("color:#555"); root.addWidget(help_label)
         self.validation = QLabel(); self.validation.setWordWrap(True); self.validation.setStyleSheet("color:#a33"); root.addWidget(self.validation)
         self.override_toggle = QCheckBox("Override score manually")
         self.override_toggle.toggled.connect(self._toggle_override); self.override_toggle.toggled.connect(self.changed); root.addWidget(self.override_toggle)
@@ -190,7 +193,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         form.addRow("Assessment date", self.date); form.addRow("Inspector", self.inspector)
         form.addRow("Assessment Area ID", QLabel(self.area.id)); form.addRow("Geometry revision", QLabel(revision.id))
         form.addRow("Elevations", QLabel(f"{revision.lower_elevation:g} — {revision.upper_elevation:g}"))
-        form.addRow("Matrix", QLabel(f"{self.template.name} ({self.template.id})")); form.addRow("Detection", self.detected)
+        form.addRow("Matrix", QLabel(f"{matrix_label(self.template.id, self.template.name)} ({self.template.id})")); form.addRow("Detection", self.detected)
         form.addRow("Manual matrix selection reason", self.override_reason); form.addRow("Comments", self.comments); form.addRow("Recommendations", self.recommendations)
         self.tabs.addTab(page, "General")
 
@@ -206,7 +209,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self.geometry_editors = {}
         for criterion in self.template.section(DESIGN).criteria:
             editor = CriterionEditor(criterion)
-            editor.title.setText(f"Expert override: {criterion.name}")
+            editor.title.setText(f"Expert override: {criterion_label(criterion.id, criterion.name)}")
             editor.input.hide()
             if editor.clear_button: editor.clear_button.hide()
             editor.changed.connect(self._changed)
@@ -257,7 +260,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
     def _history(self):
         self.history = QTableWidget(len(self.evaluation.revisions), 8); self.history.setHorizontalHeaderLabels(["№", "Date", "Status", "Geometry", "Matrix", "Design", "Condition", "Result"]); self.history.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         for row, revision in enumerate(self.evaluation.revisions):
-            values = (revision.revision_number, revision.assessment_date or "—", revision.status, revision.assessment_area_geometry_revision_id, revision.matrix_template_id, "—" if revision.design_achievement_index is None else f"{revision.design_achievement_index:.3f}", "—" if revision.face_condition_index is None else f"{revision.face_condition_index:.3f}", revision.result_label or "—")
+            values = (revision.revision_number, revision.assessment_date or "—", revision.status, revision.assessment_area_geometry_revision_id, revision.matrix_template_id, "—" if revision.design_achievement_index is None else f"{revision.design_achievement_index:.3f}", "—" if revision.face_condition_index is None else f"{revision.face_condition_index:.3f}", result_label(revision.result_label) or "—")
             for column, value in enumerate(values): self.history.setItem(row, column, QTableWidgetItem(str(value)))
         self.history.cellDoubleClicked.connect(self._open_history)
         container = QWidget(); layout = QVBoxLayout(container); hint = QLabel("Double-click a row to open a read-only historical revision."); layout.addWidget(hint); layout.addWidget(self.history); self.tabs.addTab(container, "History")
@@ -355,17 +358,17 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self._fill_table(self.condition_table, [by_id[c.id] for c in self.template.section(CONDITION).criteria])
         design = "—" if preview.design_achievement_index is None else f"{preview.design_achievement_index:.3f}"
         condition = "—" if preview.face_condition_index is None else f"{preview.face_condition_index:.3f}"
-        self.summary.setText(f"Design: {preview.design_achievement_points if preview.design_achievement_points is not None else '—'} / 100; index: {design}\nCondition: {preview.face_condition_points if preview.face_condition_points is not None else '—'} / 100; index: {condition}\nResult: {preview.result_label or 'available after all criteria are completed'}")
+        self.summary.setText(f"Design: {preview.design_achievement_points if preview.design_achievement_points is not None else '—'} / 100; index: {design}\nCondition: {preview.face_condition_points if preview.face_condition_points is not None else '—'} / 100; index: {condition}\nResult: {result_label(preview.result_label) or 'available after all criteria are completed'}")
         self.plot.set_result(self.template, preview.design_achievement_index, preview.face_condition_index)
 
     def _fill_table(self, table, results):
         table.setRowCount(len(results))
         for row, result in enumerate(results):
             definition = self.template.criterion(result.criterion_id); option = next((o for o in definition.options if o.id == result.selected_option_id), None)
-            observed = option.label if option else ("—" if result.raw_numeric_value is None else f"{result.raw_numeric_value:g}")
-            category = option.label if option else self._applied_rule(result)
+            observed = option_label(option.id, option.label) if option else ("—" if result.raw_numeric_value is None else f"{result.raw_numeric_value:g}")
+            category = option_label(option.id, option.label) if option else self._applied_rule(result)
             warning = result.notes or ("An expert score and reason are required" if result.criterion_id == "damage" and result.raw_numeric_value is not None and 1 <= result.raw_numeric_value <= 5 and result.accepted_score is None else "Required" if result.accepted_score is None else "")
-            values = (result.criterion_name_snapshot, observed, category, result.automatic_score, result.manual_score, result.accepted_score, result.maximum_score, warning)
+            values = (criterion_label(result.criterion_id, result.criterion_name_snapshot), observed, category, result.automatic_score, result.manual_score, result.accepted_score, result.maximum_score, warning)
             for column, value in enumerate(values):
                 item = QTableWidgetItem("—" if value is None else str(value)); table.setItem(row, column, item)
                 if result.accepted_score is None: item.setBackground(QColor("#ffe2e2"))
@@ -384,7 +387,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
             calculate_revision(revision, require_complete=status == "completed")
             self.save_callback(self.evaluation, revision, status)
         except Exception as exc:  # persistence errors must keep the dialog open
-            QMessageBox.critical(self, "Assessment not saved", f"Could not save the assessment. Changes remain in the form.\n\n{exc}")
+            QMessageBox.critical(self, "Assessment not saved", f"Could not save the assessment. Changes remain in the form.\n\n{domain_message(str(exc))}")
             return False
         self._dirty = False; self._allow_close = True; self._update_title()
         QMessageBox.information(self, "Assessment saved", "Draft saved." if status == "draft" else "Assessment completed and saved.")

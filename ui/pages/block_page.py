@@ -149,6 +149,9 @@ class BlockPage(QWidget):
         photos = self.entity_controller.attachments.list_for_owner("blast_event", event.id, "photo") if event else []
         documents = self.entity_controller.attachments.list_for_owner("blast_event", event.id, "document") if event else []
         photo_count, document_count = self.entity_controller.attachments.counts("blast_event", event.id) if event else (0, 0)
+        attachments_available = event is not None
+        self.photos.add_button.setEnabled(attachments_available)
+        self.documents.add_button.setEnabled(attachments_available)
         self.header.set_block(block, self.context.current_user.can_edit and not block.is_archived if block else False)
         self.overview.set_block(block)
         self.compact_cards.set_block(block)

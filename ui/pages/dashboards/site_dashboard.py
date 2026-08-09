@@ -44,7 +44,7 @@ class SiteDashboardPage(QWidget):
     def _analytics(self):
         w=QWidget(); box=QVBoxLayout(w); box.addWidget(CompactChart({d.domain.name:d.domain.completed for d in self.snapshot.domains if d.domain.completed})); return w
     def import_lines(self):
-        path,_=QFileDialog.getOpenFileName(self,"CSV Datamine — проектные линии","","CSV (*.csv)")
+        path,_=QFileDialog.getOpenFileName(self,"Datamine CSV — Project Lines","","CSV (*.csv)")
         if not path:return
         try: dataset,_=ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(path); self.lines_repo.import_dataset(self.site_id,dataset,make_active=True); self.refresh()
-        except Exception as exc: QMessageBox.warning(self,"Ошибка импорта",str(exc))
+        except Exception as exc: QMessageBox.warning(self,"Import error",str(exc))

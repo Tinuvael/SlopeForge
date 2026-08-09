@@ -8,6 +8,9 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QDoubleSpinBox, QFormLayout, 
 
 from prototype_2d.technical_card import (CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS,
     PRODUCTION_GROUP_TYPES, ActualDrillingGroup, BlastDrillingGroup)
+from ui.presentation_labels import (
+    CONTROLLED_BLASTING_LABELS, domain_message, technical_group_label, technical_text,
+)
 
 BURDEN_LABEL = "Burden / row spacing, m"
 BURDEN_TOOLTIP = "Burden. For row patterns, normally the row spacing or distance from the first row to the free face."
@@ -64,7 +67,7 @@ class TechnicalCardDialog(QDialog):
         else:
             contour = self.revision.contour_parameters; method = QGroupBox("Controlled blasting method"); f = QFormLayout(method)
             self.method = QComboBox(); self.method.addItem("— select —", "")
-            for key, name in CONTROLLED_BLASTING_METHODS.items(): self.method.addItem(name, key)
+            for key in CONTROLLED_BLASTING_METHODS: self.method.addItem(CONTROLLED_BLASTING_LABELS[key], key)
             self.method.setCurrentIndex(max(0, self.method.findData(contour.controlled_blasting_method)))
             self.method.currentIndexChanged.connect(self._method_changed); f.addRow("Method", self.method); layout.addWidget(method)
 
@@ -85,7 +88,7 @@ class TechnicalCardDialog(QDialog):
         self.drilling_layout.addWidget(self.group_cards); self._render_groups()
         self.add_group_combo = QComboBox(); catalogue = PRODUCTION_GROUP_TYPES if self.blast_event.event_type == "production" else CONTOUR_GROUP_TYPES
         self.add_group_combo.addItem("+ Add drilling type", "")
-        for key, name in catalogue.items(): self.add_group_combo.addItem(name, key)
+        for key in catalogue: self.add_group_combo.addItem(technical_group_label(key), key)
         self.add_group_combo.activated.connect(self._add_group); self.drilling_layout.addWidget(self.add_group_combo)
 
     def _render_groups(self):
@@ -93,9 +96,10 @@ class TechnicalCardDialog(QDialog):
             item = self.group_cards_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
         for group in self.revision.drilling_groups:
-            box = QGroupBox(f"{group.name} — {group.group_type}"); box.setCheckable(True); box.setChecked(True)
+            display_name = technical_group_label(group.group_type, group.name)
+            box = QGroupBox(f"{display_name} — {group.group_type}"); box.setCheckable(True); box.setChecked(True)
             outer = QVBoxLayout(box); identity = QFormLayout(); outer.addLayout(identity)
-            name = QLineEdit(group.name); identity.addRow("Title", name); name.textChanged.connect(lambda value, g=group: setattr(g, "name", value))
+            name = QLineEdit(display_name); identity.addRow("Title", name); name.textChanged.connect(lambda value, g=group: setattr(g, "name", value))
             pattern = QGroupBox("Drilling pattern"); pattern.setCheckable(True); pattern.setChecked(True); form = QFormLayout(pattern)
             fields = (("Holes, count", "hole_count", "", True), ("Diameter, mm", "diameter_mm", "", False),
                 ("Average depth, m", "average_depth_m", "", False), ("Subdrill, m", "subdrill_m", "", False),
@@ -129,7 +133,7 @@ class TechnicalCardDialog(QDialog):
         kind = self.add_group_combo.itemData(index)
         if not kind: return
         catalogue = PRODUCTION_GROUP_TYPES if self.blast_event.event_type == "production" else CONTOUR_GROUP_TYPES
-        group = BlastDrillingGroup(group_type=kind, name=catalogue[kind], sequence_order=len(self.revision.drilling_groups)+1)
+        group = BlastDrillingGroup(group_type=kind, name=technical_group_label(kind), sequence_order=len(self.revision.drilling_groups)+1)
         if kind == "other": group.custom_type_name = "Other type"
         self.revision.drilling_groups.append(group); self.add_group_combo.setCurrentIndex(0); self._render_groups()
 
@@ -141,7 +145,7 @@ class TechnicalCardDialog(QDialog):
 
     def _remove(self, group):
         try: self.card.remove_group(self.revision, group.id)
-        except ValueError as exc: QMessageBox.warning(self, "Delete", str(exc)); return
+        except ValueError as exc: QMessageBox.warning(self, "Delete", domain_message(str(exc))); return
         self._render_groups()
 
     def _method_changed(self):
@@ -180,8 +184,10 @@ class TechnicalCardDialog(QDialog):
             design=designs.get(group.design_group_id); flags=[]
             if group.copied_from_design: flags.append("Copied from design")
             if group.design_group_id is None: flags.append("Not in design")
-            box=QGroupBox(f"{group.name} — {group.group_type}" + (f"  [{'; '.join(flags)}]" if flags else "")); box.setCheckable(True); box.setChecked(True)
-            outer=QVBoxLayout(box); outer.addWidget(QLabel(f"Linked design group: {design.name if design else '—'}"))
+            display_name=technical_group_label(group.group_type, group.name)
+            box=QGroupBox(f"{display_name} — {group.group_type}" + (f"  [{'; '.join(flags)}]" if flags else "")); box.setCheckable(True); box.setChecked(True)
+            design_name=technical_group_label(design.group_type, design.name) if design else "—"
+            outer=QVBoxLayout(box); outer.addWidget(QLabel(f"Linked design group: {design_name}"))
             drilling=QGroupBox("Drilling"); f=QFormLayout(drilling)
             for label,attr,integer in (("Holes, count","hole_count",True),("Diameter, mm","diameter_mm",False),("Average depth, m","average_depth_m",False),
                 ("Subdrill, m","subdrill_m",False),(BURDEN_LABEL,"burden_m",False),(SPACING_LABEL,"spacing_m",False),("Rows","row_count",True),
@@ -228,9 +234,9 @@ class TechnicalCardDialog(QDialog):
 
     def _add_actual_group(self):
         catalogue=PRODUCTION_GROUP_TYPES if self.blast_event.event_type=="production" else CONTOUR_GROUP_TYPES
-        names=list(catalogue.values()); choice,ok=QInputDialog.getItem(self,"Actual group","Group type:",names,0,False)
+        keys=list(catalogue); names=[technical_group_label(key) for key in keys]; choice,ok=QInputDialog.getItem(self,"Actual group","Group type:",names,0,False)
         if not ok:return
-        kind=next(k for k,v in catalogue.items() if v==choice)
+        kind=keys[names.index(choice)]
         self.revision.actual_execution.actual_drilling_groups.append(ActualDrillingGroup(design_group_id=None,group_type=kind,name=choice,sequence_order=len(self.revision.actual_execution.actual_drilling_groups)+1))
         self._render_actual_groups(); self._refresh_actual_summary()
 
@@ -255,7 +261,8 @@ class TechnicalCardDialog(QDialog):
         table.setHorizontalHeaderLabels(["Group","Parameter","Design","Execution fact","Absolute deviation","Relative deviation, %"])
         def display(value,unit=""): return "—" if value is None else f"{value:g} {unit}".strip()
         for row,data in enumerate(rows):
-            values=(data["group"],data["parameter"],display(data["project"],data["unit"]),display(data["actual"],data["unit"]),display(data["absolute_deviation"],data["unit"]),display(data["relative_deviation_percent"],"%"))
+            unit = technical_text(data["unit"])
+            values=(technical_text(data["group"]),technical_text(data["parameter"]),display(data["project"],unit),display(data["actual"],unit),display(data["absolute_deviation"],unit),display(data["relative_deviation_percent"],"%"))
             for column,value in enumerate(values): table.setItem(row,column,QTableWidgetItem(value))
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.resizeColumnsToContents()
 
@@ -275,9 +282,9 @@ class TechnicalCardDialog(QDialog):
             g=self.revision.geomechanical_parameters; g.lithology=self.lithology.text(); g.geotechnical_domain=self.geotechnical_domain.text(); g.rock_strength_class_text=self.strength_class.text(); g.representative_ucs_mpa=None if self.ucs.value()==self.ucs.minimum() else self.ucs.value(); g.ucs_min_mpa=None if self.ucs_min.value()==self.ucs_min.minimum() else self.ucs_min.value(); g.ucs_max_mpa=None if self.ucs_max.value()==self.ucs_max.minimum() else self.ucs_max.value(); g.rqd_representative_percent=None if self.rqd.value()==self.rqd.minimum() else self.rqd.value(); g.rqd_min_percent=None if self.rqd_min.value()==self.rqd_min.minimum() else self.rqd_min.value(); g.rqd_max_percent=None if self.rqd_max.value()==self.rqd_max.minimum() else self.rqd_max.value(); g.rock_mass_properties_text=self.rock_properties.text(); g.fracturing_description=self.fracturing.text(); g.water_condition=self.water.text(); g.geomechanical_notes=self.geo_notes.toPlainText()
         actual=self.revision.actual_execution; actual.completion_status=self.completion_status.currentData(); actual.actual_blast_date=self.actual_date.text().strip() or None; actual.execution_notes=self.execution_notes.toPlainText(); actual.recalculate()
         warnings=actual.completion_warnings()
-        if warnings: QMessageBox.warning(self,"Actual execution","The card will be saved. Warnings:\n• " + "\n• ".join(warnings))
+        if warnings: QMessageBox.warning(self,"Actual execution","The card will be saved. Warnings:\n• " + "\n• ".join(domain_message(item) for item in warnings))
         try: self.save_callback(self.card, self.revision, status)
-        except ValueError as exc: QMessageBox.warning(self, "Technical Card validation", str(exc)); return False
+        except ValueError as exc: QMessageBox.warning(self, "Technical Card validation", domain_message(str(exc))); return False
         except Exception as exc:
             QMessageBox.critical(self, "Technical Card", f"Could not save changes. The data remains in the form.\n\n{exc}")
             return False

@@ -213,7 +213,7 @@ class AttachmentPreviewWidget(CardFrame):
     def __init__(self, title: str):
         super().__init__(title)
         header = QHBoxLayout()
-        self.add_button = QPushButton("Add")
+        self.add_button = QPushButton("Manage")
         self.add_button.setEnabled(False)
         header.addStretch()
         header.addWidget(self.add_button)
