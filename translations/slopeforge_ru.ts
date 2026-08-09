@@ -2558,5 +2558,17 @@
             <source>Curved DXF polyline segments are not supported. Convert them to straight polyline segments before import.</source>
             <translation>Криволинейные сегменты DXF-полилиний не поддерживаются. Преобразуйте их в прямолинейные сегменты перед импортом.</translation>
         </message>
+        <message>
+            <source>Could not read DXF: %1</source>
+            <translation>Не удалось прочитать DXF: %1</translation>
+        </message>
+        <message>
+            <source>Unsupported geometry file extension %1. Use .csv or .dxf.</source>
+            <translation>Неподдерживаемое расширение файла геометрии %1. Используйте .csv или .dxf.</translation>
+        </message>
+        <message>
+            <source>ezdxf is required to import DXF geometry</source>
+            <translation>Для импорта геометрии DXF требуется ezdxf</translation>
+        </message>
     </context>
 </TS>

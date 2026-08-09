@@ -4,8 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from .csv_importer import ImportResult
-from .line_geometry_importer import import_line_geometry
+from .line_geometry_importer import LineGeometryImportResult, import_line_geometry
 from .domain import AssessmentDomainState, ProjectLinesDataset, utc_now
 from .models import DatamineLine
 
@@ -24,7 +23,7 @@ class ProjectLinesDatasetService:
         column_mapping: dict[str, str] | None = None,
         delimiter_choice: str = "Auto",
         imported_at: datetime | None = None,
-    ) -> tuple[ProjectLinesDataset, ImportResult]:
+    ) -> tuple[ProjectLinesDataset, LineGeometryImportResult]:
         path = Path(source_path)
         result = import_line_geometry(path, column_mapping=column_mapping, delimiter_choice=delimiter_choice)
         dataset = self.create_dataset(

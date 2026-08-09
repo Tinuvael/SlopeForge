@@ -1,15 +1,18 @@
 """File-format dispatch for line geometry sources."""
 from pathlib import Path
+from typing import TypeAlias
 
-from .csv_importer import import_datamine_csv
-from .dxf_importer import DxfImportError, import_dxf_polylines
+from .csv_importer import ImportResult as CsvImportResult, import_datamine_csv
+from .dxf_importer import DxfImportResult, import_dxf_polylines
+
+LineGeometryImportResult: TypeAlias = CsvImportResult | DxfImportResult
 
 
 class LineGeometryImportError(ValueError):
     pass
 
 
-def import_line_geometry(path, *, column_mapping=None, delimiter_choice="Auto"):
+def import_line_geometry(path, *, column_mapping=None, delimiter_choice="Auto") -> LineGeometryImportResult:
     source_path = Path(path)
     extension = source_path.suffix.lower()
     if extension == ".csv":

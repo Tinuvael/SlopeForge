@@ -115,6 +115,7 @@ DOMAIN_MESSAGES = {
     "Укажите горизонт события": "Enter the blast event horizon",
     "Не удалось прочитать файл как UTF-8. Сохраните CSV в UTF-8 или UTF-8 BOM.": "Could not read the file as UTF-8. Save the CSV as UTF-8 or UTF-8 BOM.",
     "Curved DXF polyline segments are not supported. Convert them to straight polyline segments before import.": "Curved DXF polyline segments are not supported. Convert them to straight polyline segments before import.",
+    "ezdxf is required to import DXF geometry": "ezdxf is required to import DXF geometry",
     "Файл геометрии не содержит валидных контурных скважин": "Geometry file contains no valid contour drillholes",
     "Файл геометрии не содержит подходящих линий": "Geometry file contains no suitable lines",
     "Неизвестный тип владельца файла": "Unknown attachment owner type",
@@ -166,6 +167,11 @@ def domain_message(value: str) -> str:
     exact = DOMAIN_MESSAGES.get(value)
     if exact is not None:
         return tr(exact)
+    if value.startswith("Could not read DXF: "):
+        return tr("Could not read DXF: %1").replace("%1", value.removeprefix("Could not read DXF: "))
+    unsupported = re.fullmatch(r"Unsupported geometry file extension (.+)\. Use \.csv or \.dxf\.", value)
+    if unsupported:
+        return tr("Unsupported geometry file extension %1. Use .csv or .dxf.").replace("%1", unsupported.group(1))
     prefixes = {
         "Не заполнено: ": "Missing required fields: ",
         "Не удалось импортировать CSV: ": "Could not import CSV: ",

@@ -1,8 +1,7 @@
 from pathlib import Path
 
+import ezdxf
 import pytest
-
-ezdxf = pytest.importorskip("ezdxf")
 
 from prototype_2d.blast_geometry import build_contour_geometry, build_production_geometry
 from prototype_2d.domain import AssessmentDomainState
@@ -30,7 +29,7 @@ def test_lwpolyline_wcs_metadata_elevation_and_closed_normalization(tmp_path):
 
 def test_2d_and_3d_polyline_wcs_order_and_varying_z(tmp_path):
     def build(msp):
-        msp.add_polyline2d([(1,2,610),(3,4,610)], dxfattribs={"layer":"2D", "elevation": 610})
+        msp.add_polyline2d([(1,2),(3,4)], dxfattribs={"layer":"2D", "elevation": 610})
         msp.add_polyline3d([(5,6,630),(7,8,614)], dxfattribs={"layer":"HOLES"})
     result = import_dxf_polylines(save(tmp_path, build))
     assert [(p.x,p.y,p.z) for p in result.lines[0].points] == [(1,2,610),(3,4,610)]
@@ -49,6 +48,25 @@ def test_bulge_is_rejected(tmp_path):
     path = save(tmp_path, lambda m: m.add_lwpolyline([(0,0,1),(1,0,0)], format="xyb"))
     with pytest.raises(DxfImportError, match="Curved DXF polyline"):
         import_dxf_polylines(path)
+
+
+def test_legacy_2d_polyline_bulge_is_rejected(tmp_path):
+    def build(msp):
+        line = msp.add_polyline2d([(0, 0), (1, 0)])
+        line.vertices[0].dxf.bulge = 1
+    with pytest.raises(DxfImportError, match="Curved DXF polyline"):
+        import_dxf_polylines(save(tmp_path, build, "curved-2d.dxf"))
+
+
+def test_polygon_mesh_and_polyface_are_skipped(tmp_path):
+    def build(msp):
+        mesh = msp.add_polymesh((2, 2))
+        mesh.set_mesh_vertex((0, 0), (0, 0, 0))
+        polyface = msp.add_polyface()
+        polyface.append_face([(0, 0, 0), (1, 0, 0), (0, 1, 0)])
+    result = import_dxf_polylines(save(tmp_path, build, "unsupported-polylines.dxf"))
+    assert result.lines == []
+    assert result.summary.skipped_unsupported_entity_count == 2
 
 
 def test_project_lines_service_and_case_insensitive_dispatch(tmp_path):
@@ -75,7 +93,26 @@ def test_existing_builders_accept_normalized_dxf(tmp_path):
     assert result.ignored_flat_line_count == 1
 
 
+def test_csv_and_dxf_production_geometry_are_equivalent(tmp_path):
+    csv_path = tmp_path / "block.csv"
+    csv_path.write_text(
+        "X,Y,Z,SID,PTN\n0,0,630,BLOCK,1\n10,0,630,BLOCK,2\n"
+        "10,10,630,BLOCK,3\n0,0,630,BLOCK,4\n",
+        encoding="utf-8",
+    )
+    def build(msp):
+        line = msp.add_lwpolyline([(0, 0), (10, 0), (10, 10)], dxfattribs={"elevation": 630})
+        line.closed = True
+    dxf_path = save(tmp_path, build, "block.dxf")
+    csv_geometry = build_production_geometry(import_line_geometry(csv_path).lines)
+    dxf_geometry = build_production_geometry(import_line_geometry(dxf_path).lines)
+    csv_xy = [(point.x, point.y) for point in csv_geometry.plan_geometry.ring]
+    dxf_xy = [(point.x, point.y) for point in dxf_geometry.plan_geometry.ring]
+    assert dxf_xy == csv_xy
+    assert dxf_geometry.elevation == csv_geometry.elevation == 630
+    assert dxf_xy[0] == dxf_xy[-1] and len(dxf_xy) == len(csv_xy) == 4
+
+
 def test_unsupported_extension():
     with pytest.raises(LineGeometryImportError, match="Use .csv or .dxf"):
         import_line_geometry(Path("geometry.txt"))
-
