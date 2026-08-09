@@ -1376,7 +1376,7 @@
         </message>
         <message>
             <source>Contour</source>
-            <translation>Контурные</translation>
+            <translation>Контур</translation>
         </message>
         <message>
             <source>Contour drilling</source>
@@ -2457,6 +2457,30 @@
         <message>
             <source>Update</source>
             <translation>Изменение</translation>
+        </message>
+        <message>
+            <source>Add domain</source>
+            <translation>Добавить домен</translation>
+        </message>
+        <message>
+            <source>Add blast event</source>
+            <translation>Добавить взрывное событие</translation>
+        </message>
+        <message>
+            <source>Add assessment area</source>
+            <translation>Добавить участок оценки</translation>
+        </message>
+        <message>
+            <source>Archived</source>
+            <translation>В архиве</translation>
+        </message>
+        <message>
+            <source>Assessed</source>
+            <translation>Оценён</translation>
+        </message>
+        <message>
+            <source>No horizon</source>
+            <translation>Без горизонта</translation>
         </message>
     </context>
 </TS>

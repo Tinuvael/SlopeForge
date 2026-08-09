@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVE = [ROOT / "main.py", *sorted((ROOT / "app").rglob("*.py")), *sorted((ROOT / "ui").rglob("*.py")), *sorted((ROOT / "widgets").rglob("*.py"))]
 INVARIANTS = {"SlopeForge", "DAI", "FCI", "UCS", "RQD", "MPa", "m", "mm", "kg", "ms", "m²", "m³", "%", "—"}
-UI_CALLS = {"QLabel", "QPushButton", "QCheckBox", "QGroupBox", "setWindowTitle", "setToolTip", "setPlaceholderText", "addTab", "addRow", "setHorizontalHeaderLabels", "addItem"}
+UI_CALLS = {"QLabel", "QPushButton", "QCheckBox", "QGroupBox", "setWindowTitle", "setToolTip", "setPlaceholderText", "addAction", "addTab", "addRow", "setHorizontalHeaderLabels", "addItem"}
 SELF_READABLE_LANGUAGE_ITEMS = {"English", "Русский", "en", "ru"}
 
 
@@ -73,6 +73,11 @@ def test_representative_active_screen_labels_are_translated():
         "Criterion": "Критерий", "Entered / selected": "Введено / выбрано",
         "Domains": "Домены", "Analytics": "Аналитика", "Map": "План",
         "Projects": "Проекты", "Blast events": "Взрывные события",
+        "Archive": "Архивировать", "Add project": "Добавить проект",
+        "Add domain": "Добавить домен", "Add blast event": "Добавить взрывное событие",
+        "Add assessment area": "Добавить участок оценки",
+        "Assessment areas": "Участки оценки", "Horizon": "Горизонт",
+        "Interval": "Интервал", "Block": "Блок",
     }
     assert {source: catalogue[source] for source in expected} == expected
 
@@ -81,3 +86,15 @@ def test_internal_group_ids_are_not_rendered_in_technical_card():
     source = (ROOT / "ui" / "editors" / "technical_card_editor.py").read_text(encoding="utf-8")
     assert 'QGroupBox(f"{display_name} — {group.group_type}")' not in source
     assert 'QGroupBox(display_name)' in source
+
+
+def test_header_tree_and_block_tabs_use_translated_presentation_labels():
+    header = (ROOT / "ui" / "header.py").read_text(encoding="utf-8")
+    tree_source = (ROOT / "widgets" / "project_tree.py").read_text(encoding="utf-8")
+    block = (ROOT / "ui" / "pages" / "block_page.py").read_text(encoding="utf-8")
+    for label in ("Add project", "Add domain", "Add blast event", "Add assessment area", "Archive"):
+        assert f'tr("{label}")' in header
+    for label in ("Blast events", "Assessment areas", "Horizon", "Interval", "Block"):
+        assert f"tr('{label}')" in tree_source or f'tr("{label}")' in tree_source
+    for label in ("Geomechanics", "Blast design", "Execution fact"):
+        assert f'tr("{label}")' in block
