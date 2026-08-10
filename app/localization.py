@@ -18,6 +18,14 @@ SUPPORTED_LANGUAGES = ("en", "ru")
 logger = logging.getLogger(__name__)
 _translator: QTranslator | None = None
 
+# Qt asks the installed translator for platform-theme captions in contexts such
+# as QPlatformTheme.  Returning an empty string there produces blank standard
+# buttons on some Windows/PySide builds, instead of falling back to English.
+_STANDARD_BUTTON_SOURCES = {
+    "OK": "OK", "Save": "Save", "Cancel": "Cancel", "Yes": "Yes",
+    "No": "No", "Close": "Close", "Discard": "Discard", "Restore": "Restore",
+}
+
 
 class TsTranslator(QTranslator):
     """Small Qt translator backed directly by a standard Linguist TS file."""
@@ -61,7 +69,15 @@ class TsTranslator(QTranslator):
     ) -> str:
         """Return an empty string for Qt's normal English-source fallback."""
         del disambiguation, n
-        return self._messages.get((context, source_text), "")
+        translated = self._messages.get((context, source_text), "")
+        if translated:
+            return translated
+        # Platform captions may contain mnemonic markers or an ellipsis.
+        normalized = source_text.replace("&", "").removesuffix("...")
+        canonical = _STANDARD_BUTTON_SOURCES.get(normalized)
+        if canonical:
+            return self._messages.get(("SlopeForge", canonical), canonical)
+        return ""
 
 
 def settings() -> QSettings:

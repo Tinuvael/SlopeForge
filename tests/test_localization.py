@@ -36,6 +36,10 @@ def test_ts_catalog_can_be_parsed_and_translates_representative_text(qapp):
     }
     assert {source: translator.translate("SlopeForge", source) for source in expected} == expected
     assert translator.translate("SlopeForge", "Unknown source text") == ""
+    assert translator.translate("QPlatformTheme", "&OK") == "ОК"
+    assert translator.translate("QPlatformTheme", "&Yes") == "Да"
+    assert translator.translate("QPlatformTheme", "&No") == "Нет"
+    assert translator.translate("QDialogButtonBox", "Cancel") == "Отмена"
 
 
 def test_russian_catalog_presentation_and_validation(qapp, tmp_path):

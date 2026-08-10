@@ -180,6 +180,16 @@ class AssessmentAreaEvaluationDialog(QDialog):
         suffix = f" — revision {self.draft.revision_number} ({self.draft.status})" if self.draft.revision_number else ""
         return "Face assessment" + suffix
 
+    def take_tab(self, title: str, parent: QWidget | None = None) -> QWidget:
+        """Detach a page from the dialog and give it explicit, durable ownership."""
+        for index in range(self.tabs.count()):
+            if self.tabs.tabText(index) == title:
+                page = self.tabs.widget(index)
+                self.tabs.removeTab(index)
+                page.setParent(parent)
+                return page
+        raise LookupError(f"Assessment editor tab not found: {title}")
+
     def _connect_general_signals(self):
         self.date.dateChanged.connect(self._changed); self.inspector.textChanged.connect(self._changed)
         self.comments.textChanged.connect(self._changed); self.recommendations.textChanged.connect(self._changed)
@@ -260,12 +270,16 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self.tabs.addTab(table, tr("Linked events"))
 
     def _history(self):
-        self.history = QTableWidget(len(self.evaluation.revisions), 8); self.history.setHorizontalHeaderLabels(["№", tr("Date"), tr("Status"), tr("Geometry"), tr("Matrix"), tr("Design"), tr("Condition"), tr("Result")]); self.history.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.history = QTableWidget(0, 8); self.history.setHorizontalHeaderLabels(["№", tr("Date"), tr("Status"), tr("Geometry"), tr("Matrix"), tr("Design"), tr("Condition"), tr("Result")]); self.history.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.refresh_history()
+        self.history.cellDoubleClicked.connect(self._open_history)
+        container = QWidget(); layout = QVBoxLayout(container); hint = QLabel(tr("Double-click a row to open a read-only historical revision.")); layout.addWidget(hint); layout.addWidget(self.history); self.tabs.addTab(container, tr("History"))
+
+    def refresh_history(self):
+        self.history.setRowCount(len(self.evaluation.revisions))
         for row, revision in enumerate(self.evaluation.revisions):
             values = (revision.revision_number, revision.assessment_date or "—", revision.status, revision.assessment_area_geometry_revision_id, revision.matrix_template_id, "—" if revision.design_achievement_index is None else f"{revision.design_achievement_index:.3f}", "—" if revision.face_condition_index is None else f"{revision.face_condition_index:.3f}", result_label(revision.result_label) or "—")
             for column, value in enumerate(values): self.history.setItem(row, column, QTableWidgetItem(str(value)))
-        self.history.cellDoubleClicked.connect(self._open_history)
-        container = QWidget(); layout = QVBoxLayout(container); hint = QLabel(tr("Double-click a row to open a read-only historical revision.")); layout.addWidget(hint); layout.addWidget(self.history); self.tabs.addTab(container, tr("History"))
 
     def _attachments(self):
         page = QWidget(); layout = QVBoxLayout(page)

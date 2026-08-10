@@ -2758,5 +2758,85 @@
             <source>The file will be removed from the database and disk.</source>
             <translation>Файл будет удалён из базы данных и с диска.</translation>
         </message>
+        <message>
+            <source>Actual drilling length</source>
+            <translation>Фактический метраж бурения</translation>
+        </message>
+        <message>
+            <source>Actual explosive mass</source>
+            <translation>Фактическая масса ВВ</translation>
+        </message>
+        <message>
+            <source>Actual hole count</source>
+            <translation>Фактическое число скважин</translation>
+        </message>
+        <message>
+            <source>Average spacing</source>
+            <translation>Средний шаг</translation>
+        </message>
+        <message>
+            <source>Completion status</source>
+            <translation>Статус выполнения</translation>
+        </message>
+        <message>
+            <source>Contour blasts</source>
+            <translation>Контурные взрывы</translation>
+        </message>
+        <message>
+            <source>Hole count</source>
+            <translation>Число скважин</translation>
+        </message>
+        <message>
+            <source>Line length</source>
+            <translation>Длина линии</translation>
+        </message>
+        <message>
+            <source>No comments</source>
+            <translation>Нет комментариев</translation>
+        </message>
+        <message>
+            <source>No comments or recommendations</source>
+            <translation>Нет комментариев или рекомендаций</translation>
+        </message>
+        <message>
+            <source>No design data</source>
+            <translation>Нет проектных данных</translation>
+        </message>
+        <message>
+            <source>No documents yet</source>
+            <translation>Документов пока нет</translation>
+        </message>
+        <message>
+            <source>No history</source>
+            <translation>История отсутствует</translation>
+        </message>
+        <message>
+            <source>Production blasts</source>
+            <translation>Производственные взрывы</translation>
+        </message>
+        <message>
+            <source>The report was saved, but could not be opened automatically.</source>
+            <translation>Отчёт сохранён, но его не удалось открыть автоматически.</translation>
+        </message>
+        <message>
+            <source>Total confirmed</source>
+            <translation>Всего подтверждено</translation>
+        </message>
+        <message>
+            <source>OK</source>
+            <translation>ОК</translation>
+        </message>
+        <message>
+            <source>Yes</source>
+            <translation>Да</translation>
+        </message>
+        <message>
+            <source>No</source>
+            <translation>Нет</translation>
+        </message>
+        <message>
+            <source>Discard</source>
+            <translation>Не сохранять</translation>
+        </message>
     </context>
 </TS>

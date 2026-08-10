@@ -1,6 +1,7 @@
 from datetime import date
 from pathlib import Path
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate,QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QDateEdit,QDialog,QDialogButtonBox,QFileDialog,QFormLayout,QLabel,QMessageBox,QPushButton
 from app.localization import tr
 from services.project_report_service import ProjectReportService
@@ -25,5 +26,10 @@ class ProjectReportDialog(QDialog):
         if Path(path).suffix.lower()!=".xlsx":path += ".xlsx"
         try:
             report=ProjectReportService(self.context.session_factory).collect(self.site_id,start,end); write_project_report(report,path)
-            QMessageBox.information(self,tr("Report generated"),tr("Report generated")); self.accept()
         except Exception as exc:QMessageBox.critical(self,tr("Project report"),f"{tr('Could not generate report')}: {exc}")
+        else:
+            absolute=Path(path).resolve()
+            try:opened=QDesktopServices.openUrl(QUrl.fromLocalFile(str(absolute)))
+            except Exception:opened=False
+            self.accept()
+            if not opened:QMessageBox.warning(self.parent() or self,tr("Project report"),tr("The report was saved, but could not be opened automatically."))
