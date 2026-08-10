@@ -4,6 +4,7 @@ from __future__ import annotations
 import mimetypes
 import re
 import shutil
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable
@@ -14,6 +15,13 @@ from .domain import AssessmentDomainState, EntityAttachment
 OWNER_FOLDERS = {"blast_event": "blast_events", "assessment_evaluation": "assessments"}
 KIND_FOLDERS = {"photo": "photos", "document": "documents"}
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+
+
+@dataclass(frozen=True)
+class AttachmentDeleteResult:
+    """A logical delete may succeed even if its temporary file needs later cleanup."""
+
+    cleanup_warning: str | None = None
 
 ATTACHMENT_CATEGORIES = {
     ("blast_event", "photo"): [("before_blast", "Before blast"), ("drilling", "Drilling"), ("charging", "Charging"), ("initiation", "Initiation system installation"), ("after_blast", "After blast"), ("muckpile", "Muckpile"), ("final_wall", "Final wall"), ("contour_drilling", "Contour drilling"), ("other", "Other")],
@@ -157,13 +165,13 @@ class EntityAttachmentService:
             raise
         return attachment
 
-    def delete_attachment(self, attachment_id: str) -> None:
+    def delete_attachment(self, attachment_id: str) -> AttachmentDeleteResult:
         attachment = self._find(attachment_id)
         path = self.resolve_path(attachment)
         index = self.state.attachments.index(attachment)
         temporary = None
         if path.exists():
-            temporary = path.with_name(f".{path.name}.delete-{uuid4().hex}")
+            temporary = path.with_name(f"{path.name}.slopeforge-delete-{uuid4().hex}.tmp")
             path.replace(temporary)  # state is untouched if moving the file fails
         self.state.attachments.pop(index)
         try:
@@ -179,7 +187,13 @@ class EntityAttachmentService:
                 ) from exc
             raise
         if temporary is not None:
-            temporary.unlink()
+            try:
+                temporary.unlink()
+            except OSError as cleanup_exc:
+                # The database/state commit already succeeded.  This is an orphan
+                # cleanup warning, not a failed logical delete.
+                return AttachmentDeleteResult(f"{temporary}: {cleanup_exc}")
+        return AttachmentDeleteResult()
 
     def open_file(self, attachment: EntityAttachment) -> bool:
         from PySide6.QtCore import QUrl

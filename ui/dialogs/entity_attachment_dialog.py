@@ -144,10 +144,14 @@ class EntityAttachmentManagerWidget(QWidget):
         if not item:return
         box=QMessageBox(QMessageBox.Icon.Warning,tr("Delete"),tr("The file will be removed from the database and disk."),parent=self); delete=box.addButton(tr("Delete"),QMessageBox.ButtonRole.DestructiveRole); box.addButton(tr("Cancel"),QMessageBox.ButtonRole.RejectRole); box.exec()
         if box.clickedButton() is not delete:return
-        try:self.service.delete_attachment(item.id)
+        try:result=self.service.delete_attachment(item.id)
         except Exception as exc:
             QMessageBox.critical(self,tr("Delete error"),domain_message(str(exc))); return
         self.refresh(); self.changed.emit()
+        cleanup_warning=getattr(result,"cleanup_warning",None)
+        if cleanup_warning:
+            QMessageBox.warning(self,tr("Cleanup warning"),
+                f"{tr('The attachment was deleted, but a temporary file could not be removed.')}\n\n{cleanup_warning}")
 
 class EntityAttachmentDialog(QDialog):
     """Compatibility wrapper retained for legacy callers."""

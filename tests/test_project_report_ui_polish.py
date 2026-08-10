@@ -194,6 +194,40 @@ def test_delete_error_is_reported_without_refresh_or_changed(monkeypatch):
     manager.delete()
     assert errors==["delete failed"] and refreshed==[] and changes==[]
 
+
+def test_delete_cleanup_warning_still_refreshes_and_emits_changed(monkeypatch):
+    app(); import ui.dialogs.entity_attachment_dialog as module
+    item=_attachment(); items=[item]
+    def delete(_id):
+        items.clear()
+        return SimpleNamespace(cleanup_warning="report.pdf.slopeforge-delete-ID.tmp: locked")
+    service=SimpleNamespace(list_for_owner=lambda *_:list(items),is_missing=lambda *_:False,
+        delete_attachment=delete)
+    manager=module.EntityAttachmentManagerWidget(service,"blast_event","BE-1","document"); manager.table.selectRow(0)
+    warnings=[]; critical=[]
+    class Box:
+        class Icon:Warning=1
+        class ButtonRole:DestructiveRole=1; RejectRole=2
+        def __init__(self,*_args,**_kwargs):self.delete=None
+        def addButton(self,_text,role):
+            button=object()
+            if role==self.ButtonRole.DestructiveRole:self.delete=button
+            return button
+        def exec(self):return 0
+        def clickedButton(self):return self.delete
+        @staticmethod
+        def warning(*args):warnings.append(args[2])
+        @staticmethod
+        def critical(*args):critical.append(args[2])
+    monkeypatch.setattr(module,"QMessageBox",Box)
+    changes=[]; manager.changed.connect(lambda:changes.append(True))
+
+    manager.delete()
+
+    assert manager.table.rowCount()==0 and changes==[True]
+    assert len(warnings)==1 and "temporary file could not be removed" in warnings[0]
+    assert critical==[]
+
 def test_russian_standard_buttons_are_never_blank(tmp_path):
     application=app()
     from app.localization import LANGUAGE_KEY,install_selected_translator

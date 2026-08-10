@@ -42,7 +42,8 @@ def test_same_source_creates_independent_copies_and_deletes(store, tmp_path):
     block = service.add_files("blast_event", "BE-001", "photo", [source])[0]
     assessment = service.add_files("assessment_evaluation", "AAE-001", "photo", [source])[0]
     assert service.resolve_path(block) != service.resolve_path(assessment)
-    service.delete_attachment(block.id)
+    result = service.delete_attachment(block.id)
+    assert result.cleanup_warning is None
     assert not service.resolve_path(block).exists() and service.resolve_path(assessment).exists()
     service.delete_attachment(assessment.id)
     assert not state.attachments and not service.resolve_path(assessment).exists()
@@ -114,7 +115,29 @@ def test_delete_restores_file_and_original_state_position_when_save_fails(tmp_pa
         service.delete_attachment(item.id)
     assert state.attachments == [item, other]
     assert original_path.read_bytes() == b"first"
-    assert not list(original_path.parent.glob("*.delete-*"))
+    assert not list(original_path.parent.glob("*.slopeforge-delete-*.tmp"))
+
+
+def test_final_delete_cleanup_failure_is_a_success_with_warning(tmp_path, monkeypatch):
+    state = AssessmentDomainState(); source = tmp_path / "report.pdf"; source.write_bytes(b"pdf")
+    saves = []
+    service = EntityAttachmentService(state, tmp_path / "state.json", lambda: saves.append(True))
+    item = service.add_files("blast_event", "BE-1", "document", [source])[0]
+    original_path = service.resolve_path(item); original_unlink = Path.unlink
+    def fail_temporary_cleanup(path, *args, **kwargs):
+        if ".slopeforge-delete-" in path.name:
+            raise PermissionError("temporarily locked")
+        return original_unlink(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "unlink", fail_temporary_cleanup)
+
+    result = service.delete_attachment(item.id)
+
+    assert item not in state.attachments
+    assert len(saves) == 2  # import and the successful logical delete
+    assert not original_path.exists()
+    leftovers = list(original_path.parent.glob("*.slopeforge-delete-*.tmp"))
+    assert len(leftovers) == 1
+    assert result.cleanup_warning and str(leftovers[0]) in result.cleanup_warning
 
 
 def test_add_files_rolls_back_whole_batch_on_copy_failure(tmp_path):

@@ -1455,8 +1455,16 @@
             <translation>Ошибка удаления</translation>
         </message>
         <message>
+            <source>Cleanup warning</source>
+            <translation>Предупреждение об очистке</translation>
+        </message>
+        <message>
             <source>Edit error</source>
             <translation>Ошибка изменения</translation>
+        </message>
+        <message>
+            <source>The attachment was deleted, but a temporary file could not be removed.</source>
+            <translation>Вложение удалено, но временный файл не удалось удалить.</translation>
         </message>
         <message>
             <source>Design</source>
