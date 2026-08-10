@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication, QDialog
 
 from prototype_2d.assessment_area_service import AssessmentAreaService
 from domain.geometry.types import PlanPoint, PlanPolygon
-from prototype_2d.domain import AssessmentDomainState
+from application.state.assessment_domain_state import AssessmentDomainState
 from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
 from ui.editors.assessment_geometry_editor import (
     ASSESSMENT_HANDLE_ROLE, PROJECT_LINE_ROLE, AssessmentGeometryEditorWidget,

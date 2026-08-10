@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 from pathlib import PurePath
 
-from prototype_2d.domain import AssessmentDomainState
+from application.state.assessment_domain_state import AssessmentDomainState
 
 
 class AssessmentPersistenceError(Exception):

@@ -110,7 +110,7 @@ class MainWindow(QMainWindow):
         domain=self.domain_repo.get(domain_id); self.contour_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,contour_id=event_id); self.header.set_archive_context(True,page.blast_event.is_archived); return True
     def _add_project(self):
         from ui.project_dialog import ProjectDialog
-        from prototype_2d.domain import AssessmentDomainState
+        from application.state.assessment_domain_state import AssessmentDomainState
         from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
         d=ProjectDialog(self)
         if not d.exec(): return

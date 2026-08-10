@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
-from prototype_2d.wall_assessment import (
+from domain.assessment.evaluation import (
     CONDITION, DESIGN, AssessmentCriterionResult, AssessmentMatrixTemplate,
     calculate_revision,
 )

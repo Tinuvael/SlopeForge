@@ -9,7 +9,8 @@ from uuid import uuid4
 
 from domain.geometry.blast import BlastGeometryError, build_contour_geometry, build_production_geometry
 from infrastructure.geometry_import.lines import import_line_geometry
-from .domain import AssessmentDomainState, BlastEvent, BlastEventGeometryRevision
+from domain.blasting.entities import BlastEvent, BlastEventGeometryRevision
+from application.state.assessment_domain_state import AssessmentDomainState
 
 
 class BlastEventValidationError(ValueError):

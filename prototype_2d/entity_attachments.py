@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Callable, Iterable
 from uuid import uuid4
 
-from .domain import AssessmentDomainState, EntityAttachment
+from domain.attachments.entities import EntityAttachment
+from application.state.assessment_domain_state import AssessmentDomainState
 
 OWNER_FOLDERS = {"blast_event": "blast_events", "assessment_evaluation": "assessments"}
 KIND_FOLDERS = {"photo": "photos", "document": "documents"}

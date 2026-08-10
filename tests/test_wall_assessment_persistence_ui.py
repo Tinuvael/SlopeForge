@@ -6,8 +6,10 @@ import pytest
 QtWidgets = pytest.importorskip("PySide6.QtWidgets", reason="Qt unavailable", exc_type=ImportError)
 from PySide6.QtWidgets import QApplication
 from domain.geometry.types import PlanPoint, PlanPolygon
-from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, AssessmentEventLink, BlastEvent
-from prototype_2d.wall_assessment import (AssessmentAreaEvaluationService, AssessmentCriterionResult,
+from domain.blasting.entities import BlastEvent
+from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentEventLink
+from application.state.assessment_domain_state import AssessmentDomainState
+from domain.assessment.evaluation import (AssessmentAreaEvaluationService, AssessmentCriterionResult,
  CONDITION, DESIGN, calculate_revision)
 from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog, DAMAGE_WARNING, NullableDoubleSpinBox
 
@@ -29,7 +31,7 @@ def filled_draft(state,area):
     options={"loose_blocks":"several_small","face_profile":"hard_toe","open_cracks":"closed"}
     results=[]
     template=AssessmentAreaEvaluationService(state).detect_template(area)[0]
-    from prototype_2d.wall_assessment import get_template
+    from domain.assessment.evaluation import get_template
     for section in get_template(template).sections:
         for criterion in section.criteria:
             results.append(AssessmentCriterionResult(criterion.id,criterion.name,section.id,

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from prototype_2d.domain import AssessmentDomainState
+from application.state.assessment_domain_state import AssessmentDomainState
 from prototype_2d.entity_attachments import EntityAttachmentService, sanitize_filename
 
 

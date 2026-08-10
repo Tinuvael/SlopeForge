@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from database.models import Domain
 from database import assessment_models as orm
-from prototype_2d.domain import AssessmentDomainState
+from application.state.assessment_domain_state import AssessmentDomainState
 from repositories.assessment_state_mapper import (
     AssessmentPersistenceCorruptionError, AssessmentSiteNotFoundError,
     AssessmentStateValidationError, validate_assessment_state,

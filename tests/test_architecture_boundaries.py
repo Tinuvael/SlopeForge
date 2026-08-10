@@ -155,11 +155,10 @@ def test_removed_prototype_geometry_modules_do_not_return() -> None:
 
 def test_migrated_geometry_symbols_use_the_canonical_module() -> None:
     """Keep callers off the temporary Phase 3A compatibility re-export."""
-    bridge = ROOT / "prototype_2d/domain.py"
     candidates = set(production_files()) | set((ROOT / "tests").rglob("*.py"))
     offenders = {
         relative(path)
-        for path in candidates - {bridge}
+        for path in candidates
         if imported_names(path, "prototype_2d.domain") & MIGRATED_GEOMETRY_SYMBOLS
     }
     assert offenders == set()
@@ -171,3 +170,47 @@ def test_mine_term_stays_inside_documented_compatibility_files() -> None:
         if re.search(r"\bmines?\b", path.read_text(encoding="utf-8"), re.IGNORECASE):
             offenders.add(relative(path))
     assert offenders <= ARCHITECTURE_DEBT_ALLOWLIST["mine_compatibility_files"]
+
+
+def test_phase_3b_domain_modules_are_framework_free() -> None:
+    candidates = (
+        list((ROOT / "domain/blasting").rglob("*.py"))
+        + list((ROOT / "domain/assessment").rglob("*.py"))
+        + list((ROOT / "domain/attachments").rglob("*.py"))
+        + [ROOT / "domain/project/project_lines.py"]
+    )
+    forbidden = ("PySide6", "sqlalchemy", "database", "repositories", "infrastructure", "application", "ui")
+    offenders = {relative(path) for path in candidates
+                 if any(name == item or name.startswith(item + ".")
+                        for name in imports(path) for item in forbidden)}
+    assert offenders == set()
+
+
+def test_transitional_application_state_has_no_framework_or_persistence_imports() -> None:
+    path = ROOT / "application/state/assessment_domain_state.py"
+    forbidden = ("PySide6", "sqlalchemy", "database", "repositories")
+    assert not {name for name in imports(path)
+                if any(name == item or name.startswith(item + ".") for item in forbidden)}
+
+
+def test_removed_phase_3b_modules_do_not_return() -> None:
+    removed = {
+        "prototype_2d/domain.py",
+        "prototype_2d/technical_card.py",
+        "prototype_2d/wall_assessment.py",
+    }
+    assert not {path for path in removed if (ROOT / path).exists()}
+    forbidden = {
+        "prototype_2d.domain",
+        "prototype_2d.technical_card",
+        "prototype_2d.wall_assessment",
+    }
+    candidates = set(production_files()) | set((ROOT / "tests").rglob("*.py"))
+    offenders = {relative(path) for path in candidates if imports(path) & forbidden}
+    assert offenders == set()
+
+
+def test_assessment_type_aliases_are_owned_only_by_assessment_entities() -> None:
+    blasting_source = (ROOT / "domain/blasting/entities.py").read_text(encoding="utf-8")
+    for name in ("HorizonSliceRole", "LinkStatus", "LinkSource"):
+        assert name not in blasting_source

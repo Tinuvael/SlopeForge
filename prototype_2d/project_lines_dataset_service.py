@@ -5,7 +5,9 @@ from datetime import datetime
 from pathlib import Path
 
 from infrastructure.geometry_import.lines import LineGeometryImportResult, import_line_geometry
-from .domain import AssessmentDomainState, ProjectLinesDataset, utc_now
+from domain.blasting.entities import utc_now
+from domain.project.project_lines import ProjectLinesDataset
+from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.types import DatamineLine
 
 

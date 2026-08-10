@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QDoubleSpinBox, QFormLayout, 
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QTabWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QInputDialog)
 
-from prototype_2d.technical_card import (CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS,
+from domain.blasting.technical_card import (CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS,
     PRODUCTION_GROUP_TYPES, ActualDrillingGroup, BlastDrillingGroup)
 from ui.presentation_labels import (
     CONTROLLED_BLASTING_LABELS, domain_message, technical_group_label, technical_text,
