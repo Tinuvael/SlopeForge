@@ -1,7 +1,6 @@
 from app.localization import tr
 """Focused Block-style page for one contour BlastEvent (never a BlastBlock)."""
 from PySide6.QtWidgets import QFileDialog,QGridLayout,QHBoxLayout,QLabel,QMessageBox,QPushButton,QTabWidget,QVBoxLayout,QWidget
-from application.services.blast_events import BlastEventService
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame
@@ -48,7 +47,7 @@ class ContourEventPage(QWidget):
         if self.read_only:QMessageBox.warning(self,tr("Read only"),tr("Archived contour events and Viewer accounts are read-only.")); return
         path,_=QFileDialog.getOpenFileName(self,tr("Reimport contour geometry"),"",tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
         if not path:return
-        try:BlastEventService(self.controller.state).reimport_geometry(self.blast_event,path); self.controller.save()
+        try:self.controller.reimport_blast_event_geometry(self.blast_event,path)
         except Exception as exc:QMessageBox.warning(self,tr("Contour geometry"),domain_message(str(exc)))
     def save_draft(self):
         if self.read_only:QMessageBox.warning(self,tr("Read only"),tr("This contour event is read-only.")); return False

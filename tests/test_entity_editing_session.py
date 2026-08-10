@@ -167,3 +167,72 @@ def test_successful_owner_save_keeps_owner_and_viewer_mutations_are_rejected():
         viewer.save_evaluation(evaluation, evaluation_draft, "draft")
     with pytest.raises(PermissionError):
         viewer.prepare_evaluation_attachment_owner(viewer_area)
+
+
+def test_area_and_contour_archive_restore_and_failure_rollback():
+    editing, persistence, _, area = session()
+    contour = BlastEvent("BE-C", "Contour", "contour", date.today(), 100)
+    editing.state.blast_events.append(contour)
+    editing.set_assessment_area_archived(area, True)
+    editing.set_contour_event_archived(contour, True)
+    assert area.is_archived and contour.is_archived and persistence.saves == 2
+    editing.set_assessment_area_archived(area, False)
+    editing.set_contour_event_archived(contour, False)
+    assert not area.is_archived and not contour.is_archived
+
+    area.archive("original")
+    old = (area.is_archived, area.archived_at, area.archive_reason)
+    persistence.fail = True
+    with pytest.raises(RuntimeError):
+        editing.set_assessment_area_archived(area, False)
+    assert (area.is_archived, area.archived_at, area.archive_reason) == old
+    with pytest.raises(RuntimeError):
+        editing.set_contour_event_archived(contour, True)
+    assert not contour.is_archived and contour.archived_at is None
+
+
+def test_archive_and_reimport_permissions_and_contour_type_are_enforced(tmp_path):
+    viewer, persistence, event, area = session(can_edit=False)
+    with pytest.raises(PermissionError):
+        viewer.set_assessment_area_archived(area, True)
+    with pytest.raises(PermissionError):
+        viewer.reimport_blast_event_geometry(event, tmp_path / "unused.csv")
+    assert persistence.saves == 0 and not area.is_archived
+    editing, _, production, _ = session()
+    with pytest.raises(ValueError, match="contour"):
+        editing.set_contour_event_archived(production, True)
+
+
+def test_reimport_success_and_persistence_failure_restore_live_geometry():
+    editing, persistence, event, _ = session()
+    path = "tests/fixtures/production_two_closed_levels.csv"
+    original = event.geometry_revisions[0]
+    added = editing.reimport_blast_event_geometry(event, path)
+    assert persistence.saves == 1 and added.revision_number == 2
+    assert not original.is_active and added.is_active
+    before = list(event.geometry_revisions)
+    persistence.fail = True
+    with pytest.raises(RuntimeError):
+        editing.reimport_blast_event_geometry(event, path)
+    assert event.geometry_revisions == before
+    assert event.active_geometry_revision_id == added.id
+    assert [revision.is_active for revision in before] == [False, True]
+
+
+def test_link_commands_save_once_and_restore_exact_objects_on_failure():
+    editing, persistence, event, area = session()
+    result = editing.refresh_event_link_suggestions(area)
+    assert result.suggestions_added == 1 and persistence.saves == 1
+    link = area.event_links[0]
+    editing.confirm_event_link(area, link.id)
+    assert link.status == "confirmed" and persistence.saves == 2
+    editing.exclude_event_link(area, link.id)
+    assert link.status == "excluded" and persistence.saves == 3
+    editing.restore_event_link(area, link.id)
+    assert link.status == "suggested" and persistence.saves == 4
+    original_links = list(area.event_links)
+    persistence.fail = True
+    with pytest.raises(RuntimeError):
+        editing.confirm_event_link(area, link.id)
+    assert area.event_links == original_links and area.event_links[0] is link
+    assert link.status == "suggested"

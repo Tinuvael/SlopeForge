@@ -84,16 +84,16 @@ class AssessmentAreaPage(QWidget):
     def _change_link(self,method):
         if not self._ensure_editable():return
         link=self._selected_link()
-        if link:method(self.area,link.id); self.controller.save(); self.refresh_links(); self._refresh_overview_and_sidebar()
-    def confirm_link(self):self._change_link(self.controller.links.confirm_link)
-    def exclude_link(self):self._change_link(self.controller.links.exclude_link)
-    def restore_link(self):self._change_link(self.controller.links.restore_suggestion)
+        if link:method(self.area,link.id); self.refresh_links(); self._refresh_overview_and_sidebar()
+    def confirm_link(self):self._change_link(self.controller.confirm_event_link)
+    def exclude_link(self):self._change_link(self.controller.exclude_event_link)
+    def restore_link(self):self._change_link(self.controller.restore_event_link)
     def recalculate_links(self):
-        if self._ensure_editable():self.controller.links.refresh_suggestions(self.area); self.controller.save(); self.refresh_links(); self._refresh_overview_and_sidebar()
+        if self._ensure_editable():self.controller.refresh_event_link_suggestions(self.area); self.refresh_links(); self._refresh_overview_and_sidebar()
     def add_manual_link(self):
         if not self._ensure_editable():return
         events=[e for e in self.controller.state.blast_events if not e.is_archived]; labels=[f"{e.name} ({e.event_type}, {e.elevation:g})" for e in events]; selected,ok=QInputDialog.getItem(self,tr("Add linked event"),tr("BlastEvent"),labels,0,False)
-        if ok and selected:self.controller.links.add_manual_link(self.area,events[labels.index(selected)].id); self.controller.save(); self.refresh_links(); self._refresh_overview_and_sidebar()
+        if ok and selected:self.controller.add_manual_event_link(self.area,events[labels.index(selected)].id); self.refresh_links(); self._refresh_overview_and_sidebar()
     def show_link_on_plan(self):
         link=self._selected_link()
         if not link:return
