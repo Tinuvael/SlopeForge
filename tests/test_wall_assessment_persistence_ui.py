@@ -5,8 +5,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 QtWidgets = pytest.importorskip("PySide6.QtWidgets", reason="Qt unavailable", exc_type=ImportError)
 from PySide6.QtWidgets import QApplication
-from prototype_2d.domain import (AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState,
- AssessmentEventLink, BlastEvent, PlanPoint, PlanPolygon)
+from domain.geometry.types import PlanPoint, PlanPolygon
+from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, AssessmentEventLink, BlastEvent
 from prototype_2d.wall_assessment import (AssessmentAreaEvaluationService, AssessmentCriterionResult,
  CONDITION, DESIGN, calculate_revision)
 from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog, DAMAGE_WARNING, NullableDoubleSpinBox

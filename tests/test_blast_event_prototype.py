@@ -3,7 +3,8 @@ import pytest
 
 from prototype_2d.blast_event_service import BlastEventService, BlastEventValidationError
 from infrastructure.geometry_import.csv import detect_columns, import_datamine_csv
-from prototype_2d.domain import AssessmentDomainState, PlanMultiPoint, PlanPoint, PlanPolygon
+from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
+from prototype_2d.domain import AssessmentDomainState
 from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
 
 

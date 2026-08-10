@@ -6,7 +6,8 @@ QtWidgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
 from PySide6.QtWidgets import QApplication, QDialog
 
 from prototype_2d.assessment_area_service import AssessmentAreaService
-from prototype_2d.domain import AssessmentDomainState, PlanPoint, PlanPolygon
+from domain.geometry.types import PlanPoint, PlanPolygon
+from prototype_2d.domain import AssessmentDomainState
 from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
 from ui.editors.assessment_geometry_editor import (
     ASSESSMENT_HANDLE_ROLE, PROJECT_LINE_ROLE, AssessmentGeometryEditorWidget,

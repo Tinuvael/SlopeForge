@@ -4,18 +4,8 @@ import json
 import pytest
 
 from domain.geometry.blast import BlastGeometryError, build_contour_geometry, build_production_geometry
-from prototype_2d.domain import (
-    AssessmentArea,
-    AssessmentAreaGeometryRevision,
-    AssessmentDomainState,
-    AssessmentEventLink,
-    AssessmentHorizonSlice,
-    BlastEvent,
-    PlanLineString,
-    PlanPoint,
-    PlanPolygon,
-    ProjectLinesDataset,
-)
+from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
+from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, AssessmentEventLink, AssessmentHorizonSlice, BlastEvent, ProjectLinesDataset
 from domain.geometry.types import DatamineLine, DataminePoint
 
 

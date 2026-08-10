@@ -2,7 +2,8 @@ from copy import deepcopy
 from datetime import date, datetime, timezone
 import json
 import pytest
-from prototype_2d.domain import (AssessmentArea,AssessmentAreaGeometryRevision,AssessmentDomainState,AssessmentEventLink,BlastEvent,PlanPoint,PlanPolygon)
+from domain.geometry.types import PlanPoint, PlanPolygon
+from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, AssessmentEventLink, BlastEvent
 from prototype_2d.wall_assessment import *
 
 @pytest.fixture
