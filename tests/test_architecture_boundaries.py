@@ -9,6 +9,23 @@ ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_ROOTS = ("app", "application", "database", "domain", "infrastructure", "repositories", "services", "reports", "ui", "widgets")
 REMOVED_PACKAGE = "prototype" + "_2d"
 
+# Deliberately retired entry points outside the canonical layer layout.  The
+# top-level prototype package also covers all of its former Phase 3A/3B modules.
+PERMANENTLY_REMOVED_PATHS = {
+    "ui/pages/assessment_workspace_page.py",
+    "ui/widgets/assessment_workspace.py",
+    "ui/directory_dialog.py",
+    "ui/prototype_2d",
+    REMOVED_PACKAGE,
+}
+
+PERMANENTLY_REMOVED_IMPORTS = {
+    "ui.pages.assessment_workspace_page",
+    "ui.widgets.assessment_workspace",
+    "ui.directory_dialog",
+    "ui.prototype_2d",
+}
+
 MINE_COMPATIBILITY_FILES = {
     "database/models.py", "repositories/blast_block_repository.py",
     "repositories/mine_repository.py", "repositories/site_repository.py",
@@ -38,8 +55,8 @@ def has_prefix(name: str, prefixes: tuple[str, ...]) -> bool:
     return any(name == prefix or name.startswith(prefix + ".") for prefix in prefixes)
 
 
-def test_removed_prototype_package_does_not_return() -> None:
-    assert not (ROOT / REMOVED_PACKAGE).exists()
+def test_permanently_removed_compatibility_paths_do_not_return() -> None:
+    assert not {path for path in PERMANENTLY_REMOVED_PATHS if (ROOT / path).exists()}
 
 
 def test_production_and_tests_do_not_import_removed_prototype() -> None:
@@ -47,6 +64,15 @@ def test_production_and_tests_do_not_import_removed_prototype() -> None:
     offenders = {
         relative(path) for path in candidates
         if any(has_prefix(name, (REMOVED_PACKAGE,)) for name in imports(path))
+    }
+    assert offenders == set()
+
+
+def test_production_and_tests_do_not_import_removed_ui_compatibility() -> None:
+    candidates = set(production_files()) | set((ROOT / "tests").rglob("*.py"))
+    offenders = {
+        relative(path) for path in candidates
+        if any(has_prefix(name, tuple(PERMANENTLY_REMOVED_IMPORTS)) for name in imports(path))
     }
     assert offenders == set()
 
