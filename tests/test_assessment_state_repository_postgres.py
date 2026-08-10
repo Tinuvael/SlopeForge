@@ -29,6 +29,7 @@ from repositories.assessment_state_mapper import (
 from repositories.assessment_state_repository import AssessmentStateRepository
 from repositories.project_lines_repository import ProjectLinesRepository
 from tests.test_assessment_state_mapper import build_rich_state
+from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
 
 
 @pytest.fixture(scope="session")
@@ -780,3 +781,127 @@ def test_atomic_production_failure_preserves_preexisting_rich_state(
             BlastBlock.domain_id == assessment_context.domain_id)) == 1
         assert session.scalar(select(func.count()).select_from(AuditLogEntry).where(
             AuditLogEntry.blast_block_id.in_(domain_block_ids))) == 0
+
+
+def _persist_rich_for_focused_write(session_factory, context):
+    state = build_rich_state()
+    persist_project_lines(session_factory, context.site_id, state)
+    AssessmentStateRepository(session_factory).replace_for_domain(context.domain_id, state)
+    return state
+
+
+def test_focused_attachment_batch_rolls_back_every_row_on_second_insert(session_factory, assessment_context):
+    state = _persist_rich_for_focused_write(session_factory, assessment_context)
+    first = deepcopy(state.attachments[0]); first.id = "ATT-BATCH-DUP"
+    second = deepcopy(first)
+    with pytest.raises(Exception):
+        SqlAlchemyAssessmentWrites(session_factory).add_attachment_metadata_batch(
+            assessment_context.domain_id, [first, second])
+    with session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(orm.AssessmentEntityAttachment).where(
+            orm.AssessmentEntityAttachment.domain_id == first.id)) == 0
+
+
+def test_focused_lazy_owner_and_attachment_batch_roll_back_together(session_factory, assessment_context):
+    state = build_rich_state(); state.evaluations = []
+    state.attachments = [x for x in state.attachments if x.owner_type == "blast_event"]
+    persist_project_lines(session_factory, assessment_context.site_id, state)
+    AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id, state)
+    owner = deepcopy(build_rich_state().evaluations[0]); owner.id = "EVAL-LAZY"
+    owner.revisions = []; owner.active_revision_id = None
+    first = deepcopy(build_rich_state().attachments[1]); first.owner_id = owner.id
+    first.id = "ATT-LAZY-DUP"; second = deepcopy(first)
+    with pytest.raises(Exception):
+        SqlAlchemyAssessmentWrites(session_factory).add_attachment_metadata_batch(
+            assessment_context.domain_id, [first, second], owner)
+    with session_factory() as session:
+        assert session.scalar(select(orm.AssessmentAreaEvaluation.id).where(
+            orm.AssessmentAreaEvaluation.domain_id == owner.id)) is None
+        assert session.scalar(select(orm.AssessmentEntityAttachment.id).where(
+            orm.AssessmentEntityAttachment.domain_id == first.id)) is None
+
+
+def test_active_link_write_does_not_leak_historical_live_mutation(session_factory, assessment_context):
+    state = _persist_rich_for_focused_write(session_factory, assessment_context)
+    area = state.assessment_areas[0]
+    historical = next(x for x in area.event_links if x.assessment_area_geometry_revision_id == "AA-R1")
+    active = next(x for x in area.event_links if x.assessment_area_geometry_revision_id == "AA-R2")
+    historical_before = historical.status
+    historical.status = "excluded" if historical.status != "excluded" else "confirmed"
+    active.status = "excluded" if active.status != "excluded" else "confirmed"
+    SqlAlchemyAssessmentWrites(session_factory).synchronize_area_links(assessment_context.domain_id, area)
+    loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state.assessment_areas[0]
+    assert next(x.status for x in loaded.event_links if x.id == historical.id) == historical_before
+    assert next(x.status for x in loaded.event_links if x.id == active.id) == active.status
+
+
+def test_area_geometry_write_does_not_leak_historical_link_mutation(session_factory, assessment_context):
+    state = _persist_rich_for_focused_write(session_factory, assessment_context)
+    area = state.assessment_areas[0]
+    historical = next(x for x in area.event_links if x.assessment_area_geometry_revision_id == "AA-R1")
+    historical_before = historical.status
+    historical.status = "excluded" if historical.status != "excluded" else "confirmed"
+    old = area.geometry_revisions[-1]
+    revision = type(old)("AA-R3", area.id, 3, old.created_at, old.source_dataset_id,
+        old.selection_polygon_frozen, old.final_geometry_frozen, old.lower_elevation,
+        old.upper_elevation, old.horizon_slices, "focused revision")
+    area.geometry_revisions.append(revision); area.active_geometry_revision_id = revision.id
+    SqlAlchemyAssessmentWrites(session_factory).persist_assessment_area_geometry(
+        assessment_context.domain_id, area)
+    loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state.assessment_areas[0]
+    assert loaded.active_geometry_revision_id == revision.id
+    assert next(x.status for x in loaded.event_links if x.id == historical.id) == historical_before
+
+
+def test_technical_card_identity_mismatch_is_rejected(session_factory, assessment_context):
+    state = _persist_rich_for_focused_write(session_factory, assessment_context)
+    card = deepcopy(state.technical_cards[0]); card.id = "WRONG-CARD"
+    revision = deepcopy(card.revisions[-1]); revision.id = "WRONG-CARD-R3"
+    revision.revision_number = 3; card.revisions.append(revision)
+    with pytest.raises(ValueError, match="logical ID"):
+        SqlAlchemyAssessmentWrites(session_factory).persist_technical_card_revision(
+            assessment_context.domain_id, card, revision)
+    loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state
+    assert len(loaded.technical_cards[0].revisions) == 2
+
+
+def test_cross_event_link_geometry_is_rejected(session_factory, assessment_context):
+    state = _persist_rich_for_focused_write(session_factory, assessment_context)
+    area = state.assessment_areas[0]
+    active = next(x for x in area.event_links if x.assessment_area_geometry_revision_id == area.active_geometry_revision_id)
+    before = active.status
+    other = next(event for event in state.blast_events if event.id != active.blast_event_id)
+    active.geometry_revision_id = other.active_geometry_revision_id
+    active.status = "excluded" if before != "excluded" else "confirmed"
+    with pytest.raises(ValueError, match="not persisted"):
+        SqlAlchemyAssessmentWrites(session_factory).synchronize_area_links(assessment_context.domain_id, area)
+    loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state.assessment_areas[0]
+    assert next(x.status for x in loaded.event_links if x.id == active.id) == before
+
+
+def test_cross_domain_evaluation_and_attachment_mutations_are_rejected(session_factory, assessment_context):
+    state = _persist_rich_for_focused_write(session_factory, assessment_context)
+    with session_factory.begin() as session:
+        foreign_domain = Domain(site_id=assessment_context.site_id, name="Foreign focused guard")
+        session.add(foreign_domain); session.flush()
+        foreign_workspace = orm.AssessmentWorkspace(domain_id=foreign_domain.id)
+        session.add(foreign_workspace); session.flush()
+        foreign_domain_id = foreign_domain.id
+    writer = SqlAlchemyAssessmentWrites(session_factory)
+    attachment = deepcopy(state.attachments[0]); attachment.title = "must not change"
+    try:
+        with pytest.raises(ValueError, match="another Assessment workspace"):
+            writer.persist_evaluation_owner(foreign_domain_id, state.evaluations[0])
+        with pytest.raises(ValueError, match="another Assessment workspace"):
+            writer.update_attachment_metadata(foreign_domain_id, attachment)
+        with pytest.raises(ValueError, match="another Assessment workspace"):
+            writer.delete_attachment_metadata(foreign_domain_id, attachment.id)
+        loaded = AssessmentStateRepository(session_factory).load_for_domain(
+            assessment_context.domain_id).state
+        assert next(x.title for x in loaded.attachments if x.id == attachment.id) != "must not change"
+    finally:
+        with session_factory.begin() as session:
+            workspace = session.scalar(select(orm.AssessmentWorkspace).where(
+                orm.AssessmentWorkspace.domain_id == foreign_domain_id))
+            if workspace: session.delete(workspace); session.flush()
+            session.query(Domain).filter_by(id=foreign_domain_id).delete()

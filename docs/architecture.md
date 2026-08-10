@@ -228,6 +228,18 @@ Whole-state load пока остаётся обычным read path. Whole-state
 интерактивные workflow их не вызывают. Это уменьшает перезапись разных сущностей,
 но stale write одной и той же сущности пока остаётся last-writer-wins.
 
+Attachment import передаёт весь выбранный пользователем batch одной focused
+операции: metadata всех файлов и lazy Evaluation owner коммитятся или откатываются
+вместе. Link writes ограничены одной активной/new Area geometry revision;
+исторические links не синхронизируются из живого графа. Каждый focused writer
+дополнительно проверяет Domain/Workspace и relational owner, поэтому logical ID из
+другого Domain не может изменить Evaluation, attachment, card или link.
+
+Fallback whole-state write в `AssessmentEditingSession._write()` оставлен только
+для старых unit tests/programmatic embedders, которые создают session напрямую.
+Desktop factory всегда передаёт `SqlAlchemyAssessmentWrites`; это закреплено
+architecture-тестом.
+
 **Phase 5C** должна: (1) добавить optimistic version/token; (2) обнаруживать stale
 same-entity/workspace edits; (3) убрать совместимый whole-state normal-save API;
 (4) удалить `replace_for_domain()` после исчезновения потребителей; (5) удалить

@@ -16,12 +16,12 @@ class EntityPageController:
             on_update=self.editing.update_attachment_metadata,
             on_delete=self.editing.delete_attachment_metadata)
 
-    def _persist_attachment_add(self, attachment):
+    def _persist_attachment_add(self, attachments):
         owner = None
-        if attachment.owner_type == "assessment_evaluation":
+        if attachments and attachments[0].owner_type == "assessment_evaluation":
             owner = next((item for item in self.state.evaluations
-                          if item.id == attachment.owner_id), None)
-        self.editing.add_attachment_metadata(attachment, owner)
+                          if item.id == attachments[0].owner_id), None)
+        self.editing.add_attachment_metadata_batch(attachments, owner)
 
     @property
     def site_id(self):

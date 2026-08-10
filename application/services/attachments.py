@@ -28,7 +28,7 @@ class AttachmentDeleteResult:
 class EntityAttachmentService:
     def __init__(self, state: AssessmentDomainState, storage_path=None,
                  save_callback: Callable[[], None] | None = None, *,
-                 on_add: Callable[[EntityAttachment], None] | None = None,
+                 on_add: Callable[[list[EntityAttachment]], None] | None = None,
                  on_update: Callable[[EntityAttachment], None] | None = None,
                  on_delete: Callable[[EntityAttachment], None] | None = None):
         self.state = state
@@ -88,7 +88,7 @@ class EntityAttachmentService:
                 self.state.attachments.append(attachment)
                 added.append(attachment)
             if self.on_add:
-                for attachment in added: self.on_add(attachment)
+                self.on_add(added)
             else:
                 self._save()
             return added

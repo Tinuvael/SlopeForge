@@ -58,7 +58,9 @@ class AssessmentEditingSession:
             # Compatibility for legacy programmatic embedders which construct the
             # coordinator without the desktop factory. Ordinary UI never enters it.
             if not hasattr(self, "_persistence"):
-                return self.save()
+                if "save" in self.__dict__:  # legacy test/tool supplied its own sink
+                    return self.save()
+                raise RuntimeError("Assessment persistence is not configured")
             snapshot = self._persistence.save(self.domain_id, self.state)
             self.workspace_id = snapshot.workspace_id
             return self.workspace_id
@@ -268,9 +270,9 @@ class AssessmentEditingSession:
                 self.state.evaluations.remove(evaluation)
             raise
 
-    def add_attachment_metadata(self, attachment, evaluation_owner=None):
+    def add_attachment_metadata_batch(self, attachments, evaluation_owner=None):
         self._require_edit()
-        return self._write("add_attachment_metadata", attachment, evaluation_owner)
+        return self._write("add_attachment_metadata_batch", attachments, evaluation_owner)
 
     def update_attachment_metadata(self, attachment):
         self._require_edit()

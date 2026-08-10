@@ -161,6 +161,34 @@ def test_add_files_rolls_back_state_and_copies_when_save_fails(tmp_path):
     assert not target.exists()
 
 
+def test_add_files_persists_one_selected_batch_with_one_callback(tmp_path):
+    first = tmp_path / "first.jpg"; first.write_bytes(b"first")
+    second = tmp_path / "second.jpg"; second.write_bytes(b"second")
+    state = AssessmentDomainState(); batches = []
+    service = EntityAttachmentService(
+        state, tmp_path / "state.json", on_add=lambda items: batches.append(list(items)))
+
+    added = service.add_files("blast_event", "BE-1", "photo", [first, second])
+
+    assert batches == [added]
+    assert len(batches[0]) == 2
+
+
+def test_add_files_compensates_entire_batch_when_batch_callback_fails(tmp_path):
+    first = tmp_path / "first.jpg"; first.write_bytes(b"first")
+    second = tmp_path / "second.jpg"; second.write_bytes(b"second")
+    state = AssessmentDomainState()
+    service = EntityAttachmentService(
+        state, tmp_path / "state.json",
+        on_add=lambda _items: (_ for _ in ()).throw(RuntimeError("second insert failed")))
+
+    with pytest.raises(RuntimeError, match="second insert failed"):
+        service.add_files("blast_event", "BE-1", "photo", [first, second])
+
+    assert state.attachments == []
+    assert not list((tmp_path / "attachments").rglob("*.jpg"))
+
+
 def test_renaming_metadata_does_not_change_stable_folders(store):
     _, service = store
     before = service.owner_folder("blast_event", "BE-001")

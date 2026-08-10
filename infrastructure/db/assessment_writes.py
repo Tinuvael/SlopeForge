@@ -49,6 +49,8 @@ class SqlAlchemyAssessmentWrites:
         with self._session_factory.begin() as s:
             w = self._workspace(s, domain_id)
             row = self._logical(s, orm.BlastEvent, w.id, event.id)
+            if row.event_type != "contour":
+                raise ValueError("Stored BlastEvent is not contour")
             row.is_archived, row.archived_at, row.archive_reason = (
                 event.is_archived, event.archived_at, event.archive_reason)
             return w.id
@@ -57,6 +59,12 @@ class SqlAlchemyAssessmentWrites:
         with self._session_factory.begin() as s:
             w = self._workspace(s, domain_id)
             event = self._logical(s, orm.BlastEvent, w.id, event_id)
+            duplicate = s.scalar(select(orm.BlastEventGeometryRevision.id).where(
+                orm.BlastEventGeometryRevision.blast_event_id == event.id,
+                (orm.BlastEventGeometryRevision.domain_id == revision.id) |
+                (orm.BlastEventGeometryRevision.revision_number == revision.revision_number)))
+            if duplicate is not None:
+                raise ValueError("Blast geometry revision ID or number already exists")
             s.query(orm.BlastEventGeometryRevision).filter_by(
                 blast_event_id=event.id, is_active=True).update({"is_active": False})
             s.flush()
@@ -79,6 +87,8 @@ class SqlAlchemyAssessmentWrites:
                 row = orm.BlastEventTechnicalCard(blast_event=event, domain_id=card.id,
                                                    is_archived=card.is_archived)
                 s.add(row); s.flush()
+            elif row.domain_id != card.id:
+                raise ValueError("Technical Card logical ID does not match persisted container")
             geometry = s.scalar(select(orm.BlastEventGeometryRevision).where(
                 orm.BlastEventGeometryRevision.blast_event_id == event.id,
                 orm.BlastEventGeometryRevision.domain_id == revision.geometry_revision_id))
@@ -96,11 +106,15 @@ class SqlAlchemyAssessmentWrites:
             return w.id
 
     @staticmethod
-    def _sync_links(s, area_row, area):
-        revisions = {x.domain_id: x for x in area_row.geometry_revisions}
-        existing = {(x.assessment_area_geometry_revision.domain_id, x.domain_id): x
-                    for revision in area_row.geometry_revisions for x in revision.event_links}
-        desired = {(x.assessment_area_geometry_revision_id, x.id): x for x in area.event_links}
+    def _sync_links(s, area_row, revision_id, links):
+        revision = next((x for x in area_row.geometry_revisions
+                         if x.domain_id == revision_id), None)
+        if revision is None:
+            raise ValueError("Assessment Area geometry revision is not persisted")
+        if any(link.assessment_area_geometry_revision_id != revision_id for link in links):
+            raise ValueError("Link belongs to another Assessment Area geometry revision")
+        existing = {x.domain_id: x for x in revision.event_links}
+        desired = {x.id: x for x in links}
         omitted = [row for key, row in existing.items() if key not in desired]
         for row in omitted: s.delete(row)
         if omitted: s.flush()
@@ -111,9 +125,10 @@ class SqlAlchemyAssessmentWrites:
                 row = orm.AssessmentEventLink(domain_id=link.id); s.add(row)
             event_geometry = s.scalar(select(orm.BlastEventGeometryRevision).join(
                 orm.BlastEvent).where(orm.BlastEvent.workspace_id == workspace_id,
+                orm.BlastEvent.domain_id == link.blast_event_id,
                 orm.BlastEventGeometryRevision.domain_id == link.geometry_revision_id))
             if event_geometry is None: raise ValueError("Linked event geometry is not persisted")
-            row.assessment_area_geometry_revision = revisions[link.assessment_area_geometry_revision_id]
+            row.assessment_area_geometry_revision = revision
             row.blast_event_geometry_revision = event_geometry
             row.status, row.source, row.created_at = link.status, link.source, link.created_at
             row.frozen_intersection_geometry_json = (link.frozen_intersection_geometry.to_dict()
@@ -135,35 +150,53 @@ class SqlAlchemyAssessmentWrites:
                     Domain.id == domain_id,
                     orm.ProjectLinesDataset.domain_id == revision.source_dataset_id))
             if dataset is None: raise ValueError("Project Lines dataset is outside this Site")
+            duplicate = s.scalar(select(orm.AssessmentAreaGeometryRevision.id).where(
+                orm.AssessmentAreaGeometryRevision.assessment_area_id == row.id,
+                (orm.AssessmentAreaGeometryRevision.domain_id == revision.id) |
+                (orm.AssessmentAreaGeometryRevision.revision_number == revision.revision_number)))
+            if duplicate is not None:
+                raise ValueError("Assessment Area geometry revision ID or number already exists")
             s.query(orm.AssessmentAreaGeometryRevision).filter_by(
                 assessment_area_id=row.id, is_active=True).update({"is_active": False})
             s.flush()
-            if not any(x.domain_id == revision.id for x in row.geometry_revisions):
-                s.add(orm.AssessmentAreaGeometryRevision(assessment_area=row,
-                    domain_id=revision.id, revision_number=revision.revision_number,
-                    created_at=revision.created_at, source_dataset=dataset,
-                    selection_polygon_json=revision.selection_polygon_frozen.to_dict(),
-                    final_geometry_json=revision.final_geometry_frozen.to_dict(),
-                    lower_elevation_m=revision.lower_elevation,
-                    upper_elevation_m=revision.upper_elevation,
-                    horizon_slices_json=[x.to_dict() for x in revision.horizon_slices],
-                    change_reason=revision.change_reason, is_active=True))
-                s.flush()
-            self._sync_links(s, row, area)
+            s.add(orm.AssessmentAreaGeometryRevision(assessment_area=row,
+                domain_id=revision.id, revision_number=revision.revision_number,
+                created_at=revision.created_at, source_dataset=dataset,
+                selection_polygon_json=revision.selection_polygon_frozen.to_dict(),
+                final_geometry_json=revision.final_geometry_frozen.to_dict(),
+                lower_elevation_m=revision.lower_elevation,
+                upper_elevation_m=revision.upper_elevation,
+                horizon_slices_json=[x.to_dict() for x in revision.horizon_slices],
+                change_reason=revision.change_reason, is_active=True))
+            s.flush()
+            links = [link for link in area.event_links
+                     if link.assessment_area_geometry_revision_id == revision.id]
+            self._sync_links(s, row, revision.id, links)
             return w.id
 
     def synchronize_area_links(self, domain_id, area):
         with self._session_factory.begin() as s:
             w = self._workspace(s, domain_id)
             row = self._logical(s, orm.AssessmentArea, w.id, area.id)
-            self._sync_links(s, row, area)
+            revision_id = area.active_geometry_revision_id
+            links = [link for link in area.event_links
+                     if link.assessment_area_geometry_revision_id == revision_id]
+            self._sync_links(s, row, revision_id, links)
             return w.id
 
     @staticmethod
     def _evaluation_owner(s, workspace_id, evaluation, *, create):
-        row = s.scalar(select(orm.AssessmentAreaEvaluation).where(
-            orm.AssessmentAreaEvaluation.domain_id == evaluation.id))
+        row = s.scalar(select(orm.AssessmentAreaEvaluation).join(
+            orm.AssessmentArea).where(
+                orm.AssessmentArea.workspace_id == workspace_id,
+                orm.AssessmentAreaEvaluation.domain_id == evaluation.id))
+        if row is not None and row.assessment_area.domain_id != evaluation.assessment_area_id:
+            raise ValueError("Evaluation belongs to another Assessment Area")
         if row is None and create:
+            foreign = s.scalar(select(orm.AssessmentAreaEvaluation.id).where(
+                orm.AssessmentAreaEvaluation.domain_id == evaluation.id))
+            if foreign is not None:
+                raise ValueError("Evaluation belongs to another Assessment workspace")
             area = s.scalar(select(orm.AssessmentArea).where(
                 orm.AssessmentArea.workspace_id == workspace_id,
                 orm.AssessmentArea.domain_id == evaluation.assessment_area_id))
@@ -213,35 +246,56 @@ class SqlAlchemyAssessmentWrites:
         row.description=item.description; row.mime_type=item.mime_type
         row.file_size_bytes=item.file_size_bytes; row.created_at=item.created_at
 
-    def add_attachment_metadata(self, domain_id, attachment, evaluation_owner=None):
+    @staticmethod
+    def _attachment_for_workspace(s, workspace_id, attachment_id):
+        row = s.scalar(select(orm.AssessmentEntityAttachment).where(
+            orm.AssessmentEntityAttachment.domain_id == attachment_id))
+        if row is None:
+            raise ValueError("Attachment is not persisted")
+        owner_workspace_id = (row.blast_event.workspace_id if row.blast_event is not None
+            else row.assessment_area_evaluation.assessment_area.workspace_id)
+        if owner_workspace_id != workspace_id:
+            raise ValueError("Attachment belongs to another Assessment workspace")
+        return row
+
+    def add_attachment_metadata_batch(self, domain_id, attachments, evaluation_owner=None):
+        if not attachments:
+            raise ValueError("Attachment batch is empty")
         with self._session_factory.begin() as s:
             w=self._workspace(s,domain_id)
             event=evaluation=None
-            if attachment.owner_type == "blast_event":
-                event=self._logical(s,orm.BlastEvent,w.id,attachment.owner_id)
+            owner_type, owner_id = attachments[0].owner_type, attachments[0].owner_id
+            if any((item.owner_type, item.owner_id) != (owner_type, owner_id)
+                   for item in attachments):
+                raise ValueError("Attachment batch must have one owner")
+            if owner_type == "blast_event":
+                event=self._logical(s,orm.BlastEvent,w.id,owner_id)
             else:
                 if evaluation_owner is None: raise ValueError("Evaluation owner is required")
+                if evaluation_owner.id != owner_id:
+                    raise ValueError("Attachment owner does not match Evaluation")
                 evaluation=self._evaluation_owner(s,w.id,evaluation_owner,create=True)
-            row=orm.AssessmentEntityAttachment(domain_id=attachment.id); s.add(row)
-            self._set_attachment(row,attachment,event,evaluation)
-            s.flush()
+            for attachment in attachments:
+                row=orm.AssessmentEntityAttachment(domain_id=attachment.id); s.add(row)
+                self._set_attachment(row,attachment,event,evaluation)
+                s.flush()
             return w.id
 
     def update_attachment_metadata(self, domain_id, attachment):
         with self._session_factory.begin() as s:
             w=self._workspace(s,domain_id)
-            row=s.scalar(select(orm.AssessmentEntityAttachment).where(
-                orm.AssessmentEntityAttachment.domain_id==attachment.id))
-            if row is None: raise ValueError("Attachment is not persisted")
-            self._set_attachment(row,attachment,row.blast_event,row.assessment_area_evaluation)
+            row=self._attachment_for_workspace(s,w.id,attachment.id)
+            # Metadata editing never reparents an attachment.
+            for name in ("attachment_kind", "subtype", "custom_subtype", "title",
+                         "original_filename", "stored_filename", "relative_path",
+                         "file_date", "description", "mime_type", "file_size_bytes"):
+                setattr(row, name, getattr(attachment, name))
             return w.id
 
     def delete_attachment_metadata(self, domain_id, attachment_id):
         with self._session_factory.begin() as s:
             w=self._workspace(s,domain_id)
-            row=s.scalar(select(orm.AssessmentEntityAttachment).where(
-                orm.AssessmentEntityAttachment.domain_id==attachment_id))
-            if row is None: raise ValueError("Attachment is not persisted")
+            row=self._attachment_for_workspace(s,w.id,attachment_id)
             s.delete(row)
             return w.id
 

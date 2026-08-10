@@ -18,19 +18,18 @@ class MemoryPersistence:
     def load_state(self, domain_id):
         return deepcopy(self.persisted)
 
-    def persist_contour(self, domain_id, state):
+    def persist_contour(self, domain_id, event):
         if self.fail: raise RuntimeError("injected persistence failure")
-        self.persisted = deepcopy(state)
+        self.persisted.blast_events.append(deepcopy(event))
 
-    def persist_production(self, domain_id, state, event_id, actor_id):
+    def persist_production(self, domain_id, event, actor_id):
         if self.fail: raise RuntimeError("injected persistence failure")
         block_id = len(self.blocks) + 1
-        event = next(item for item in state.blast_events if item.id == event_id)
         event.blast_block_id = block_id
         self.blocks.append({"id": block_id, "domain_id": domain_id, "block_number": event.name,
                             "horizon": event.elevation, "date": event.event_date,
                             "status": "planned", "comment": None, "actor_id": actor_id})
-        self.persisted = deepcopy(state)
+        self.persisted.blast_events.append(deepcopy(event))
         return block_id
 
 
