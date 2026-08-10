@@ -321,10 +321,36 @@ def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
     assert reused.revisions[0].evaluation_id == owner.id
 
 
+def test_attachment_owner_can_be_prepared_without_an_intermediate_save():
+    from datetime import date, datetime, timezone
+    from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, PlanPoint, PlanPolygon
+    from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+    from ui.pages.entity_page_controller import EntityPageController
+
+    polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(1, 0), PlanPoint(1, 1), PlanPoint(0, 0)))
+    geometry = AssessmentAreaGeometryRevision("AGR-1", "AREA-1", 1, datetime.now(timezone.utc), "DATASET-1", polygon, polygon, 100, 110, ())
+    area = AssessmentArea("AREA-1", "Wall", date.today(), [geometry], geometry.id)
+    state = AssessmentDomainState(assessment_areas=[area])
+    controller = EntityPageController.__new__(EntityPageController)
+    controller.state = state; controller.evaluations = AssessmentAreaEvaluationService(state)
+    saves = []; controller.save = lambda: saves.append(True)
+
+    transient, _draft = controller.evaluation_draft(area)
+    owner, rollback = controller.prepare_evaluation_attachment_owner(area, transient)
+    assert rollback is not None and owner is transient and state.evaluations == [owner] and saves == []
+    rollback()
+    assert state.evaluations == [] and saves == []
+
+    state.evaluations.append(owner)
+    existing, rollback = controller.prepare_evaluation_attachment_owner(area, transient)
+    assert existing is owner and rollback is None
+    assert state.evaluations == [owner]
+
+
 def test_assessment_attachment_ui_has_no_saved_revision_gate():
     area = source("ui/pages/assessment_area_page.py")
     assert "Save an assessment draft first" not in area
-    assert "ensure_evaluation_owner" in area
+    assert "prepare_evaluation_attachment_owner" in area
     assert "EntityAttachmentManagerWidget" in area
     assert "ensure_owner=ensure_owner" in area
 

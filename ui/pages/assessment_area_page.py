@@ -102,7 +102,9 @@ class AssessmentAreaPage(QWidget):
     def _attachment_tab(self,title):
         kind="photo" if title=="Photos" else "document"; from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget
         persisted=self.evaluation in self.controller.state.evaluations; owner_id=self.evaluation.id if persisted else None; page=QWidget(); layout=QVBoxLayout(page)
-        def ensure_owner():self.evaluation=self.controller.ensure_evaluation_owner(self.area,self.evaluation); return self.evaluation
+        def ensure_owner():
+            owner,rollback=self.controller.prepare_evaluation_attachment_owner(self.area,self.evaluation); self.evaluation=owner
+            return owner,rollback
         manager=EntityAttachmentManagerWidget(self.controller.attachments,"assessment_evaluation",owner_id,kind,page,read_only=self.read_only,ensure_owner=ensure_owner); manager.changed.connect(self._refresh_overview_and_sidebar); layout.addWidget(manager); self.attachment_controls=getattr(self,"attachment_controls",[]); self.attachment_controls.append((kind,manager)); self.tabs.addTab(page,tr(title));
         if kind=="photo":self.photos_tab=page
         else:self.documents_tab=page

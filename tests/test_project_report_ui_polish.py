@@ -124,6 +124,76 @@ def test_unknown_document_warning_can_cancel_without_owner(monkeypatch):
     monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(["unknown.bin"],"All files (*)")); questions=[]; monkeypatch.setattr(module.QMessageBox,"question",lambda *args:questions.append(args[2]) or module.QMessageBox.StandardButton.No)
     manager.add(); assert questions==["SlopeForge may not be able to preview this file. Add it anyway?"] and ensured==[]
 
+
+def test_failed_add_rolls_back_only_newly_prepared_owner(monkeypatch):
+    app(); import ui.dialogs.entity_attachment_dialog as module
+    rolled_back=[]
+    service=SimpleNamespace(list_for_owner=lambda *_:[],add_files=lambda *_:(_ for _ in ()).throw(RuntimeError("copy failed")))
+    owner=SimpleNamespace(id="E-new")
+    manager=module.EntityAttachmentManagerWidget(service,"assessment_evaluation",None,"document",
+        ensure_owner=lambda:(owner,lambda:rolled_back.append(owner)))
+    monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(['report.pdf'],"Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip)"))
+    monkeypatch.setattr(module.AttachmentMetadataDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(module.AttachmentMetadataDialog,"values",lambda *_:{})
+    errors=[]; monkeypatch.setattr(module.QMessageBox,"critical",lambda *args:errors.append(args[2]))
+    manager.add()
+    assert rolled_back==[owner] and manager.owner_id is None and errors
+
+
+def test_failed_add_never_rolls_back_existing_owner(monkeypatch):
+    app(); import ui.dialogs.entity_attachment_dialog as module
+    service=SimpleNamespace(list_for_owner=lambda *_:[],add_files=lambda *_:(_ for _ in ()).throw(RuntimeError("copy failed")))
+    ensured=[]
+    manager=module.EntityAttachmentManagerWidget(service,"assessment_evaluation","E-existing","document",
+        ensure_owner=lambda:ensured.append(True))
+    monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(['report.pdf'],"Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip)"))
+    monkeypatch.setattr(module.AttachmentMetadataDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(module.AttachmentMetadataDialog,"values",lambda *_:{})
+    monkeypatch.setattr(module.QMessageBox,"critical",lambda *_:None)
+    manager.add()
+    assert manager.owner_id=="E-existing" and ensured==[]
+
+
+def _attachment():
+    return SimpleNamespace(id="ATT-1",title="Report",file_date=date(2026,8,1),subtype="other",
+        custom_subtype="",original_filename="report.pdf",description="",file_size_bytes=3)
+
+
+def test_edit_error_is_reported_without_refresh_or_changed(monkeypatch):
+    app(); import ui.dialogs.entity_attachment_dialog as module
+    item=_attachment(); service=SimpleNamespace(list_for_owner=lambda *_:[item],is_missing=lambda *_:False,
+        update_metadata=lambda *_args,**_kwargs:(_ for _ in ()).throw(RuntimeError("save failed")))
+    manager=module.EntityAttachmentManagerWidget(service,"blast_event","BE-1","document"); manager.table.selectRow(0)
+    monkeypatch.setattr(module.AttachmentMetadataDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(module.AttachmentMetadataDialog,"values",lambda *_:{"title":"New","file_date":date.today(),"subtype":"other","description":"","custom_subtype":""})
+    refreshed=[]; manager.refresh=lambda:refreshed.append(True); changes=[]; manager.changed.connect(lambda:changes.append(True))
+    errors=[]; monkeypatch.setattr(module.QMessageBox,"critical",lambda *args:errors.append(args[2]))
+    manager.edit()
+    assert errors==["save failed"] and refreshed==[] and changes==[]
+
+
+def test_delete_error_is_reported_without_refresh_or_changed(monkeypatch):
+    app(); import ui.dialogs.entity_attachment_dialog as module
+    item=_attachment(); service=SimpleNamespace(list_for_owner=lambda *_:[item],is_missing=lambda *_:False,
+        delete_attachment=lambda *_:(_ for _ in ()).throw(RuntimeError("delete failed")))
+    manager=module.EntityAttachmentManagerWidget(service,"blast_event","BE-1","document"); manager.table.selectRow(0)
+    class Box:
+        class Icon:Warning=1
+        class ButtonRole:DestructiveRole=1; RejectRole=2
+        def __init__(self,*_args,**_kwargs):self.delete=None
+        def addButton(self,_text,role):
+            button=object()
+            if role==self.ButtonRole.DestructiveRole:self.delete=button
+            return button
+        def exec(self):return 0
+        def clickedButton(self):return self.delete
+        @staticmethod
+        def critical(*args):errors.append(args[2])
+    errors=[]; monkeypatch.setattr(module,"QMessageBox",Box)
+    refreshed=[]; manager.refresh=lambda:refreshed.append(True); changes=[]; manager.changed.connect(lambda:changes.append(True))
+    manager.delete()
+    assert errors==["delete failed"] and refreshed==[] and changes==[]
+
 def test_russian_standard_buttons_are_never_blank(tmp_path):
     application=app()
     from app.localization import LANGUAGE_KEY,install_selected_translator

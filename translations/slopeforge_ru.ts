@@ -1455,6 +1455,10 @@
             <translation>Ошибка удаления</translation>
         </message>
         <message>
+            <source>Edit error</source>
+            <translation>Ошибка изменения</translation>
+        </message>
+        <message>
             <source>Design</source>
             <translation>Проект</translation>
         </message>

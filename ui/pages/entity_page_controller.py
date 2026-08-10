@@ -41,6 +41,17 @@ class EntityPageController:
         except Exception:
             self.state.evaluations.remove(owner); raise
         return owner
+    def prepare_evaluation_attachment_owner(self,area,evaluation=None):
+        """Prepare an attachment owner in memory; attachment save persists it atomically."""
+        existing=next((e for e in self.state.evaluations if e.assessment_area_id==area.id),None)
+        if existing:return existing,None
+        owner=evaluation or self.evaluations.create_evaluation(area)
+        if owner.assessment_area_id!=area.id:raise ValueError("evaluation owner belongs to another Assessment Area")
+        self.state.evaluations.append(owner)
+        def rollback():
+            if owner in self.state.evaluations and not owner.revisions:
+                self.state.evaluations.remove(owner)
+        return owner,rollback
     def save_evaluation(self,evaluation,revision,status):
         present=evaluation in self.state.evaluations; count=len(evaluation.revisions); active=evaluation.active_revision_id
         try:

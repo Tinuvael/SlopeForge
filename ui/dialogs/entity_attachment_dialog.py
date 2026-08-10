@@ -94,9 +94,12 @@ class EntityAttachmentManagerWidget(QWidget):
         if row<0 or not self.table.item(row,1):return None
         ident=self.table.item(row,1).data(Qt.ItemDataRole.UserRole); return next((a for a in self._items() if a.id==ident),None)
     def _ensure_owner(self):
-        if self.owner_id:return True
-        if not self.ensure_owner:return False
-        owner=self.ensure_owner(); self.owner_id=getattr(owner,"id",owner); return bool(self.owner_id)
+        if self.owner_id:return True,None
+        if not self.ensure_owner:return False,None
+        prepared=self.ensure_owner()
+        owner,rollback=prepared if isinstance(prepared,tuple) else (prepared,None)
+        self.owner_id=getattr(owner,"id",owner)
+        return bool(self.owner_id),rollback
     def add(self,_checked=False):
         filters="Photos (*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff)" if self.kind=="photo" else "Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip);;All files (*)"
         paths,selected_filter=QFileDialog.getOpenFileNames(self,tr("Add files"),"",filters)
@@ -105,9 +108,19 @@ class EntityAttachmentManagerWidget(QWidget):
         if self.kind=="document" and selected_filter=="All files (*)" and QMessageBox.question(self,tr("Other format"),tr("SlopeForge may not be able to preview this file. Add it anyway?"))!=QMessageBox.StandardButton.Yes:return
         editor=AttachmentMetadataDialog(self.owner_type,self.kind,parent=self)
         if editor.exec()!=QDialog.DialogCode.Accepted:return
-        if not self._ensure_owner():return
-        try:self.service.add_files(self.owner_type,self.owner_id,self.kind,paths,editor.values()); self.refresh(); self.changed.emit()
-        except Exception as exc:QMessageBox.critical(self,tr("Copy error"),domain_message(str(exc)))
+        try:ready,rollback_owner=self._ensure_owner()
+        except Exception as exc:
+            QMessageBox.critical(self,tr("Copy error"),domain_message(str(exc))); return
+        if not ready:return
+        try:self.service.add_files(self.owner_type,self.owner_id,self.kind,paths,editor.values())
+        except Exception as exc:
+            if rollback_owner:
+                try:rollback_owner(); self.owner_id=None
+                except Exception as rollback_exc:
+                    QMessageBox.critical(self,tr("Copy error"),domain_message(f"{exc}; owner rollback failed: {rollback_exc}")); return
+            QMessageBox.critical(self,tr("Copy error"),domain_message(str(exc)))
+            return
+        self.refresh(); self.changed.emit()
     def open_selected(self,row=None):
         item=self._selected(row)
         if not item:return
@@ -121,12 +134,20 @@ class EntityAttachmentManagerWidget(QWidget):
         item=self._selected()
         if not item:return
         dialog=AttachmentMetadataDialog(self.owner_type,self.kind,item,self)
-        if dialog.exec()==QDialog.DialogCode.Accepted:self.service.update_metadata(item.id,**dialog.values()); self.refresh(); self.changed.emit()
+        if dialog.exec()!=QDialog.DialogCode.Accepted:return
+        try:self.service.update_metadata(item.id,**dialog.values())
+        except Exception as exc:
+            QMessageBox.critical(self,tr("Edit error"),domain_message(str(exc))); return
+        self.refresh(); self.changed.emit()
     def delete(self,_checked=False):
         item=self._selected()
         if not item:return
         box=QMessageBox(QMessageBox.Icon.Warning,tr("Delete"),tr("The file will be removed from the database and disk."),parent=self); delete=box.addButton(tr("Delete"),QMessageBox.ButtonRole.DestructiveRole); box.addButton(tr("Cancel"),QMessageBox.ButtonRole.RejectRole); box.exec()
-        if box.clickedButton() is delete:self.service.delete_attachment(item.id); self.refresh(); self.changed.emit()
+        if box.clickedButton() is not delete:return
+        try:self.service.delete_attachment(item.id)
+        except Exception as exc:
+            QMessageBox.critical(self,tr("Delete error"),domain_message(str(exc))); return
+        self.refresh(); self.changed.emit()
 
 class EntityAttachmentDialog(QDialog):
     """Compatibility wrapper retained for legacy callers."""
