@@ -32,11 +32,12 @@ class AssessmentAreaPage(QWidget):
         self.evaluation_editor=AssessmentAreaEvaluationDialog(self.area,evaluation,draft,self.controller.save_evaluation,None,read_only=self.read_only)
         self.assessment_tab=QWidget(); layout=QVBoxLayout(self.assessment_tab); self.assessment_sections=QTabWidget(); layout.addWidget(self.assessment_sections)
         for title in ("General","Geometry","Face condition"):
-            page=self.evaluation_editor.take_tab(tr(title)); self.assessment_sections.addTab(page,tr(title)); page.setVisible(True)
+            page=self.evaluation_editor.take_tab(tr(title)); self.assessment_sections.addTab(page,tr(title))
         controls=QHBoxLayout(); controls.addStretch(); self.save_evaluation_button=QPushButton(tr("Save draft")); self.complete_evaluation_button=QPushButton(tr("Complete assessment"));
         for button in (self.save_evaluation_button,self.complete_evaluation_button):button.setEnabled(not self.read_only); controls.addWidget(button)
         self.save_evaluation_button.clicked.connect(lambda:self._save_evaluation("draft")); self.complete_evaluation_button.clicked.connect(lambda:self._save_evaluation("completed")); layout.addLayout(controls)
-        self.result=self.evaluation_editor.take_tab(tr("Matrix")); self.result.setVisible(True); self.history=self.evaluation_editor.take_tab(tr("History")); self.history.setVisible(True)
+        self.assessment_sections.setCurrentIndex(0)
+        self.result=self.evaluation_editor.take_tab(tr("Matrix")); self.history=self.evaluation_editor.take_tab(tr("History"))
 
     def _sidebar(self,body):
         right=QVBoxLayout(); self.summary_card=CardFrame("Summary"); self.summary_grid=QGridLayout(); self.summary_card.layout.addLayout(self.summary_grid); right.addWidget(self.summary_card)

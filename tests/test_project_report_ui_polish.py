@@ -21,12 +21,51 @@ def test_assessment_editor_tabs_are_explicitly_detached_and_keep_content():
     target=QTabWidget()
     pages=[]
     for title in ("General","Geometry","Face condition","Matrix"):
-        page=dialog.take_tab(title); target.addTab(page,title); page.setVisible(True); pages.append(page)
+        page=dialog.take_tab(title); target.addTab(page,title); pages.append(page)
     assert all(page.parent() is not dialog.tabs for page in pages)
     assert all(page.findChildren(QtWidgets.QWidget) for page in pages)
     assert dialog.summary.text() and "DAI: 1.000" in dialog.summary.text()
     dialog._allow_close=True; dialog.close(); target.close()
 
+
+
+def test_assessment_page_nested_tabs_have_exclusive_initial_visibility(monkeypatch):
+    application=app()
+    from tests.test_wall_assessment_persistence_ui import make_state,filled_draft
+    from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
+    from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+    import ui.pages.assessment_area_page as module
+
+    state,area=make_state(); evaluation,draft=filled_draft(state,area)
+    evaluation.save_revision(draft,"completed"); state.evaluations.append(evaluation)
+
+    class Attachments:
+        def list_for_owner(self,*_args):return []
+    class Controller:
+        def __init__(self,*_args):
+            self.state=state; self.attachments=Attachments(); self.links=AssessmentEventLinkService(state)
+        def area(self,_id):return area
+        def evaluation_draft(self,_area):return evaluation,evaluation.active_revision()
+        def save_evaluation(self,*_args):raise AssertionError("construction must not save")
+        def ensure_evaluation_owner(self,*_args):raise AssertionError("opening must not create an owner")
+        def save(self):raise AssertionError("construction must not persist")
+    monkeypatch.setattr(module,"EntityPageController",Controller)
+    context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True))
+    before=len(evaluation.revisions); page=module.AssessmentAreaPage(context,1,"Domain",area.id)
+    page.show(); page.tabs.setCurrentWidget(page.assessment_tab); application.processEvents()
+    sections=page.assessment_sections
+    general,geometry,condition=(sections.widget(i) for i in range(3))
+    assert sections.currentIndex()==0
+    assert general.isVisible() and not geometry.isVisible() and not condition.isVisible()
+    assert general.findChildren(QtWidgets.QWidget) and geometry.findChildren(QtWidgets.QWidget) and condition.findChildren(QtWidgets.QWidget)
+    assert page.save_evaluation_button.isVisible() and page.complete_evaluation_button.isVisible()
+    assert page.evaluation_editor.summary.text() and "DAI: 1.000" in page.evaluation_editor.summary.text()
+    for index,visible in ((1,geometry),(2,condition),(0,general)):
+        sections.setCurrentIndex(index); application.processEvents()
+        assert visible.isVisible()
+        assert all(not sections.widget(other).isVisible() for other in range(3) if other!=index)
+    assert len(evaluation.revisions)==before
+    page.close()
 
 def test_russian_standard_buttons_are_never_blank(tmp_path):
     application=app()

@@ -89,7 +89,8 @@ def test_entity_page_integration_corrections_are_visible():
     area=source("ui/pages/assessment_area_page.py")
     assert "self.assessment_sections=QTabWidget()" in area
     assert 'evaluation_editor.take_tab(tr(title))' in area
-    assert "page.setVisible(True)" in area
+    assert "self.assessment_sections.setCurrentIndex(0)" in area
+    assert "page.setVisible(True)" not in area
     assert "Save an assessment draft first" not in area
     assert "ensure_evaluation_owner" in area
     creation=source("ui/pages/assessment_area_creation_page.py")
