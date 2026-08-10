@@ -8,6 +8,7 @@ from collections.abc import Callable
 
 import csv
 from pathlib import Path
+from decimal import Decimal, ROUND_HALF_UP
 
 from PySide6.QtCore import QDate, Qt, Signal, QPointF
 from PySide6.QtGui import QBrush, QColor, QGuiApplication, QPainterPath, QPen
@@ -1148,19 +1149,23 @@ class BlastEventDialog(QDialog):
         super().__init__(parent)
         self.service = service or BlastEventService(AssessmentDomainState())
         self._applying_suggestion = False
+        self._applying_name = False
+        self.name_is_manual = False
         self.elevation_is_manual = False
         self.preview = None
         self.setWindowTitle(tr("Create Blast Event"))
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.name = QLineEdit()
+        self.name.textEdited.connect(self._name_edited)
         self.kind = QComboBox()
         self.kind.addItems(["production", "contour"])
         self.date = QDateEdit(QDate.currentDate())
         self.date.setCalendarPopup(True)
         self.elevation = QDoubleSpinBox()
         self.elevation.setRange(-10000, 10000)
-        self.elevation.setDecimals(2)
+        self.elevation.setDecimals(0)
+        self.elevation.setSingleStep(1)
         self.elevation.valueChanged.connect(self._elevation_changed)
         self.csv = QLineEdit()
         browse = QPushButton(tr("Select geometry file"))
@@ -1180,6 +1185,9 @@ class BlastEventDialog(QDialog):
         form.addRow("", self.auto_status)
         layout.addLayout(form)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText(tr("Save"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr("Cancel"))
+        self.buttons = buttons
         buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -1189,7 +1197,14 @@ class BlastEventDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, tr("Select geometry file"), "", tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
         if not path: return
         self.csv.setText(path)
+        if not self.name_is_manual:
+            self._applying_name = True
+            self.name.setText(Path(path).stem)
+            self._applying_name = False
         self._inspect(force_override=True)
+
+    def _name_edited(self, _text):
+        if not self._applying_name:self.name_is_manual = True
 
     def _event_type_changed(self, _event_type):
         if self.csv.text().strip(): self._inspect(force_override=True)
@@ -1212,14 +1227,15 @@ class BlastEventDialog(QDialog):
         self.preview = preview
         if force_override or not self.elevation_is_manual:
             self._applying_suggestion = True
-            self.elevation.setValue(preview.suggested_elevation)
+            rounded = int(Decimal(str(preview.suggested_elevation)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+            self.elevation.setValue(rounded)
             self._applying_suggestion = False
             self.elevation_is_manual = False
         if preview.geometry_type == "Polygon":
-            text = (f"Automatic detection: horizon {preview.suggested_elevation:.2f} "
+            text = (f"Automatic detection: horizon {self.elevation.value():.0f} "
                     f"from top line SID {preview.selected_source_line_id}")
         else:
-            text = (f"Automatic detection: horizon {preview.suggested_elevation:.2f} from median of "
+            text = (f"Automatic detection: horizon {self.elevation.value():.0f} from median of "
                     f"{preview.accepted_contour_drillhole_count} collars")
             if preview.ignored_flat_contour_line_count:
                 text += f"; flat rows excluded: {preview.ignored_flat_contour_line_count}"

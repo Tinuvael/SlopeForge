@@ -2666,5 +2666,97 @@
             <source>Clear the current Domain geometry?</source>
             <translation>Очистить текущую геометрию домена?</translation>
         </message>
+        <message>
+            <source>Report</source>
+            <translation>Отчёт</translation>
+        </message>
+        <message>
+            <source>Project report</source>
+            <translation>Отчёт по проекту</translation>
+        </message>
+        <message>
+            <source>From</source>
+            <translation>С</translation>
+        </message>
+        <message>
+            <source>To</source>
+            <translation>По</translation>
+        </message>
+        <message>
+            <source>Generate Excel</source>
+            <translation>Создать Excel</translation>
+        </message>
+        <message>
+            <source>Report generated</source>
+            <translation>Отчёт создан</translation>
+        </message>
+        <message>
+            <source>From date must not be after To date</source>
+            <translation>Дата начала не должна быть позже даты окончания</translation>
+        </message>
+        <message>
+            <source>Excel workbook (*.xlsx)</source>
+            <translation>Книга Excel (*.xlsx)</translation>
+        </message>
+        <message>
+            <source>Could not generate report</source>
+            <translation>Не удалось создать отчёт</translation>
+        </message>
+        <message>
+            <source>Actual production volume, m³</source>
+            <translation>Фактический объём производства, м³</translation>
+        </message>
+        <message>
+            <source>Actual explosive mass, kg</source>
+            <translation>Фактическая масса ВВ, кг</translation>
+        </message>
+        <message>
+            <source>Linked production blocks</source>
+            <translation>Связанные производственные блоки</translation>
+        </message>
+        <message>
+            <source>Linked contour blasts</source>
+            <translation>Связанные контурные взрывы</translation>
+        </message>
+        <message>
+            <source>No report data for the selected period</source>
+            <translation>Нет данных отчёта за выбранный период</translation>
+        </message>
+        <message>
+            <source>Active geometry revision</source>
+            <translation>Активная ревизия геометрии</translation>
+        </message>
+        <message>
+            <source>Source geometry file</source>
+            <translation>Исходный файл геометрии</translation>
+        </message>
+        <message>
+            <source>Imported date</source>
+            <translation>Дата импорта</translation>
+        </message>
+        <message>
+            <source>Elevation interval</source>
+            <translation>Интервал высот</translation>
+        </message>
+        <message>
+            <source>Project Lines Dataset</source>
+            <translation>Набор проектных линий</translation>
+        </message>
+        <message>
+            <source>Evaluation status</source>
+            <translation>Статус оценки</translation>
+        </message>
+        <message>
+            <source>Confirmed linked events count</source>
+            <translation>Подтверждённых связанных событий</translation>
+        </message>
+        <message>
+            <source>Add files</source>
+            <translation>Добавить файлы</translation>
+        </message>
+        <message>
+            <source>The file will be removed from the database and disk.</source>
+            <translation>Файл будет удалён из базы данных и с диска.</translation>
+        </message>
     </context>
 </TS>

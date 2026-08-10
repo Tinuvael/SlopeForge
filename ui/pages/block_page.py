@@ -27,6 +27,9 @@ from ui.pages.technical_card_widgets import (ActualExecutionEditorWidget,
     BlastDesignEditorWidget, GeomechanicsEditorWidget, TechnicalCardEditorWidget)
 
 
+class _NullAttachmentService:
+    def list_for_owner(self,*args):return []
+
 class BlockPage(QWidget):
     data_changed = Signal()
 
@@ -111,10 +114,12 @@ class BlockPage(QWidget):
         self.refresh()
 
     def _make_attachment_tab(self,kind):
-        page=QWidget(); layout=QVBoxLayout(page); label=QLabel(tr("No photos yet") if kind=="photo" else "No documents yet")
-        button=QPushButton(tr("Manage photos") if kind=="photo" else "Manage documents")
-        button.setEnabled(False); button.clicked.connect(lambda _checked=False,k=kind:self._open_attachments(k))
-        layout.addWidget(label); layout.addWidget(button); layout.addStretch(); return page,label,button
+        from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget
+        page=QWidget(); layout=QVBoxLayout(page); manager=EntityAttachmentManagerWidget(_NullAttachmentService(),"blast_event",None,kind,page,read_only=True); layout.addWidget(manager)
+        manager.changed.connect(lambda:self._render_current_block())
+        if kind=="photo":self.photo_manager=manager
+        else:self.document_manager=manager
+        return page,QLabel(),manager.mutation_buttons[0]
 
     def set_filters(self, filters: dict) -> None:
         self.filters = filters
@@ -157,6 +162,10 @@ class BlockPage(QWidget):
         documents = self.entity_controller.attachments.list_for_owner("blast_event", event.id, "document") if event else []
         photo_count, document_count = self.entity_controller.attachments.counts("blast_event", event.id) if event else (0, 0)
         attachments_available = event is not None
+        for manager in (self.photo_manager,self.document_manager):
+            manager.service=self.entity_controller.attachments if self.entity_controller else _NullAttachmentService(); manager.owner_id=event.id if event else None; manager.read_only=not self.context.current_user.can_edit or bool(block and block.is_archived)
+            for button in manager.mutation_buttons:button.setEnabled(attachments_available and not manager.read_only)
+            manager.refresh()
         self.photos.add_button.setEnabled(attachments_available)
         self.documents.add_button.setEnabled(attachments_available)
         self.manage_photos_button.setEnabled(attachments_available)
@@ -175,22 +184,7 @@ class BlockPage(QWidget):
         self._render_engineering(block)
 
     def _open_attachments(self, kind):
-        if not self.current_block or not self.entity_controller:
-            return
-        event = self.entity_controller.event_for_block(self.current_block.id)
-        if event is None:
-            return
-        from ui.dialogs.entity_attachment_dialog import EntityAttachmentDialog
-        dialog = EntityAttachmentDialog(
-            self.entity_controller.attachments,
-            "blast_event",
-            event.id,
-            self,
-            read_only=not self.context.current_user.can_edit or self.current_block.is_archived,
-        )
-        dialog.tabs.setCurrentIndex(0 if kind == "photo" else 1)
-        dialog.exec()
-        self._render_current_block()
+        self.tabs.setCurrentWidget(self.photos_tab if kind=="photo" else self.documents_tab)
 
     def _replace_tab(self, old, new, title):
         index=self.tabs.indexOf(old); self.tabs.removeTab(index); self.tabs.insertTab(index,new,title); return new

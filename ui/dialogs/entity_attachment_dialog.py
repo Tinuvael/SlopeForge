@@ -7,7 +7,7 @@ from ui.presentation_labels import domain_message
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QComboBox, QDateEdit, QDialog, QFileDialog, QFormLayout,
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QTabWidget,
@@ -57,85 +57,82 @@ class PhotoViewer(QDialog):
     def next(self): self.current = (self.current + 1) % len(self.photos); self.show_photo()
 
 
-class EntityAttachmentDialog(QDialog):
-    def __init__(self, service, owner_type, owner_id, parent=None, read_only=False, unsaved=False):
-        super().__init__(parent); self.service, self.owner_type, self.owner_id = service, owner_type, owner_id
-        self.read_only, self.unsaved = read_only, unsaved
-        self.setWindowTitle(tr("Photos and documents")); self.resize(1000, 600); root = QVBoxLayout(self)
-        if owner_type == "assessment_evaluation":
-            info = QLabel(tr("Files belong to the assessment and are shared by all revisions.")); info.setStyleSheet("background:#eef5ff;padding:8px"); root.addWidget(info)
-        if unsaved:
-            warning = QLabel(tr("Save an assessment draft before adding files.")); warning.setStyleSheet("color:#9b5c00"); root.addWidget(warning)
-        sort = QHBoxLayout(); sort.addWidget(QLabel(tr("Sort by:"))); self.sort_combo = QComboBox(); self.sort_combo.addItems(["Date", "Title", "Category", "Size"]); self.sort_combo.currentIndexChanged.connect(self.refresh); sort.addWidget(self.sort_combo); sort.addStretch(); root.addLayout(sort)
-        self.tabs = QTabWidget(); root.addWidget(self.tabs)
-        self.tables = {}
-        self.mutation_buttons = []
-        for kind, caption in (("photo", "Photos"), ("document", "Documents")):
-            page = QWidget(); layout = QVBoxLayout(page); table = QTableWidget(); table.setColumnCount(7); table.setHorizontalHeaderLabels([tr("Preview"), tr("Title"), tr("Date"), tr("Category"), tr("Original file"), tr("Description"), tr("Size")]); table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.cellDoubleClicked.connect(lambda row, _col, k=kind: self.open_selected(k, row)); layout.addWidget(table)
-            actions = QHBoxLayout()
-            for text, handler in (("Add", lambda _=False, k=kind: self.add(k)), ("Open", lambda _=False, k=kind: self.open_selected(k)), ("Open folder", self.open_folder), ("Edit metadata", lambda _=False, k=kind: self.edit(k)), ("Delete", lambda _=False, k=kind: self.delete(k))):
-                button = QPushButton(text); button.clicked.connect(handler); actions.addWidget(button)
-                if text in {"Add", "Edit metadata", "Delete"}:
-                    button.setEnabled(not read_only and not unsaved)
-                    self.mutation_buttons.append(button)
-            actions.addStretch(); layout.addLayout(actions); self.tables[kind] = table; self.tabs.addTab(page, caption)
-        close = QPushButton(tr("Close")); close.clicked.connect(self.accept); root.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight); self.refresh()
-
-    def _items(self, kind):
-        values = self.service.list_for_owner(self.owner_type, self.owner_id, kind)
-        key = self.sort_combo.currentIndex()
-        if key == 1: return sorted(values, key=lambda a: a.title.casefold())
-        if key == 2: return sorted(values, key=lambda a: (a.subtype, a.title.casefold()))
-        if key == 3: return sorted(values, key=lambda a: (-a.file_size_bytes, a.title.casefold()))
+class EntityAttachmentManagerWidget(QWidget):
+    """Embeddable manager for exactly one attachment kind."""
+    changed = Signal()
+    def __init__(self, service, owner_type, owner_id, kind, parent=None, read_only=False, unsaved=False, ensure_owner=None):
+        super().__init__(parent); self.service, self.owner_type, self.owner_id, self.kind = service, owner_type, owner_id, kind
+        self.read_only, self.unsaved, self.ensure_owner = read_only, unsaved, ensure_owner
+        root=QVBoxLayout(self)
+        sort=QHBoxLayout(); sort.addWidget(QLabel(tr("Sort by:"))); self.sort_combo=QComboBox(); self.sort_combo.addItems([tr("Date"),tr("Title"),tr("Category"),tr("Size")]); self.sort_combo.currentIndexChanged.connect(self.refresh); sort.addWidget(self.sort_combo); sort.addStretch(); root.addLayout(sort)
+        self.table=QTableWidget(); self.table.setColumnCount(7); self.table.setHorizontalHeaderLabels([tr("Preview"),tr("Title"),tr("Date"),tr("Category"),tr("Original file"),tr("Description"),tr("Size")]); self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.table.cellDoubleClicked.connect(lambda row,_col:self.open_selected(row)); root.addWidget(self.table)
+        actions=QHBoxLayout(); self.mutation_buttons=[]
+        for text_,handler,mutation in (("Add",self.add,True),("Open",self.open_selected,False),("Open folder",self.open_folder,False),("Edit metadata",self.edit,True),("Delete",self.delete,True)):
+            button=QPushButton(tr(text_)); button.clicked.connect(handler); button.setEnabled(not mutation or (not read_only and not unsaved)); actions.addWidget(button)
+            if mutation:self.mutation_buttons.append(button)
+        actions.addStretch(); root.addLayout(actions); self.refresh()
+    def _items(self):
+        if not self.owner_id:return []
+        values=self.service.list_for_owner(self.owner_type,self.owner_id,self.kind); key=self.sort_combo.currentIndex()
+        if key==1:return sorted(values,key=lambda a:a.title.casefold())
+        if key==2:return sorted(values,key=lambda a:(a.subtype,a.title.casefold()))
+        if key==3:return sorted(values,key=lambda a:(-a.file_size_bytes,a.title.casefold()))
         return values
-
     def refresh(self):
-        labels = dict(sum(ATTACHMENT_CATEGORIES.values(), []))
-        for kind, table in self.tables.items():
-            items = self._items(kind); table.setRowCount(len(items))
-            for row, item in enumerate(items):
-                missing = self.service.is_missing(item); preview = QLabel(tr("File is missing") if missing else "")
-                if kind == "photo" and not missing:
-                    pix = QPixmap(str(self.service.resolve_path(item))); preview.setPixmap(pix.scaled(80, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                table.setCellWidget(row, 0, preview)
-                category = item.custom_subtype if item.subtype == "other" and item.custom_subtype else labels.get(item.subtype, item.subtype)
-                for column, value in enumerate((item.title, item.file_date.isoformat(), category, item.original_filename, item.description, self._size(item.file_size_bytes)), 1):
-                    cell = QTableWidgetItem(value); cell.setData(Qt.ItemDataRole.UserRole, item.id); table.setItem(row, column, cell)
-            table.resizeColumnsToContents()
-
+        labels=dict(sum(ATTACHMENT_CATEGORIES.values(),[])); items=self._items(); self.table.setRowCount(len(items))
+        for row,item in enumerate(items):
+            missing=self.service.is_missing(item); preview=QLabel(tr("File is missing") if missing else "")
+            if self.kind=="photo" and not missing:preview.setPixmap(QPixmap(str(self.service.resolve_path(item))).scaled(80,60,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+            self.table.setCellWidget(row,0,preview); category=item.custom_subtype if item.subtype=="other" and item.custom_subtype else labels.get(item.subtype,item.subtype)
+            for column,value in enumerate((item.title,item.file_date.isoformat(),category,item.original_filename,item.description,self._size(item.file_size_bytes)),1):
+                cell=QTableWidgetItem(value); cell.setData(Qt.ItemDataRole.UserRole,item.id); self.table.setItem(row,column,cell)
+        self.table.resizeColumnsToContents()
     @staticmethod
-    def _size(value): return f"{value / 1024:.1f} KB" if value < 1024 ** 2 else f"{value / 1024 ** 2:.1f} MB"
-    def _selected(self, kind, row=None):
-        table = self.tables[kind]; row = table.currentRow() if row is None else row
-        if row < 0 or not table.item(row, 1): return None
-        ident = table.item(row, 1).data(Qt.ItemDataRole.UserRole)
-        return next((a for a in self._items(kind) if a.id == ident), None)
-    def add(self, kind):
-        filters = "Photos (*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff)" if kind == "photo" else "Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip);;All files (*)"
-        paths, selected_filter = QFileDialog.getOpenFileNames(self, "Add files", "", filters)
-        if not paths: return
-        if kind == "photo" and any(Path(p).suffix.lower() not in PHOTO_EXTENSIONS for p in paths): QMessageBox.warning(self, tr("Format"), tr("The selected photo format is not supported.")); return
-        if kind == "document" and selected_filter == "All files (*)" and QMessageBox.question(self, tr("Other format"), tr("SlopeForge may not be able to preview this file. Add it anyway?")) != QMessageBox.StandardButton.Yes: return
-        editor = AttachmentMetadataDialog(self.owner_type, kind, parent=self)
-        if editor.exec() != QDialog.DialogCode.Accepted: return
-        try: self.service.add_files(self.owner_type, self.owner_id, kind, paths, editor.values()); self.refresh()
-        except Exception as exc: QMessageBox.critical(self, tr("Copy error"), domain_message(str(exc)))
-    def open_selected(self, kind, row=None):
-        item = self._selected(kind, row)
-        if not item: return
-        if self.service.is_missing(item): QMessageBox.warning(self, tr("File is missing"), tr("The file is missing from disk.")); return
-        if kind == "photo": PhotoViewer(self.service, [a for a in self._items(kind) if not self.service.is_missing(a)], [a.id for a in self._items(kind) if not self.service.is_missing(a)].index(item.id), self).exec()
-        else: self.service.open_file(item)
-    def open_folder(self): self.service.open_owner_folder(self.owner_type, self.owner_id)
-    def edit(self, kind):
-        item = self._selected(kind)
-        if not item: return
-        dialog = AttachmentMetadataDialog(self.owner_type, kind, item, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted: self.service.update_metadata(item.id, **dialog.values()); self.refresh()
-    def delete(self, kind):
-        item = self._selected(kind)
-        if not item: return
-        box = QMessageBox(QMessageBox.Icon.Warning, "Delete", "The file will be removed from the database and disk.", parent=self); delete = box.addButton("Delete", QMessageBox.ButtonRole.DestructiveRole); box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole); box.exec()
-        if box.clickedButton() is delete:
-            try: self.service.delete_attachment(item.id); self.refresh()
-            except Exception as exc: QMessageBox.critical(self, tr("Delete error"), domain_message(str(exc)))
+    def _size(value):return f"{value/1024:.1f} KB" if value<1024**2 else f"{value/1024**2:.1f} MB"
+    def _selected(self,row=None):
+        row=self.table.currentRow() if row is None or isinstance(row,bool) else row
+        if row<0 or not self.table.item(row,1):return None
+        ident=self.table.item(row,1).data(Qt.ItemDataRole.UserRole); return next((a for a in self._items() if a.id==ident),None)
+    def _ensure_owner(self):
+        if self.owner_id:return True
+        if not self.ensure_owner:return False
+        owner=self.ensure_owner(); self.owner_id=getattr(owner,"id",owner); return bool(self.owner_id)
+    def add(self,_checked=False):
+        if not self._ensure_owner():return
+        filters="Photos (*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff)" if self.kind=="photo" else "Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip);;All files (*)"
+        paths,selected_filter=QFileDialog.getOpenFileNames(self,tr("Add files"),"",filters)
+        if not paths:return
+        if self.kind=="photo" and any(Path(p).suffix.lower() not in PHOTO_EXTENSIONS for p in paths):QMessageBox.warning(self,tr("Format"),tr("The selected photo format is not supported.")); return
+        editor=AttachmentMetadataDialog(self.owner_type,self.kind,parent=self)
+        if editor.exec()!=QDialog.DialogCode.Accepted:return
+        try:self.service.add_files(self.owner_type,self.owner_id,self.kind,paths,editor.values()); self.refresh(); self.changed.emit()
+        except Exception as exc:QMessageBox.critical(self,tr("Copy error"),domain_message(str(exc)))
+    def open_selected(self,row=None):
+        item=self._selected(row)
+        if not item:return
+        if self.service.is_missing(item):QMessageBox.warning(self,tr("File is missing"),tr("The file is missing from disk.")); return
+        if self.kind=="photo":
+            photos=[a for a in self._items() if not self.service.is_missing(a)]; PhotoViewer(self.service,photos,[a.id for a in photos].index(item.id),self).exec()
+        else:self.service.open_file(item)
+    def open_folder(self,_checked=False):
+        if self.owner_id:self.service.open_owner_folder(self.owner_type,self.owner_id)
+    def edit(self,_checked=False):
+        item=self._selected()
+        if not item:return
+        dialog=AttachmentMetadataDialog(self.owner_type,self.kind,item,self)
+        if dialog.exec()==QDialog.DialogCode.Accepted:self.service.update_metadata(item.id,**dialog.values()); self.refresh(); self.changed.emit()
+    def delete(self,_checked=False):
+        item=self._selected()
+        if not item:return
+        box=QMessageBox(QMessageBox.Icon.Warning,tr("Delete"),tr("The file will be removed from the database and disk."),parent=self); delete=box.addButton(tr("Delete"),QMessageBox.ButtonRole.DestructiveRole); box.addButton(tr("Cancel"),QMessageBox.ButtonRole.RejectRole); box.exec()
+        if box.clickedButton() is delete:self.service.delete_attachment(item.id); self.refresh(); self.changed.emit()
+
+class EntityAttachmentDialog(QDialog):
+    """Compatibility wrapper retained for legacy callers."""
+    def __init__(self,service,owner_type,owner_id,parent=None,read_only=False,unsaved=False):
+        super().__init__(parent); self.setWindowTitle(tr("Photos and documents")); self.resize(1000,600); root=QVBoxLayout(self); self.tabs=QTabWidget(); self.tables={}; self.mutation_buttons=[]
+        for kind,caption in (("photo",tr("Photos")),("document",tr("Documents"))):
+            manager=EntityAttachmentManagerWidget(service,owner_type,owner_id,kind,self,read_only,unsaved); self.tabs.addTab(manager,caption); self.tables[kind]=manager.table; self.mutation_buttons.extend(manager.mutation_buttons)
+        root.addWidget(self.tabs); close=QPushButton(tr("Close")); close.clicked.connect(self.accept); root.addWidget(close,alignment=Qt.AlignmentFlag.AlignRight)
+    def refresh(self):
+        for i in range(self.tabs.count()):self.tabs.widget(i).refresh()

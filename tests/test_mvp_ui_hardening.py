@@ -48,7 +48,7 @@ def test_attachment_owner_ids_are_the_domain_owner_ids():
     area = source("ui/pages/assessment_area_page.py")
     assert '"blast_event", event.id' in block
     assert '"blast_event",self.blast_event.id' in contour
-    assert '"assessment_evaluation",self.evaluation.id' in area
+    assert '"assessment_evaluation",owner_id' in area
     assert "AttachmentRepository" not in block
 
 
@@ -325,7 +325,8 @@ def test_assessment_attachment_ui_has_no_saved_revision_gate():
     area = source("ui/pages/assessment_area_page.py")
     assert "Save an assessment draft first" not in area
     assert "ensure_evaluation_owner" in area
-    assert 'dialog.tabs.setCurrentIndex(0 if kind=="photo" else 1)' in area
+    assert "EntityAttachmentManagerWidget" in area
+    assert "ensure_owner=ensure_owner" in area
 
 
 def test_block_attachment_tabs_are_real_and_ordered():

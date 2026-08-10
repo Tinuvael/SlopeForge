@@ -21,6 +21,7 @@ class MainWindow(QMainWindow):
         self.header=Header(context); self.domain_repo=DomainRepository(context.session_factory); self.project_service=ProjectService(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory)
         self.tree.site_selected.connect(self.select_site); self.tree.domain_selected.connect(self.select_domain); self.tree.block_selected.connect(self.open_block_from_tree); self.tree.contour_event_selected.connect(self.open_contour_from_tree); self.tree.assessment_area_selected.connect(self.open_area_from_tree)
         self.header.add_project_requested.connect(self._add_project); self.header.add_domain_requested.connect(self._add_domain); self.header.add_blast_event_requested.connect(self._add_blast_event); self.header.add_assessment_area_requested.connect(self._add_area)
+        self.header.report_requested.connect(self._project_report)
         self.header.search.textChanged.connect(self._sync_tree_search)
         self.tree.search.textChanged.connect(self._sync_header_search)
         self.header.archive_requested.connect(self._archive_selected)
@@ -123,6 +124,10 @@ class MainWindow(QMainWindow):
                     QMessageBox.warning(self,tr("Project created without lines"),f"The project was created, but Project Lines were not saved: {domain_message(str(exc))}\nImport them again from the project page.")
             self.refresh_project_data(); self.select_site(site_id,d.name.text())
         except Exception as exc: QMessageBox.warning(self,tr("Could not create project"),domain_message(str(exc)))
+    def _project_report(self):
+        if self.selected_site_id is None:return
+        from ui.dialogs.project_report_dialog import ProjectReportDialog
+        ProjectReportDialog(self.context,self.selected_site_id,self.selected_site_name or tr("Project"),self).exec()
     def _add_domain(self):
         if self.selected_site_id is None:return
         from ui.add_dialog import AddDialog
