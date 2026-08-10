@@ -394,3 +394,63 @@ def test_atomic_production_creation_commits_link_and_audit(session_factory, asse
     assert blocks[0].block_number == "P-success" and blocks[0].horizon_m == 100
     assert blocks[0].status == "planned" and blocks[0].comment is None
     assert audits[0].action == "create" and audits[0].description == "Создан взрывной блок"
+
+
+@pytest.mark.parametrize("failure_stage", ["after_block_flush", "after_state_replace", "before_commit"])
+def test_atomic_production_failure_preserves_preexisting_rich_state(
+    session_factory, assessment_context, tmp_path, failure_stage,
+):
+    """Rollback restores the old workspace graph, not only an initially empty Domain."""
+    from application.use_cases.create_blast_event import CreateBlastEvent, CreateBlastEventCommand
+    from database.models import AuditLogEntry
+    from infrastructure.db.blast_event_creation import SqlAlchemyBlastEventCreationPersistence
+
+    repository = AssessmentStateRepository(session_factory)
+    original = build_rich_state()
+    persist_project_lines(session_factory, assessment_context.site_id, original)
+    with session_factory.begin() as session:
+        existing_block = BlastBlock(
+            domain_id=assessment_context.domain_id,
+            block_number="P-existing",
+            horizon_m=100,
+            planned_blast_date=None,
+            status="planned",
+            comment=None,
+            created_by_user_id=None,
+        )
+        session.add(existing_block)
+        session.flush()
+        original.blast_events[0].blast_block_id = existing_block.id
+        existing_block_id = existing_block.id
+    before = repository.replace_for_domain(assessment_context.domain_id, original)
+    before_payload = semantic(before.state)
+
+    path = tmp_path / "production-over-rich-state.csv"
+    path.write_text(
+        "SID,PTN,X,Y,Z\nA,1,0,0,100\nA,2,10,0,100\n"
+        "A,3,10,10,100\nA,4,0,10,100\nA,5,0,0,100\n"
+    )
+
+    def fail(stage):
+        if stage == failure_stage:
+            raise RuntimeError(f"injected failure: {stage}")
+
+    use_case = CreateBlastEvent(
+        SqlAlchemyBlastEventCreationPersistence(session_factory, failure_hook=fail))
+    with pytest.raises(RuntimeError, match="injected failure"):
+        use_case.execute(CreateBlastEventCommand(
+            assessment_context.domain_id, "P-new", "production", None, 100,
+            str(path), None, True,
+        ))
+
+    after = repository.load_for_domain(assessment_context.domain_id)
+    assert after.workspace_id == before.workspace_id
+    assert semantic(after.state) == before_payload
+    assert after.state.blast_events[0].blast_block_id == existing_block_id
+    with session_factory() as session:
+        domain_block_ids = select(BlastBlock.id).where(
+            BlastBlock.domain_id == assessment_context.domain_id)
+        assert session.scalar(select(func.count()).select_from(BlastBlock).where(
+            BlastBlock.domain_id == assessment_context.domain_id)) == 1
+        assert session.scalar(select(func.count()).select_from(AuditLogEntry).where(
+            AuditLogEntry.blast_block_id.in_(domain_block_ids))) == 0
