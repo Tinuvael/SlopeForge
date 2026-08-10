@@ -47,10 +47,13 @@ SQL report query находится в `infrastructure/db/project_report.py`, а
 `ProjectReportService` были активными, но misplaced; после переноса единственных
 production callers они удалены, а реализация не дублируется.
 
-Phase 5 следующая. Phase 4 **не решила** persistence debt: остаются
-`AssessmentDomainState`, `AssessmentStateRepository.replace_for_domain()`,
-delete/recreate `AssessmentWorkspace`, coarse replace-all writes, отсутствие focused
-repositories/Unit of Work и риск concurrency/lost updates.
+**Phase 5A COMPLETE; Phase 5 NOT COMPLETE.** Публичный whole-state контракт
+`AssessmentDomainState` / `replace_for_domain()` пока сохранён, но его реализация
+теперь синхронизирует существующий relational graph на месте. Удаление и повторное
+создание `AssessmentWorkspace` устранено; workspace и неизменившиеся дочерние
+сущности/ревизии сохраняют DB PK, а rollback остаётся транзакционным. Остаются
+coarse whole-state application writes, отсутствие focused persistence workflows и
+риск concurrency/lost updates.
 
 ## Неподвижные правила продукта
 
@@ -186,23 +189,29 @@ context должны стать явными application use cases в Phase 4.
 
 ## Hotspot: `AssessmentStateRepository`
 
-`replace_for_domain()` сначала валидирует весь `AssessmentDomainState`, затем в
-одном `session.begin()` проверяет Domain, загружает прежний Workspace, удаляет его
-с cascade, делает `flush`, создаёт новый Workspace и заново вставляет весь граф.
-Реконструируются BlastEvent, все blast geometry revisions, event links, Technical
-Card и revisions, Assessment Area и geometry revisions, evaluations/revisions и
-assessment attachments. Site-wide ProjectLines datasets только читаются и
-проверяются; Domain save их не переписывает. После insert граф перечитывается до
-commit. Исключение откатывает всю транзакцию.
+Классификация кода на входе в 5A: repository и mapper **active, но misplaced**
+(остаются в старом верхнеуровневом package ради малого безопасного diff);
+`infrastructure.db.assessment_state` и session-aware production adapter **active**;
+application port и `AssessmentEditingSession` **active**; публичные whole-state
+`replace_for_domain*` / `AssessmentStatePersistence.save` **compatibility-only, но
+active** до 5B/5C. Dead persistence paths в затронутом графе не обнаружены и
+активная совместимость не удалялась.
 
-Плюсы MVP-подхода: один простой round-trip contract, атомарность, стабильные
-domain IDs, лёгкое восстановление in-memory state, отсутствие частично
-сохранённого графа. Риски: любое малое изменение вызывает delete/reinsert всего
-Domain graph; меняются DB primary keys/workspace ID; растут lock/write volume и
-стоимость загрузки; cascade усложняет внешние ссылки; параллельные редакторы могут
-перезаписать изменения; attachment rows тоже пересоздаются. Для прототипа это
-разумно, но с ростом истории и интеграций станет плохо масштабироваться. Phase 5
-добавит focused operations и понятную Unit of Work, не раньше стабилизации use cases.
+В Phase 5A `replace_for_domain()` по-прежнему валидирует полный
+`AssessmentDomainState` и сохраняет один round-trip contract. Внутри транзакции
+`replace_for_domain_in_session()` получает или один раз создаёт Workspace, затем
+явно сопоставляет events, areas, revisions, cards, evaluations, links и attachments
+по стабильным строковым domain ID. Найденные строки обновляются, новые вставляются,
+а отсутствующие удаляются в порядке leaf/dependent → container → revision → parent.
+Перед переносом active revision старые active-флаги очищаются отдельным flush, что
+не нарушает partial unique indexes. После sync граф перечитывается до commit.
+
+Project Lines остаются Site-wide history: repository только проверяет ссылки и не
+переписывает dataset rows. BlastBlock остаётся внешним к workspace graph: sync может
+обновить только FK события, но не lifecycle или engineering data блока. Исключение
+откатывает все in-place изменения вместе с Block/audit вызывающей транзакции.
+Главный оставшийся риск — whole-state lost update при параллельном редактировании;
+Phase 5A не добавляет version/concurrency token и не притворяется, что решает его.
 
 ## Hotspot: `AssessmentDomainState`
 

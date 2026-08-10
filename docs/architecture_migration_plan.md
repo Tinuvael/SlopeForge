@@ -157,4 +157,25 @@ UI controller только делегирует эти workflows и пока с�
 
 **Phase 4C завершена:** Project creation с optional Project Lines, Domain creation, navigation queries, report collect/write и Assessment geometry commit теперь application-owned. Старые misplaced Project/report services удалены. **PHASE 4 COMPLETE.**
 
-**Phase 5 следующая:** сохраняющийся долг — `AssessmentDomainState`, `AssessmentStateRepository.replace_for_domain()`, delete/recreate `AssessmentWorkspace`, coarse replace-all writes, отсутствие focused repositories/UoW и concurrency/lost-update risk.
+## Результат Phase 5A и оставшийся долг
+
+**Phase 5A COMPLETE; Phase 5 NOT COMPLETE.** Совместимый whole-state API сохранён,
+но `AssessmentStateRepository` больше не удаляет Workspace. Первый save создаёт
+его, последующие используют тот же PK и синхронизируют строки по logical ID на
+месте. Неизменные entity/revision PK стабильны, omitted subtree удаляется в
+dependency-safe порядке, active flags переключаются через отдельное очистительное
+flush, а caller-owned transaction по-прежнему полностью откатывает graph,
+BlastBlock и audit. Миграции схемы нет.
+
+**Phase 5B:** заменить обычные application whole-state saves focused workflows:
+BlastEvent header/geometry, archive state, Technical Card revision, Assessment Area
+geometry revision, Assessment Event Links, Evaluation revision и attachment
+metadata/owner. Маленький application Unit of Work вводить только там, где одна
+операция действительно меняет несколько сущностей атомарно. В 5A это не сделано.
+
+**Phase 5C:** убрать обычное использование `replace_for_domain()` и совместимый
+`AssessmentStatePersistence.save`; добавить защиту от lost updates (пригодный
+optimistic version/token), удалить устаревшие compatibility persistence paths и
+добавить финальные architecture ratchets. Удаление AssessmentWorkspace, legacy
+Mine, redesign attachments и крупные переименования БД остаются отдельной schema /
+product cleanup, а не частью Phase 5A.
