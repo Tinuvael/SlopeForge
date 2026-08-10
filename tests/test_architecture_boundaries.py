@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PRODUCTION_ROOTS = ("app", "database", "repositories", "services", "reports", "prototype_2d", "ui", "widgets")
+PRODUCTION_ROOTS = ("app", "database", "domain", "infrastructure", "repositories", "services", "reports", "prototype_2d", "ui", "widgets")
 
 # Temporary compatibility debt.  Every entry should disappear in a later phase;
 # additions require an architecture review rather than silently widening the net.
@@ -26,6 +26,17 @@ ARCHITECTURE_DEBT_ALLOWLIST = {
     },
 }
 
+MIGRATED_GEOMETRY_SYMBOLS = {
+    "DatamineLine",
+    "DataminePoint",
+    "PlanGeometry",
+    "PlanLineString",
+    "PlanMultiPoint",
+    "PlanPoint",
+    "PlanPolygon",
+    "plan_geometry_from_dict",
+}
+
 
 def production_files() -> list[Path]:
     return sorted(path for root in PRODUCTION_ROOTS for path in (ROOT / root).rglob("*.py"))
@@ -39,6 +50,16 @@ def imports(path: Path) -> set[str]:
         elif isinstance(node, ast.ImportFrom) and node.module:
             result.add(node.module)
     return result
+
+
+def imported_names(path: Path, module: str) -> set[str]:
+    """Return names imported with ``from module import ...``."""
+    return {
+        alias.name
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.ImportFrom) and node.module == module
+        for alias in node.names
+    }
 
 
 def relative(path: Path) -> str:
@@ -102,6 +123,44 @@ def test_pure_algorithm_modules_do_not_import_persistence_frameworks() -> None:
         for path in candidates
         if any(name == "database" or name.startswith(("database.", "sqlalchemy"))
                for name in imports(path))
+    }
+    assert offenders == set()
+
+
+def test_geometry_domain_is_framework_and_infrastructure_free() -> None:
+    candidates = list((ROOT / "domain/geometry").rglob("*.py"))
+    candidates.append(ROOT / "domain/project/domain_geometry.py")
+    forbidden = ("PySide6", "sqlalchemy", "database", "repositories", "infrastructure", "ui")
+    offenders = {relative(path) for path in candidates
+                 if any(name == item or name.startswith(item + ".")
+                        for name in imports(path) for item in forbidden)}
+    assert offenders == set()
+
+
+def test_geometry_import_adapters_do_not_import_ui() -> None:
+    offenders = {relative(path) for path in (ROOT / "infrastructure/geometry_import").rglob("*.py")
+                 if any(name == "PySide6" or name.startswith(("PySide6.", "ui."))
+                        for name in imports(path))}
+    assert offenders == set()
+
+
+def test_removed_prototype_geometry_modules_do_not_return() -> None:
+    modules = {"models", "geometry", "domain_geometry", "csv_importer", "dxf_importer",
+               "line_geometry_importer", "blast_geometry"}
+    assert not {name for name in modules if (ROOT / "prototype_2d" / f"{name}.py").exists()}
+    forbidden = {f"prototype_2d.{name}" for name in modules}
+    offenders = {relative(path) for path in production_files() if imports(path) & forbidden}
+    assert offenders == set()
+
+
+def test_migrated_geometry_symbols_use_the_canonical_module() -> None:
+    """Keep callers off the temporary Phase 3A compatibility re-export."""
+    bridge = ROOT / "prototype_2d/domain.py"
+    candidates = set(production_files()) | set((ROOT / "tests").rglob("*.py"))
+    offenders = {
+        relative(path)
+        for path in candidates - {bridge}
+        if imported_names(path, "prototype_2d.domain") & MIGRATED_GEOMETRY_SYMBOLS
     }
     assert offenders == set()
 

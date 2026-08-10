@@ -1,10 +1,10 @@
 from pathlib import Path
 import pytest
-from prototype_2d.domain import PlanPoint,PlanPolygon
-from prototype_2d.domain_geometry import DomainGeometryValidationError,build_domain_polygons
-from prototype_2d.geometry import validate_simple_polygon
-from prototype_2d.line_geometry_importer import import_line_geometry
-from prototype_2d.models import DatamineLine,DataminePoint
+from domain.geometry.types import PlanPoint, PlanPolygon
+from domain.project.domain_geometry import DomainGeometryValidationError,build_domain_polygons
+from domain.geometry.operations import validate_simple_polygon
+from infrastructure.geometry_import.lines import import_line_geometry
+from domain.geometry.types import DatamineLine,DataminePoint
 
 def line(points,identifier="L",order=0):
     return DatamineLine(identifier,[DataminePoint(x,y,z,i) for i,(x,y,z) in enumerate(points)],import_order=order)

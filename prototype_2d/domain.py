@@ -6,7 +6,11 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 from typing import Any, Literal, TypeAlias
 
-from .models import DatamineLine
+# Phase 3A compatibility bridge; remove when the remaining domain model moves in Phase 3B.
+from domain.geometry.types import (
+    DatamineLine, PlanGeometry, PlanLineString, PlanMultiPoint, PlanPoint,
+    PlanPolygon, plan_geometry_from_dict,
+)
 
 
 def utc_now() -> datetime:
@@ -19,89 +23,6 @@ def _datetime_to_text(value: datetime | None) -> str | None:
 
 def _datetime_from_text(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
-
-
-@dataclass(frozen=True)
-class PlanPoint:
-    x: float
-    y: float
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"type": "Point", "coordinates": [self.x, self.y]}
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PlanPoint":
-        x, y = data["coordinates"]
-        return cls(float(x), float(y))
-
-
-@dataclass(frozen=True)
-class PlanLineString:
-    points: tuple[PlanPoint, ...]
-
-    def __post_init__(self) -> None:
-        if len(self.points) < 2:
-            raise ValueError("LineString requires at least two points")
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"type": "LineString", "coordinates": [[point.x, point.y] for point in self.points]}
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PlanLineString":
-        return cls(tuple(PlanPoint(float(x), float(y)) for x, y in data["coordinates"]))
-
-
-@dataclass(frozen=True)
-class PlanPolygon:
-    ring: tuple[PlanPoint, ...]
-
-    def __post_init__(self) -> None:
-        if len(self.ring) < 4:
-            raise ValueError("Polygon ring requires at least three vertices and a closing point")
-        if self.ring[0] != self.ring[-1]:
-            raise ValueError("Polygon ring must be closed")
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"type": "Polygon", "coordinates": [[[point.x, point.y] for point in self.ring]]}
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PlanPolygon":
-        coordinates = data["coordinates"][0]
-        return cls(tuple(PlanPoint(float(x), float(y)) for x, y in coordinates))
-
-
-@dataclass(frozen=True)
-class PlanMultiPoint:
-    points: tuple[PlanPoint, ...]
-
-    def __post_init__(self) -> None:
-        if not self.points:
-            raise ValueError("MultiPoint requires at least one point")
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"type": "MultiPoint", "coordinates": [[point.x, point.y] for point in self.points]}
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PlanMultiPoint":
-        return cls(tuple(PlanPoint(float(x), float(y)) for x, y in data["coordinates"]))
-
-
-PlanGeometry: TypeAlias = PlanPoint | PlanLineString | PlanPolygon | PlanMultiPoint
-
-
-def plan_geometry_from_dict(data: dict[str, Any]) -> PlanGeometry:
-    geometry_type = data.get("type")
-    factories = {
-        "Point": PlanPoint.from_dict,
-        "LineString": PlanLineString.from_dict,
-        "Polygon": PlanPolygon.from_dict,
-        "MultiPoint": PlanMultiPoint.from_dict,
-    }
-    try:
-        return factories[geometry_type](data)
-    except KeyError as exc:
-        raise ValueError(f"Unsupported plan geometry type: {geometry_type!r}") from exc
-
 
 @dataclass
 class ProjectLinesDataset:

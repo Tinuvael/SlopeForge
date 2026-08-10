@@ -5,8 +5,8 @@ from math import sqrt
 from statistics import median
 from typing import Sequence
 
-from .domain import PlanMultiPoint, PlanPoint, PlanPolygon
-from .models import DatamineLine, DataminePoint
+from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
+from domain.geometry.types import DatamineLine, DataminePoint
 
 
 class BlastGeometryError(ValueError):

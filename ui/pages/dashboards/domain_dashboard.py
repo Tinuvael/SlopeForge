@@ -6,8 +6,8 @@ from PySide6.QtWidgets import QFileDialog,QGridLayout,QHBoxLayout,QHeaderView,QL
 from app.icons.ui.ui_icons import ui_icon
 from repositories.dashboard_repository import DashboardRepository
 from repositories.domain_geometry_repository import DomainGeometryRepository
-from prototype_2d.domain_geometry import build_domain_polygons
-from prototype_2d.line_geometry_importer import import_line_geometry
+from domain.project.domain_geometry import build_domain_polygons
+from infrastructure.geometry_import.lines import import_line_geometry
 from ui.dialogs.domain_geometry_editor import DomainGeometryEditorDialog
 from ui.presentation_labels import domain_message
 from .charts import CompactChart

@@ -4,9 +4,9 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from .line_geometry_importer import LineGeometryImportResult, import_line_geometry
+from infrastructure.geometry_import.lines import LineGeometryImportResult, import_line_geometry
 from .domain import AssessmentDomainState, ProjectLinesDataset, utc_now
-from .models import DatamineLine
+from domain.geometry.types import DatamineLine
 
 
 class ProjectLinesImportError(ValueError):

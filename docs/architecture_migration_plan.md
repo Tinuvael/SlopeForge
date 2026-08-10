@@ -90,3 +90,19 @@ Phase 2, а не завершение Phase 3. В Phase 3 без redesign пер
 алгоритмы/import adapters. MainWindow orchestration остаётся до Phase 4, а
 `AssessmentStateRepository.replace_for_domain()` — до Phase 5. Схема и Alembic в
 Phase 2 не менялись.
+
+## Результат Phase 3A и следующий долг
+
+Phase 3A завершена как отдельная первая часть Phase 3. Канонические пути теперь:
+`domain/geometry/types.py`, `domain/geometry/operations.py`,
+`domain/geometry/blast.py`, `domain/project/domain_geometry.py` и
+`infrastructure/geometry_import/{csv,dxf,lines}.py`. Старые geometry/import
+модули `prototype_2d` удалены. Datamine types оставлены в domain, а не в
+infrastructure, потому что они входят в сериализацию остающихся domain entities.
+
+Phase 3 целиком **не завершена**. Phase 3B должна перенести BlastEvent,
+AssessmentArea, AssessmentDomainState и разорвать цикл domain/technical_card,
+после чего удалить временный re-export из `prototype_2d/domain.py`. Phase 3C
+может безопасно разделить attachment policy, Qt image metadata и filesystem I/O,
+а также оставшиеся assessment/blasting policies. Application workflows,
+MainWindow и replace-all persistence остаются соответственно для Phase 4/5.

@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from prototype_2d.csv_importer import detect_columns, import_datamine_csv, sniff_delimiter
-from prototype_2d.models import DatamineLine, DataminePoint
+from infrastructure.geometry_import.csv import detect_columns, import_datamine_csv, sniff_delimiter
+from domain.geometry.types import DatamineLine, DataminePoint
 
 FIXTURE = Path(__file__).parent / "fixtures" / "datamine_lines_sample.csv"
 

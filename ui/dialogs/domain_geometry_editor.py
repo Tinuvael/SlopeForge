@@ -4,8 +4,8 @@ from PySide6.QtCore import Qt, QLineF, QRectF
 from PySide6.QtGui import QColor, QBrush, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QCheckBox,QDialog,QGraphicsEllipseItem,QGraphicsPathItem,
  QGraphicsScene,QGraphicsView,QHBoxLayout,QMessageBox,QPushButton,QVBoxLayout)
-from prototype_2d.domain import PlanPoint,PlanPolygon
-from prototype_2d.geometry import validate_simple_polygon
+from domain.geometry.types import PlanPoint, PlanPolygon
+from domain.geometry.operations import validate_simple_polygon
 from ui.presentation_labels import domain_message
 
 class _DrawingView(QGraphicsView):

@@ -294,7 +294,8 @@ def test_dynamic_domain_validation_messages_are_presented_in_english():
 
 def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
     from datetime import date, datetime, timezone
-    from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, PlanPoint, PlanPolygon
+    from domain.geometry.types import PlanPoint, PlanPolygon
+    from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState
     from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
     from ui.pages.entity_page_controller import EntityPageController
 
@@ -323,7 +324,8 @@ def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
 
 def test_attachment_owner_can_be_prepared_without_an_intermediate_save():
     from datetime import date, datetime, timezone
-    from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, PlanPoint, PlanPolygon
+    from domain.geometry.types import PlanPoint, PlanPolygon
+    from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState
     from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
     from ui.pages.entity_page_controller import EntityPageController
 

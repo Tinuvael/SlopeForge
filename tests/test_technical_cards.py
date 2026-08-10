@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from prototype_2d.domain import (AssessmentDomainState, BlastEvent, BlastEventGeometryRevision,
-                                 PlanMultiPoint, PlanPoint, PlanPolygon)
+from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
+from prototype_2d.domain import AssessmentDomainState, BlastEvent, BlastEventGeometryRevision
 from prototype_2d.technical_card import (BlastDrillingGroup, ContourParameters,
     TechnicalCardService, new_technical_card, polygon_area_m2)
 

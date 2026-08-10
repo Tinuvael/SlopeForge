@@ -3,7 +3,7 @@ import pytest
 try:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication,QDialog,QGraphicsView,QMessageBox
-    from prototype_2d.domain import PlanPoint,PlanPolygon
+    from domain.geometry.types import PlanPoint, PlanPolygon
     from ui.dialogs.domain_geometry_editor import DomainGeometryEditorDialog
 except ImportError as exc:
     pytest.skip(f"Qt runtime unavailable: {exc}",allow_module_level=True)

@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QGraphicsView
-from prototype_2d.domain import PlanPoint
+from domain.geometry.types import PlanPoint
 
 
 class PrototypePlanView(QGraphicsView):

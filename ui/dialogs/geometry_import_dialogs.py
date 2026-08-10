@@ -2,7 +2,7 @@
 from app.localization import tr
 from PySide6.QtWidgets import QComboBox, QDialog, QFormLayout, QDialogButtonBox
 
-from prototype_2d.csv_importer import FIELD_LABELS, LOGICAL_FIELDS, detect_columns
+from infrastructure.geometry_import.csv import FIELD_LABELS, LOGICAL_FIELDS, detect_columns
 
 
 class ColumnMappingDialog(QDialog):

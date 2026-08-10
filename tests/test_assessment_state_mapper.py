@@ -10,13 +10,9 @@ import sys
 
 import pytest
 
-from prototype_2d.domain import (
-    AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState,
-    AssessmentEventLink, AssessmentHorizonSlice, BlastEvent,
-    EntityAttachment, PlanLineString, PlanPoint, PlanPolygon,
-    ProjectLinesDataset,
-)
-from prototype_2d.models import DatamineLine, DataminePoint
+from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
+from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, AssessmentEventLink, AssessmentHorizonSlice, BlastEvent, EntityAttachment, ProjectLinesDataset
+from domain.geometry.types import DatamineLine, DataminePoint
 from prototype_2d.technical_card import BlastEventTechnicalCard, new_technical_card
 from prototype_2d.wall_assessment import AssessmentAreaEvaluation, AssessmentAreaEvaluationService
 from repositories.assessment_state_mapper import AssessmentStateValidationError, validate_assessment_state

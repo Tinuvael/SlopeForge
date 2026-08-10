@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from .domain import (AssessmentArea, AssessmentDomainState, AssessmentEventLink,
                      BlastEvent, PlanMultiPoint, PlanPolygon, utc_now)
-from .geometry import (points_from_multipoint_inside_polygon,
+from domain.geometry.operations import (points_from_multipoint_inside_polygon,
                        polygon_intersects_polygon)
 
 
