@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QComboBox, QDateEdit, QDialog, QFileDialog, QForm
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QTabWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
 
-from prototype_2d.entity_attachments import ATTACHMENT_CATEGORIES, PHOTO_EXTENSIONS
+from application.services.attachments import ATTACHMENT_CATEGORIES, PHOTO_EXTENSIONS
 
 
 class AttachmentMetadataDialog(QDialog):

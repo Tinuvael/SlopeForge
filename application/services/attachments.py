@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import mimetypes
-import re
-import shutil
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -11,35 +9,21 @@ from typing import Callable, Iterable
 from uuid import uuid4
 
 from domain.attachments.entities import EntityAttachment
+from domain.attachments.policy import (
+    ATTACHMENT_CATEGORIES,
+    PHOTO_EXTENSIONS,
+    sanitize_filename,
+    validate_attachment_owner,
+)
+from infrastructure.desktop.file_opener import open_local_path
+from infrastructure.files.attachments import AttachmentFileStorage
 from application.state.assessment_domain_state import AssessmentDomainState
-
-OWNER_FOLDERS = {"blast_event": "blast_events", "assessment_evaluation": "assessments"}
-KIND_FOLDERS = {"photo": "photos", "document": "documents"}
-PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
-
 
 @dataclass(frozen=True)
 class AttachmentDeleteResult:
     """A logical delete may succeed even if its temporary file needs later cleanup."""
 
     cleanup_warning: str | None = None
-
-ATTACHMENT_CATEGORIES = {
-    ("blast_event", "photo"): [("before_blast", "Before blast"), ("drilling", "Drilling"), ("charging", "Charging"), ("initiation", "Initiation system installation"), ("after_blast", "After blast"), ("muckpile", "Muckpile"), ("final_wall", "Final wall"), ("contour_drilling", "Contour drilling"), ("other", "Other")],
-    ("blast_event", "document"): [("blast_design", "Blast design"), ("drilling_report", "Drilling report"), ("charging_report", "Charging report"), ("initiation_scheme", "Initiation scheme"), ("survey", "Survey"), ("as_built_survey", "As-built survey"), ("geomechanical", "Geomechanical materials"), ("inspection_act", "Inspection record"), ("other", "Other")],
-    ("assessment_evaluation", "photo"): [("general_view", "General view"), ("crest", "Crest"), ("toe", "Toe"), ("face", "Face"), ("drillhole_traces", "Contour drillhole traces"), ("cracks", "Cracks"), ("loose_blocks", "Loose blocks / rockfall"), ("berm", "Berm"), ("water", "Water"), ("measurement", "Measurements"), ("other", "Other")],
-    ("assessment_evaluation", "document"): [("as_built_survey", "As-built survey"), ("measurement_report", "Measurement report"), ("assessment_form", "Assessment form"), ("inspection_act", "Inspection record"), ("wall_report", "Wall condition report"), ("recommendation", "Recommendations"), ("other", "Other")],
-}
-
-
-def sanitize_filename(filename: str) -> str:
-    """Return a readable cross-platform basename, never a path."""
-    name = Path(filename.replace("\\", "/")).name
-    stem, suffix = Path(name).stem, Path(name).suffix
-    stem = re.sub(r"[<>:\"/\\|?*\x00-\x1f]", "_", stem).strip(" .")
-    suffix = re.sub(r"[^A-Za-z0-9.]", "", suffix)
-    return f"{stem or 'file'}{suffix.lower()}"
-
 
 class EntityAttachmentService:
     def __init__(self, state: AssessmentDomainState, storage_path=None, save_callback: Callable[[], None] | None = None):
@@ -48,34 +32,18 @@ class EntityAttachmentService:
             storage_path = Path.home() / ".config" / "SlopeForge" / "slopeforge_state.json"
         self.storage_path = Path(storage_path)
         self.data_root = self.storage_path.parent
+        self.file_storage = AttachmentFileStorage(self.data_root)
         self.save_callback = save_callback
 
     @staticmethod
     def _validate(owner_type: str, owner_id: str, attachment_kind: str | None = None) -> None:
-        if owner_type not in OWNER_FOLDERS:
-            raise ValueError("Неизвестный тип владельца файла")
-        if not owner_id or owner_id in {".", ".."} or Path(owner_id).name != owner_id or "/" in owner_id or "\\" in owner_id:
-            raise ValueError("Некорректный ID владельца")
-        if attachment_kind is not None and attachment_kind not in KIND_FOLDERS:
-            raise ValueError("Неизвестный тип файла")
+        validate_attachment_owner(owner_type, owner_id, attachment_kind)
 
     def owner_folder(self, owner_type: str, owner_id: str, create: bool = True) -> Path:
-        self._validate(owner_type, owner_id)
-        folder = self.data_root / "files" / OWNER_FOLDERS[owner_type] / owner_id
-        if create:
-            for child in KIND_FOLDERS.values():
-                (folder / child).mkdir(parents=True, exist_ok=True)
-        return folder
+        return self.file_storage.owner_folder(owner_type, owner_id, create)
 
     def _destination(self, owner_type: str, owner_id: str, kind: str, filename: str) -> Path:
-        folder = self.owner_folder(owner_type, owner_id) / KIND_FOLDERS[kind]
-        safe = sanitize_filename(filename)
-        candidate = folder / safe
-        number = 2
-        while candidate.exists():
-            candidate = folder / f"{Path(safe).stem}_{number}{Path(safe).suffix}"
-            number += 1
-        return candidate
+        return self.file_storage.destination(owner_type, owner_id, kind, filename)
 
     @staticmethod
     def _file_date(source: Path, kind: str) -> date:
@@ -99,9 +67,7 @@ class EntityAttachmentService:
                 # The destination did not exist when selected by _destination, so it
                 # is safe to remove it if this batch later fails.
                 destinations.append(destination)
-                shutil.copy2(source, destination)
-                if not destination.exists():
-                    raise OSError(f"Не удалось скопировать {source.name}")
+                self.file_storage.copy(source, destination)
                 relative = destination.relative_to(self.data_root).as_posix()
                 attachment = EntityAttachment(
                     id=f"ATT-{uuid4().hex[:12].upper()}", owner_type=owner_type, owner_id=owner_id,
@@ -126,7 +92,7 @@ class EntityAttachmentService:
             for destination in reversed(destinations):
                 try:
                     if destination.exists():
-                        destination.unlink()
+                        self.file_storage.remove(destination)
                 except OSError as cleanup_exc:
                     cleanup_errors.append(cleanup_exc)
             if cleanup_errors:
@@ -141,11 +107,7 @@ class EntityAttachmentService:
         return sorted(result, key=lambda a: (-a.file_date.toordinal(), a.title.casefold()))
 
     def resolve_path(self, attachment: EntityAttachment) -> Path:
-        path = (self.data_root / attachment.relative_path).resolve()
-        root = self.data_root.resolve()
-        if path != root and root not in path.parents:
-            raise ValueError("Путь файла выходит за каталог данных")
-        return path
+        return self.file_storage.resolve(attachment)
 
     def is_missing(self, attachment: EntityAttachment) -> bool:
         return not self.resolve_path(attachment).is_file()
@@ -169,10 +131,7 @@ class EntityAttachmentService:
         attachment = self._find(attachment_id)
         path = self.resolve_path(attachment)
         index = self.state.attachments.index(attachment)
-        temporary = None
-        if path.exists():
-            temporary = path.with_name(f"{path.name}.slopeforge-delete-{uuid4().hex}.tmp")
-            path.replace(temporary)  # state is untouched if moving the file fails
+        temporary = self.file_storage.stage_delete(path)  # state is untouched if moving the file fails
         self.state.attachments.pop(index)
         try:
             self._save()
@@ -180,7 +139,7 @@ class EntityAttachmentService:
             self.state.attachments.insert(index, attachment)
             try:
                 if temporary is not None and temporary.exists():
-                    temporary.replace(path)
+                    self.file_storage.restore_delete(temporary, path)
             except OSError as rollback_exc:
                 raise RuntimeError(
                     f"Attachment deletion failed and the file could not be restored: {rollback_exc}"
@@ -188,7 +147,7 @@ class EntityAttachmentService:
             raise
         if temporary is not None:
             try:
-                temporary.unlink()
+                self.file_storage.remove(temporary)
             except OSError as cleanup_exc:
                 # The database/state commit already succeeded.  This is an orphan
                 # cleanup warning, not a failed logical delete.
@@ -196,15 +155,11 @@ class EntityAttachmentService:
         return AttachmentDeleteResult()
 
     def open_file(self, attachment: EntityAttachment) -> bool:
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QDesktopServices
         path = self.resolve_path(attachment)
-        return path.is_file() and QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        return path.is_file() and open_local_path(path)
 
     def open_owner_folder(self, owner_type: str, owner_id: str) -> bool:
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QDesktopServices
-        return QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.owner_folder(owner_type, owner_id))))
+        return open_local_path(self.owner_folder(owner_type, owner_id))
 
     def counts(self, owner_type: str, owner_id: str) -> tuple[int, int]:
         items = self.list_for_owner(owner_type, owner_id)

@@ -32,7 +32,7 @@ def test_assessment_editor_tabs_are_explicitly_detached_and_keep_content():
 def test_assessment_page_nested_tabs_have_exclusive_initial_visibility(monkeypatch):
     application=app()
     from tests.test_wall_assessment_persistence_ui import make_state,filled_draft
-    from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
+    from application.services.assessment_event_links import AssessmentEventLinkService
     from domain.assessment.evaluation import AssessmentAreaEvaluationService
     import ui.pages.assessment_area_page as module
 

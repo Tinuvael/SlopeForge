@@ -1,5 +1,22 @@
 # План миграции архитектуры
 
+## Текущий статус
+
+* **Phase 3A — завершена:** geometry value types, операции и import adapters
+  перенесены в канонические слои.
+* **Phase 3B — завершена:** стабильные domain entities, Technical Card,
+  Assessment Evaluation/DAI/FCI и `AssessmentDomainState` перенесены.
+* **Phase 3C — завершена:** чистые Assessment policies отделены от
+  state-mutating сервисов, attachment I/O отделён от orchestration и Qt,
+  `prototype_2d/` удалён.
+* **Phase 3 в целом — завершена.**
+
+Workflow-сервисы теперь находятся в `application/services/`, чистая политика —
+в `domain/`, внешние geometry/file/desktop adapters — в `infrastructure/`.
+`AssessmentDomainState` сохраняется до Phase 5. Phase 4 отвечает за
+MainWindow/application orchestration и явные use cases; Phase 5 — за отказ от
+replace-all persistence.
+
 Phase 2 завершена. Перенос domain/application модулей ниже остаётся будущей работой.
 Каждый PR сохраняет инженерные формулы, DAI/FCI, report semantics и текущий UI.
 

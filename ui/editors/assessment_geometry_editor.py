@@ -9,8 +9,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.localization import tr
-from prototype_2d.assessment_area_service import AssessmentAreaService
-from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
+from application.services.assessment_areas import AssessmentAreaService
+from application.services.assessment_event_links import AssessmentEventLinkService
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.geometry.operations import validate_simple_polygon
 from ui.dialogs.assessment_candidate_dialog import AssessmentCandidateDialog

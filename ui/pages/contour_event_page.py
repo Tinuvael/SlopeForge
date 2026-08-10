@@ -1,7 +1,7 @@
 from app.localization import tr
 """Focused Block-style page for one contour BlastEvent (never a BlastBlock)."""
 from PySide6.QtWidgets import QFileDialog,QGridLayout,QHBoxLayout,QLabel,QMessageBox,QPushButton,QTabWidget,QVBoxLayout,QWidget
-from prototype_2d.blast_event_service import BlastEventService
+from application.services.blast_events import BlastEventService
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame

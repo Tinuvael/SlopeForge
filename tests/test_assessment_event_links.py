@@ -2,8 +2,8 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
-from prototype_2d.blast_event_service import BlastEventService
+from application.services.assessment_event_links import AssessmentEventLinkService
+from application.services.blast_events import BlastEventService
 from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent
 from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision

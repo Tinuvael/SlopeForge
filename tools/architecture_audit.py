@@ -12,7 +12,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOTS = ("app", "application", "database", "domain", "infrastructure", "repositories", "services", "reports", "prototype_2d", "ui", "widgets", "tools")
+SOURCE_ROOTS = ("app", "application", "database", "domain", "infrastructure", "repositories", "services", "reports", "ui", "widgets", "tools")
 IGNORED_PARTS = {".git", ".venv", "venv", "env", "build", "dist", "__pycache__", ".pytest_cache", ".mypy_cache"}
 
 
@@ -155,12 +155,10 @@ def report(include_tests: bool = False) -> str:
         if not matches:
             lines.append("-")
 
-    section("prototype_2d imports", lambda _s, d: d == "prototype_2d" or d.startswith("prototype_2d."))
-    section("ui.prototype_2d imports", lambda s, d: s.startswith("ui.prototype_2d") or d.startswith("ui.prototype_2d"))
     section("assessment workspace imports", lambda s, d: "assessment_workspace" in s or "assessment_workspace" in d)
     section("UI direct persistence/service imports", lambda s, d: s.startswith("ui.") and layer(d) in {"database", "repositories", "services"})
 
-    domain_like = {m for m in graph if m.startswith("prototype_2d.") and m not in {"prototype_2d.blast_event_storage"}}
+    domain_like = {m for m in graph if m.startswith("domain.")}
     lines += ["", "## Domain-like external framework imports"]
     framework_hits = []
     for source in sorted(domain_like):

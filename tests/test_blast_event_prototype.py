@@ -1,11 +1,11 @@
 from datetime import date, datetime, timezone
 import pytest
 
-from prototype_2d.blast_event_service import BlastEventService, BlastEventValidationError
+from application.services.blast_events import BlastEventService, BlastEventValidationError
 from infrastructure.geometry_import.csv import detect_columns, import_datamine_csv
 from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
 from application.state.assessment_domain_state import AssessmentDomainState
-from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
+from application.services.project_lines import ProjectLinesDatasetService
 
 
 def write_csv(path, rows):
@@ -81,7 +81,7 @@ def test_manual_override_wins_over_preview_during_save(tmp_path):
 
 def test_dialog_new_csv_and_event_type_refresh_auto_suggestion(tmp_path):
     QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
-    from prototype_2d.blast_event_service import BlastEventImportPreview
+    from application.services.blast_events import BlastEventImportPreview
     from ui.dialogs.blast_event_dialog import BlastEventDialog
 
     class PreviewService:

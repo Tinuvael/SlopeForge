@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from prototype_2d.assessment_area_service import AssessmentAreaService, AssessmentFragmentCandidate
+from application.services.assessment_areas import AssessmentAreaService, AssessmentFragmentCandidate
 from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
 from domain.project.project_lines import ProjectLinesDataset
 from application.state.assessment_domain_state import AssessmentDomainState

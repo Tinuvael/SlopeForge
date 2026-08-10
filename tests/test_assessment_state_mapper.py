@@ -194,7 +194,7 @@ def test_mapper_imports_no_qt_ui_or_storage():
     sys.modules.pop("repositories.assessment_state_mapper", None)
     before = set(sys.modules); importlib.import_module("repositories.assessment_state_mapper")
     added = set(sys.modules) - before
-    forbidden = ("PySide6", "PyQt6", "ui", "prototype_2d.blast_event_storage")
+    forbidden = ("PySide6", "PyQt6", "ui")
     assert not any(name == prefix or name.startswith(prefix + ".") for name in added for prefix in forbidden)
 
 
