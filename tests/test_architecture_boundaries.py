@@ -120,3 +120,28 @@ def test_assessment_type_aliases_are_owned_only_by_assessment_entities() -> None
     blasting_source = (ROOT / "domain/blasting/entities.py").read_text(encoding="utf-8")
     for name in ("HorizonSliceRole", "LinkStatus", "LinkSource"):
         assert name not in blasting_source
+
+
+def test_create_blast_event_application_boundary_is_framework_free() -> None:
+    paths = [
+        ROOT / "application/use_cases/create_blast_event.py",
+        ROOT / "application/use_cases/__init__.py",
+    ]
+    forbidden = ("PySide6", "sqlalchemy", "database", "repositories", "ui")
+    assert {
+        relative(path) for path in paths
+        if any(has_prefix(name, forbidden) for name in imports(path))
+    } == set()
+
+
+def test_main_window_blast_event_creation_is_only_ui_orchestration() -> None:
+    source = (ROOT / "ui/main_window.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(node for node in ast.walk(tree)
+                  if isinstance(node, ast.FunctionDef) and node.name == "_add_blast_event")
+    method_source = ast.get_source_segment(source, method) or ""
+    for forbidden in (
+        "EntityPageController", "AssessmentStateRepository", "BlastEventService",
+        "BlastBlockService", "database.models", "session_factory", "controller.save",
+    ):
+        assert forbidden not in method_source

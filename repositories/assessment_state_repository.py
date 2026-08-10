@@ -176,26 +176,33 @@ class AssessmentStateRepository:
                 workspace.id if workspace else None, _state_from_workspace(workspace, datasets))
 
     def replace_for_domain(self, domain_id: int, state: AssessmentDomainState) -> LoadedAssessmentState:
+        # Keep the original public transaction boundary: validation, one owned
+        # transaction, and the same fully reloaded return value.
         validate_assessment_state(state)
-        with self._session_factory() as session:
-            with session.begin():
-                domain = session.get(Domain, domain_id)
-                if domain is None:
-                    raise AssessmentSiteNotFoundError(f"Domain {domain_id} does not exist")
-                previous = session.scalars(_workspace_query(domain_id)).one_or_none()
-                if previous:
-                    session.delete(previous)
-                    session.flush()
-                workspace = orm.AssessmentWorkspace(domain_id=domain_id)
-                session.add(workspace)
-                session.flush()
-                datasets = list(session.scalars(select(orm.ProjectLinesDataset).where(
-                    orm.ProjectLinesDataset.site_id == domain.site_id)))
-                self._insert(session, workspace, state, datasets)
-                session.flush()
-                saved = _state_from_workspace(session.scalars(_workspace_query(domain_id)).one(), datasets)
-                result = LoadedAssessmentState(domain_id, domain.site_id, workspace.id, saved)
-            return result
+        with self._session_factory.begin() as session:
+            return self.replace_for_domain_in_session(session, domain_id, state)
+
+    def replace_for_domain_in_session(
+        self, session: Session, domain_id: int, state: AssessmentDomainState,
+    ) -> LoadedAssessmentState:
+        """Replace state without commit; the supplied session owns commit/rollback."""
+        validate_assessment_state(state)
+        domain = session.get(Domain, domain_id)
+        if domain is None:
+            raise AssessmentSiteNotFoundError(f"Domain {domain_id} does not exist")
+        previous = session.scalars(_workspace_query(domain_id)).one_or_none()
+        if previous:
+            session.delete(previous)
+            session.flush()
+        workspace = orm.AssessmentWorkspace(domain_id=domain_id)
+        session.add(workspace)
+        session.flush()
+        datasets = list(session.scalars(select(orm.ProjectLinesDataset).where(
+            orm.ProjectLinesDataset.site_id == domain.site_id)))
+        self._insert(session, workspace, state, datasets)
+        session.flush()
+        saved = _state_from_workspace(session.scalars(_workspace_query(domain_id)).one(), datasets)
+        return LoadedAssessmentState(domain_id, domain.site_id, workspace.id, saved)
 
     @staticmethod
     def _insert(session, workspace, state, dataset_rows):
