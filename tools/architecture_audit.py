@@ -36,7 +36,14 @@ def module_name(path: Path) -> str:
     return ".".join(parts) or "<root>"
 
 
-def imported_names(path: Path) -> set[str]:
+def imported_names(path: Path, known_modules: set[str] | None = None) -> set[str]:
+    """Return imported modules, resolving ``from package import module``.
+
+    Without the alias check, ``from database import assessment_models`` was
+    reported only as ``database``.  That loses the exact module edge and can also
+    hide a cycle.  Imported classes/functions still correctly point at their
+    containing module.
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     result: set[str] = set()
     current = module_name(path).split(".")
@@ -52,7 +59,14 @@ def imported_names(path: Path) -> set[str]:
             else:
                 prefix = node.module or ""
             if prefix:
-                result.add(prefix)
+                module_aliases = {
+                    f"{prefix}.{alias.name}"
+                    for alias in node.names
+                    if alias.name != "*"
+                    and known_modules is not None
+                    and f"{prefix}.{alias.name}" in known_modules
+                }
+                result.update(module_aliases or {prefix})
     return result
 
 
@@ -63,7 +77,7 @@ def inventory(include_tests: bool = False) -> tuple[dict[str, set[str]], dict[st
     externals: dict[str, set[str]] = {}
     for module, path in sorted(modules.items()):
         internal, external = set(), set()
-        for imported in imported_names(path):
+        for imported in imported_names(path, set(modules)):
             matches = [candidate for candidate in modules if candidate == imported or candidate.startswith(imported + ".")]
             if matches:
                 internal.add(imported)
@@ -154,9 +168,10 @@ def report(include_tests: bool = False) -> str:
             if dependency.startswith(("PySide6", "sqlalchemy", "database")):
                 framework_hits.append(f"{source} -> {dependency}")
     lines.extend(framework_hits or ["-"])
+    cycles = strongly_connected(graph)
     lines += ["", "## Circular internal dependencies"]
-    lines.extend(" <-> ".join(cycle) for cycle in strongly_connected(graph))
-    if not strongly_connected(graph):
+    lines.extend(" <-> ".join(cycle) for cycle in cycles)
+    if not cycles:
         lines.append("-")
     return "\n".join(lines) + "\n"
 

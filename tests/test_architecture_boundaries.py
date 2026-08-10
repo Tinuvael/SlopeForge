@@ -82,6 +82,17 @@ def test_pure_algorithm_modules_do_not_import_ui_frameworks() -> None:
     assert offenders <= ARCHITECTURE_DEBT_ALLOWLIST["domain_qt_imports"]
 
 
+def test_pure_algorithm_modules_do_not_import_persistence_frameworks() -> None:
+    candidates = (ROOT / "prototype_2d").glob("*.py")
+    offenders = {
+        relative(path)
+        for path in candidates
+        if any(name == "database" or name.startswith(("database.", "sqlalchemy"))
+               for name in imports(path))
+    }
+    assert offenders == set()
+
+
 def test_mine_term_stays_inside_documented_compatibility_files() -> None:
     offenders = set()
     for path in production_files():

@@ -47,6 +47,7 @@ assessment_workspace** — creation/edit flow production-зависим. Сна�
 | `prototype_2d/project_lines_dataset_service.py` | `application/commands/project_lines.py` | 4 | strictly Site-wide |
 | `prototype_2d/blast_event_storage.py` | удалить | 2 | только вместе с compatibility window/tests |
 | `ui/prototype_2d/blast_event_window.py` | удалить | 2 | no normal navigation caller |
+| `ui/directory_dialog.py` | удалить | 2 | DEAD: нет caller; не путать с активным `SiteRepository` в project tree |
 | `ui/widgets/assessment_workspace.py` | focused `ui/editors/assessment_geometry_editor.py` + reusable `ui/widgets/*` | 2 | extract, do not big-bang rewrite |
 | `ui/pages/assessment_workspace_page.py` | focused creation/edit page or remove host | 2 | active caller is creation page |
 | `ui/pages/assessment_area_creation_page.py` | `ui/pages/assessment_area_creation_page.py` | 2 | сохранить path, заменить composition |

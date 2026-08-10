@@ -64,14 +64,17 @@ prototype_2d.technical_card`. Из domain-like модулей только
 | `ui/widgets/assessment_workspace.py` | ACTIVE_BUT_MISPLACED | 1262-строчный активный «всё-в-одном» workspace; содержит пригодные widgets и workflow logic |
 | `ui/prototype_2d/blast_event_window.py` | COMPATIBILITY_ONLY | нет production caller; wrapper и JSON storage проверяются тестами |
 | `ui/prototype_2d/__init__.py` | COMPATIBILITY_ONLY | package marker для wrapper/tests |
+| `ui/directory_dialog.py` | DEAD | класс не импортируется production, tests, migrations, CLI или spec; удалить отдельным cleanup после проверки packaging |
 | корневой `widgets/*.py` | ACTIVE_BUT_MISPLACED | активные presentation widgets, должны со временем стать `ui/widgets/` |
 | `alembic/` | ACTIVE | история текущей схемы и startup/integration checks; не runtime UI |
 | `tests/` | ACTIVE | regression safety net, хотя часть тестов структурно связана с legacy |
 | старые документы в `docs/` | ACTIVE | инженерная/операционная документация, не executable dependencies |
 
-На этом срезе **не найден ни один достаточно доказанный DEAD Python-модуль**.
-Отсутствие прямого production import недостаточно: import adapters вызываются
-косвенно, а wrapper/storage используются тестами и старым инструментом. Кандидат
+На этом срезе доказан один DEAD Python-модуль — `ui/directory_dialog.py`: поиск по
+Python, tests, migrations и packaging находит только определение самого класса.
+Остальные модули нельзя признавать DEAD только по отсутствию прямого production
+import: adapters вызываются косвенно, а wrapper/storage используются тестами.
+Кандидат
 на удаление после Phase 2 — `ui/prototype_2d/blast_event_window.py` вместе с
 `prototype_2d/blast_event_storage.py`: production imports отсутствуют, migrations,
 CLI и spec их не называют, но сейчас их требуют wrapper/storage tests, поэтому
@@ -257,6 +260,6 @@ production BlastEvent+BlastBlock и конкурентного сохранен�
 prototype algorithms и `Mine` вне явного списка.
 
 Небольшой baseline разрешает только существующие package paths, два compatibility
-UI файла, Qt-долг `entity_attachments.py` и восемь Mine-compatibility файлов.
+UI файла, два Qt-долга (`entity_attachments.py` и compatibility storage) и восемь
+Mine-compatibility файлов.
 Baseline — код, а не огромный snapshot imports; его следует только сокращать.
-
