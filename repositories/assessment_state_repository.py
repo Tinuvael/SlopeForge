@@ -1,4 +1,4 @@
-"""Transactional, replace-based PostgreSQL repository for Assessment state."""
+"""Transactional, in-place synchronization of PostgreSQL Assessment state."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -185,105 +185,223 @@ class AssessmentStateRepository:
     def replace_for_domain_in_session(
         self, session: Session, domain_id: int, state: AssessmentDomainState,
     ) -> LoadedAssessmentState:
-        """Replace state without commit; the supplied session owns commit/rollback."""
+        """Synchronize whole state without commit; the caller owns the transaction."""
         validate_assessment_state(state)
         domain = session.get(Domain, domain_id)
         if domain is None:
             raise AssessmentSiteNotFoundError(f"Domain {domain_id} does not exist")
-        previous = session.scalars(_workspace_query(domain_id)).one_or_none()
-        if previous:
-            session.delete(previous)
+        workspace = session.scalars(_workspace_query(domain_id)).one_or_none()
+        if workspace is None:
+            workspace = orm.AssessmentWorkspace(domain_id=domain_id)
+            session.add(workspace)
             session.flush()
-        workspace = orm.AssessmentWorkspace(domain_id=domain_id)
-        session.add(workspace)
-        session.flush()
         datasets = list(session.scalars(select(orm.ProjectLinesDataset).where(
             orm.ProjectLinesDataset.site_id == domain.site_id)))
-        self._insert(session, workspace, state, datasets)
+        self._synchronize(session, workspace, state, datasets)
         session.flush()
+        workspace_id = workspace.id
+        session.expire_all()
         saved = _state_from_workspace(session.scalars(_workspace_query(domain_id)).one(), datasets)
-        return LoadedAssessmentState(domain_id, domain.site_id, workspace.id, saved)
+        return LoadedAssessmentState(domain_id, domain.site_id, workspace_id, saved)
 
     @staticmethod
-    def _insert(session, workspace, state, dataset_rows):
-        # Dataset rows are shared Site history and are never written by a Domain save.
+    def _synchronize(session, workspace, state, dataset_rows):
+        """Explicitly match workspace-owned rows by stable logical IDs."""
         datasets = {row.domain_id: row for row in dataset_rows}
         missing = {revision.source_dataset_id for area in state.assessment_areas
                    for revision in area.geometry_revisions} - datasets.keys()
         if missing:
             raise AssessmentStateValidationError(
                 "Assessment Area references a Project Lines dataset outside its Site")
-        events, geometries = {}, {}
+
+        events = {row.domain_id: row for row in workspace.events}
+        areas = {row.domain_id: row for row in workspace.areas}
+        # Avoid transient partial-unique-index conflicts when the active row moves.
+        active_rows = [r for e in events.values() for r in e.geometry_revisions if r.is_active]
+        active_rows += [r for e in events.values() if e.technical_card
+                       for r in e.technical_card.revisions if r.is_active]
+        active_rows += [r for a in areas.values() for r in a.geometry_revisions if r.is_active]
+        active_rows += [r for a in areas.values() if a.evaluation
+                       for r in a.evaluation.revisions if r.is_active]
+        for row in active_rows:
+            row.is_active = False
+        if active_rows:
+            session.flush()
+
+        desired_event_ids = {item.id for item in state.blast_events}
+        geometries = {}
         for item in state.blast_events:
-            row = orm.BlastEvent(workspace=workspace, domain_id=item.id, name=item.name,
-                event_type=item.event_type, event_date=item.event_date, elevation_m=item.elevation,
-                blast_block_id=item.blast_block_id, is_archived=item.is_archived, archived_at=item.archived_at,
-                archive_reason=item.archive_reason)
-            session.add(row); events[item.id] = row
+            row = events.get(item.id)
+            if row is None:
+                row = orm.BlastEvent(workspace=workspace, domain_id=item.id)
+                session.add(row); events[item.id] = row
+            row.name = item.name; row.event_type = item.event_type
+            row.event_date = item.event_date; row.elevation_m = item.elevation
+            row.blast_block_id = item.blast_block_id; row.is_archived = item.is_archived
+            row.archived_at = item.archived_at; row.archive_reason = item.archive_reason
+            existing = {r.domain_id: r for r in row.geometry_revisions}
             for revision in item.geometry_revisions:
-                child = orm.BlastEventGeometryRevision(blast_event=row, domain_id=revision.id,
-                    revision_number=revision.revision_number, imported_at=revision.imported_at,
-                    source_file_name=revision.source_file_name,
-                    source_geometry_json=[x.to_dict() for x in revision.source_geometry],
-                    plan_geometry_json=revision.plan_geometry.to_dict(), elevation_m=revision.elevation,
-                    is_active=revision.id == item.active_geometry_revision_id)
-                session.add(child); geometries[revision.id] = child
-        areas, area_geometries = {}, {}
+                child = existing.get(revision.id)
+                if child is None:
+                    child = orm.BlastEventGeometryRevision(blast_event=row, domain_id=revision.id)
+                    session.add(child)
+                child.revision_number = revision.revision_number
+                child.imported_at = revision.imported_at
+                child.source_file_name = revision.source_file_name
+                child.source_geometry_json = [x.to_dict() for x in revision.source_geometry]
+                child.plan_geometry_json = revision.plan_geometry.to_dict()
+                child.elevation_m = revision.elevation
+                child.is_active = revision.id == item.active_geometry_revision_id
+                geometries[revision.id] = child
+
+        desired_area_ids = {item.id for item in state.assessment_areas}
+        area_geometries = {}
         for item in state.assessment_areas:
-            row = orm.AssessmentArea(workspace=workspace, domain_id=item.id, name=item.name,
-                assessment_date=item.assessment_date, is_archived=item.is_archived,
-                archived_at=item.archived_at, archive_reason=item.archive_reason)
-            session.add(row); areas[item.id] = row
+            row = areas.get(item.id)
+            if row is None:
+                row = orm.AssessmentArea(workspace=workspace, domain_id=item.id)
+                session.add(row); areas[item.id] = row
+            row.name = item.name; row.assessment_date = item.assessment_date
+            row.is_archived = item.is_archived; row.archived_at = item.archived_at
+            row.archive_reason = item.archive_reason
+            existing = {r.domain_id: r for r in row.geometry_revisions}
             for revision in item.geometry_revisions:
-                child = orm.AssessmentAreaGeometryRevision(assessment_area=row, domain_id=revision.id,
-                    revision_number=revision.revision_number, created_at=revision.created_at,
-                    source_dataset=datasets[revision.source_dataset_id],
-                    selection_polygon_json=revision.selection_polygon_frozen.to_dict(),
-                    final_geometry_json=revision.final_geometry_frozen.to_dict(),
-                    lower_elevation_m=revision.lower_elevation, upper_elevation_m=revision.upper_elevation,
-                    horizon_slices_json=[x.to_dict() for x in revision.horizon_slices],
-                    change_reason=revision.change_reason, is_active=revision.id == item.active_geometry_revision_id)
-                session.add(child); area_geometries[revision.id] = child
+                child = existing.get(revision.id)
+                if child is None:
+                    child = orm.AssessmentAreaGeometryRevision(assessment_area=row, domain_id=revision.id)
+                    session.add(child)
+                child.revision_number = revision.revision_number; child.created_at = revision.created_at
+                child.source_dataset = datasets[revision.source_dataset_id]
+                child.selection_polygon_json = revision.selection_polygon_frozen.to_dict()
+                child.final_geometry_json = revision.final_geometry_frozen.to_dict()
+                child.lower_elevation_m = revision.lower_elevation
+                child.upper_elevation_m = revision.upper_elevation
+                child.horizon_slices_json = [x.to_dict() for x in revision.horizon_slices]
+                child.change_reason = revision.change_reason
+                child.is_active = revision.id == item.active_geometry_revision_id
+                area_geometries[revision.id] = child
         session.flush()
+
+        existing_links = {(link.assessment_area_geometry_revision.domain_id, link.domain_id): link
+                          for area in workspace.areas for revision in area.geometry_revisions
+                          for link in revision.event_links}
+        desired_link_keys = set()
         for area in state.assessment_areas:
             for link in area.event_links:
-                session.add(orm.AssessmentEventLink(
-                    assessment_area_geometry_revision=area_geometries[link.assessment_area_geometry_revision_id],
-                    blast_event_geometry_revision=geometries[link.geometry_revision_id], domain_id=link.id,
-                    status=link.status, source=link.source,
-                    frozen_intersection_geometry_json=link.frozen_intersection_geometry.to_dict() if link.frozen_intersection_geometry else None,
-                    created_at=link.created_at))
+                key = (link.assessment_area_geometry_revision_id, link.id)
+                desired_link_keys.add(key)
+                row = existing_links.get(key)
+                if row is None:
+                    row = orm.AssessmentEventLink(domain_id=link.id); session.add(row)
+                row.assessment_area_geometry_revision = area_geometries[link.assessment_area_geometry_revision_id]
+                row.blast_event_geometry_revision = geometries[link.geometry_revision_id]
+                row.status = link.status; row.source = link.source
+                row.frozen_intersection_geometry_json = (link.frozen_intersection_geometry.to_dict()
+                                                           if link.frozen_intersection_geometry else None)
+                row.created_at = link.created_at
+
+        cards = {e.technical_card.domain_id: e.technical_card for e in workspace.events
+                 if e.technical_card is not None}
+        desired_card_ids = {card.id for card in state.technical_cards}
+        desired_card_revision_ids = set()
         for card in state.technical_cards:
-            row = orm.BlastEventTechnicalCard(blast_event=events[card.blast_event_id], domain_id=card.id,
-                is_archived=card.is_archived)
-            session.add(row)
-            serialized_revisions = {item["id"]: item for item in card.to_dict()["revisions"]}
+            row = cards.get(card.id)
+            if row is None:
+                row = orm.BlastEventTechnicalCard(blast_event=events[card.blast_event_id],
+                                                   domain_id=card.id)
+                session.add(row); cards[card.id] = row
+            row.blast_event = events[card.blast_event_id]; row.is_archived = card.is_archived
+            existing = {r.domain_id: r for r in row.revisions}
+            payloads = {item["id"]: item for item in card.to_dict()["revisions"]}
             for revision in card.revisions:
-                session.add(orm.BlastEventTechnicalCardRevision(technical_card=row, domain_id=revision.id,
-                    revision_number=revision.revision_number, created_at=revision.created_at,
-                    geometry_revision=geometries[revision.geometry_revision_id], event_type=revision.event_type,
-                    status=revision.status, author=revision.author, change_reason=revision.change_reason,
-                    payload_json=serialized_revisions[revision.id], is_active=revision.id == card.active_revision_id))
-        evaluations = {}
+                desired_card_revision_ids.add(revision.id)
+                child = existing.get(revision.id)
+                if child is None:
+                    child = orm.BlastEventTechnicalCardRevision(technical_card=row,
+                                                                 domain_id=revision.id)
+                    session.add(child)
+                child.revision_number = revision.revision_number; child.created_at = revision.created_at
+                child.geometry_revision = geometries[revision.geometry_revision_id]
+                child.event_type = revision.event_type; child.status = revision.status
+                child.author = revision.author; child.change_reason = revision.change_reason
+                child.payload_json = payloads[revision.id]
+                child.is_active = revision.id == card.active_revision_id
+
+        evaluations = {a.evaluation.domain_id: a.evaluation for a in workspace.areas
+                       if a.evaluation is not None}
+        desired_evaluation_ids = {item.id for item in state.evaluations}
+        desired_evaluation_revision_ids = set()
         for evaluation in state.evaluations:
-            row = orm.AssessmentAreaEvaluation(assessment_area=areas[evaluation.assessment_area_id],
-                domain_id=evaluation.id, is_archived=evaluation.is_archived, archived_at=evaluation.archived_at)
-            session.add(row); evaluations[evaluation.id] = row
+            row = evaluations.get(evaluation.id)
+            if row is None:
+                row = orm.AssessmentAreaEvaluation(
+                    assessment_area=areas[evaluation.assessment_area_id], domain_id=evaluation.id)
+                session.add(row); evaluations[evaluation.id] = row
+            row.assessment_area = areas[evaluation.assessment_area_id]
+            row.is_archived = evaluation.is_archived; row.archived_at = evaluation.archived_at
+            existing = {r.domain_id: r for r in row.revisions}
             for revision in evaluation.revisions:
-                session.add(orm.AssessmentAreaEvaluationRevision(evaluation=row, domain_id=revision.id,
-                    revision_number=revision.revision_number, created_at=revision.created_at,
-                    geometry_revision=area_geometries[revision.assessment_area_geometry_revision_id],
-                    assessment_date=revision.assessment_date, inspector=revision.inspector, status=revision.status,
-                    matrix_template_id=revision.matrix_template_id, matrix_template_version=revision.matrix_template_version,
-                    design_achievement_index=revision.design_achievement_index,
-                    face_condition_index=revision.face_condition_index, result_quadrant=revision.result_quadrant,
-                    payload_json=revision.to_dict(), is_active=revision.id == evaluation.active_revision_id))
+                desired_evaluation_revision_ids.add(revision.id)
+                child = existing.get(revision.id)
+                if child is None:
+                    child = orm.AssessmentAreaEvaluationRevision(evaluation=row,
+                                                                  domain_id=revision.id)
+                    session.add(child)
+                child.revision_number = revision.revision_number; child.created_at = revision.created_at
+                child.geometry_revision = area_geometries[revision.assessment_area_geometry_revision_id]
+                child.assessment_date = revision.assessment_date; child.inspector = revision.inspector
+                child.status = revision.status; child.matrix_template_id = revision.matrix_template_id
+                child.matrix_template_version = revision.matrix_template_version
+                child.design_achievement_index = revision.design_achievement_index
+                child.face_condition_index = revision.face_condition_index
+                child.result_quadrant = revision.result_quadrant
+                child.payload_json = revision.to_dict()
+                child.is_active = revision.id == evaluation.active_revision_id
         session.flush()
+
+        existing_attachments = {x.domain_id: x for e in workspace.events for x in e.attachments}
+        existing_attachments.update({x.domain_id: x for a in workspace.areas if a.evaluation
+                                     for x in a.evaluation.attachments})
+        desired_attachment_ids = {item.id for item in state.attachments}
         for item in state.attachments:
             values = item.to_dict()
             for key in ("id", "owner_id", "file_date", "created_at"):
                 values.pop(key)
-            session.add(orm.AssessmentEntityAttachment(domain_id=item.id,
-                blast_event=events[item.owner_id] if item.owner_type == "blast_event" else None,
-                assessment_area_evaluation=evaluations[item.owner_id] if item.owner_type == "assessment_evaluation" else None,
-                file_date=item.file_date, created_at=item.created_at, **values))
+            row = existing_attachments.get(item.id)
+            if row is None:
+                row = orm.AssessmentEntityAttachment(domain_id=item.id); session.add(row)
+            row.blast_event = events[item.owner_id] if item.owner_type == "blast_event" else None
+            row.assessment_area_evaluation = (evaluations[item.owner_id]
+                                              if item.owner_type == "assessment_evaluation" else None)
+            row.file_date = item.file_date; row.created_at = item.created_at
+            for key, value in values.items():
+                setattr(row, key, value)
+
+        # RESTRICT-safe deletion: leaves, containers, revisions, then parents.
+        for key, row in existing_links.items():
+            if key not in desired_link_keys: session.delete(row)
+        for key, row in existing_attachments.items():
+            if key not in desired_attachment_ids: session.delete(row)
+        for row in cards.values():
+            for revision in row.revisions:
+                if revision.domain_id not in desired_card_revision_ids: session.delete(revision)
+        for row in evaluations.values():
+            for revision in row.revisions:
+                if revision.domain_id not in desired_evaluation_revision_ids: session.delete(revision)
+        session.flush()
+        for key, row in cards.items():
+            if key not in desired_card_ids: session.delete(row)
+        for key, row in evaluations.items():
+            if key not in desired_evaluation_ids: session.delete(row)
+        session.flush()
+        for row in events.values():
+            for revision in row.geometry_revisions:
+                if revision.domain_id not in geometries: session.delete(revision)
+        for row in areas.values():
+            for revision in row.geometry_revisions:
+                if revision.domain_id not in area_geometries: session.delete(revision)
+        session.flush()
+        for key, row in events.items():
+            if key not in desired_event_ids: session.delete(row)
+        for key, row in areas.items():
+            if key not in desired_area_ids: session.delete(row)
