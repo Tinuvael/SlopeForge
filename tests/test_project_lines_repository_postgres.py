@@ -19,7 +19,7 @@ from database import assessment_models as orm
 from database.models import Domain, Mine, Site
 from domain.project.project_lines import ProjectLinesDataset
 from application.state.assessment_domain_state import AssessmentDomainState
-from prototype_2d.project_lines_dataset_service import (
+from application.services.project_lines import (
     ProjectLinesDatasetService,
     ProjectLinesImportError,
 )
@@ -119,7 +119,7 @@ def test_empty_import_does_not_change_persisted_active_dataset(context, monkeypa
     repo = ProjectLinesRepository(factory)
     repo.import_dataset(ids[1], dataset("D-001"), make_active=True)
     monkeypatch.setattr(
-        "prototype_2d.project_lines_dataset_service.import_line_geometry",
+        "application.services.project_lines.import_line_geometry",
         lambda *args, **kwargs: type("EmptyResult", (), {"lines": []})(),
     )
 

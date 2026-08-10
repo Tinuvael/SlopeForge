@@ -53,7 +53,7 @@ sqlalchemy.engine.create_engine = forbidden
 sqlalchemy.engine.Engine.connect = forbidden
 import database.assessment_models as module
 assert module.Base.metadata.tables["assessment_workspaces"] is not None
-for prefix in ("PySide6", "PyQt6", "ui", "widgets", "prototype_2d"):
+for prefix in ("PySide6", "PyQt6", "ui", "widgets"):
     assert not any(name == prefix or name.startswith(prefix + ".") for name in sys.modules), prefix
 '''
     environment = os.environ.copy()

@@ -111,7 +111,7 @@ class MainWindow(QMainWindow):
     def _add_project(self):
         from ui.project_dialog import ProjectDialog
         from application.state.assessment_domain_state import AssessmentDomainState
-        from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
+        from application.services.project_lines import ProjectLinesDatasetService
         d=ProjectDialog(self)
         if not d.exec(): return
         dataset=None
@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
     def _add_blast_event(self):
         if self.selected_domain_id is None:return
         from ui.pages.entity_page_controller import EntityPageController
-        from prototype_2d.blast_event_service import BlastEventService
+        from application.services.blast_events import BlastEventService
         controller=EntityPageController(self.context,self.selected_domain_id); event_service=BlastEventService(controller.state)
         from ui.dialogs.blast_event_dialog import BlastEventDialog
         dialog=BlastEventDialog(self,event_service)

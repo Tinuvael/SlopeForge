@@ -11,7 +11,7 @@ from domain.geometry.blast import build_contour_geometry, build_production_geome
 from application.state.assessment_domain_state import AssessmentDomainState
 from infrastructure.geometry_import.dxf import DxfImportError, import_dxf_polylines
 from infrastructure.geometry_import.lines import LineGeometryImportError, import_line_geometry
-from prototype_2d.project_lines_dataset_service import (
+from application.services.project_lines import (
     ProjectLinesDatasetService,
     ProjectLinesImportError,
 )

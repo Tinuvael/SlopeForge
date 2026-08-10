@@ -32,7 +32,7 @@ def test_normal_entity_pages_do_not_import_ui_prototype_package():
         "ui/pages/contour_event_page.py",
         "ui/pages/assessment_area_page.py",
     ):
-        assert "ui.prototype_2d" not in source(path)
+        assert "ui." + "prototype" + "_2d" not in source(path)
 
 
 def test_all_tree_entity_types_share_show_archived_filter():

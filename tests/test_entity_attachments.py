@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from application.state.assessment_domain_state import AssessmentDomainState
-from prototype_2d.entity_attachments import EntityAttachmentService, sanitize_filename
+from application.services.attachments import EntityAttachmentService, sanitize_filename
 
 
 @pytest.fixture

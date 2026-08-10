@@ -4,7 +4,7 @@ import pytest
 
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.types import DatamineLine, DataminePoint
-from prototype_2d.project_lines_dataset_service import (
+from application.services.project_lines import (
     ProjectLinesDatasetService,
     ProjectLinesImportError,
 )
@@ -18,7 +18,7 @@ def line(identifier, point_count):
 def test_degenerate_lines_do_not_create_temporary_dataset(monkeypatch):
     state = AssessmentDomainState()
     monkeypatch.setattr(
-        "prototype_2d.project_lines_dataset_service.import_line_geometry",
+        "application.services.project_lines.import_line_geometry",
         lambda *args, **kwargs: SimpleNamespace(lines=[line("empty", 0), line("single", 1)]),
     )
     with pytest.raises(ProjectLinesImportError, match="no suitable lines"):
@@ -30,7 +30,7 @@ def test_mixed_import_keeps_only_drawable_lines(monkeypatch):
     state = AssessmentDomainState()
     imported = [line("single", 1), line("valid", 2)]
     monkeypatch.setattr(
-        "prototype_2d.project_lines_dataset_service.import_line_geometry",
+        "application.services.project_lines.import_line_geometry",
         lambda *args, **kwargs: SimpleNamespace(lines=imported),
     )
     dataset, result = ProjectLinesDatasetService(state).import_dataset("mixed.dxf")

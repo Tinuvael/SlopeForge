@@ -1,6 +1,26 @@
 # Архитектура SlopeForge: текущее состояние и целевая модель
 
-Статус документа: **Phase 2**, исходный срез `85293c9869b372fe3ca370da124a969108b21d0d`.
+## Статус после Phase 3C (Phase 3 завершена)
+
+Phase 3A, 3B и 3C завершены. Временный пакет `prototype_2d` полностью удалён:
+стабильные сущности и чистые правила находятся в `domain/`, переходные сервисы,
+которые меняют `AssessmentDomainState`, — в `application/services/`, а импорт
+геометрии и физическое хранение файлов — в `infrastructure/`. Qt-открытие файлов
+изолировано в desktop-адаптере инфраструктуры; `domain/` и `application/` Qt не
+импортируют.
+
+Чистая геометрическая политика Assessment Area находится в
+`domain/assessment/geometry.py`, политика сопоставления событий — в
+`domain/assessment/event_links.py`, attachment-категории и безопасные имена — в
+`domain/attachments/policy.py`. Оркестрация вложений с прежними гарантиями
+rollback осталась application-сервисом, а copy/move/delete/path выполняет
+`infrastructure/files/attachments.py`.
+
+`AssessmentDomainState` остаётся переходным долгом до Phase 5. Очистка
+оркестрации `MainWindow` и явные use cases остаются задачей Phase 4. Replace-all
+persistence остаётся без изменений до Phase 5.
+
+Статус документа: **Phase 3 завершена**, исходный срез Phase 3C — `8906c3ac2918b6a34dbd57b17cc88bed1a12c123`.
 Первый UI-рефакторинг выполнен без изменения схемы БД и продуктового поведения.
 
 ## Неподвижные правила продукта

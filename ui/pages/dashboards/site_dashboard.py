@@ -5,7 +5,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFileDialog,QGridLayout,QHeaderView,QLabel,QMessageBox,QPushButton,QScrollArea,QTabWidget,QTableWidget,QTableWidgetItem,QVBoxLayout,QWidget
 from app.icons.ui.ui_icons import ui_icon
 from application.state.assessment_domain_state import AssessmentDomainState
-from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
+from application.services.project_lines import ProjectLinesDatasetService
 from repositories.dashboard_repository import DashboardRepository
 from repositories.project_lines_repository import ProjectLinesRepository
 from .charts import CompactChart

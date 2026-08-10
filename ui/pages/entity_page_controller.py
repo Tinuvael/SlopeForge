@@ -3,8 +3,8 @@ from copy import deepcopy
 from repositories.assessment_state_repository import AssessmentStateRepository
 from domain.blasting.technical_card import TechnicalCardService
 from domain.assessment.evaluation import AssessmentAreaEvaluationService
-from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
-from prototype_2d.entity_attachments import EntityAttachmentService
+from application.services.assessment_event_links import AssessmentEventLinkService
+from application.services.attachments import EntityAttachmentService
 
 class EntityPageController:
     def __init__(self, context, domain_id):

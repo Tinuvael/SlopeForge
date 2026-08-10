@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.localization import tr
-from prototype_2d.assessment_area_service import AssessmentAreaService
+from application.services.assessment_areas import AssessmentAreaService
 from ui.presentation_labels import domain_message
 
 
