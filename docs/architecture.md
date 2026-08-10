@@ -47,13 +47,13 @@ SQL report query находится в `infrastructure/db/project_report.py`, а
 `ProjectReportService` были активными, но misplaced; после переноса единственных
 production callers они удалены, а реализация не дублируется.
 
-**Phase 5A COMPLETE; Phase 5 NOT COMPLETE.** Публичный whole-state контракт
+**Phase 5A COMPLETE; Phase 5B COMPLETE; Phase 5 NOT COMPLETE.** Публичный whole-state контракт
 `AssessmentDomainState` / `replace_for_domain()` пока сохранён, но его реализация
 теперь синхронизирует существующий relational graph на месте. Удаление и повторное
 создание `AssessmentWorkspace` устранено; workspace и неизменившиеся дочерние
-сущности/ревизии сохраняют DB PK, а rollback остаётся транзакционным. Остаются
-coarse whole-state application writes, отсутствие focused persistence workflows и
-риск concurrency/lost updates.
+сущности/ревизии сохраняют DB PK, а rollback остаётся транзакционным. Whole-state
+loading и compatibility save пока остаются; ordinary UI writes уже focused.
+Остаётся риск same-entity concurrency/lost updates.
 
 ## Неподвижные правила продукта
 
@@ -212,6 +212,38 @@ Project Lines остаются Site-wide history: repository только про
 откатывает все in-place изменения вместе с Block/audit вызывающей транзакции.
 Главный оставшийся риск — whole-state lost update при параллельном редактировании;
 Phase 5A не добавляет version/concurrency token и не притворяется, что решает его.
+
+### Phase 5B: focused Assessment writes
+
+Обычные UI-команды теперь идут через framework-free порт
+`AssessmentWrites` и SQLAlchemy-адаптер `SqlAlchemyAssessmentWrites`. Архивирование,
+новые ревизии геометрии, Technical Card и Evaluation, links и attachment metadata
+изменяют только относящиеся к команде строки. Составные операции (geometry + links,
+Evaluation owner + attachment, Production Block + event + geometry + audit) имеют
+одну узкую транзакцию. Живой `AssessmentDomainState` после записи не заменяется,
+поэтому ссылки UI на объекты остаются стабильными.
+
+Whole-state load пока остаётся обычным read path. Whole-state `save()` и
+`replace_for_domain()` помечены compatibility-only и сохраняются до 5C, но обычные
+интерактивные workflow их не вызывают. Это уменьшает перезапись разных сущностей,
+но stale write одной и той же сущности пока остаётся last-writer-wins.
+
+Attachment import передаёт весь выбранный пользователем batch одной focused
+операции: metadata всех файлов и lazy Evaluation owner коммитятся или откатываются
+вместе. Link writes ограничены одной активной/new Area geometry revision;
+исторические links не синхронизируются из живого графа. Каждый focused writer
+дополнительно проверяет Domain/Workspace и relational owner, поэтому logical ID из
+другого Domain не может изменить Evaluation, attachment, card или link.
+
+Fallback whole-state write в `AssessmentEditingSession._write()` оставлен только
+для старых unit tests/programmatic embedders, которые создают session напрямую.
+Desktop factory всегда передаёт `SqlAlchemyAssessmentWrites`; это закреплено
+architecture-тестом.
+
+**Phase 5C** должна: (1) добавить optimistic version/token; (2) обнаруживать stale
+same-entity/workspace edits; (3) убрать совместимый whole-state normal-save API;
+(4) удалить `replace_for_domain()` после исчезновения потребителей; (5) удалить
+оставшийся transitional persistence; (6) закрепить итоговые architecture ratchets.
 
 ## Hotspot: `AssessmentDomainState`
 

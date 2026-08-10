@@ -7,6 +7,7 @@ from typing import Protocol
 
 from application.services.blast_events import BlastEventService
 from application.state.assessment_domain_state import AssessmentDomainState
+from domain.blasting.entities import BlastEvent
 
 
 class BlastEventCreationPermissionError(ValueError):
@@ -38,11 +39,10 @@ class BlastEventCreationPersistence(Protocol):
 
     def load_state(self, domain_id: int) -> AssessmentDomainState: ...
 
-    def persist_contour(self, domain_id: int, state: AssessmentDomainState) -> None: ...
+    def persist_contour(self, domain_id: int, event: BlastEvent) -> None: ...
 
     def persist_production(
-        self, domain_id: int, state: AssessmentDomainState, event_id: str,
-        actor_id: int | None,
+        self, domain_id: int, event: BlastEvent, actor_id: int | None,
     ) -> int: ...
 
 
@@ -64,11 +64,11 @@ class CreateBlastEvent:
             csv_path=command.geometry_file_path,
         )
         if event.event_type == "contour":
-            self._persistence.persist_contour(command.domain_id, state)
+            self._persistence.persist_contour(command.domain_id, event)
             block_id = None
         else:
             block_id = self._persistence.persist_production(
-                command.domain_id, state, event.id, command.actor_id)
+                command.domain_id, event, command.actor_id)
             if block_id is None:  # defensive guarantee of the application contract
                 raise RuntimeError("Production Blast Event persistence did not create a BlastBlock")
         return CreateBlastEventResult(event.id, event.event_type, block_id, service.last_import_warning)

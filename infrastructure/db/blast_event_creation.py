@@ -7,9 +7,11 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from application.state.assessment_domain_state import AssessmentDomainState
+from domain.blasting.entities import BlastEvent
 from database.models import BlastBlock
 from repositories.assessment_state_repository import AssessmentStateRepository
 from repositories.audit_log_repository import AuditLogRepository
+from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
 
 
 class SqlAlchemyBlastEventCreationPersistence:
@@ -22,14 +24,13 @@ class SqlAlchemyBlastEventCreationPersistence:
     def load_state(self, domain_id: int) -> AssessmentDomainState:
         return self._states.load_for_domain(domain_id).state
 
-    def persist_contour(self, domain_id: int, state: AssessmentDomainState) -> None:
-        self._states.replace_for_domain(domain_id, state)
+    def persist_contour(self, domain_id: int, event: BlastEvent) -> None:
+        with self._session_factory.begin() as session:
+            SqlAlchemyAssessmentWrites.insert_event_in_session(session, domain_id, event)
 
     def persist_production(
-        self, domain_id: int, state: AssessmentDomainState, event_id: str,
-        actor_id: int | None,
+        self, domain_id: int, event: BlastEvent, actor_id: int | None,
     ) -> int:
-        event = next(item for item in state.blast_events if item.id == event_id)
         if event.event_type != "production" or event.blast_block_id is not None:
             raise ValueError("Expected an unlinked production Blast Event")
         with self._session_factory.begin() as session:
@@ -46,7 +47,7 @@ class SqlAlchemyBlastEventCreationPersistence:
             session.flush()
             self._fail("after_block_flush")
             event.blast_block_id = block.id
-            self._states.replace_for_domain_in_session(session, domain_id, state)
+            SqlAlchemyAssessmentWrites.insert_event_in_session(session, domain_id, event)
             self._fail("after_state_replace")
             self._audit.add_entry(
                 session,

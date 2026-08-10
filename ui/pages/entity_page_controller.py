@@ -11,7 +11,17 @@ class EntityPageController:
         self.state = self.editing.state
         self.links = self.editing.links
         self.attachments = EntityAttachmentService(
-            self.state, context.storage_root / "slopeforge_state.json", self.editing.save)
+            self.state, context.storage_root / "slopeforge_state.json",
+            on_add=self._persist_attachment_add,
+            on_update=self.editing.update_attachment_metadata,
+            on_delete=self.editing.delete_attachment_metadata)
+
+    def _persist_attachment_add(self, attachments):
+        owner = None
+        if attachments and attachments[0].owner_type == "assessment_evaluation":
+            owner = next((item for item in self.state.evaluations
+                          if item.id == attachments[0].owner_id), None)
+        self.editing.add_attachment_metadata_batch(attachments, owner)
 
     @property
     def site_id(self):
@@ -20,9 +30,6 @@ class EntityPageController:
     @property
     def workspace_id(self):
         return self.editing.workspace_id
-
-    def save(self):
-        return self.editing.save()
 
     def event_for_block(self, block_id):
         return next((event for event in self.state.blast_events

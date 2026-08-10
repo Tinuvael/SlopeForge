@@ -152,6 +152,16 @@ def test_create_blast_event_application_boundary_is_framework_free() -> None:
     } == set()
 
 
+def test_desktop_factory_always_supplies_focused_assessment_writer() -> None:
+    source = (ROOT / "app/use_case_factory.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    factory = next(node for node in ast.walk(tree)
+                   if isinstance(node, ast.FunctionDef)
+                   and node.name == "create_entity_editing_session")
+    factory_source = ast.get_source_segment(source, factory) or ""
+    assert "writes=SqlAlchemyAssessmentWrites(context.session_factory)" in factory_source
+
+
 def test_main_window_blast_event_creation_is_only_ui_orchestration() -> None:
     source = (ROOT / "ui/main_window.py").read_text(encoding="utf-8")
     tree = ast.parse(source)

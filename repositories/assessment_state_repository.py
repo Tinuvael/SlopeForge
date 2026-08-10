@@ -176,6 +176,7 @@ class AssessmentStateRepository:
                 workspace.id if workspace else None, _state_from_workspace(workspace, datasets))
 
     def replace_for_domain(self, domain_id: int, state: AssessmentDomainState) -> LoadedAssessmentState:
+        """Compatibility-only whole-state synchronization retained through Phase 5C."""
         # Keep the original public transaction boundary: validation, one owned
         # transaction, and the same fully reloaded return value.
         validate_assessment_state(state)
