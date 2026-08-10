@@ -8,11 +8,12 @@ from openpyxl.utils import get_column_letter
 def write_project_report(report, path):
     wb=Workbook(); summary=wb.active; summary.title="Summary"
     production=sum(x.event_type=="production" for x in report.blasts); contour=len(report.blasts)-production
-    volume=sum(x.actual_volume_m3 for x in report.blasts if x.actual_volume_m3 is not None)
+    production_volumes=[x.actual_volume_m3 for x in report.blasts if x.event_type=="production" and x.actual_volume_m3 is not None]
+    volume=sum(production_volumes)
     mass=sum(x.actual_explosive_mass_kg for x in report.blasts if x.actual_explosive_mass_kg is not None)
     rows=[("Project",report.project),("Date range",f"{report.from_date.isoformat()} — {report.to_date.isoformat()}"),("",None),
           ("Blast Events total",len(report.blasts)),("Production blasts",production),("Contour blasts",contour),
-          ("Actual production volume, m³",volume if any(x.actual_volume_m3 is not None for x in report.blasts) else None),
+          ("Actual production volume, m³",volume if production_volumes else None),
           ("Actual explosive mass, kg",mass if any(x.actual_explosive_mass_kg is not None for x in report.blasts) else None),
           ("Assessment Areas",len(report.assessments)),("Completed assessments",report.completed_assessments),
           ("Average DAI",report.average_dai),("Average FCI",report.average_fci)]

@@ -98,13 +98,14 @@ class EntityAttachmentManagerWidget(QWidget):
         if not self.ensure_owner:return False
         owner=self.ensure_owner(); self.owner_id=getattr(owner,"id",owner); return bool(self.owner_id)
     def add(self,_checked=False):
-        if not self._ensure_owner():return
         filters="Photos (*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff)" if self.kind=="photo" else "Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip);;All files (*)"
         paths,selected_filter=QFileDialog.getOpenFileNames(self,tr("Add files"),"",filters)
         if not paths:return
         if self.kind=="photo" and any(Path(p).suffix.lower() not in PHOTO_EXTENSIONS for p in paths):QMessageBox.warning(self,tr("Format"),tr("The selected photo format is not supported.")); return
+        if self.kind=="document" and selected_filter=="All files (*)" and QMessageBox.question(self,tr("Other format"),tr("SlopeForge may not be able to preview this file. Add it anyway?"))!=QMessageBox.StandardButton.Yes:return
         editor=AttachmentMetadataDialog(self.owner_type,self.kind,parent=self)
         if editor.exec()!=QDialog.DialogCode.Accepted:return
+        if not self._ensure_owner():return
         try:self.service.add_files(self.owner_type,self.owner_id,self.kind,paths,editor.values()); self.refresh(); self.changed.emit()
         except Exception as exc:QMessageBox.critical(self,tr("Copy error"),domain_message(str(exc)))
     def open_selected(self,row=None):

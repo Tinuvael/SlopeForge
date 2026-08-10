@@ -67,6 +67,63 @@ def test_assessment_page_nested_tabs_have_exclusive_initial_visibility(monkeypat
     assert len(evaluation.revisions)==before
     page.close()
 
+
+def test_completed_initial_result_uses_stored_values_then_live_edit_recalculates(monkeypatch):
+    app()
+    from copy import deepcopy
+    from tests.test_wall_assessment_persistence_ui import make_state,filled_draft
+    import ui.editors.assessment_evaluation_editor as module
+    state,area=make_state(); evaluation,draft=filled_draft(state,area); saved=evaluation.save_revision(draft,"completed"); historical=deepcopy(saved)
+    original=module.calculate_revision; calls=[]; allow=False
+    def tracked(revision,*args,**kwargs):
+        calls.append(revision)
+        if not allow:raise AssertionError("completed revision was recalculated during initial display")
+        return original(revision,*args,**kwargs)
+    monkeypatch.setattr(module,"calculate_revision",tracked)
+    dialog=module.AssessmentAreaEvaluationDialog(area,evaluation,saved,lambda *_:None)
+    assert calls==[] and "DAI: 1.000" in dialog.summary.text()
+    assert f"FCI: {saved.face_condition_index:.3f}" in dialog.summary.text()
+    assert saved.result_label in dialog.summary.text()
+    allow=True; dialog.inspector.setText("Changed inspector")
+    assert calls and dialog._preview is not saved
+    assert saved.to_dict()==historical.to_dict() and len(evaluation.revisions)==1
+    dialog._allow_close=True; dialog.close()
+
+
+def test_cancelled_attachment_selection_does_not_ensure_owner(monkeypatch):
+    app(); import ui.dialogs.entity_attachment_dialog as module
+    service=SimpleNamespace(list_for_owner=lambda *_:[]); ensured=[]
+    manager=module.EntityAttachmentManagerWidget(service,"assessment_evaluation",None,"document",ensure_owner=lambda:ensured.append(True))
+    monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:([],"")); manager.add()
+    assert ensured==[] and manager.owner_id is None
+
+
+def test_cancelled_attachment_metadata_does_not_ensure_owner(monkeypatch):
+    app(); import ui.dialogs.entity_attachment_dialog as module
+    service=SimpleNamespace(list_for_owner=lambda *_:[]); ensured=[]
+    manager=module.EntityAttachmentManagerWidget(service,"assessment_evaluation",None,"document",ensure_owner=lambda:ensured.append(True))
+    monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(["known.pdf"],"Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip)"))
+    monkeypatch.setattr(module.AttachmentMetadataDialog,"exec",lambda *_:module.QDialog.DialogCode.Rejected); manager.add()
+    assert ensured==[] and manager.owner_id is None
+
+
+def test_successful_attachment_ensures_owner_once(monkeypatch):
+    app(); import ui.dialogs.entity_attachment_dialog as module
+    added=[]
+    service=SimpleNamespace(list_for_owner=lambda *_:[],add_files=lambda *args:added.append(args)); owners=[]
+    def ensure():owners.append(True); return SimpleNamespace(id="E-1")
+    manager=module.EntityAttachmentManagerWidget(service,"assessment_evaluation",None,"document",ensure_owner=ensure)
+    monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(["known.pdf"],"Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip)")); monkeypatch.setattr(module.AttachmentMetadataDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted); monkeypatch.setattr(module.AttachmentMetadataDialog,"values",lambda *_:{})
+    manager.add(); assert len(owners)==1 and len(added)==1 and manager.owner_id=="E-1"
+
+
+def test_unknown_document_warning_can_cancel_without_owner(monkeypatch):
+    app(); import ui.dialogs.entity_attachment_dialog as module
+    service=SimpleNamespace(list_for_owner=lambda *_:[]); ensured=[]
+    manager=module.EntityAttachmentManagerWidget(service,"assessment_evaluation",None,"document",ensure_owner=lambda:ensured.append(True))
+    monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(["unknown.bin"],"All files (*)")); questions=[]; monkeypatch.setattr(module.QMessageBox,"question",lambda *args:questions.append(args[2]) or module.QMessageBox.StandardButton.No)
+    manager.add(); assert questions==["SlopeForge may not be able to preview this file. Add it anyway?"] and ensured==[]
+
 def test_russian_standard_buttons_are_never_blank(tmp_path):
     application=app()
     from app.localization import LANGUAGE_KEY,install_selected_translator

@@ -172,7 +172,11 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self._restore_controls()
         self._connect_general_signals()
         self._initializing = False
-        self.refresh(mark_dirty=False)
+        if self.draft.status == "completed":
+            self._preview = deepcopy(self.draft)
+            self._render_preview(self._preview)
+        else:
+            self.refresh(mark_dirty=False)
         self._dirty = False; self._update_title()
         if read_only: self._set_read_only()
 
@@ -349,6 +353,10 @@ class AssessmentAreaEvaluationDialog(QDialog):
         if self._initializing: return
         preview = self.collect(); self._preview = preview
         if mark_dirty: self._dirty = True; self._update_title()
+        self._render_preview(preview)
+
+    def _render_preview(self, preview):
+        """Render already-stored or live-calculated values without recalculating them."""
         d = preview.design_inputs
         self.shortfall.setText(tr("—") if d["bench_angle_shortfall_deg"] is None else f'{d["bench_angle_shortfall_deg"]:g}')
         self.deficit.setText(tr("—") if d["berm_width_deficit_m"] is None else f'{d["berm_width_deficit_m"]:g}')
