@@ -4,12 +4,11 @@ from PySide6.QtCore import QDate,QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QDateEdit,QDialog,QDialogButtonBox,QFileDialog,QFormLayout,QLabel,QMessageBox,QPushButton
 from app.localization import tr
-from services.project_report_service import ProjectReportService
-from reports.excel_project_report import write_project_report
+from application.use_cases.generate_project_report import GenerateProjectReportCommand
 
 class ProjectReportDialog(QDialog):
-    def __init__(self,context,site_id,site_name,parent=None):
-        super().__init__(parent); self.context=context; self.site_id=site_id; self.site_name=site_name
+    def __init__(self,generate_report,site_id,site_name,parent=None):
+        super().__init__(parent); self.generate_report=generate_report; self.site_id=site_id; self.site_name=site_name
         self.setWindowTitle(tr("Project report")); form=QFormLayout(self); form.addRow(tr("Project"),QLabel(site_name))
         today=date.today(); first=today.replace(day=1); self.from_date=QDateEdit(QDate(first.year,first.month,first.day)); self.to_date=QDateEdit(QDate(today.year,today.month,today.day))
         for editor in (self.from_date,self.to_date):editor.setCalendarPopup(True)
@@ -25,10 +24,10 @@ class ProjectReportDialog(QDialog):
         if not path:return
         if Path(path).suffix.lower()!=".xlsx":path += ".xlsx"
         try:
-            report=ProjectReportService(self.context.session_factory).collect(self.site_id,start,end); write_project_report(report,path)
+            result=self.generate_report.execute(GenerateProjectReportCommand(self.site_id,start,end,path))
         except Exception as exc:QMessageBox.critical(self,tr("Project report"),f"{tr('Could not generate report')}: {exc}")
         else:
-            absolute=Path(path).resolve()
+            absolute=result.output_path
             try:opened=QDesktopServices.openUrl(QUrl.fromLocalFile(str(absolute)))
             except Exception:opened=False
             self.accept()

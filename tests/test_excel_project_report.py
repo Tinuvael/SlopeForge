@@ -1,7 +1,7 @@
 from datetime import date
 from openpyxl import load_workbook
 from reports.excel_project_report import write_project_report
-from services.project_report_service import BlastReportRow,ProjectReport
+from application.dto.project_report import BlastReportRow,ProjectReport
 
 
 def blast(kind,domain,volume):

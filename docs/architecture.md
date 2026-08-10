@@ -1,6 +1,6 @@
 # Архитектура SlopeForge: текущее состояние и целевая модель
 
-## Статус после Phase 4B2 (Phase 4 продолжается)
+## Исторический статус до Phase 4C
 
 Phase 3A, 3B и 3C завершены. Временный пакет `prototype_2d` полностью удалён:
 стабильные сущности и чистые правила находятся в `domain/`, переходные сервисы,
@@ -20,19 +20,37 @@ rollback осталась application-сервисом, а copy/move/delete/path
 оркестрации `MainWindow` и явные use cases остаются задачей Phase 4. Replace-all
 persistence остаётся без изменений до Phase 5.
 
-Статус документа: **Phase 4A, Phase 4B1 и Phase 4B2 завершены; Phase 4B в целом
-завершена, но Phase 4 ещё продолжается**. Archive/restore Area и contour,
-переимпорт геометрии BlastEvent и интерактивные команды Linked Events теперь
-принадлежат `AssessmentEditingSession` и откатывают живой граф при ошибке
-сохранения. Архив Block использует отдельный application use case и узкий
-persistence port, не меняя связанный production BlastEvent.
+Этот раздел фиксирует историческое состояние после Phase 4B; актуальный итог Phase 4C описан ниже. Replace-all persistence по-прежнему отложен до Phase 5.
 
-В Phase 4C остаются создание Project/Domain, report query/export orchestration,
-оставшаяся очистка MainWindow/services и переходная оркестрация geometry pages.
-`AssessmentGeometryEditorWidget` намеренно продолжает выполнять обновление
-автоматических links внутри единой транзакции создания/ревизии границы Area.
-В Phase 5 остаются focused persistence, Unit of Work, concurrency strategy и
-отказ от replace-all persistence.
+## Статус после Phase 4C — PHASE 4 COMPLETE
+
+**Phase 4A завершена. Phase 4B завершена. Phase 4C завершена. PHASE 4 COMPLETE.**
+
+Финальный поток записи Phase 4:
+
+```text
+Qt UI
+  -> application use case / AssessmentEditingSession
+  -> application port
+  -> infrastructure adapter
+  -> SQLAlchemy / files / OpenPyXL
+```
+
+Создание Project (включая предварительную проверку и последующее сохранение
+Project Lines), создание Domain и сбор+запись Project report теперь принадлежат
+application use cases. MainWindow отвечает только за диалоги, навигацию и сообщения.
+Создание/ревизия геометрии Assessment Area, автоматический поиск links, частичный
+успех поиска и rollback живого графа при ошибке сохранения принадлежат
+`AssessmentEditingSession`; geometry editor оставляет у себя рисование и preview.
+SQL report query находится в `infrastructure/db/project_report.py`, а OpenPyXL writer
+реализует application port во внешнем слое. Старые `ProjectService` и
+`ProjectReportService` были активными, но misplaced; после переноса единственных
+production callers они удалены, а реализация не дублируется.
+
+Phase 5 следующая. Phase 4 **не решила** persistence debt: остаются
+`AssessmentDomainState`, `AssessmentStateRepository.replace_for_domain()`,
+delete/recreate `AssessmentWorkspace`, coarse replace-all writes, отсутствие focused
+repositories/Unit of Work и риск concurrency/lost updates.
 
 ## Неподвижные правила продукта
 
@@ -85,7 +103,7 @@ prototype_2d.technical_card`. Из domain-like модулей только
 | `main.py`, `app/*.py` | ACTIVE | bootstrap/config/localization/Qt platform используются запуском |
 | `database/*.py` | ACTIVE | текущая SQLAlchemy-модель, startup, auth и AppContext; legacy-сущности отдельно отмечены ниже |
 | `repositories/assessment_state_mapper.py`, `assessment_state_repository.py`, `attachment_repository.py`, `audit_log_repository.py`, `blast_block_repository.py`, `dashboard_repository.py`, `domain_geometry_repository.py`, `domain_repository.py`, `navigation_repository.py`, `project_lines_repository.py`, `site_repository.py`, `user_repository.py` | ACTIVE | production persistence, расположение временно приемлемо до переноса в infrastructure |
-| `repositories/mine_repository.py` | COMPATIBILITY_ONLY | вызывается только старым `DirectoryDialog`; обычный Project flow использует `ProjectService` |
+| `repositories/mine_repository.py` | COMPATIBILITY_ONLY | вызывается только старым `DirectoryDialog`; обычный Project flow использует infrastructure adapter `SqlAlchemyProjectCreation` |
 | `services/*.py` | ACTIVE_BUT_MISPLACED | активные workflow/service-фасады, будущий `application/`; DB-specific детали затем отделить |
 | `reports/*.py` | ACTIVE_BUT_MISPLACED | активный Excel I/O, будущий `infrastructure/reports/` |
 | `ui/pages/*`, `ui/dialogs/*`, `ui/editors/*`, `ui/widgets/plan_view.py`, обычные `ui/*.py` | ACTIVE | нормальная навигация/presentation, кроме явно перечисленных переходных контейнеров |
@@ -204,7 +222,7 @@ workspace session — только после появления use cases, чт
 
 ## Database compatibility
 
-* `Mine -> Site` — историческая пара. Новый ProjectService создаёт обе строки с
+* `Mine -> Site` — историческая пара. Новый project creation adapter создаёт обе строки с
   одинаковым именем. `MineRepository`/`DirectoryDialog` остаются legacy UI.
 * `AssessmentWorkspace` — технический 1:1 контейнер Domain, а не продуктовая
   сущность. Он является cascade root для events/areas и нужен replace-all.
@@ -360,9 +378,4 @@ composition helper, даёт страницам удобный поиск area/e
 attachments и Linked Events. Replace-all `replace_for_domain()` сохранён без
 изменения, как и Technical Card formulas и раздельные DAI/FCI (`X=FCI`, `Y=DAI`).
 
-Phase 4 целиком ещё не завершена. **Phase 4B2** оставляет archive/restore,
-BlastEvent geometry reimport, Assessment Linked Events mutation/save orchestration
-и дальнейшее сокращение `EntityPageController`. **Phase 4C** оставляет создание
-Project/Domain, report orchestration и оставшуюся очистку `MainWindow`/services.
-**Phase 5** включает focused persistence, Unit of Work, concurrency и удаление
-replace-all persistence.
+**Phase 4 завершена в Phase 4C.** Phase 5 включает focused persistence, Unit of Work, concurrency и удаление replace-all persistence.

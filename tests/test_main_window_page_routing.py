@@ -34,7 +34,7 @@ def test_missing_project_lines_warning_and_no_drawing_before_check():
     main=source("ui/main_window.py")
     area=main[main.index("def _add_area"):main.index("def _archive_selected")]
     assert "Load Project Lines for the project first." in area
-    assert area.index("get_active") < area.index("AssessmentAreaCreationPage")
+    assert area.index("project_has_active_lines") < area.index("AssessmentAreaCreationPage")
 
 def test_block_creation_reuses_blast_event_dialog_and_links_event():
     main=source("ui/main_window.py")

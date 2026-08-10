@@ -236,3 +236,131 @@ def test_link_commands_save_once_and_restore_exact_objects_on_failure():
         editing.confirm_event_link(area, link.id)
     assert area.event_links == original_links and area.event_links[0] is link
     assert link.status == "suggested"
+
+
+def geometry_session(tmp_path, *, fail=False, can_edit=True):
+    from application.services.project_lines import ProjectLinesDatasetService
+    state = AssessmentDomainState()
+    source = tmp_path / "lines.csv"
+    source.write_text("XP,YP,ZP,SID,PTN\n0,2,90,lo,1\n10,2,90,lo,2\n0,8,110,hi,1\n10,8,110,hi,2\n", encoding="utf-8")
+    ProjectLinesDatasetService(state).import_dataset(source)
+    persistence = MemoryPersistence(state, fail=fail)
+    editing = AssessmentEditingSession(persistence, 3, actor_id=11, can_edit=can_edit)
+    polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(10, 0), PlanPoint(10, 10), PlanPoint(0, 10), PlanPoint(0, 0)))
+    candidates = editing.areas.generate_candidates(polygon)
+    return editing, persistence, polygon, candidates
+
+
+def test_geometry_commit_create_and_revision_history(tmp_path):
+    editing, persistence, polygon, candidates = geometry_session(tmp_path)
+    created = editing.save_assessment_area_geometry(name="Wall", assessment_date=date.today(),
+        selection_polygon=polygon, selected_fragments=candidates)
+    area = editing.state.assessment_areas[0]; first = area.geometry_revisions[0]
+    assert created.created and created.area_id == area.id and persistence.saves == 1
+    revised = editing.save_assessment_area_geometry(assessment_area_id=area.id,
+        selection_polygon=polygon, selected_fragments=candidates)
+    assert not revised.created and editing.state.assessment_areas[0] is area
+    assert len(area.geometry_revisions) == 2 and area.geometry_revisions[0] is first
+    assert area.active_geometry_revision_id == area.geometry_revisions[1].id
+    assert first.selection_polygon_frozen == polygon and persistence.saves == 2
+
+
+def test_geometry_commit_link_failure_is_partial_and_save_failure_rolls_back(tmp_path, monkeypatch):
+    editing, persistence, polygon, candidates = geometry_session(tmp_path)
+    monkeypatch.setattr(editing.links, "refresh_suggestions", lambda area: (_ for _ in ()).throw(RuntimeError("scan failed")))
+    result = editing.save_assessment_area_geometry(name="Wall", assessment_date=date.today(),
+        selection_polygon=polygon, selected_fragments=candidates)
+    assert result.link_refresh_result is None and result.link_refresh_warning == "scan failed"
+    area = editing.state.assessment_areas[0]; first = area.geometry_revisions[0]
+    persistence.fail = True
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        editing.save_assessment_area_geometry(assessment_area_id=area.id,
+            selection_polygon=polygon, selected_fragments=candidates)
+    assert editing.state.assessment_areas[0] is area
+    assert area.geometry_revisions == [first] and area.active_geometry_revision_id == first.id
+
+
+def test_geometry_commit_new_failure_and_viewer_do_not_mutate(tmp_path):
+    editing, _, polygon, candidates = geometry_session(tmp_path, fail=True)
+    with pytest.raises(RuntimeError):
+        editing.save_assessment_area_geometry(name="Wall", assessment_date=date.today(),
+            selection_polygon=polygon, selected_fragments=candidates)
+    assert editing.state.assessment_areas == []
+    viewer, _, polygon, candidates = geometry_session(tmp_path, can_edit=False)
+    with pytest.raises(PermissionError):
+        viewer.save_assessment_area_geometry(name="Wall", assessment_date=date.today(),
+            selection_polygon=polygon, selected_fragments=candidates)
+    assert viewer.state.assessment_areas == []
+
+
+def test_geometry_link_scan_failure_after_real_partial_mutation_restores_links(tmp_path, monkeypatch):
+    """refresh_suggestions cleans links before evaluation; that partial edit must not leak."""
+    from domain.assessment.entities import AssessmentEventLink
+    editing, persistence, polygon, candidates = geometry_session(tmp_path)
+    event, _unused = entities()
+    editing.state.blast_events.append(event)
+    editing.save_assessment_area_geometry(name="Wall", assessment_date=date.today(),
+        selection_polygon=polygon, selected_fragments=candidates)
+    area = editing.state.assessment_areas[0]
+    historical = AssessmentEventLink("OLD", "OLD-R1", "confirmed", "manual",
+        id="historical", assessment_area_geometry_revision_id=area.active_geometry_revision_id)
+    area.event_links[:] = [historical]
+    original_revise = editing.areas.revise_area
+    current = None
+
+    def revise_with_disposable_link(*args, **kwargs):
+        nonlocal current
+        revision = original_revise(*args, **kwargs)
+        current = AssessmentEventLink("DISPOSABLE", "D-R1", "suggested", "automatic",
+            id="disposable", assessment_area_geometry_revision_id=area.active_geometry_revision_id)
+        area.event_links.append(current)
+        return revision
+
+    monkeypatch.setattr(editing.areas, "revise_area", revise_with_disposable_link)
+    calls = 0
+    def fail_during_evaluation(_area, _event):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("evaluation failed after cleanup")
+    monkeypatch.setattr(editing.links, "evaluate_event", fail_during_evaluation)
+
+    result = editing.save_assessment_area_geometry(assessment_area_id=area.id,
+        selection_polygon=polygon, selected_fragments=candidates)
+    assert calls == 1 and result.link_refresh_warning == "evaluation failed after cleanup"
+    assert area.event_links == [historical, current]
+    assert area.event_links[0] is historical and area.event_links[1] is current
+    assert historical.status == "confirmed" and current.status == "suggested"
+    assert persistence.saves == 2
+
+
+def test_geometry_persistence_failure_after_successful_link_refresh_restores_exact_graph(tmp_path):
+    from domain.assessment.entities import AssessmentEventLink
+    editing, persistence, polygon, candidates = geometry_session(tmp_path)
+    editing.save_assessment_area_geometry(name="Wall", assessment_date=date.today(),
+        selection_polygon=polygon, selected_fragments=candidates)
+    area = editing.state.assessment_areas[0]
+    old_revision = area.geometry_revisions[0]
+    old_selection = old_revision.selection_polygon_frozen
+    old_final = old_revision.final_geometry_frozen
+    old_source = old_revision.source_dataset_id
+    old_slices = old_revision.horizon_slices
+    old_link = AssessmentEventLink("OLD", "OLD-R1", "excluded", "manual",
+        id="old", assessment_area_geometry_revision_id=old_revision.id)
+    area.event_links[:] = [old_link]
+    before_evaluations = list(editing.state.evaluations)
+    persistence.fail = True
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        editing.save_assessment_area_geometry(assessment_area_id=area.id,
+            selection_polygon=polygon, selected_fragments=candidates)
+
+    assert editing.state.assessment_areas[0] is area
+    assert area.geometry_revisions == [old_revision]
+    assert area.active_geometry_revision_id == old_revision.id
+    assert area.event_links == [old_link] and area.event_links[0] is old_link
+    assert old_link.status == "excluded"
+    assert old_revision.selection_polygon_frozen is old_selection
+    assert old_revision.final_geometry_frozen is old_final
+    assert old_revision.source_dataset_id == old_source
+    assert old_revision.horizon_slices is old_slices
+    assert editing.state.evaluations == before_evaluations

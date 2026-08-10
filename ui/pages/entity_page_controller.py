@@ -72,3 +72,6 @@ class EntityPageController:
 
     def refresh_event_link_suggestions(self, area):
         return self.editing.refresh_event_link_suggestions(area)
+
+    def save_assessment_area_geometry(self, **values):
+        return self.editing.save_assessment_area_geometry(**values)

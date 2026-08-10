@@ -1,4 +1,3 @@
-from copy import deepcopy
 from collections.abc import Callable
 
 from PySide6.QtCore import QPointF, Qt, Signal
@@ -10,7 +9,6 @@ from PySide6.QtWidgets import (
 
 from app.localization import tr
 from application.services.assessment_areas import AssessmentAreaService
-from application.services.assessment_event_links import AssessmentEventLinkService
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.geometry.operations import validate_simple_polygon
 from ui.dialogs.assessment_candidate_dialog import AssessmentCandidateDialog
@@ -51,13 +49,12 @@ class AssessmentGeometryEditorWidget(QWidget):
     state_changed = Signal()
     state_saved = Signal()
 
-    def __init__(self, state, save_callback: Callable[[], None], parent=None, *, read_only=False):
+    def __init__(self, state, commit_geometry: Callable[..., object], parent=None, *, read_only=False):
         super().__init__(parent)
         self.state = state
-        self._save_callback = save_callback
+        self._commit_geometry = commit_geometry
         self.read_only = read_only
         self.area_service = AssessmentAreaService(state)
-        self.link_service = AssessmentEventLinkService(state)
         self.workflow_state = "IDLE"
         self.selected_area = None
         self._editing_area = None
@@ -143,26 +140,20 @@ class AssessmentGeometryEditorWidget(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             self._set_workflow_state("REFINING"); self._refresh_refinement_candidates(); self.draw_geometry(); return
 
-        state_before = deepcopy(self.state)
         editing_id = self._editing_area.id if self._editing_area else None
         try:
-            if self._editing_area:
-                area = self._editing_area
-                self.area_service.revise_area(area, selection_polygon=polygon,
-                                              selected_fragments=dialog.selected_candidates())
-            else:
-                area = self.area_service.create_area(
-                    name=dialog.area_name.text(), assessment_date=dialog.area_date.date().toPython(),
-                    selection_polygon=polygon, selected_fragments=dialog.selected_candidates())
-            try:
-                scan = self.link_service.refresh_suggestions(area)
+            result = self._commit_geometry(
+                assessment_area_id=editing_id,
+                name=dialog.area_name.text(), assessment_date=dialog.area_date.date().toPython(),
+                selection_polygon=polygon, selected_fragments=dialog.selected_candidates())
+            area = next(item for item in self.state.assessment_areas if item.id == result.area_id)
+            if result.link_refresh_result is not None:
+                scan = result.link_refresh_result
                 scan_text = (f"Production: {scan.production_candidates}; Contour: {scan.contour_candidates}; "
                              f"suggestions: {scan.suggestions_added}")
-            except Exception as exc:
-                scan_text = f"Revision saved, but linked-event search failed: {domain_message(str(exc))}"
-            self._save_callback()
+            else:
+                scan_text = f"Revision saved, but linked-event search failed: {domain_message(result.link_refresh_warning or '')}"
         except Exception:
-            self._restore_state(state_before)
             self.selected_area = next((item for item in self.state.assessment_areas if item.id == editing_id), None)
             self._editing_area = self.selected_area
             self._set_workflow_state("REFINING")
@@ -175,12 +166,6 @@ class AssessmentGeometryEditorWidget(QWidget):
         self.state_changed.emit(); self.state_saved.emit()
         QMessageBox.information(self, tr("Linked-event search"), scan_text)
         (self.area_revised if editing_id else self.area_created).emit(area_id)
-
-    def _restore_state(self, snapshot):
-        for name in ("datasets", "blast_events", "assessment_areas", "technical_cards", "evaluations", "attachments"):
-            getattr(self.state, name)[:] = getattr(snapshot, name)
-        self.area_service = AssessmentAreaService(self.state)
-        self.link_service = AssessmentEventLinkService(self.state)
 
     def cancel_workflow(self):
         if not self.has_active_workflow():

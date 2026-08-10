@@ -16,7 +16,9 @@
 * **Phase 4B2 — завершена:** archive/restore Area и contour, BlastEvent geometry
   reimport и интерактивные Linked Events стали rollback-safe workflows session;
   Block archive вынесен в отдельный use case и узкий persistence port.
-* **Phase 4B в целом — завершена. Phase 4 продолжается (Phase 4C).**
+* **Phase 4B в целом — завершена.**
+* **Phase 4C — завершена:** Project/Domain/report и Assessment geometry commit orchestration вынесены из Qt.
+* **PHASE 4 COMPLETE. Phase 5 — следующая.**
 
 Workflow-сервисы теперь находятся в `application/services/`, чистая политика —
 в `domain/`, внешние geometry/file/desktop adapters — в `infrastructure/`.
@@ -153,7 +155,6 @@ UI controller только делегирует эти workflows и пока с�
 автоматические suggestions внутри существующей транзакции ревизии границы — её
 перенос не входил в 4B2.
 
-**Phase 4C:** Project creation, Domain creation, report query/export orchestration,
-remaining MainWindow/service cleanup и оставшаяся переходная geometry-page
-orchestration. **Phase 5:** focused persistence, Unit of Work, concurrency strategy
-и устранение replace-all persistence. Phase 4 целиком пока не завершена.
+**Phase 4C завершена:** Project creation с optional Project Lines, Domain creation, navigation queries, report collect/write и Assessment geometry commit теперь application-owned. Старые misplaced Project/report services удалены. **PHASE 4 COMPLETE.**
+
+**Phase 5 следующая:** сохраняющийся долг — `AssessmentDomainState`, `AssessmentStateRepository.replace_for_domain()`, delete/recreate `AssessmentWorkspace`, coarse replace-all writes, отсутствие focused repositories/UoW и concurrency/lost-update risk.

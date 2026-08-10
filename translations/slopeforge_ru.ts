@@ -1407,6 +1407,10 @@
             <translation>Не удалось создать взрывное событие</translation>
         </message>
         <message>
+            <source>Could not create domain</source>
+            <translation>Не удалось создать домен</translation>
+        </message>
+        <message>
             <source>Could not create project</source>
             <translation>Не удалось создать проект</translation>
         </message>
