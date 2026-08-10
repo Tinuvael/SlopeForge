@@ -4,6 +4,8 @@ from ui.presentation_labels import domain_message
 from PySide6.QtWidgets import QMainWindow,QMessageBox,QStackedWidget,QVBoxLayout,QHBoxLayout,QWidget
 from app.config import APP_NAME,APP_VERSION
 from app.qt import apply_window_icon
+from app.use_case_factory import create_blast_event_use_case
+from application.use_cases.create_blast_event import CreateBlastEventCommand
 from database.app_context import AppContext
 from repositories.domain_repository import DomainRepository
 from repositories.project_lines_repository import ProjectLinesRepository
@@ -18,7 +20,7 @@ class MainWindow(QMainWindow):
         self.selected_site_id=None; self.selected_site_name=None; self.selected_domain_id=None; self.selected_domain_name=None; self.selected_block_id=None; self.selected_contour_event_id=None; self.selected_assessment_area_id=None
         self.assessment_page=None; self.assessment_domain_id=None; self.assessment_site_id=None
         self.tree=ProjectTree(context); self.tree.setMaximumWidth(320); self.block_page=BlockPage(context); self.page=self.block_page; self.page_stack=QStackedWidget(); self.page_stack.addWidget(self.block_page)
-        self.header=Header(context); self.domain_repo=DomainRepository(context.session_factory); self.project_service=ProjectService(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory)
+        self.header=Header(context); self.create_blast_event=create_blast_event_use_case(context); self.domain_repo=DomainRepository(context.session_factory); self.project_service=ProjectService(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory)
         self.tree.site_selected.connect(self.select_site); self.tree.domain_selected.connect(self.select_domain); self.tree.block_selected.connect(self.open_block_from_tree); self.tree.contour_event_selected.connect(self.open_contour_from_tree); self.tree.assessment_area_selected.connect(self.open_area_from_tree)
         self.header.add_project_requested.connect(self._add_project); self.header.add_domain_requested.connect(self._add_domain); self.header.add_blast_event_requested.connect(self._add_blast_event); self.header.add_assessment_area_requested.connect(self._add_area)
         self.header.report_requested.connect(self._project_report)
@@ -135,32 +137,25 @@ class MainWindow(QMainWindow):
         if d.exec(): self.domain_repo.create(self.selected_site_id,d.name.text(),d.description.toPlainText()); self.refresh_project_data()
     def _add_blast_event(self):
         if self.selected_domain_id is None:return
-        from ui.pages.entity_page_controller import EntityPageController
-        from application.services.blast_events import BlastEventService
-        controller=EntityPageController(self.context,self.selected_domain_id); event_service=BlastEventService(controller.state)
         from ui.dialogs.blast_event_dialog import BlastEventDialog
-        dialog=BlastEventDialog(self,event_service)
+        dialog=BlastEventDialog(self)
         if not dialog.exec():return
-        event=None; block_id=None
         try:
-            event=event_service.create_event(**dialog.values())
-            if event.event_type=="contour":
-                controller.save(); self.refresh_project_data(); self.open_contour_from_tree(event.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name); return
-            from services.blast_block_service import BlastBlockInput
-            block_id=self.block_page.block_service.create_block(BlastBlockInput(self.selected_domain_id,event.name,str(event.elevation),event.event_date,"planned",None),self.context.current_user)
-            event.blast_block_id=block_id
-            controller.save()
-            self.refresh_project_data(); self.open_block_from_tree(block_id,self.selected_domain_id,self.selected_site_id)
+            values=dialog.values()
+            user=self.context.current_user
+            result=self.create_blast_event.execute(CreateBlastEventCommand(
+                domain_id=self.selected_domain_id,
+                name=values["name"], event_type=values["event_type"],
+                event_date=values["event_date"], elevation=values["elevation"],
+                geometry_file_path=values["csv_path"], actor_id=user.id,
+                can_edit=user.can_edit,
+            ))
+            self.refresh_project_data()
+            if result.event_type=="contour":
+                self.open_contour_from_tree(result.event_id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
+            else:
+                self.open_block_from_tree(result.blast_block_id,self.selected_domain_id,self.selected_site_id)
         except Exception as exc:
-            if event in controller.state.blast_events:
-                controller.state.blast_events.remove(event)
-                try: controller.save()
-                except Exception: pass
-            if block_id:
-                from database.models import BlastBlock
-                with self.context.session_factory.begin() as session:
-                    row=session.get(BlastBlock,block_id)
-                    if row: session.delete(row)
             QMessageBox.warning(self,tr("Could not create blast event"),domain_message(str(exc)))
     def _add_area(self):
         if self.selected_domain_id is None:return

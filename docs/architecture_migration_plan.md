@@ -123,3 +123,18 @@ AssessmentArea, AssessmentDomainState и разорвать цикл domain/tech
 может безопасно разделить attachment policy, Qt image metadata и filesystem I/O,
 а также оставшиеся assessment/blasting policies. Application workflows,
 MainWindow и replace-all persistence остаются соответственно для Phase 4/5.
+
+## Результат Phase 4A и оставшийся долг
+
+**Phase 4A завершена.** Явный `CreateBlastEvent` отделил создание заголовка от
+`MainWindow`; production BlastEvent, единственный связанный BlastBlock и его audit
+теперь фиксируются одной транзакцией. Contour не создаёт Block. Для этого только
+добавлен session-aware вариант существующего replace-all сохранения; его публичное
+поведение и схема БД не изменены.
+
+Phase 4 целиком не завершена. **Phase 4B** оставляет Technical Card save,
+Assessment Evaluation save, attachment-owner/save orchestration, archive/restore
+и уменьшение `EntityPageController`. **Phase 4C** оставляет Project/Domain creation,
+report query/export и remaining MainWindow/service cleanup. **Phase 5** остаётся
+местом для focused persistence, Unit of Work и удаления replace-all
+`AssessmentDomainState` persistence.

@@ -1,6 +1,6 @@
 # Архитектура SlopeForge: текущее состояние и целевая модель
 
-## Статус после Phase 3C (Phase 3 завершена)
+## Статус после Phase 4A (Phase 4 продолжается)
 
 Phase 3A, 3B и 3C завершены. Временный пакет `prototype_2d` полностью удалён:
 стабильные сущности и чистые правила находятся в `domain/`, переходные сервисы,
@@ -20,7 +20,7 @@ rollback осталась application-сервисом, а copy/move/delete/path
 оркестрации `MainWindow` и явные use cases остаются задачей Phase 4. Replace-all
 persistence остаётся без изменений до Phase 5.
 
-Статус документа: **Phase 3 завершена**, исходный срез Phase 3C — `8906c3ac2918b6a34dbd57b17cc88bed1a12c123`.
+Статус документа: **Phase 4A завершена; Phase 4B/4C ещё впереди**, исходный срез Phase 3C — `8906c3ac2918b6a34dbd57b17cc88bed1a12c123`.
 Первый UI-рефакторинг выполнен без изменения схемы БД и продуктового поведения.
 
 ## Неподвижные правила продукта
@@ -309,3 +309,33 @@ AssessmentArea и AssessmentDomainState. Это единственный compati
 prototype_2d.technical_card`; его разрыв вместе с сущностями, assessment policy и
 attachment Qt/files split относится к Phase 3B/3C. Схема БД, persistence и
 MainWindow в Phase 3A не менялись.
+
+## Phase 4A: создание Blast Event (завершена)
+
+Зафиксированная граница до изменения: `BlastBlockService.create_block()` открывал
+и коммитил первую транзакцию (Block + audit), затем
+`AssessmentStateRepository.replace_for_domain()` открывал и коммитил вторую
+транзакцию (replace-all workspace). Если вторая операция падала, `MainWindow`
+пытался третьей транзакцией вручную удалить уже сохранённый Block. Поэтому это
+была компенсация, а не атомарность.
+
+Phase 4A завершена точечно: `MainWindow` теперь только собирает значения диалога,
+вызывает `CreateBlastEvent` и выполняет обновление/навигацию. Use case проверяет
+право редактирования, использует прежний `BlastEventService` и работает через
+узкий application-port. Contour сохраняется прежним replace-all вызовом без блока.
+Production создаёт `BlastBlock`, связывает его с событием, заменяет assessment
+state и пишет прежнюю audit-запись в одной SQLAlchemy-транзакции. Ошибка на любом
+этапе откатывает обе стороны; UI-компенсация удалением блока устранена.
+
+`AssessmentStateRepository.replace_for_domain()` сохранил публичный контракт и
+собственную транзакцию, но делегирует работу в `replace_for_domain_in_session()`;
+этот helper не делает commit и позволяет atomic adapter владеть транзакцией.
+Replace-all `AssessmentDomainState` и `AssessmentWorkspace` намеренно остаются до
+Phase 5. Схема БД и инженерные расчёты не менялись.
+
+Phase 4 целиком ещё не завершена. **Phase 4B**: Technical Card save, Assessment
+Evaluation save, attachment-owner/save orchestration, archive/restore и сокращение
+ответственностей `EntityPageController`. **Phase 4C**: создание Project/Domain,
+report query/export orchestration и оставшаяся очистка `MainWindow`/services.
+Phase 5 по-прежнему включает focused persistence, Unit of Work и удаление
+replace-all persistence.

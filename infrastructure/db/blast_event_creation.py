@@ -1,0 +1,65 @@
+"""SQLAlchemy adapter for atomic Blast Event header creation."""
+from __future__ import annotations
+
+from collections.abc import Callable
+from decimal import Decimal
+
+from sqlalchemy.orm import Session
+
+from application.state.assessment_domain_state import AssessmentDomainState
+from database.models import BlastBlock
+from repositories.assessment_state_repository import AssessmentStateRepository
+from repositories.audit_log_repository import AuditLogRepository
+
+
+class SqlAlchemyBlastEventCreationPersistence:
+    def __init__(self, session_factory: Callable[[], Session], *, failure_hook=None):
+        self._session_factory = session_factory
+        self._states = AssessmentStateRepository(session_factory)
+        self._audit = AuditLogRepository(session_factory)
+        self._failure_hook = failure_hook
+
+    def load_state(self, domain_id: int) -> AssessmentDomainState:
+        return self._states.load_for_domain(domain_id).state
+
+    def persist_contour(self, domain_id: int, state: AssessmentDomainState) -> None:
+        self._states.replace_for_domain(domain_id, state)
+
+    def persist_production(
+        self, domain_id: int, state: AssessmentDomainState, event_id: str,
+        actor_id: int | None,
+    ) -> int:
+        event = next(item for item in state.blast_events if item.id == event_id)
+        if event.event_type != "production" or event.blast_block_id is not None:
+            raise ValueError("Expected an unlinked production Blast Event")
+        with self._session_factory.begin() as session:
+            block = BlastBlock(
+                domain_id=domain_id,
+                block_number=event.name.strip(),
+                horizon_m=Decimal(str(event.elevation)),
+                planned_blast_date=event.event_date,
+                status="planned",
+                comment=None,
+                created_by_user_id=actor_id,
+            )
+            session.add(block)
+            session.flush()
+            self._fail("after_block_flush")
+            event.blast_block_id = block.id
+            self._states.replace_for_domain_in_session(session, domain_id, state)
+            self._fail("after_state_replace")
+            self._audit.add_entry(
+                session,
+                blast_block_id=block.id,
+                user_id=actor_id,
+                action="create",
+                entity_type="blast_block",
+                entity_id=block.id,
+                description="Создан взрывной блок",
+            )
+            self._fail("before_commit")
+            return block.id
+
+    def _fail(self, stage: str) -> None:
+        if self._failure_hook is not None:
+            self._failure_hook(stage)

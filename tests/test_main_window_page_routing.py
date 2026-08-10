@@ -40,8 +40,11 @@ def test_block_creation_reuses_blast_event_dialog_and_links_event():
     main=source("ui/main_window.py")
     block=main[main.index("def _add_blast_event"):main.index("def _add_area")]
     assert "BlastEventDialog" in block
-    assert "event.event_type==\"contour\"" in block
-    assert "create_event" in block and "blast_block_id=block_id" in block
+    assert "CreateBlastEventCommand" in block
+    assert "self.create_blast_event.execute" in block
+    assert "result.event_type==\"contour\"" in block
+    for forbidden in ("EntityPageController", "BlastEventService", "create_block", "controller.save", "session_factory", "BlastBlock"):
+        assert forbidden not in block
 
 def test_site_dashboard_owns_project_lines_management():
     pages=source("ui/pages/dashboards/site_dashboard.py")
@@ -120,7 +123,7 @@ def test_contour_event_ui_and_tree_architecture():
         assert label in header
     main=source("ui/main_window.py")
     assert "def _add_blast_event" in main and "open_contour_from_tree" in main
-    assert "event.event_type==\"contour\"" in main
+    assert "result.event_type==\"contour\"" in main
     page=source("ui/pages/contour_event_page.py")
     assert "ContourEventPage" in page and "Geomechanics" not in page
     assert '"Blast design"' in page and '"Execution fact"' in page
