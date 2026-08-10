@@ -147,8 +147,3 @@ class BlastEvent:
             archived_at=_datetime_from_text(data.get("archived_at")),
             archive_reason=data.get("archive_reason"),
         )
-
-
-HorizonSliceRole = Literal["lower_boundary", "internal_horizon", "upper_boundary"]
-LinkStatus = Literal["suggested", "confirmed", "excluded"]
-LinkSource = Literal["automatic", "manual"]

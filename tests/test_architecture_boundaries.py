@@ -208,3 +208,9 @@ def test_removed_phase_3b_modules_do_not_return() -> None:
     candidates = set(production_files()) | set((ROOT / "tests").rglob("*.py"))
     offenders = {relative(path) for path in candidates if imports(path) & forbidden}
     assert offenders == set()
+
+
+def test_assessment_type_aliases_are_owned_only_by_assessment_entities() -> None:
+    blasting_source = (ROOT / "domain/blasting/entities.py").read_text(encoding="utf-8")
+    for name in ("HorizonSliceRole", "LinkStatus", "LinkSource"):
+        assert name not in blasting_source
