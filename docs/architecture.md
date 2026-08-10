@@ -1,6 +1,6 @@
 # Архитектура SlopeForge: текущее состояние и целевая модель
 
-## Статус после Phase 4A (Phase 4 продолжается)
+## Статус после Phase 4B1 (Phase 4 продолжается)
 
 Phase 3A, 3B и 3C завершены. Временный пакет `prototype_2d` полностью удалён:
 стабильные сущности и чистые правила находятся в `domain/`, переходные сервисы,
@@ -20,7 +20,9 @@ rollback осталась application-сервисом, а copy/move/delete/path
 оркестрации `MainWindow` и явные use cases остаются задачей Phase 4. Replace-all
 persistence остаётся без изменений до Phase 5.
 
-Статус документа: **Phase 4A завершена; Phase 4B/4C ещё впереди**, исходный срез Phase 3C — `8906c3ac2918b6a34dbd57b17cc88bed1a12c123`.
+Статус документа: **Phase 4A и Phase 4B1 завершены; Phase 4B целиком не
+завершена**, исходный commit Phase 4B1 —
+`96942d2f241add9055683e81d9bfd72b7229f973`.
 Первый UI-рефакторинг выполнен без изменения схемы БД и продуктового поведения.
 
 ## Неподвижные правила продукта
@@ -333,9 +335,25 @@ state и пишет прежнюю audit-запись в одной SQLAlchemy-�
 Replace-all `AssessmentDomainState` и `AssessmentWorkspace` намеренно остаются до
 Phase 5. Схема БД и инженерные расчёты не менялись.
 
-Phase 4 целиком ещё не завершена. **Phase 4B**: Technical Card save, Assessment
-Evaluation save, attachment-owner/save orchestration, archive/restore и сокращение
-ответственностей `EntityPageController`. **Phase 4C**: создание Project/Domain,
-report query/export orchestration и оставшаяся очистка `MainWindow`/services.
-Phase 5 по-прежнему включает focused persistence, Unit of Work и удаление
+## Phase 4B1: entity editing (завершена)
+
+До Phase 4B1 `EntityPageController` сам создавал repository, загружал и сохранял
+`AssessmentDomainState`, владел workspace ID, Technical Card/Evaluation services
+и тремя видами компенсации: revision, transient Evaluation и lazy attachment
+owner. Теперь framework-free `AssessmentStatePersistence` возвращает собственный
+application snapshot, а простой SQLAlchemy adapter переводит старый repository
+contract в этот port. `AssessmentEditingSession` владеет живым state graph,
+draft/save workflows, permission check и rollback. После save граф не заменяется,
+поэтому ссылки UI на события, карточки, оценки и ревизии остаются действительными.
+
+`EntityPageController` остался временным UI adapter: создаёт editing session через
+composition helper, даёт страницам удобный поиск area/event и пока соединяет
+attachments и Linked Events. Replace-all `replace_for_domain()` сохранён без
+изменения, как и Technical Card formulas и раздельные DAI/FCI (`X=FCI`, `Y=DAI`).
+
+Phase 4 целиком ещё не завершена. **Phase 4B2** оставляет archive/restore,
+BlastEvent geometry reimport, Assessment Linked Events mutation/save orchestration
+и дальнейшее сокращение `EntityPageController`. **Phase 4C** оставляет создание
+Project/Domain, report orchestration и оставшуюся очистку `MainWindow`/services.
+**Phase 5** включает focused persistence, Unit of Work, concurrency и удаление
 replace-all persistence.

@@ -298,17 +298,17 @@ def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
     from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
     from application.state.assessment_domain_state import AssessmentDomainState
     from domain.assessment.evaluation import AssessmentAreaEvaluationService
-    from ui.pages.entity_page_controller import EntityPageController
+    from application.services.entity_editing import AssessmentEditingSession
 
     polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(1, 0), PlanPoint(1, 1), PlanPoint(0, 0)))
     geometry = AssessmentAreaGeometryRevision("AGR-1", "AREA-1", 1, datetime.now(timezone.utc), "DATASET-1", polygon, polygon, 100, 110, ())
     area = AssessmentArea("AREA-1", "Wall", date.today(), [geometry], geometry.id)
     state = AssessmentDomainState(assessment_areas=[area])
-    controller = EntityPageController.__new__(EntityPageController)
+    controller = AssessmentEditingSession.__new__(AssessmentEditingSession)
     controller.state = state
     controller.evaluations = AssessmentAreaEvaluationService(state)
     saves = []
-    controller.save = lambda: saves.append(True)
+    controller.can_edit = True; controller.save = lambda: saves.append(True)
 
     transient, _draft = controller.evaluation_draft(area)
     owner = controller.ensure_evaluation_owner(area, transient)
@@ -329,15 +329,15 @@ def test_attachment_owner_can_be_prepared_without_an_intermediate_save():
     from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
     from application.state.assessment_domain_state import AssessmentDomainState
     from domain.assessment.evaluation import AssessmentAreaEvaluationService
-    from ui.pages.entity_page_controller import EntityPageController
+    from application.services.entity_editing import AssessmentEditingSession
 
     polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(1, 0), PlanPoint(1, 1), PlanPoint(0, 0)))
     geometry = AssessmentAreaGeometryRevision("AGR-1", "AREA-1", 1, datetime.now(timezone.utc), "DATASET-1", polygon, polygon, 100, 110, ())
     area = AssessmentArea("AREA-1", "Wall", date.today(), [geometry], geometry.id)
     state = AssessmentDomainState(assessment_areas=[area])
-    controller = EntityPageController.__new__(EntityPageController)
+    controller = AssessmentEditingSession.__new__(AssessmentEditingSession)
     controller.state = state; controller.evaluations = AssessmentAreaEvaluationService(state)
-    saves = []; controller.save = lambda: saves.append(True)
+    saves = []; controller.can_edit = True; controller.save = lambda: saves.append(True)
 
     transient, _draft = controller.evaluation_draft(area)
     owner, rollback = controller.prepare_evaluation_attachment_owner(area, transient)

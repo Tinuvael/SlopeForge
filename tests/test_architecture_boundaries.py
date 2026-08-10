@@ -95,6 +95,24 @@ def test_application_is_qt_and_concrete_persistence_free() -> None:
     assert offenders == set()
 
 
+def test_entity_page_controller_has_no_direct_persistence_dependencies() -> None:
+    path = ROOT / "ui/pages/entity_page_controller.py"
+    assert not any(has_prefix(name, ("repositories", "sqlalchemy", "database"))
+                   for name in imports(path))
+
+
+def test_entity_editing_application_boundary_is_framework_free() -> None:
+    paths = [
+        ROOT / "application/services/entity_editing.py",
+        ROOT / "application/ports/assessment_state.py",
+    ]
+    forbidden = ("PySide6", "sqlalchemy", "database", "repositories", "ui")
+    assert not {
+        relative(path) for path in paths
+        if any(has_prefix(name, forbidden) for name in imports(path))
+    }
+
+
 def test_attachment_filesystem_adapter_is_qt_free() -> None:
     path = ROOT / "infrastructure/files/attachments.py"
     assert not any(has_prefix(name, ("PySide6", "ui")) for name in imports(path))
