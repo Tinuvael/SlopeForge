@@ -138,7 +138,7 @@ class MainWindow(QMainWindow):
         from ui.pages.entity_page_controller import EntityPageController
         from prototype_2d.blast_event_service import BlastEventService
         controller=EntityPageController(self.context,self.selected_domain_id); event_service=BlastEventService(controller.state)
-        from ui.widgets.assessment_workspace import BlastEventDialog
+        from ui.dialogs.blast_event_dialog import BlastEventDialog
         dialog=BlastEventDialog(self,event_service)
         if not dialog.exec():return
         event=None; block_id=None

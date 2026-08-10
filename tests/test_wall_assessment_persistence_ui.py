@@ -5,7 +5,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 QtWidgets = pytest.importorskip("PySide6.QtWidgets", reason="Qt unavailable", exc_type=ImportError)
 from PySide6.QtWidgets import QApplication
-from prototype_2d.blast_event_storage import load_blast_event_state, save_blast_event_state
 from prototype_2d.domain import (AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState,
  AssessmentEventLink, BlastEvent, PlanPoint, PlanPolygon)
 from prototype_2d.wall_assessment import (AssessmentAreaEvaluationService, AssessmentCriterionResult,
@@ -62,8 +61,8 @@ def test_draft_revision_stores_all_inputs_and_is_independent():
 
 def test_completed_end_to_end_save_load_restores_everything(tmp_path):
     state,area=make_state(); evaluation,draft=filled_draft(state,area); state.evaluations.append(evaluation)
-    saved=evaluation.save_revision(draft,"completed"); path=tmp_path/"assessment.json"; save_blast_event_state(state,path)
-    restored=load_blast_event_state(path); revision=restored.evaluations[0].active_revision()
+    saved=evaluation.save_revision(draft,"completed")
+    restored=AssessmentDomainState.from_dict(state.to_dict()); revision=restored.evaluations[0].active_revision()
     assert revision.status=="completed" and revision.design_inputs==saved.design_inputs
     assert revision.face_condition_inputs==saved.face_condition_inputs
     assert [(r.criterion_id,r.raw_numeric_value,r.selected_option_id,r.manual_score,r.override_reason,r.accepted_score) for r in revision.criterion_results]==[(r.criterion_id,r.raw_numeric_value,r.selected_option_id,r.manual_score,r.override_reason,r.accepted_score) for r in saved.criterion_results]

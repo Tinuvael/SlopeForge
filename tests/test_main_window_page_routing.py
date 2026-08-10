@@ -77,7 +77,7 @@ def test_area_links_and_focused_creation_are_reused():
     for action in ("confirm_link","exclude_link","restore_suggestion","refresh_suggestions"):
         assert action in area
     creation=source("ui/pages/assessment_area_creation_page.py")
-    assert "AssessmentAreaCreationPage" in creation and "plan_view" in creation
+    assert "AssessmentAreaCreationPage" in creation and "AssessmentGeometryEditorWidget" in creation
     assert "Blast Events" not in creation and "TechnicalCard" not in creation
     main=source("ui/main_window.py")
     assert "AssessmentAreaCreationPage" in main and "_area_created" in main
@@ -127,9 +127,9 @@ def test_contour_event_ui_and_tree_architecture():
 
 def test_area_creation_cancel_drawing_is_not_page_cancel():
     creation=source("ui/pages/assessment_area_creation_page.py")
-    cancel=creation[creation.index("def _cancel_drawing"):creation.index("def _close_page")]
-    assert "cancel_active_workflow" in cancel and "cancelled.emit" not in cancel
-    assert "def _start_drawing" in creation and "start_area_drawing" in creation
+    assert "cancel_drawing.clicked.connect(self.editor.cancel_workflow)" in creation
+    assert "def _close_page" in creation and "self.cancelled.emit()" in creation
+    assert "def _start_drawing" in creation and "start_new_area()" in creation
 
 
 def test_stale_block_engineering_is_cleared_and_read_only_is_defensive():
@@ -155,20 +155,17 @@ def test_area_and_contour_mutations_are_defensively_read_only():
 
 def test_restart_drawing_distinguishes_create_and_edit_modes():
     creation=source("ui/pages/assessment_area_creation_page.py")
-    restart=creation[creation.index("def _start_drawing"):creation.index("def _toggle_lines")]
+    restart=creation[creation.index("def _start_drawing"):creation.index("def _confirm")]
     assert "if self.edit_area_id" in restart
-    assert "open_assessment_area(self.edit_area_id)" in restart
-    assert "edit_area_boundaries()" in restart
-    assert "else:self.controller.workspace.start_area_drawing()" in restart
+    assert "self.editor.start_edit(self.edit_area_id)" in restart
+    assert "self.editor.start_new_area()" in restart
 
 
 def test_area_completion_is_not_driven_by_generic_state_saved():
     creation=source("ui/pages/assessment_area_creation_page.py")
     assert "state_saved.connect" not in creation
-    confirm=creation[creation.index("def _confirm"):creation.index("def _sync_status")]
-    assert confirm.index("confirm_refined_polygon()") < confirm.index('workflow_state!="IDLE"')
-    assert "_edit_revision_count" in confirm and "_edit_active_revision_id" in confirm
-    assert "_completion_emitted=True" in confirm
+    assert "self.editor.area_created.connect(self.area_created)" in creation
+    assert "self.editor.area_revised.connect(self.area_created)" in creation
 
 
 def test_successful_area_edit_has_dedicated_unguarded_completion_path():

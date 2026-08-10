@@ -1,15 +1,14 @@
 # План миграции архитектуры
 
-Все переносы ниже — будущие PR. Phase 1 ничего из таблицы физически не переносит.
+Phase 2 завершена. Перенос domain/application модулей ниже остаётся будущей работой.
 Каждый PR сохраняет инженерные формулы, DAI/FCI, report semantics и текущий UI.
 
 ## Последовательность PR
 
-1. **Phase 1 (этот PR):** AST-аудит, фактическая классификация, target и ratchets.
-2. **Phase 2:** сначала отделить active Assessment Area creation/edit flow от
-   `AssessmentWorkspaceWidget`; затем удалить только доказанный compatibility
-   window/JSON storage и их implementation-detail tests. Обычные entity pages уже
-   не зависят от `ui.prototype_2d`, поэтому их не переписывать.
+1. **Phase 1 (завершена):** AST-аудит, фактическая классификация, target и ratchets.
+2. **Phase 2 (завершена):** извлечены geometry editor и два production dialog;
+   workspace host/widget, compatibility window/JSON storage, `ui/prototype_2d` и
+   dead DirectoryDialog удалены. Поведение normal entity pages сохранено.
 3. **Phase 3:** перенос алгоритмов без redesign, начиная с leaf geometry/importers;
    разорвать `domain <-> technical_card`; разделить attachment policy и Qt/files.
 4. **Phase 4:** явные application use cases, прежде всего atomic production
@@ -22,9 +21,8 @@
 7. **Phase 7:** убрать shims, дробить oversized modules по пользе, очистить naming,
    imports, packaging и документы.
 
-Изменение против наивного порядка: Phase 2 **не может просто удалить весь
-assessment_workspace** — creation/edit flow production-зависим. Сначала его
-извлечение; чистый wrapper можно удалить независимо.
+Phase 2 сначала извлекла production creation/edit flow, затем удалила workspace;
+hidden widget и перенос ownership plan view больше не используются.
 
 ## Карта файлов
 
@@ -83,3 +81,12 @@ assessment_workspace** — creation/edit flow production-зависим. Сна�
 
 После каждой фазы: architecture audit, boundary tests, полный offscreen pytest,
 compileall, `git diff --check`, один Alembic head. Allowlist только уменьшается.
+
+## Результат Phase 2 и следующий долг
+
+Focused editor временно импортирует `prototype_2d.assessment_area_service`,
+`assessment_event_link_service`, geometry и domain types. Это ожидаемая граница
+Phase 2, а не завершение Phase 3. В Phase 3 без redesign переносятся перечисленные
+алгоритмы/import adapters. MainWindow orchestration остаётся до Phase 4, а
+`AssessmentStateRepository.replace_for_domain()` — до Phase 5. Схема и Alembic в
+Phase 2 не менялись.
