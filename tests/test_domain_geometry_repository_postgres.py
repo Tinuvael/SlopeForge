@@ -12,7 +12,7 @@ URL=os.environ.get("SLOPEFORGE_TEST_DATABASE_URL")
 if not URL: pytest.skip("SLOPEFORGE_TEST_DATABASE_URL is not set; Domain Geometry DB tests skipped",allow_module_level=True)
 if "test" not in (make_url(URL).database or "").lower(): pytest.fail("Refusing destructive tests: database name must contain 'test'",pytrace=False)
 from database.models import Domain,DomainGeometry,Mine,Site
-from prototype_2d.domain import PlanPoint,PlanPolygon
+from domain.geometry.types import PlanPoint, PlanPolygon
 from repositories.domain_geometry_repository import DomainGeometryRepository
 from repositories.dashboard_repository import DashboardRepository
 from database.assessment_models import ProjectLinesDataset

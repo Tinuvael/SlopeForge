@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Callable, Sequence
 from sqlalchemy.orm import Session
 from database.models import Domain, DomainGeometry
-from prototype_2d.domain import PlanPolygon
-from prototype_2d.geometry import validate_simple_polygon
+from domain.geometry.types import PlanPolygon
+from domain.geometry.operations import validate_simple_polygon
 
 
 @dataclass(frozen=True)

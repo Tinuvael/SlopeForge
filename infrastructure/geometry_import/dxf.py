@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from math import isclose
 
-from .models import DatamineLine, DataminePoint
+from domain.geometry.types import DatamineLine, DataminePoint
 
 
 class DxfImportError(ValueError):

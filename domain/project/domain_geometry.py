@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from math import hypot, isfinite
 from typing import Sequence
 
-from .domain import PlanPoint, PlanPolygon
-from .geometry import validate_simple_polygon
-from .models import DatamineLine
+from domain.geometry.types import PlanPoint, PlanPolygon
+from domain.geometry.operations import validate_simple_polygon
+from domain.geometry.types import DatamineLine
 
 DOMAIN_CLOSURE_TOLERANCE_M = 0.05
 DOMAIN_MIN_AREA_M2 = 1e-6

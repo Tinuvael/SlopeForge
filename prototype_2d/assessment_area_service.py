@@ -7,7 +7,7 @@ from math import hypot
 from .domain import (AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, AssessmentHorizonSlice,
                      PlanLineString, PlanPoint, PlanPolygon)
 from .domain import utc_now
-from .geometry import clip_datamine_line_by_polygon, validate_simple_polygon
+from domain.geometry.operations import clip_datamine_line_by_polygon, validate_simple_polygon
 
 
 @dataclass(frozen=True)

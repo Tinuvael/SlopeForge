@@ -264,3 +264,28 @@ prototype algorithms и `Mine` вне явного списка.
 UI файла, два Qt-долга (`entity_attachments.py` и compatibility storage) и восемь
 Mine-compatibility файлов.
 Baseline — код, а не огромный snapshot imports; его следует только сокращать.
+
+## Phase 3A: geometry core и import adapters (завершена)
+
+Phase 3A перенесла без изменения алгоритмов единые `Plan*` и Datamine value types
+в `domain/geometry/types.py`, чистые операции — в
+`domain/geometry/operations.py`, построение Domain footprint — в
+`domain/project/domain_geometry.py`. CSV, DXF и их dispatch теперь находятся в
+`infrastructure/geometry_import/`. Старые семь geometry/import модулей
+`prototype_2d` удалены, и architecture test запрещает их восстановление.
+
+`blast_geometry.py` фактически не выполнял I/O: он преобразовывал уже разобранные
+`DatamineLine`. Поэтому весь модуль стал чистой policy
+`domain/geometry/blast.py`; искусственный пустой `infrastructure/.../blast.py` не
+создавался. `prototype_2d/domain.py` временно re-export-ит канонические geometry
+типы, потому что Phase 3B ещё должна перенести сериализуемые BlastEvent,
+AssessmentArea и AssessmentDomainState. Это единственный compatibility bridge и
+в нём нет второй реализации.
+
+После переноса `domain.geometry` зависит только от стандартной библиотеки и своих
+типов. `infrastructure.geometry_import` зависит от `domain.geometry` и внешнего
+`ezdxf`, но не от Qt/UI. Внутренний geometry/import cluster в `prototype_2d`
+исчез. Остаётся ранее известный цикл `prototype_2d.domain <->
+prototype_2d.technical_card`; его разрыв вместе с сущностями, assessment policy и
+attachment Qt/files split относится к Phase 3B/3C. Схема БД, persistence и
+MainWindow в Phase 3A не менялись.

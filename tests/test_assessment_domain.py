@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from prototype_2d.blast_geometry import BlastGeometryError, build_contour_geometry, build_production_geometry
+from domain.geometry.blast import BlastGeometryError, build_contour_geometry, build_production_geometry
 from prototype_2d.domain import (
     AssessmentArea,
     AssessmentAreaGeometryRevision,
@@ -16,7 +16,7 @@ from prototype_2d.domain import (
     PlanPolygon,
     ProjectLinesDataset,
 )
-from prototype_2d.models import DatamineLine, DataminePoint
+from domain.geometry.types import DatamineLine, DataminePoint
 
 
 def point(x, y, z, row=1):
@@ -154,7 +154,7 @@ def test_domain_state_round_trip_includes_assessment_area_stub():
 
 def test_real_format_contour_filters_flat_marker_strings():
     from pathlib import Path
-    from prototype_2d.csv_importer import import_datamine_csv
+    from infrastructure.geometry_import.csv import import_datamine_csv
 
     imported = import_datamine_csv(Path("tests/fixtures/contour_drillholes_with_markers.csv"))
     assert imported.summary.column_mapping["LINE_ID"] == "SID"
@@ -182,7 +182,7 @@ def test_contour_equal_maximum_uses_earliest_source_row():
 
 def test_production_fixture_keeps_highest_closed_line():
     from pathlib import Path
-    from prototype_2d.csv_importer import import_datamine_csv
+    from infrastructure.geometry_import.csv import import_datamine_csv
 
     imported = import_datamine_csv(Path("tests/fixtures/production_two_closed_levels.csv"))
     result = build_production_geometry(imported.lines)
@@ -194,7 +194,7 @@ def test_production_fixture_keeps_highest_closed_line():
 
 def test_unsorted_contour_rows_select_same_collars(tmp_path):
     from pathlib import Path
-    from prototype_2d.csv_importer import import_datamine_csv
+    from infrastructure.geometry_import.csv import import_datamine_csv
 
     fixture = Path("tests/fixtures/contour_drillholes_with_markers.csv")
     rows = fixture.read_text(encoding="utf-8").splitlines()

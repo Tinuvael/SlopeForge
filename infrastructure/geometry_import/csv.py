@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from .models import DatamineLine, DataminePoint
+from domain.geometry.types import DatamineLine, DataminePoint
 
 LOGICAL_FIELDS = ("X", "Y", "Z", "LINE_ID", "POINT_ORDER", "SOURCE_TYPE", "PVALUE")
 REQUIRED_FIELDS = ("X", "Y", "Z", "LINE_ID")

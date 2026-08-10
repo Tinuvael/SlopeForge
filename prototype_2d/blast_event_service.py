@@ -7,8 +7,8 @@ from pathlib import Path
 from statistics import median
 from uuid import uuid4
 
-from .blast_geometry import BlastGeometryError, build_contour_geometry, build_production_geometry
-from .line_geometry_importer import import_line_geometry
+from domain.geometry.blast import BlastGeometryError, build_contour_geometry, build_production_geometry
+from infrastructure.geometry_import.lines import import_line_geometry
 from .domain import AssessmentDomainState, BlastEvent, BlastEventGeometryRevision
 
 

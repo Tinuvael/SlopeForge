@@ -6,7 +6,7 @@ from prototype_2d.assessment_event_link_service import AssessmentEventLinkServic
 from prototype_2d.blast_event_service import BlastEventService
 from prototype_2d.domain import (AssessmentArea, AssessmentAreaGeometryRevision,
     AssessmentDomainState, BlastEvent, PlanMultiPoint, PlanPoint, PlanPolygon)
-from prototype_2d.geometry import (points_from_multipoint_inside_polygon,
+from domain.geometry.operations import (points_from_multipoint_inside_polygon,
     polygon_intersects_polygon)
 
 

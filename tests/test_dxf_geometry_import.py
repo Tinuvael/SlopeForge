@@ -7,10 +7,10 @@ from ezdxf.lldxf.const import (
     POLYLINE_SPLINE_FIT_VERTICES_ADDED,
 )
 
-from prototype_2d.blast_geometry import build_contour_geometry, build_production_geometry
+from domain.geometry.blast import build_contour_geometry, build_production_geometry
 from prototype_2d.domain import AssessmentDomainState
-from prototype_2d.dxf_importer import DxfImportError, import_dxf_polylines
-from prototype_2d.line_geometry_importer import LineGeometryImportError, import_line_geometry
+from infrastructure.geometry_import.dxf import DxfImportError, import_dxf_polylines
+from infrastructure.geometry_import.lines import LineGeometryImportError, import_line_geometry
 from prototype_2d.project_lines_dataset_service import (
     ProjectLinesDatasetService,
     ProjectLinesImportError,

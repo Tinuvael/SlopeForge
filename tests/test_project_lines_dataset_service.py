@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from prototype_2d.domain import AssessmentDomainState
-from prototype_2d.models import DatamineLine, DataminePoint
+from domain.geometry.types import DatamineLine, DataminePoint
 from prototype_2d.project_lines_dataset_service import (
     ProjectLinesDatasetService,
     ProjectLinesImportError,

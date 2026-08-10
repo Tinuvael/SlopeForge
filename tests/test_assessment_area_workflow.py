@@ -5,9 +5,9 @@ import pytest
 
 from prototype_2d.assessment_area_service import AssessmentAreaService, AssessmentFragmentCandidate
 from prototype_2d.domain import AssessmentDomainState, PlanLineString, PlanPoint, PlanPolygon, ProjectLinesDataset
-from prototype_2d.geometry import (clip_datamine_line_by_polygon, point_in_polygon, polygon_area,
+from domain.geometry.operations import (clip_datamine_line_by_polygon, point_in_polygon, polygon_area,
                                    polygon_self_intersects, segment_intersection)
-from prototype_2d.models import DatamineLine, DataminePoint
+from domain.geometry.types import DatamineLine, DataminePoint
 
 
 def polygon(*coordinates):

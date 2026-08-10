@@ -2,8 +2,8 @@
 from pathlib import Path
 from typing import TypeAlias
 
-from .csv_importer import ImportResult as CsvImportResult, import_datamine_csv
-from .dxf_importer import DxfImportResult, import_dxf_polylines
+from infrastructure.geometry_import.csv import ImportResult as CsvImportResult, import_datamine_csv
+from infrastructure.geometry_import.dxf import DxfImportResult, import_dxf_polylines
 
 LineGeometryImportResult: TypeAlias = CsvImportResult | DxfImportResult
 

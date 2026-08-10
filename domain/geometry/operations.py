@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from math import hypot, isfinite
 
-from .models import DatamineLine
-from .domain import PlanLineString, PlanMultiPoint, PlanPoint, PlanPolygon
+from domain.geometry.types import DatamineLine
+from domain.geometry.types import PlanLineString, PlanMultiPoint, PlanPoint, PlanPolygon
 
 GEOMETRY_TOLERANCE = 1e-9
 

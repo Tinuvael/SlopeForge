@@ -2,7 +2,7 @@ from datetime import date, datetime, timezone
 import pytest
 
 from prototype_2d.blast_event_service import BlastEventService, BlastEventValidationError
-from prototype_2d.csv_importer import detect_columns, import_datamine_csv
+from infrastructure.geometry_import.csv import detect_columns, import_datamine_csv
 from prototype_2d.domain import AssessmentDomainState, PlanMultiPoint, PlanPoint, PlanPolygon
 from prototype_2d.project_lines_dataset_service import ProjectLinesDatasetService
 
