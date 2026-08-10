@@ -13,6 +13,10 @@
 * **Phase 4A — завершена:** создание Production BlastEvent и BlastBlock атомарно.
 * **Phase 4B1 — завершена:** entity editing load/save, Technical Card, Evaluation
   и lazy Evaluation attachment-owner orchestration перенесены из UI в application.
+* **Phase 4B2 — завершена:** archive/restore Area и contour, BlastEvent geometry
+  reimport и интерактивные Linked Events стали rollback-safe workflows session;
+  Block archive вынесен в отдельный use case и узкий persistence port.
+* **Phase 4B в целом — завершена. Phase 4 продолжается (Phase 4C).**
 
 Workflow-сервисы теперь находятся в `application/services/`, чистая политика —
 в `domain/`, внешние geometry/file/desktop adapters — в `infrastructure/`.
@@ -135,16 +139,21 @@ MainWindow и replace-all persistence остаются соответствен�
 добавлен session-aware вариант существующего replace-all сохранения; его публичное
 поведение и схема БД не изменены.
 
-## Результат Phase 4B1 и оставшийся долг
+## Результат Phase 4B и оставшийся долг
 
-**Phase 4B1 завершена, но Phase 4B целиком не завершена.** Узкий
+**Phase 4B1 завершена.** Узкий
 `AssessmentStatePersistence` и SQLAlchemy adapter сохраняют старую replace-all
 семантику. `AssessmentEditingSession` владеет загрузкой/сохранением живого графа,
 Technical Card и Evaluation draft/save rollback, правами и lazy Evaluation owner.
 UI controller только делегирует эти workflows и пока связывает attachments/links.
 
-**Phase 4B2:** archive/restore, BlastEvent geometry reimport orchestration,
-Assessment Linked Events mutation/save orchestration и оставшееся сокращение
-`EntityPageController`. **Phase 4C:** Project/Domain creation, report orchestration
-и remaining MainWindow/services cleanup. **Phase 5:** focused persistence, Unit of
-Work, concurrency и удаление replace-all persistence.
+**Phase 4B2 завершена.** `EntityPageController` остался тонким UI adapter и
+делегирует archive/reimport/link commands session; link read helpers временно
+экспонируются через `editing.links`. Geometry editor по-прежнему обновляет
+автоматические suggestions внутри существующей транзакции ревизии границы — её
+перенос не входил в 4B2.
+
+**Phase 4C:** Project creation, Domain creation, report query/export orchestration,
+remaining MainWindow/service cleanup и оставшаяся переходная geometry-page
+orchestration. **Phase 5:** focused persistence, Unit of Work, concurrency strategy
+и устранение replace-all persistence. Phase 4 целиком пока не завершена.

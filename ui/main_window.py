@@ -197,15 +197,18 @@ class MainWindow(QMainWindow):
         if self.selected_block_id is not None:
             block=self.block_page.current_block; action="Restore" if block.is_archived else "Archive"
             if QMessageBox.question(self,action,f"{action} Block {block.block_number}?") != QMessageBox.StandardButton.Yes:return
-            self.block_page.block_service.set_archived(block.id,not block.is_archived,self.context.current_user); self.selected_block_id=None; self.header.set_archive_context(False); self.refresh_project_data(); return
+            from app.use_case_factory import create_set_blast_block_archived_use_case
+            from application.use_cases.set_blast_block_archived import SetBlastBlockArchivedCommand
+            user=self.context.current_user
+            create_set_blast_block_archived_use_case(self.context).execute(SetBlastBlockArchivedCommand(block.id,not block.is_archived,user.id,user.can_edit)); self.selected_block_id=None; self.header.set_archive_context(False); self.refresh_project_data(); return
         if self.selected_assessment_area_id and getattr(self,"area_page",None):
             area=self.area_page.area; action="Restore" if area.is_archived else "Archive"
             if QMessageBox.question(self,action,f'{action} Assessment Area "{area.name}"?') != QMessageBox.StandardButton.Yes:return
-            area.restore() if area.is_archived else area.archive(); self.area_page.controller.save(); self.refresh_project_data(); self.open_area_from_tree(area.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
+            self.area_page.controller.set_assessment_area_archived(area,not area.is_archived); self.refresh_project_data(); self.open_area_from_tree(area.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
         elif self.selected_contour_event_id and getattr(self,"contour_page",None):
             event=self.contour_page.blast_event; action="Restore" if event.is_archived else "Archive"
             if QMessageBox.question(self,action,f'{action} Contour Blast "{event.name}"?') != QMessageBox.StandardButton.Yes:return
-            event.restore() if event.is_archived else event.archive(); self.contour_page.controller.save(); self.refresh_project_data(); self.open_contour_from_tree(event.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
+            self.contour_page.controller.set_contour_event_archived(event,not event.is_archived); self.refresh_project_data(); self.open_contour_from_tree(event.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
     def refresh_project_data(self): self.tree.reload_filters(); self.tree.load_data(); self._update_add()
     def closeEvent(self,event):
         if not self._guard_leave(): event.ignore(); return

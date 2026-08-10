@@ -1,6 +1,6 @@
 # Архитектура SlopeForge: текущее состояние и целевая модель
 
-## Статус после Phase 4B1 (Phase 4 продолжается)
+## Статус после Phase 4B2 (Phase 4 продолжается)
 
 Phase 3A, 3B и 3C завершены. Временный пакет `prototype_2d` полностью удалён:
 стабильные сущности и чистые правила находятся в `domain/`, переходные сервисы,
@@ -20,10 +20,19 @@ rollback осталась application-сервисом, а copy/move/delete/path
 оркестрации `MainWindow` и явные use cases остаются задачей Phase 4. Replace-all
 persistence остаётся без изменений до Phase 5.
 
-Статус документа: **Phase 4A и Phase 4B1 завершены; Phase 4B целиком не
-завершена**, исходный commit Phase 4B1 —
-`96942d2f241add9055683e81d9bfd72b7229f973`.
-Первый UI-рефакторинг выполнен без изменения схемы БД и продуктового поведения.
+Статус документа: **Phase 4A, Phase 4B1 и Phase 4B2 завершены; Phase 4B в целом
+завершена, но Phase 4 ещё продолжается**. Archive/restore Area и contour,
+переимпорт геометрии BlastEvent и интерактивные команды Linked Events теперь
+принадлежат `AssessmentEditingSession` и откатывают живой граф при ошибке
+сохранения. Архив Block использует отдельный application use case и узкий
+persistence port, не меняя связанный production BlastEvent.
+
+В Phase 4C остаются создание Project/Domain, report query/export orchestration,
+оставшаяся очистка MainWindow/services и переходная оркестрация geometry pages.
+`AssessmentGeometryEditorWidget` намеренно продолжает выполнять обновление
+автоматических links внутри единой транзакции создания/ревизии границы Area.
+В Phase 5 остаются focused persistence, Unit of Work, concurrency strategy и
+отказ от replace-all persistence.
 
 ## Неподвижные правила продукта
 

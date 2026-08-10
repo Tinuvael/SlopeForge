@@ -77,7 +77,7 @@ def test_area_page_is_focused_without_legacy_mode_switch():
 
 def test_area_links_and_focused_creation_are_reused():
     area=source("ui/pages/assessment_area_page.py")
-    for action in ("confirm_link","exclude_link","restore_suggestion","refresh_suggestions"):
+    for action in ("confirm_event_link","exclude_event_link","restore_event_link","refresh_event_link_suggestions"):
         assert action in area
     creation=source("ui/pages/assessment_area_creation_page.py")
     assert "AssessmentAreaCreationPage" in creation and "AssessmentGeometryEditorWidget" in creation

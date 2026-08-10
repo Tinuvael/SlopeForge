@@ -236,6 +236,5 @@ class BlockPage(QWidget):
         path,_=QFileDialog.getOpenFileName(self,tr("Reimport production geometry"),"",tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
         if not path:return
         try:
-            from application.services.blast_events import BlastEventService
-            BlastEventService(self.entity_controller.state).reimport_geometry(event,path); self.entity_controller.save(); self._render_engineering(self.current_block)
+            self.entity_controller.reimport_blast_event_geometry(event,path); self._render_engineering(self.current_block)
         except Exception as exc:QMessageBox.warning(self,tr("Geometry import"),domain_message(str(exc)))

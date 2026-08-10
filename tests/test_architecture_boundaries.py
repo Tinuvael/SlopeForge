@@ -163,3 +163,23 @@ def test_main_window_blast_event_creation_is_only_ui_orchestration() -> None:
         "BlastBlockService", "database.models", "session_factory", "controller.save",
     ):
         assert forbidden not in method_source
+
+
+def test_phase_4b2_ui_mutation_orchestration_does_not_return() -> None:
+    controller = ROOT / "ui/pages/entity_page_controller.py"
+    assert "application.services.assessment_event_links" not in controller.read_text(encoding="utf-8")
+    for relative_path in ("ui/pages/block_page.py", "ui/pages/contour_event_page.py"):
+        source = (ROOT / relative_path).read_text(encoding="utf-8")
+        assert "BlastEventService" not in source
+    source = (ROOT / "ui/main_window.py").read_text(encoding="utf-8")
+    method = next(node for node in ast.walk(ast.parse(source))
+                  if isinstance(node, ast.FunctionDef) and node.name == "_archive_selected")
+    method_source = ast.get_source_segment(source, method) or ""
+    for forbidden in (".archive(", ".restore(", "block_service.set_archived", "controller.save"):
+        assert forbidden not in method_source
+
+
+def test_block_archive_use_case_has_clean_application_dependencies() -> None:
+    path = ROOT / "application/use_cases/set_blast_block_archived.py"
+    forbidden = ("PySide6", "sqlalchemy", "database", "repositories", "ui")
+    assert not any(has_prefix(name, forbidden) for name in imports(path))

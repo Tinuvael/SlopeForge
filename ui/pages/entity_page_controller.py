@@ -1,6 +1,5 @@
 """Thin UI adapter for entity-page application services."""
 from app.use_case_factory import create_entity_editing_session
-from application.services.assessment_event_links import AssessmentEventLinkService
 from application.services.attachments import EntityAttachmentService
 
 
@@ -10,7 +9,7 @@ class EntityPageController:
         self.editing = create_entity_editing_session(context, domain_id)
         self.domain_id = self.editing.domain_id
         self.state = self.editing.state
-        self.links = AssessmentEventLinkService(self.state)
+        self.links = self.editing.links
         self.attachments = EntityAttachmentService(
             self.state, context.storage_root / "slopeforge_state.json", self.editing.save)
 
@@ -49,3 +48,27 @@ class EntityPageController:
 
     def save_evaluation(self, evaluation, revision, status):
         return self.editing.save_evaluation(evaluation, revision, status)
+
+    def set_assessment_area_archived(self, area, archived):
+        return self.editing.set_assessment_area_archived(area, archived)
+
+    def set_contour_event_archived(self, event, archived):
+        return self.editing.set_contour_event_archived(event, archived)
+
+    def reimport_blast_event_geometry(self, event, path):
+        return self.editing.reimport_blast_event_geometry(event, path)
+
+    def confirm_event_link(self, area, link_id):
+        return self.editing.confirm_event_link(area, link_id)
+
+    def exclude_event_link(self, area, link_id):
+        return self.editing.exclude_event_link(area, link_id)
+
+    def restore_event_link(self, area, link_id):
+        return self.editing.restore_event_link(area, link_id)
+
+    def add_manual_event_link(self, area, event_id):
+        return self.editing.add_manual_event_link(area, event_id)
+
+    def refresh_event_link_suggestions(self, area):
+        return self.editing.refresh_event_link_suggestions(area)
