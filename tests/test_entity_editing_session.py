@@ -291,3 +291,76 @@ def test_geometry_commit_new_failure_and_viewer_do_not_mutate(tmp_path):
         viewer.save_assessment_area_geometry(name="Wall", assessment_date=date.today(),
             selection_polygon=polygon, selected_fragments=candidates)
     assert viewer.state.assessment_areas == []
+
+
+def test_geometry_link_scan_failure_after_real_partial_mutation_restores_links(tmp_path, monkeypatch):
+    """refresh_suggestions cleans links before evaluation; that partial edit must not leak."""
+    from domain.assessment.entities import AssessmentEventLink
+    editing, persistence, polygon, candidates = geometry_session(tmp_path)
+    event, _unused = entities()
+    editing.state.blast_events.append(event)
+    editing.save_assessment_area_geometry(name="Wall", assessment_date=date.today(),
+        selection_polygon=polygon, selected_fragments=candidates)
+    area = editing.state.assessment_areas[0]
+    historical = AssessmentEventLink("OLD", "OLD-R1", "confirmed", "manual",
+        id="historical", assessment_area_geometry_revision_id=area.active_geometry_revision_id)
+    area.event_links[:] = [historical]
+    original_revise = editing.areas.revise_area
+    current = None
+
+    def revise_with_disposable_link(*args, **kwargs):
+        nonlocal current
+        revision = original_revise(*args, **kwargs)
+        current = AssessmentEventLink("DISPOSABLE", "D-R1", "suggested", "automatic",
+            id="disposable", assessment_area_geometry_revision_id=area.active_geometry_revision_id)
+        area.event_links.append(current)
+        return revision
+
+    monkeypatch.setattr(editing.areas, "revise_area", revise_with_disposable_link)
+    calls = 0
+    def fail_during_evaluation(_area, _event):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("evaluation failed after cleanup")
+    monkeypatch.setattr(editing.links, "evaluate_event", fail_during_evaluation)
+
+    result = editing.save_assessment_area_geometry(assessment_area_id=area.id,
+        selection_polygon=polygon, selected_fragments=candidates)
+    assert calls == 1 and result.link_refresh_warning == "evaluation failed after cleanup"
+    assert area.event_links == [historical, current]
+    assert area.event_links[0] is historical and area.event_links[1] is current
+    assert historical.status == "confirmed" and current.status == "suggested"
+    assert persistence.saves == 2
+
+
+def test_geometry_persistence_failure_after_successful_link_refresh_restores_exact_graph(tmp_path):
+    from domain.assessment.entities import AssessmentEventLink
+    editing, persistence, polygon, candidates = geometry_session(tmp_path)
+    editing.save_assessment_area_geometry(name="Wall", assessment_date=date.today(),
+        selection_polygon=polygon, selected_fragments=candidates)
+    area = editing.state.assessment_areas[0]
+    old_revision = area.geometry_revisions[0]
+    old_selection = old_revision.selection_polygon_frozen
+    old_final = old_revision.final_geometry_frozen
+    old_source = old_revision.source_dataset_id
+    old_slices = old_revision.horizon_slices
+    old_link = AssessmentEventLink("OLD", "OLD-R1", "excluded", "manual",
+        id="old", assessment_area_geometry_revision_id=old_revision.id)
+    area.event_links[:] = [old_link]
+    before_evaluations = list(editing.state.evaluations)
+    persistence.fail = True
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        editing.save_assessment_area_geometry(assessment_area_id=area.id,
+            selection_polygon=polygon, selected_fragments=candidates)
+
+    assert editing.state.assessment_areas[0] is area
+    assert area.geometry_revisions == [old_revision]
+    assert area.active_geometry_revision_id == old_revision.id
+    assert area.event_links == [old_link] and area.event_links[0] is old_link
+    assert old_link.status == "excluded"
+    assert old_revision.selection_polygon_frozen is old_selection
+    assert old_revision.final_geometry_frozen is old_final
+    assert old_revision.source_dataset_id == old_source
+    assert old_revision.horizon_slices is old_slices
+    assert editing.state.evaluations == before_evaluations
