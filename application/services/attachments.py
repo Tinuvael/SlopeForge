@@ -26,7 +26,11 @@ class AttachmentDeleteResult:
     cleanup_warning: str | None = None
 
 class EntityAttachmentService:
-    def __init__(self, state: AssessmentDomainState, storage_path=None, save_callback: Callable[[], None] | None = None):
+    def __init__(self, state: AssessmentDomainState, storage_path=None,
+                 save_callback: Callable[[], None] | None = None, *,
+                 on_add: Callable[[EntityAttachment], None] | None = None,
+                 on_update: Callable[[EntityAttachment], None] | None = None,
+                 on_delete: Callable[[EntityAttachment], None] | None = None):
         self.state = state
         if storage_path is None:
             storage_path = Path.home() / ".config" / "SlopeForge" / "slopeforge_state.json"
@@ -34,6 +38,7 @@ class EntityAttachmentService:
         self.data_root = self.storage_path.parent
         self.file_storage = AttachmentFileStorage(self.data_root)
         self.save_callback = save_callback
+        self.on_add, self.on_update, self.on_delete = on_add, on_update, on_delete
 
     @staticmethod
     def _validate(owner_type: str, owner_id: str, attachment_kind: str | None = None) -> None:
@@ -82,7 +87,10 @@ class EntityAttachmentService:
                 )
                 self.state.attachments.append(attachment)
                 added.append(attachment)
-            self._save()
+            if self.on_add:
+                for attachment in added: self.on_add(attachment)
+            else:
+                self._save()
             return added
         except Exception as exc:
             for attachment in added:
@@ -120,7 +128,7 @@ class EntityAttachmentService:
         attachment.title, attachment.file_date = title.strip() or Path(attachment.original_filename).stem, file_date
         attachment.subtype, attachment.description, attachment.custom_subtype = subtype, description, custom_subtype
         try:
-            self._save()
+            self.on_update(attachment) if self.on_update else self._save()
         except Exception:
             for field, value in previous.items():
                 setattr(attachment, field, value)
@@ -134,7 +142,7 @@ class EntityAttachmentService:
         temporary = self.file_storage.stage_delete(path)  # state is untouched if moving the file fails
         self.state.attachments.pop(index)
         try:
-            self._save()
+            self.on_delete(attachment) if self.on_delete else self._save()
         except Exception as exc:
             self.state.attachments.insert(index, attachment)
             try:

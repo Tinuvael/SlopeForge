@@ -10,6 +10,7 @@ from application.state.assessment_domain_state import AssessmentDomainState
 from database.models import BlastBlock
 from repositories.assessment_state_repository import AssessmentStateRepository
 from repositories.audit_log_repository import AuditLogRepository
+from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
 
 
 class SqlAlchemyBlastEventCreationPersistence:
@@ -23,7 +24,9 @@ class SqlAlchemyBlastEventCreationPersistence:
         return self._states.load_for_domain(domain_id).state
 
     def persist_contour(self, domain_id: int, state: AssessmentDomainState) -> None:
-        self._states.replace_for_domain(domain_id, state)
+        event = state.blast_events[-1]
+        with self._session_factory.begin() as session:
+            SqlAlchemyAssessmentWrites.insert_event_in_session(session, domain_id, event)
 
     def persist_production(
         self, domain_id: int, state: AssessmentDomainState, event_id: str,
@@ -46,7 +49,7 @@ class SqlAlchemyBlastEventCreationPersistence:
             session.flush()
             self._fail("after_block_flush")
             event.blast_block_id = block.id
-            self._states.replace_for_domain_in_session(session, domain_id, state)
+            SqlAlchemyAssessmentWrites.insert_event_in_session(session, domain_id, event)
             self._fail("after_state_replace")
             self._audit.add_entry(
                 session,

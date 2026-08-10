@@ -5,6 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 
 from application.ports.assessment_state import AssessmentStatePersistence
+from application.ports.assessment_writes import AssessmentWrites
 from application.services.assessment_event_links import AssessmentEventLinkService
 from application.services.assessment_areas import AssessmentAreaService
 from application.services.blast_events import BlastEventService
@@ -21,12 +22,13 @@ class AssessmentGeometryCommitResult:
 
 
 class AssessmentEditingSession:
-    """Owns the live graph and its replace-all persistence workflows."""
+    """Owns the stable live graph and coordinates focused write workflows."""
 
     def __init__(self, persistence: AssessmentStatePersistence, domain_id: int, *,
-                 actor_id: int, can_edit: bool):
+                 actor_id: int, can_edit: bool, writes: AssessmentWrites | None = None):
         snapshot = persistence.load(domain_id)
         self._persistence = persistence
+        self._writes = writes
         self.domain_id = snapshot.domain_id
         self.site_id = snapshot.site_id
         self.workspace_id = snapshot.workspace_id
@@ -43,17 +45,32 @@ class AssessmentEditingSession:
             raise PermissionError("2D Assessment is read-only for the current user")
 
     def save(self) -> None:
+        """Compatibility-only whole-state save, retained until Phase 5C."""
         self._require_edit()
         snapshot = self._persistence.save(self.domain_id, self.state)
         # Keep the live object graph: widgets hold references into it.
         self.workspace_id = snapshot.workspace_id
 
-    def _save_archive_change(self, entity, archived: bool) -> None:
+    def _write(self, operation: str, *args):
+        # The fallback supports old embedders/tests only. Desktop composition always
+        # supplies the Phase 5B focused adapter.
+        if getattr(self, "_writes", None) is None:
+            # Compatibility for legacy programmatic embedders which construct the
+            # coordinator without the desktop factory. Ordinary UI never enters it.
+            if not hasattr(self, "_persistence"):
+                return self.save()
+            snapshot = self._persistence.save(self.domain_id, self.state)
+            self.workspace_id = snapshot.workspace_id
+            return self.workspace_id
+        self.workspace_id = getattr(self._writes, operation)(self.domain_id, *args)
+        return self.workspace_id
+
+    def _save_archive_change(self, entity, archived: bool, operation: str) -> None:
         self._require_edit()
         previous = (entity.is_archived, entity.archived_at, entity.archive_reason)
         try:
             entity.archive() if archived else entity.restore()
-            self.save()
+            self._write(operation, entity)
         except Exception:
             entity.is_archived, entity.archived_at, entity.archive_reason = previous
             raise
@@ -61,14 +78,14 @@ class AssessmentEditingSession:
     def set_assessment_area_archived(self, area, archived: bool) -> None:
         if area not in self.state.assessment_areas:
             raise ValueError("Assessment Area not found in this Domain")
-        self._save_archive_change(area, archived)
+        self._save_archive_change(area, archived, "persist_area_archive")
 
     def set_contour_event_archived(self, event, archived: bool) -> None:
         if event not in self.state.blast_events:
             raise ValueError("BlastEvent not found in this Domain")
         if event.event_type != "contour":
             raise ValueError("Only contour BlastEvents can use contour archive")
-        self._save_archive_change(event, archived)
+        self._save_archive_change(event, archived, "persist_contour_archive")
 
     def reimport_blast_event_geometry(self, event, path):
         self._require_edit()
@@ -79,7 +96,7 @@ class AssessmentEditingSession:
         active_flags = [revision.is_active for revision in event.geometry_revisions]
         try:
             revision = BlastEventService(self.state).reimport_geometry(event, path)
-            self.save()
+            self._write("append_blast_geometry_revision", event.id, revision)
             return revision
         except Exception:
             del event.geometry_revisions[count:]
@@ -97,7 +114,7 @@ class AssessmentEditingSession:
         original_statuses = [(link, link.status) for link in original_links]
         try:
             result = operation(area, *args)
-            self.save()
+            self._write("synchronize_area_links", area)
             return result
         except Exception:
             area.event_links[:] = original_links
@@ -160,7 +177,7 @@ class AssessmentEditingSession:
                     link.status = status
                 link_result = None
                 warning = str(exc)
-            self.save()
+            self._write("persist_assessment_area_geometry", area)
             return AssessmentGeometryCommitResult(area.id, created, link_result, warning)
         except Exception:
             if created and area in self.state.assessment_areas:
@@ -182,7 +199,8 @@ class AssessmentEditingSession:
         active = card.active_revision_id
         try:
             card.save_revision(revision, status=status)
-            self.save()
+            saved = card.revisions[-1]
+            self._write("persist_technical_card_revision", card, saved)
         except Exception:
             del card.revisions[count:]
             card.active_revision_id = active
@@ -206,7 +224,7 @@ class AssessmentEditingSession:
         if rollback is None:
             return owner
         try:
-            self.save()
+            self._write("persist_evaluation_owner", owner)
         except Exception:
             rollback()
             raise
@@ -241,10 +259,23 @@ class AssessmentEditingSession:
             evaluation.save_revision(revision, status)
             if not present:
                 self.state.evaluations.append(evaluation)
-            self.save()
+            saved = evaluation.revisions[-1]
+            self._write("persist_evaluation_revision", evaluation, saved)
         except Exception:
             del evaluation.revisions[count:]
             evaluation.active_revision_id = active
             if not present and evaluation in self.state.evaluations:
                 self.state.evaluations.remove(evaluation)
             raise
+
+    def add_attachment_metadata(self, attachment, evaluation_owner=None):
+        self._require_edit()
+        return self._write("add_attachment_metadata", attachment, evaluation_owner)
+
+    def update_attachment_metadata(self, attachment):
+        self._require_edit()
+        return self._write("update_attachment_metadata", attachment)
+
+    def delete_attachment_metadata(self, attachment):
+        self._require_edit()
+        return self._write("delete_attachment_metadata", attachment.id)

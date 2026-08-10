@@ -92,5 +92,5 @@ class AssessmentAreaCreationPage(QWidget):
         return self.editor.cancel_workflow()
 
     def save_now(self):
-        if self.controller.context.current_user.can_edit:
-            self.controller.save()
+        """Leave-guard hook; confirmed geometry is already persisted atomically."""
+        return None

@@ -18,7 +18,7 @@
   Block archive вынесен в отдельный use case и узкий persistence port.
 * **Phase 4B в целом — завершена.**
 * **Phase 4C — завершена:** Project/Domain/report и Assessment geometry commit orchestration вынесены из Qt.
-* **PHASE 4 COMPLETE. Phase 5 — следующая.**
+* **PHASE 4 COMPLETE. Phase 5A и Phase 5B COMPLETE; Phase 5 NOT COMPLETE.**
 
 Workflow-сервисы теперь находятся в `application/services/`, чистая политика —
 в `domain/`, внешние geometry/file/desktop adapters — в `infrastructure/`.
@@ -157,9 +157,9 @@ UI controller только делегирует эти workflows и пока с�
 
 **Phase 4C завершена:** Project creation с optional Project Lines, Domain creation, navigation queries, report collect/write и Assessment geometry commit теперь application-owned. Старые misplaced Project/report services удалены. **PHASE 4 COMPLETE.**
 
-## Результат Phase 5A и оставшийся долг
+## Результат Phase 5A/5B и оставшийся долг
 
-**Phase 5A COMPLETE; Phase 5 NOT COMPLETE.** Совместимый whole-state API сохранён,
+**Phase 5A COMPLETE; Phase 5B COMPLETE; Phase 5 NOT COMPLETE.** Совместимый whole-state API сохранён,
 но `AssessmentStateRepository` больше не удаляет Workspace. Первый save создаёт
 его, последующие используют тот же PK и синхронизируют строки по logical ID на
 месте. Неизменные entity/revision PK стабильны, omitted subtree удаляется в
@@ -167,13 +167,19 @@ dependency-safe порядке, active flags переключаются чере
 flush, а caller-owned transaction по-прежнему полностью откатывает graph,
 BlastBlock и audit. Миграции схемы нет.
 
-**Phase 5B:** заменить обычные application whole-state saves focused workflows:
+**Phase 5B COMPLETE:** обычные application whole-state saves заменены focused workflows:
 BlastEvent header/geometry, archive state, Technical Card revision, Assessment Area
 geometry revision, Assessment Event Links, Evaluation revision и attachment
 metadata/owner. Маленький application Unit of Work вводить только там, где одна
-операция действительно меняет несколько сущностей атомарно. В 5A это не сделано.
+операция действительно меняет несколько сущностей атомарно. Whole-state loading
+остаётся, live graph не заменяется, а compatibility save не используется обычным UI.
 
-**Phase 5C:** убрать обычное использование `replace_for_domain()` и совместимый
+**Phase 5C:** добавить optimistic token и обнаружение stale same-entity/workspace
+edits; убрать compatibility whole-state normal-save API и затем
+`replace_for_domain()`; удалить transitional persistence и добавить финальные
+architecture ratchets. До этого same-entity edits остаются last-writer-wins.
+
+После этого убрать обычное использование `replace_for_domain()` и совместимый
 `AssessmentStatePersistence.save`; добавить защиту от lost updates (пригодный
 optimistic version/token), удалить устаревшие compatibility persistence paths и
 добавить финальные architecture ratchets. Удаление AssessmentWorkspace, legacy
