@@ -200,8 +200,12 @@ class AssessmentStateRepository:
         self._synchronize(session, workspace, state, datasets)
         session.flush()
         workspace_id = workspace.id
-        session.expire_all()
-        saved = _state_from_workspace(session.scalars(_workspace_query(domain_id)).one(), datasets)
+        # Refresh only this aggregate.  The supplied session can also contain a
+        # newly-created BlastBlock/audit objects owned by the caller.
+        saved_workspace = session.scalars(
+            _workspace_query(domain_id).execution_options(populate_existing=True)
+        ).one()
+        saved = _state_from_workspace(saved_workspace, datasets)
         return LoadedAssessmentState(domain_id, domain.site_id, workspace_id, saved)
 
     @staticmethod
@@ -285,20 +289,28 @@ class AssessmentStateRepository:
         existing_links = {(link.assessment_area_geometry_revision.domain_id, link.domain_id): link
                           for area in workspace.areas for revision in area.geometry_revisions
                           for link in revision.event_links}
-        desired_link_keys = set()
-        for area in state.assessment_areas:
-            for link in area.event_links:
-                key = (link.assessment_area_geometry_revision_id, link.id)
-                desired_link_keys.add(key)
-                row = existing_links.get(key)
-                if row is None:
-                    row = orm.AssessmentEventLink(domain_id=link.id); session.add(row)
-                row.assessment_area_geometry_revision = area_geometries[link.assessment_area_geometry_revision_id]
-                row.blast_event_geometry_revision = geometries[link.geometry_revision_id]
-                row.status = link.status; row.source = link.source
-                row.frozen_intersection_geometry_json = (link.frozen_intersection_geometry.to_dict()
-                                                           if link.frozen_intersection_geometry else None)
-                row.created_at = link.created_at
+        desired_links = [(link.assessment_area_geometry_revision_id, link)
+                         for area in state.assessment_areas for link in area.event_links]
+        desired_link_keys = {(revision_id, link.id) for revision_id, link in desired_links}
+        # Remove obsolete unique-key occupants before moving a retained link to
+        # their (area revision, event revision, source) tuple.
+        omitted_links = [row for key, row in existing_links.items()
+                         if key not in desired_link_keys]
+        for row in omitted_links:
+            session.delete(row)
+        if omitted_links:
+            session.flush()
+        for revision_id, link in desired_links:
+            key = (revision_id, link.id)
+            row = existing_links.get(key)
+            if row is None:
+                row = orm.AssessmentEventLink(domain_id=link.id); session.add(row)
+            row.assessment_area_geometry_revision = area_geometries[link.assessment_area_geometry_revision_id]
+            row.blast_event_geometry_revision = geometries[link.geometry_revision_id]
+            row.status = link.status; row.source = link.source
+            row.frozen_intersection_geometry_json = (link.frozen_intersection_geometry.to_dict()
+                                                       if link.frozen_intersection_geometry else None)
+            row.created_at = link.created_at
 
         cards = {e.technical_card.domain_id: e.technical_card for e in workspace.events
                  if e.technical_card is not None}
@@ -314,7 +326,7 @@ class AssessmentStateRepository:
             existing = {r.domain_id: r for r in row.revisions}
             payloads = {item["id"]: item for item in card.to_dict()["revisions"]}
             for revision in card.revisions:
-                desired_card_revision_ids.add(revision.id)
+                desired_card_revision_ids.add((card.id, revision.id))
                 child = existing.get(revision.id)
                 if child is None:
                     child = orm.BlastEventTechnicalCardRevision(technical_card=row,
@@ -341,7 +353,7 @@ class AssessmentStateRepository:
             row.is_archived = evaluation.is_archived; row.archived_at = evaluation.archived_at
             existing = {r.domain_id: r for r in row.revisions}
             for revision in evaluation.revisions:
-                desired_evaluation_revision_ids.add(revision.id)
+                desired_evaluation_revision_ids.add((evaluation.id, revision.id))
                 child = existing.get(revision.id)
                 if child is None:
                     child = orm.AssessmentAreaEvaluationRevision(evaluation=row,
@@ -378,16 +390,16 @@ class AssessmentStateRepository:
                 setattr(row, key, value)
 
         # RESTRICT-safe deletion: leaves, containers, revisions, then parents.
-        for key, row in existing_links.items():
-            if key not in desired_link_keys: session.delete(row)
         for key, row in existing_attachments.items():
             if key not in desired_attachment_ids: session.delete(row)
-        for row in cards.values():
+        for card_id, row in cards.items():
             for revision in row.revisions:
-                if revision.domain_id not in desired_card_revision_ids: session.delete(revision)
-        for row in evaluations.values():
+                if (card_id, revision.domain_id) not in desired_card_revision_ids:
+                    session.delete(revision)
+        for evaluation_id, row in evaluations.items():
             for revision in row.revisions:
-                if revision.domain_id not in desired_evaluation_revision_ids: session.delete(revision)
+                if (evaluation_id, revision.domain_id) not in desired_evaluation_revision_ids:
+                    session.delete(revision)
         session.flush()
         for key, row in cards.items():
             if key not in desired_card_ids: session.delete(row)
