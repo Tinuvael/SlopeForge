@@ -1,8 +1,7 @@
 # Архитектура SlopeForge: текущее состояние и целевая модель
 
-Статус документа: **Phase 1**, аудит среза `0762eadd9810e18d3b0f43abc08a5abb760113f9`.
-Это описание фактического кода, а не уже выполненный рефакторинг. Схема БД и
-поведение продукта в этой фазе не меняются.
+Статус документа: **Phase 2**, исходный срез `85293c9869b372fe3ca370da124a969108b21d0d`.
+Первый UI-рефакторинг выполнен без изменения схемы БД и продуктового поведения.
 
 ## Неподвижные правила продукта
 
@@ -60,25 +59,19 @@ prototype_2d.technical_card`. Из domain-like модулей только
 | `reports/*.py` | ACTIVE_BUT_MISPLACED | активный Excel I/O, будущий `infrastructure/reports/` |
 | `ui/pages/*`, `ui/dialogs/*`, `ui/editors/*`, `ui/widgets/plan_view.py`, обычные `ui/*.py` | ACTIVE | нормальная навигация/presentation, кроме явно перечисленных переходных контейнеров |
 | `ui/pages/entity_page_controller.py` | ACTIVE_BUT_MISPLACED | активный persistence/application coordinator внутри UI |
-| `ui/pages/assessment_workspace_page.py` | ACTIVE_BUT_MISPLACED | нужен production-потоку создания/правки границ, но является переходным host старого workspace |
-| `ui/widgets/assessment_workspace.py` | ACTIVE_BUT_MISPLACED | 1262-строчный активный «всё-в-одном» workspace; содержит пригодные widgets и workflow logic |
-| `ui/prototype_2d/blast_event_window.py` | COMPATIBILITY_ONLY | нет production caller; wrapper и JSON storage проверяются тестами |
-| `ui/prototype_2d/__init__.py` | COMPATIBILITY_ONLY | package marker для wrapper/tests |
-| `ui/directory_dialog.py` | DEAD | класс не импортируется production, tests, migrations, CLI или spec; удалить отдельным cleanup после проверки packaging |
+| `ui/editors/assessment_geometry_editor.py` | ACTIVE | focused plan editor для создания и ревизии границ Area |
+| `ui/dialogs/assessment_candidate_dialog.py`, `blast_event_dialog.py` | ACTIVE | извлечённые production dialogs |
+| удалённые workspace/prototype UI/DirectoryDialog | REMOVED | удалены в Phase 2 после извлечения единственных production responsibilities |
 | корневой `widgets/*.py` | ACTIVE_BUT_MISPLACED | активные presentation widgets, должны со временем стать `ui/widgets/` |
 | `alembic/` | ACTIVE | история текущей схемы и startup/integration checks; не runtime UI |
 | `tests/` | ACTIVE | regression safety net, хотя часть тестов структурно связана с legacy |
 | старые документы в `docs/` | ACTIVE | инженерная/операционная документация, не executable dependencies |
 
-На этом срезе доказан один DEAD Python-модуль — `ui/directory_dialog.py`: поиск по
-Python, tests, migrations и packaging находит только определение самого класса.
-Остальные модули нельзя признавать DEAD только по отсутствию прямого production
-import: adapters вызываются косвенно, а wrapper/storage используются тестами.
-Кандидат
-на удаление после Phase 2 — `ui/prototype_2d/blast_event_window.py` вместе с
-`prototype_2d/blast_event_storage.py`: production imports отсутствуют, migrations,
-CLI и spec их не называют, но сейчас их требуют wrapper/storage tests, поэтому
-класс строго `COMPATIBILITY_ONLY`, не DEAD.
+Phase 1 доказал, что `ui/directory_dialog.py` был DEAD, а
+`ui/prototype_2d/blast_event_window.py` и `prototype_2d/blast_event_storage.py` —
+COMPATIBILITY_ONLY. Phase 2 удалила их вместе с тестами, которые
+проверяли только standalone wrapper/JSON persistence. Production и packaging
+callers не было; product coverage перенесено на focused editor/dialogs.
 
 ## Полная классификация `prototype_2d`
 
@@ -100,20 +93,28 @@ CLI и spec их не называют, но сейчас их требуют wr
 | `csv_importer.py` | ACTIVE_BUT_MISPLACED | CSV decoding/delimiter/column parsing | line importer/workspace/dialog/tests | `infrastructure/geometry_import/csv.py` | medium; 3 |
 | `dxf_importer.py` | ACTIVE_BUT_MISPLACED | ASCII DXF adapter | line importer/tests | `infrastructure/geometry_import/dxf.py` | medium; 3 |
 | `entity_attachments.py` | ACTIVE_BUT_MISPLACED | ownership policy + copy/delete + Qt image metadata | controller/dialog/workspace/tests | policy in domain, workflow in application, bytes/images in `infrastructure/files/` | very high; 3–4 |
-| `blast_event_storage.py` | COMPATIBILITY_ONLY | legacy JSON save/load | compatibility window and tests only | удалить вместе с wrapper | medium; 2 |
 
-## UI compatibility и assessment workspace
 
-Обычные entity pages (`block_page`, `contour_event_page`, `assessment_area_page`)
-не импортируют `ui.prototype_2d`. Они используют активный
-`EntityPageController`, который всё ещё сохраняет весь aggregate.
+## Phase 2: focused Assessment UI
 
-`AssessmentAreaCreationPage` всё ещё композиционно завязан на
-`AssessmentWorkspacePage`, а тот — на огромный `AssessmentWorkspaceWidget`.
-Значит, эти два workspace-модуля нельзя удалить в начале Phase 2. Из widget надо
-сначала извлечь используемые creation/edit workflow и reusable canvas/dialog
-части. `ui/prototype_2d/blast_event_window.py` — отдельный compatibility wrapper;
-его normal navigation не вызывает.
+`AssessmentAreaCreationPage` теперь напрямую создаёт `EntityPageController` и
+`AssessmentGeometryEditorWidget`. Editor владеет своей scene/plan view, Project
+Lines/grid, drawing/refinement handles, candidate preview и командами
+`start_new_area`, `start_edit`, `undo_vertex`, `finish_polygon`,
+`confirm_boundaries`, `cancel_workflow`. После успешного `create_area`/`revise_area`
+он обновляет linked-event suggestions, вызывает controller save и только затем
+эмитит ID Area. Hidden workspace и reparenting больше нет.
+
+Удалены `ui/pages/assessment_workspace_page.py`,
+`ui/widgets/assessment_workspace.py`, весь `ui/prototype_2d`,
+`prototype_2d/blast_event_storage.py` и dead `ui/directory_dialog.py`.
+`BlastEventDialog` и `AssessmentCandidateDialog` извлечены в `ui/dialogs/`. Старые
+workspace-only links/dataset/dialog/card UI не переносились: normal AreaPage и
+Project dashboard уже являются их production UI.
+
+Оставшиеся модули `prototype_2d` — активный domain/application/infrastructure debt
+для Phase 3. Оркестрация `MainWindow`, `EntityPageController` и replace-all
+`AssessmentStateRepository` намеренно отложены до Phase 4/5.
 
 ## Hotspot: `MainWindow`
 

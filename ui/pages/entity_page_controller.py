@@ -1,8 +1,4 @@
-"""Small persistence controller shared by normal Block and Assessment Area pages.
-
-The legacy AssessmentWorkspaceWidget remains available for compatibility, but
-normal entity pages use this controller and the existing domain services.
-"""
+"""Small persistence controller shared by normal entity and geometry pages."""
 from copy import deepcopy
 from repositories.assessment_state_repository import AssessmentStateRepository
 from prototype_2d.technical_card import TechnicalCardService
@@ -17,6 +13,8 @@ class EntityPageController:
         self.technical_cards=TechnicalCardService(self.state); self.evaluations=AssessmentAreaEvaluationService(self.state); self.links=AssessmentEventLinkService(self.state)
         self.attachments=EntityAttachmentService(self.state,context.storage_root / "slopeforge_state.json",self.save)
     def save(self):
+        if not self.context.current_user.can_edit:
+            raise PermissionError("2D Assessment is read-only for the current user")
         saved=self.repository.replace_for_domain(self.domain_id,self.state); self.workspace_id=saved.workspace_id
     def event_for_block(self, block_id): return next((e for e in self.state.blast_events if e.blast_block_id==block_id and e.event_type=="production"),None)
     def area(self, area_id): return next((a for a in self.state.assessment_areas if a.id==area_id),None)

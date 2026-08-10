@@ -11,11 +11,9 @@ PRODUCTION_ROOTS = ("app", "database", "repositories", "services", "reports", "p
 # Temporary compatibility debt.  Every entry should disappear in a later phase;
 # additions require an architecture review rather than silently widening the net.
 ARCHITECTURE_DEBT_ALLOWLIST = {
-    "prototype_packages": {"prototype_2d", "ui/prototype_2d"},
-    "ui_prototype_files": {"ui/prototype_2d/__init__.py", "ui/prototype_2d/blast_event_window.py"},
+    "prototype_packages": {"prototype_2d"},
     "domain_qt_imports": {
         "prototype_2d/entity_attachments.py",
-        "prototype_2d/blast_event_storage.py",  # compatibility-only JSON image encoding
     },
     "mine_compatibility_files": {
         "database/models.py",
@@ -23,7 +21,6 @@ ARCHITECTURE_DEBT_ALLOWLIST = {
         "repositories/mine_repository.py",
         "repositories/site_repository.py",
         "services/project_service.py",
-        "ui/directory_dialog.py",
         "widgets/project_tree.py",
         "ui/header.py",
     },
@@ -62,8 +59,24 @@ def test_compatibility_ui_is_not_imported_by_production() -> None:
 
 
 def test_no_new_ui_prototype_modules() -> None:
-    current = {relative(path) for path in (ROOT / "ui/prototype_2d").rglob("*.py")}
-    assert current <= ARCHITECTURE_DEBT_ALLOWLIST["ui_prototype_files"]
+    assert not (ROOT / "ui/prototype_2d").exists()
+
+
+def test_removed_workspace_and_json_compatibility_modules_do_not_return() -> None:
+    removed = {
+        "ui/pages/assessment_workspace_page.py",
+        "ui/widgets/assessment_workspace.py",
+        "prototype_2d/blast_event_storage.py",
+        "ui/directory_dialog.py",
+    }
+    assert not {path for path in removed if (ROOT / path).exists()}
+    forbidden_imports = {
+        "ui.pages.assessment_workspace_page",
+        "ui.widgets.assessment_workspace",
+        "prototype_2d.blast_event_storage",
+    }
+    offenders = {relative(path) for path in production_files() if imports(path) & forbidden_imports}
+    assert offenders == set()
 
 
 def test_no_new_prototype_named_production_packages() -> None:

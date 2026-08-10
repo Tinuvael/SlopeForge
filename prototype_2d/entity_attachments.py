@@ -1,4 +1,4 @@
-"""Simple, entity-owned file storage beside the prototype JSON state."""
+"""Simple, entity-owned file storage beside the application state anchor."""
 from __future__ import annotations
 
 import mimetypes
@@ -44,8 +44,7 @@ class EntityAttachmentService:
     def __init__(self, state: AssessmentDomainState, storage_path=None, save_callback: Callable[[], None] | None = None):
         self.state = state
         if storage_path is None:
-            from .blast_event_storage import default_blast_event_storage_path
-            storage_path = default_blast_event_storage_path()
+            storage_path = Path.home() / ".config" / "SlopeForge" / "slopeforge_state.json"
         self.storage_path = Path(storage_path)
         self.data_root = self.storage_path.parent
         self.save_callback = save_callback

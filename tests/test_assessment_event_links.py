@@ -150,21 +150,3 @@ def test_multiple_auto_suggested_event_elevations_link_to_same_area(tmp_path):
                                     elevation=preview.suggested_elevation, csv_path=source)
     assessment = area(); AssessmentEventLinkService(state).refresh_suggestions(assessment)
     assert len(assessment.links_for_revision()) == 3
-
-
-def test_link_dialog_has_every_row_and_sorting_keeps_stable_link_identity():
-    QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
-    from PySide6.QtCore import Qt
-    from ui.prototype_2d.blast_event_window import AssessmentEventLinksDialog
-    app = QApplication.instance() or QApplication([])
-    assessment = area(); state = AssessmentDomainState(blast_events=matching_events(75, 25))
-    service = AssessmentEventLinkService(state); service.refresh_suggestions(assessment)
-    dialog = AssessmentEventLinksDialog(assessment, state, service)
-    assert dialog.table.rowCount() == 100 and dialog.row_count_label.text() == "Показано: 100"
-    dialog.table.sortItems(2, Qt.SortOrder.DescendingOrder)
-    dialog.table.selectRow(0)
-    selected = dialog.selected_link()
-    assert selected.id == dialog.table.item(0, 0).data(Qt.ItemDataRole.UserRole)
-    dialog.confirm()
-    assert next(link for link in assessment.event_links if link.id == selected.id).status == "confirmed"
-    dialog.close(); assert app
