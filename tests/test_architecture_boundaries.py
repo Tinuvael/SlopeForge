@@ -1,0 +1,101 @@
+"""Small architecture ratchets: allow known debt, reject new coupling."""
+from __future__ import annotations
+
+import ast
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PRODUCTION_ROOTS = ("app", "database", "repositories", "services", "reports", "prototype_2d", "ui", "widgets")
+
+# Temporary compatibility debt.  Every entry should disappear in a later phase;
+# additions require an architecture review rather than silently widening the net.
+ARCHITECTURE_DEBT_ALLOWLIST = {
+    "prototype_packages": {"prototype_2d", "ui/prototype_2d"},
+    "ui_prototype_files": {"ui/prototype_2d/__init__.py", "ui/prototype_2d/blast_event_window.py"},
+    "domain_qt_imports": {
+        "prototype_2d/entity_attachments.py",
+        "prototype_2d/blast_event_storage.py",  # compatibility-only JSON image encoding
+    },
+    "mine_compatibility_files": {
+        "database/models.py",
+        "repositories/blast_block_repository.py",
+        "repositories/mine_repository.py",
+        "repositories/site_repository.py",
+        "services/project_service.py",
+        "ui/directory_dialog.py",
+        "widgets/project_tree.py",
+        "ui/header.py",
+    },
+}
+
+
+def production_files() -> list[Path]:
+    return sorted(path for root in PRODUCTION_ROOTS for path in (ROOT / root).rglob("*.py"))
+
+
+def imports(path: Path) -> set[str]:
+    result = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            result.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            result.add(node.module)
+    return result
+
+
+def relative(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix()
+
+
+def test_normal_entity_pages_do_not_import_ui_prototype() -> None:
+    pages = (ROOT / "ui/pages").rglob("*.py")
+    offenders = {relative(path) for path in pages if any(name.startswith("ui.prototype_2d") for name in imports(path))}
+    assert offenders == set()
+
+
+def test_compatibility_ui_is_not_imported_by_production() -> None:
+    offenders = {relative(path) for path in production_files()
+                 if not relative(path).startswith("ui/prototype_2d/")
+                 and any(name.startswith("ui.prototype_2d") for name in imports(path))}
+    assert offenders == set()
+
+
+def test_no_new_ui_prototype_modules() -> None:
+    current = {relative(path) for path in (ROOT / "ui/prototype_2d").rglob("*.py")}
+    assert current <= ARCHITECTURE_DEBT_ALLOWLIST["ui_prototype_files"]
+
+
+def test_no_new_prototype_named_production_packages() -> None:
+    found = set()
+    for path in production_files():
+        for parent in path.relative_to(ROOT).parents:
+            if parent.name.startswith("prototype_"):
+                found.add(parent.as_posix())
+    assert found <= ARCHITECTURE_DEBT_ALLOWLIST["prototype_packages"]
+
+
+def test_pure_algorithm_modules_do_not_import_ui_frameworks() -> None:
+    candidates = (ROOT / "prototype_2d").glob("*.py")
+    offenders = {relative(path) for path in candidates
+                 if any(name.startswith("PySide6") for name in imports(path))}
+    assert offenders <= ARCHITECTURE_DEBT_ALLOWLIST["domain_qt_imports"]
+
+
+def test_pure_algorithm_modules_do_not_import_persistence_frameworks() -> None:
+    candidates = (ROOT / "prototype_2d").glob("*.py")
+    offenders = {
+        relative(path)
+        for path in candidates
+        if any(name == "database" or name.startswith(("database.", "sqlalchemy"))
+               for name in imports(path))
+    }
+    assert offenders == set()
+
+
+def test_mine_term_stays_inside_documented_compatibility_files() -> None:
+    offenders = set()
+    for path in production_files():
+        if re.search(r"\bmines?\b", path.read_text(encoding="utf-8"), re.IGNORECASE):
+            offenders.add(relative(path))
+    assert offenders <= ARCHITECTURE_DEBT_ALLOWLIST["mine_compatibility_files"]
