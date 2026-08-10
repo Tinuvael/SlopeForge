@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMenu, QPushButton, QWidge
 from ui.settings_dialog import SettingsDialog
 from app.icons.ui.ui_icons import ui_icon
 class Header(QWidget):
-    add_project_requested=Signal(); add_domain_requested=Signal(); add_blast_event_requested=Signal(); add_assessment_area_requested=Signal(); archive_requested=Signal()
+    add_project_requested=Signal(); add_domain_requested=Signal(); add_blast_event_requested=Signal(); add_assessment_area_requested=Signal(); archive_requested=Signal(); report_requested=Signal()
     def __init__(self, context):
         super().__init__(); self.context=context; self.setFixedHeight(60); layout=QHBoxLayout(self)
         self.add_button=QPushButton(tr("Add")); self.add_menu=QMenu(self)
@@ -15,11 +15,12 @@ class Header(QWidget):
         self.add_button.setToolTip(tr("Create a project, domain, blast event, or assessment area"))
         self.add_project_action.triggered.connect(self.add_project_requested); self.add_domain_action.triggered.connect(self.add_domain_requested); self.add_blast_event_action.triggered.connect(self.add_blast_event_requested); self.add_assessment_area_action.triggered.connect(self.add_assessment_area_requested)
         self.add_button.setMenu(self.add_menu); self.archive_button=QPushButton(tr("Archive")); self.archive_button.setEnabled(False); self.archive_button.clicked.connect(self.archive_requested)
-        self.archive_button.setIcon(ui_icon("archive")); self.search=QLineEdit(); self.search.setPlaceholderText(tr("Search blast events...")); self.search.setMaximumWidth(350); self.settings=QPushButton(tr("Settings")); self.settings.setIcon(ui_icon("settings")); self.settings.clicked.connect(self.open_settings)
+        self.archive_button.setIcon(ui_icon("archive")); self.search=QLineEdit(); self.search.setPlaceholderText(tr("Search blast events...")); self.search.setMaximumWidth(350); self.report_button=QPushButton(tr("Report")); self.report_button.setEnabled(False); self.report_button.clicked.connect(self.report_requested); self.settings=QPushButton(tr("Settings")); self.settings.setIcon(ui_icon("settings")); self.settings.clicked.connect(self.open_settings)
         self.search_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
         self.search_shortcut.activated.connect(self.focus_search)
-        layout.addWidget(self.add_button); layout.addWidget(self.archive_button); layout.addStretch(); layout.addWidget(self.search); layout.addStretch(); layout.addWidget(self.settings); self.update_add_availability(False,False,False)
+        layout.addWidget(self.add_button); layout.addWidget(self.archive_button); layout.addStretch(); layout.addWidget(self.search); layout.addStretch(); layout.addWidget(self.report_button); layout.addWidget(self.settings); self.update_add_availability(False,False,False)
     def update_add_availability(self, has_site, has_domain, has_active_dataset):
+        self.report_button.setEnabled(has_site)
         editable=self.context.current_user.can_edit; self.add_button.setEnabled(editable); self.add_project_action.setEnabled(editable); self.add_domain_action.setEnabled(editable and has_site); self.add_blast_event_action.setEnabled(editable and has_domain); self.add_assessment_area_action.setEnabled(editable and has_domain and has_active_dataset)
     def set_archive_context(self, enabled, archived=False):
         self.archive_button.setEnabled(self.context.current_user.can_edit and enabled); self.archive_button.setText(tr("Restore") if archived else tr("Archive")); self.archive_button.setIcon(ui_icon("restore" if archived else "archive"))

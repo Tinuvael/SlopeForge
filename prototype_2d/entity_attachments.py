@@ -4,6 +4,7 @@ from __future__ import annotations
 import mimetypes
 import re
 import shutil
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable
@@ -14,6 +15,13 @@ from .domain import AssessmentDomainState, EntityAttachment
 OWNER_FOLDERS = {"blast_event": "blast_events", "assessment_evaluation": "assessments"}
 KIND_FOLDERS = {"photo": "photos", "document": "documents"}
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+
+
+@dataclass(frozen=True)
+class AttachmentDeleteResult:
+    """A logical delete may succeed even if its temporary file needs later cleanup."""
+
+    cleanup_warning: str | None = None
 
 ATTACHMENT_CATEGORIES = {
     ("blast_event", "photo"): [("before_blast", "Before blast"), ("drilling", "Drilling"), ("charging", "Charging"), ("initiation", "Initiation system installation"), ("after_blast", "After blast"), ("muckpile", "Muckpile"), ("final_wall", "Final wall"), ("contour_drilling", "Contour drilling"), ("other", "Other")],
@@ -80,30 +88,52 @@ class EntityAttachmentService:
                   source_paths: Iterable[str | Path], metadata: dict | None = None) -> list[EntityAttachment]:
         self._validate(owner_type, owner_id, attachment_kind)
         metadata = metadata or {}
-        added = []
-        for raw_source in source_paths:
-            source = Path(raw_source)
-            if not source.is_file():
-                raise FileNotFoundError(source)
-            destination = self._destination(owner_type, owner_id, attachment_kind, source.name)
-            shutil.copy2(source, destination)
-            if not destination.exists():
-                raise OSError(f"Не удалось скопировать {source.name}")
-            relative = destination.relative_to(self.data_root).as_posix()
-            attachment = EntityAttachment(
-                id=f"ATT-{uuid4().hex[:12].upper()}", owner_type=owner_type, owner_id=owner_id,
-                attachment_kind=attachment_kind, subtype=metadata.get("subtype", "other"),
-                custom_subtype=metadata.get("custom_subtype", ""),
-                title=metadata.get("title") or source.stem, original_filename=source.name,
-                stored_filename=destination.name, relative_path=relative,
-                file_date=metadata.get("file_date") or self._file_date(source, attachment_kind),
-                description=metadata.get("description", ""),
-                mime_type=mimetypes.guess_type(source.name)[0] or "application/octet-stream",
-                file_size_bytes=destination.stat().st_size, created_at=datetime.now(timezone.utc),
-            )
-            self.state.attachments.append(attachment); added.append(attachment)
-        self._save()
-        return added
+        added: list[EntityAttachment] = []
+        destinations: list[Path] = []
+        try:
+            for raw_source in source_paths:
+                source = Path(raw_source)
+                if not source.is_file():
+                    raise FileNotFoundError(source)
+                destination = self._destination(owner_type, owner_id, attachment_kind, source.name)
+                # The destination did not exist when selected by _destination, so it
+                # is safe to remove it if this batch later fails.
+                destinations.append(destination)
+                shutil.copy2(source, destination)
+                if not destination.exists():
+                    raise OSError(f"Не удалось скопировать {source.name}")
+                relative = destination.relative_to(self.data_root).as_posix()
+                attachment = EntityAttachment(
+                    id=f"ATT-{uuid4().hex[:12].upper()}", owner_type=owner_type, owner_id=owner_id,
+                    attachment_kind=attachment_kind, subtype=metadata.get("subtype", "other"),
+                    custom_subtype=metadata.get("custom_subtype", ""),
+                    title=metadata.get("title") or source.stem, original_filename=source.name,
+                    stored_filename=destination.name, relative_path=relative,
+                    file_date=metadata.get("file_date") or self._file_date(source, attachment_kind),
+                    description=metadata.get("description", ""),
+                    mime_type=mimetypes.guess_type(source.name)[0] or "application/octet-stream",
+                    file_size_bytes=destination.stat().st_size, created_at=datetime.now(timezone.utc),
+                )
+                self.state.attachments.append(attachment)
+                added.append(attachment)
+            self._save()
+            return added
+        except Exception as exc:
+            for attachment in added:
+                if attachment in self.state.attachments:
+                    self.state.attachments.remove(attachment)
+            cleanup_errors = []
+            for destination in reversed(destinations):
+                try:
+                    if destination.exists():
+                        destination.unlink()
+                except OSError as cleanup_exc:
+                    cleanup_errors.append(cleanup_exc)
+            if cleanup_errors:
+                raise RuntimeError(
+                    f"Attachment import failed and cleanup also failed: {cleanup_errors[0]}"
+                ) from exc
+            raise
 
     def list_for_owner(self, owner_type: str, owner_id: str, attachment_kind: str | None = None):
         self._validate(owner_type, owner_id, attachment_kind)
@@ -123,17 +153,47 @@ class EntityAttachmentService:
     def update_metadata(self, attachment_id: str, *, title: str, file_date: date,
                         subtype: str, description: str, custom_subtype: str = "") -> EntityAttachment:
         attachment = self._find(attachment_id)
+        fields = ("title", "file_date", "subtype", "description", "custom_subtype")
+        previous = {field: getattr(attachment, field) for field in fields}
         attachment.title, attachment.file_date = title.strip() or Path(attachment.original_filename).stem, file_date
         attachment.subtype, attachment.description, attachment.custom_subtype = subtype, description, custom_subtype
-        self._save(); return attachment
+        try:
+            self._save()
+        except Exception:
+            for field, value in previous.items():
+                setattr(attachment, field, value)
+            raise
+        return attachment
 
-    def delete_attachment(self, attachment_id: str) -> None:
+    def delete_attachment(self, attachment_id: str) -> AttachmentDeleteResult:
         attachment = self._find(attachment_id)
         path = self.resolve_path(attachment)
+        index = self.state.attachments.index(attachment)
+        temporary = None
         if path.exists():
-            path.unlink()  # record is deliberately retained if this raises
-        self.state.attachments.remove(attachment)
-        self._save()
+            temporary = path.with_name(f"{path.name}.slopeforge-delete-{uuid4().hex}.tmp")
+            path.replace(temporary)  # state is untouched if moving the file fails
+        self.state.attachments.pop(index)
+        try:
+            self._save()
+        except Exception as exc:
+            self.state.attachments.insert(index, attachment)
+            try:
+                if temporary is not None and temporary.exists():
+                    temporary.replace(path)
+            except OSError as rollback_exc:
+                raise RuntimeError(
+                    f"Attachment deletion failed and the file could not be restored: {rollback_exc}"
+                ) from exc
+            raise
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except OSError as cleanup_exc:
+                # The database/state commit already succeeded.  This is an orphan
+                # cleanup warning, not a failed logical delete.
+                return AttachmentDeleteResult(f"{temporary}: {cleanup_exc}")
+        return AttachmentDeleteResult()
 
     def open_file(self, attachment: EntityAttachment) -> bool:
         from PySide6.QtCore import QUrl

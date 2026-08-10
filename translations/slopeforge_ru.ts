@@ -1455,6 +1455,18 @@
             <translation>Ошибка удаления</translation>
         </message>
         <message>
+            <source>Cleanup warning</source>
+            <translation>Предупреждение об очистке</translation>
+        </message>
+        <message>
+            <source>Edit error</source>
+            <translation>Ошибка изменения</translation>
+        </message>
+        <message>
+            <source>The attachment was deleted, but a temporary file could not be removed.</source>
+            <translation>Вложение удалено, но временный файл не удалось удалить.</translation>
+        </message>
+        <message>
             <source>Design</source>
             <translation>Проект</translation>
         </message>
@@ -2665,6 +2677,178 @@
         <message>
             <source>Clear the current Domain geometry?</source>
             <translation>Очистить текущую геометрию домена?</translation>
+        </message>
+        <message>
+            <source>Report</source>
+            <translation>Отчёт</translation>
+        </message>
+        <message>
+            <source>Project report</source>
+            <translation>Отчёт по проекту</translation>
+        </message>
+        <message>
+            <source>From</source>
+            <translation>С</translation>
+        </message>
+        <message>
+            <source>To</source>
+            <translation>По</translation>
+        </message>
+        <message>
+            <source>Generate Excel</source>
+            <translation>Создать Excel</translation>
+        </message>
+        <message>
+            <source>Report generated</source>
+            <translation>Отчёт создан</translation>
+        </message>
+        <message>
+            <source>From date must not be after To date</source>
+            <translation>Дата начала не должна быть позже даты окончания</translation>
+        </message>
+        <message>
+            <source>Excel workbook (*.xlsx)</source>
+            <translation>Книга Excel (*.xlsx)</translation>
+        </message>
+        <message>
+            <source>Could not generate report</source>
+            <translation>Не удалось создать отчёт</translation>
+        </message>
+        <message>
+            <source>Actual production volume, m³</source>
+            <translation>Фактический объём производства, м³</translation>
+        </message>
+        <message>
+            <source>Actual explosive mass, kg</source>
+            <translation>Фактическая масса ВВ, кг</translation>
+        </message>
+        <message>
+            <source>Linked production blocks</source>
+            <translation>Связанные производственные блоки</translation>
+        </message>
+        <message>
+            <source>Linked contour blasts</source>
+            <translation>Связанные контурные взрывы</translation>
+        </message>
+        <message>
+            <source>No report data for the selected period</source>
+            <translation>Нет данных отчёта за выбранный период</translation>
+        </message>
+        <message>
+            <source>Active geometry revision</source>
+            <translation>Активная ревизия геометрии</translation>
+        </message>
+        <message>
+            <source>Source geometry file</source>
+            <translation>Исходный файл геометрии</translation>
+        </message>
+        <message>
+            <source>Imported date</source>
+            <translation>Дата импорта</translation>
+        </message>
+        <message>
+            <source>Elevation interval</source>
+            <translation>Интервал высот</translation>
+        </message>
+        <message>
+            <source>Project Lines Dataset</source>
+            <translation>Набор проектных линий</translation>
+        </message>
+        <message>
+            <source>Evaluation status</source>
+            <translation>Статус оценки</translation>
+        </message>
+        <message>
+            <source>Confirmed linked events count</source>
+            <translation>Подтверждённых связанных событий</translation>
+        </message>
+        <message>
+            <source>Add files</source>
+            <translation>Добавить файлы</translation>
+        </message>
+        <message>
+            <source>The file will be removed from the database and disk.</source>
+            <translation>Файл будет удалён из базы данных и с диска.</translation>
+        </message>
+        <message>
+            <source>Actual drilling length</source>
+            <translation>Фактический метраж бурения</translation>
+        </message>
+        <message>
+            <source>Actual explosive mass</source>
+            <translation>Фактическая масса ВВ</translation>
+        </message>
+        <message>
+            <source>Actual hole count</source>
+            <translation>Фактическое число скважин</translation>
+        </message>
+        <message>
+            <source>Average spacing</source>
+            <translation>Средний шаг</translation>
+        </message>
+        <message>
+            <source>Completion status</source>
+            <translation>Статус выполнения</translation>
+        </message>
+        <message>
+            <source>Contour blasts</source>
+            <translation>Контурные взрывы</translation>
+        </message>
+        <message>
+            <source>Hole count</source>
+            <translation>Число скважин</translation>
+        </message>
+        <message>
+            <source>Line length</source>
+            <translation>Длина линии</translation>
+        </message>
+        <message>
+            <source>No comments</source>
+            <translation>Нет комментариев</translation>
+        </message>
+        <message>
+            <source>No comments or recommendations</source>
+            <translation>Нет комментариев или рекомендаций</translation>
+        </message>
+        <message>
+            <source>No design data</source>
+            <translation>Нет проектных данных</translation>
+        </message>
+        <message>
+            <source>No documents yet</source>
+            <translation>Документов пока нет</translation>
+        </message>
+        <message>
+            <source>No history</source>
+            <translation>История отсутствует</translation>
+        </message>
+        <message>
+            <source>Production blasts</source>
+            <translation>Производственные взрывы</translation>
+        </message>
+        <message>
+            <source>The report was saved, but could not be opened automatically.</source>
+            <translation>Отчёт сохранён, но его не удалось открыть автоматически.</translation>
+        </message>
+        <message>
+            <source>Total confirmed</source>
+            <translation>Всего подтверждено</translation>
+        </message>
+        <message>
+            <source>OK</source>
+            <translation>ОК</translation>
+        </message>
+        <message>
+            <source>Yes</source>
+            <translation>Да</translation>
+        </message>
+        <message>
+            <source>No</source>
+            <translation>Нет</translation>
+        </message>
+        <message>
+            <source>Discard</source>
+            <translation>Не сохранять</translation>
         </message>
     </context>
 </TS>
