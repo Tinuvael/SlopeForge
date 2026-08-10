@@ -5,7 +5,10 @@ import pytest
 
 from domain.geometry.blast import BlastGeometryError, build_contour_geometry, build_production_geometry
 from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
-from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, AssessmentEventLink, AssessmentHorizonSlice, BlastEvent, ProjectLinesDataset
+from domain.blasting.entities import BlastEvent
+from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentEventLink, AssessmentHorizonSlice
+from domain.project.project_lines import ProjectLinesDataset
+from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.types import DatamineLine, DataminePoint
 
 

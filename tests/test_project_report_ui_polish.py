@@ -33,7 +33,7 @@ def test_assessment_page_nested_tabs_have_exclusive_initial_visibility(monkeypat
     application=app()
     from tests.test_wall_assessment_persistence_ui import make_state,filled_draft
     from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
-    from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+    from domain.assessment.evaluation import AssessmentAreaEvaluationService
     import ui.pages.assessment_area_page as module
 
     state,area=make_state(); evaluation,draft=filled_draft(state,area)

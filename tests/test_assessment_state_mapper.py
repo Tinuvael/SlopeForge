@@ -11,10 +11,14 @@ import sys
 import pytest
 
 from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
-from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, AssessmentEventLink, AssessmentHorizonSlice, BlastEvent, EntityAttachment, ProjectLinesDataset
+from domain.blasting.entities import BlastEvent
+from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentEventLink, AssessmentHorizonSlice
+from domain.project.project_lines import ProjectLinesDataset
+from domain.attachments.entities import EntityAttachment
+from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.types import DatamineLine, DataminePoint
-from prototype_2d.technical_card import BlastEventTechnicalCard, new_technical_card
-from prototype_2d.wall_assessment import AssessmentAreaEvaluation, AssessmentAreaEvaluationService
+from domain.blasting.technical_card import BlastEventTechnicalCard, new_technical_card
+from domain.assessment.evaluation import AssessmentAreaEvaluation, AssessmentAreaEvaluationService
 from repositories.assessment_state_mapper import AssessmentStateValidationError, validate_assessment_state
 
 NOW = datetime(2026, 8, 4, 12, tzinfo=timezone.utc)

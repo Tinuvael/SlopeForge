@@ -5,7 +5,8 @@ import pytest
 
 from prototype_2d.assessment_area_service import AssessmentAreaService, AssessmentFragmentCandidate
 from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
-from prototype_2d.domain import AssessmentDomainState, ProjectLinesDataset
+from domain.project.project_lines import ProjectLinesDataset
+from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.operations import (clip_datamine_line_by_polygon, point_in_polygon, polygon_area,
                                    polygon_self_intersects, segment_intersection)
 from domain.geometry.types import DatamineLine, DataminePoint
@@ -111,7 +112,7 @@ def test_old_area_json_migrates_to_revision_one():
            "source_dataset_id": "D-003", "selection_polygon_frozen": selection.to_dict(),
            "final_geometry_frozen": selection.to_dict(), "lower_elevation": 100,
            "upper_elevation": 110, "horizon_slices": [], "event_links": [], "is_archived": False}
-    restored = __import__("prototype_2d.domain", fromlist=["AssessmentArea"]).AssessmentArea.from_dict(old)
+    restored = __import__("domain.assessment.entities", fromlist=["AssessmentArea"]).AssessmentArea.from_dict(old)
     assert restored.id == "AA-007" and restored.active_geometry_revision().revision_number == 1
     assert restored.source_dataset_id == "D-003"
     assert "geometry_revisions" in restored.to_dict() and "selection_polygon_frozen" not in restored.to_dict()

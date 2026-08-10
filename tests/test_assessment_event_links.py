@@ -5,7 +5,9 @@ import pytest
 from prototype_2d.assessment_event_link_service import AssessmentEventLinkService
 from prototype_2d.blast_event_service import BlastEventService
 from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
-from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, BlastEvent
+from domain.blasting.entities import BlastEvent
+from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
+from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.operations import (points_from_multipoint_inside_polygon,
     polygon_intersects_polygon)
 

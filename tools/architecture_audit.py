@@ -12,7 +12,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOTS = ("app", "database", "repositories", "services", "reports", "prototype_2d", "ui", "widgets", "tools")
+SOURCE_ROOTS = ("app", "application", "database", "domain", "infrastructure", "repositories", "services", "reports", "prototype_2d", "ui", "widgets", "tools")
 IGNORED_PARTS = {".git", ".venv", "venv", "env", "build", "dist", "__pycache__", ".pytest_cache", ".mypy_cache"}
 
 

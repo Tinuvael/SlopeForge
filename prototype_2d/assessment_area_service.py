@@ -4,9 +4,10 @@ from dataclasses import dataclass
 from datetime import date
 from math import hypot
 
-from .domain import (AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, AssessmentHorizonSlice,
-                     PlanLineString, PlanPoint, PlanPolygon)
-from .domain import utc_now
+from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentHorizonSlice
+from application.state.assessment_domain_state import AssessmentDomainState
+from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
+from domain.blasting.entities import utc_now
 from domain.geometry.operations import clip_datamine_line_by_polygon, validate_simple_polygon
 
 

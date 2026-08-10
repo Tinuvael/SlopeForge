@@ -17,7 +17,8 @@ if "test" not in (make_url(URL).database or "").lower():
 
 from database import assessment_models as orm
 from database.models import Domain, Mine, Site
-from prototype_2d.domain import AssessmentDomainState, ProjectLinesDataset
+from domain.project.project_lines import ProjectLinesDataset
+from application.state.assessment_domain_state import AssessmentDomainState
 from prototype_2d.project_lines_dataset_service import (
     ProjectLinesDatasetService,
     ProjectLinesImportError,

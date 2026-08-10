@@ -314,7 +314,7 @@ def test_focused_area_edit_boundaries_round_trip_preserves_entity_graph(session_
 
 
 def test_zero_revision_evaluation_container_round_trips(session_factory, assessment_context):
-    from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+    from domain.assessment.evaluation import AssessmentAreaEvaluationService
 
     state = build_rich_state()
     state.evaluations = []

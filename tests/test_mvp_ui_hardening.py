@@ -257,7 +257,7 @@ def test_repeated_transient_navigation_keeps_stack_bounded():
 
 def test_all_technical_card_catalogue_keys_have_english_presentation_labels():
     import re
-    from prototype_2d.technical_card import (
+    from domain.blasting.technical_card import (
         CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS, PRODUCTION_GROUP_TYPES,
     )
     from ui.presentation_labels import CONTROLLED_BLASTING_LABELS, technical_group_label
@@ -295,8 +295,9 @@ def test_dynamic_domain_validation_messages_are_presented_in_english():
 def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
     from datetime import date, datetime, timezone
     from domain.geometry.types import PlanPoint, PlanPolygon
-    from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState
-    from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+    from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
+    from application.state.assessment_domain_state import AssessmentDomainState
+    from domain.assessment.evaluation import AssessmentAreaEvaluationService
     from ui.pages.entity_page_controller import EntityPageController
 
     polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(1, 0), PlanPoint(1, 1), PlanPoint(0, 0)))
@@ -325,8 +326,9 @@ def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
 def test_attachment_owner_can_be_prepared_without_an_intermediate_save():
     from datetime import date, datetime, timezone
     from domain.geometry.types import PlanPoint, PlanPolygon
-    from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState
-    from prototype_2d.wall_assessment import AssessmentAreaEvaluationService
+    from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
+    from application.state.assessment_domain_state import AssessmentDomainState
+    from domain.assessment.evaluation import AssessmentAreaEvaluationService
     from ui.pages.entity_page_controller import EntityPageController
 
     polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(1, 0), PlanPoint(1, 1), PlanPoint(0, 0)))

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 
 from app.localization import tr
 from prototype_2d.blast_event_service import BlastEventService, BlastEventValidationError
-from prototype_2d.domain import AssessmentDomainState
+from application.state.assessment_domain_state import AssessmentDomainState
 from ui.presentation_labels import domain_message
 
 

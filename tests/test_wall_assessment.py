@@ -3,8 +3,10 @@ from datetime import date, datetime, timezone
 import json
 import pytest
 from domain.geometry.types import PlanPoint, PlanPolygon
-from prototype_2d.domain import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentDomainState, AssessmentEventLink, BlastEvent
-from prototype_2d.wall_assessment import *
+from domain.blasting.entities import BlastEvent
+from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentEventLink
+from application.state.assessment_domain_state import AssessmentDomainState
+from domain.assessment.evaluation import *
 
 @pytest.fixture
 def area():
@@ -102,3 +104,18 @@ def test_manual_controlled_example_calculates_and_roundtrips():
 def test_cancelled_transient_evaluation_never_enters_state(area):
     state=AssessmentDomainState(assessment_areas=[area]); evaluation,_draft=AssessmentAreaEvaluationService(state).new_evaluation(area)
     assert evaluation.revisions==[] and state.evaluations==[]
+
+def test_dai_and_fci_remain_distinct_and_are_not_averaged():
+    revision = complete_revision()
+    condition_result = next(item for item in revision.criterion_results if item.section == CONDITION)
+    condition_result.manual_score = 0
+    calculate_revision(revision, True)
+
+    assert revision.design_achievement_index == 1.0
+    assert revision.face_condition_index == 1.0 - condition_result.maximum_score / 100.0
+    assert revision.design_achievement_index != revision.face_condition_index
+    assert revision.result_quadrant == classify(
+        revision.design_achievement_index,
+        revision.face_condition_index,
+        get_template(revision.matrix_template_id),
+    )[0]

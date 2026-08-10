@@ -8,7 +8,8 @@ from math import isfinite
 from typing import Any
 from uuid import uuid4
 
-from .domain import AssessmentDomainState, BlastEvent, PlanPolygon, utc_now
+from domain.blasting.entities import BlastEvent, utc_now
+from domain.geometry.types import PlanPolygon
 
 PRODUCTION_GROUP_TYPES = {
     "main_pattern": "Основная сеть", "inner_buffer": "Внутренний буферный ряд",
@@ -363,7 +364,7 @@ def new_technical_card(event: BlastEvent) -> tuple[BlastEventTechnicalCard, Blas
     return card, revision
 
 class TechnicalCardService:
-    def __init__(self, state: AssessmentDomainState): self.state = state
+    def __init__(self, state): self.state = state
     def card_for_event(self, event_id): return next((c for c in self.state.technical_cards if c.blast_event_id == event_id), None)
     def edit_or_create(self, event: BlastEvent):
         card = self.card_for_event(event.id)

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from database import assessment_models as orm
 from database.models import Site
-from prototype_2d.domain import ProjectLinesDataset
+from domain.project.project_lines import ProjectLinesDataset
 
 
 class ProjectLinesDatasetNotFoundError(LookupError):

@@ -4,12 +4,12 @@ import json
 
 import pytest
 
-from prototype_2d.technical_card import (
+from domain.blasting.technical_card import (
     ActualDrillingGroup, ActualExecution, BlastDrillingGroup,
     BlastEventTechnicalCard, comparison_value,
 )
 from tests.test_technical_cards import event
-from prototype_2d.technical_card import new_technical_card
+from domain.blasting.technical_card import new_technical_card
 
 
 def designs():

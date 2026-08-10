@@ -10,8 +10,10 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import uuid4
 
-from .domain import (AssessmentArea, AssessmentDomainState, AssessmentEventLink,
-                     BlastEvent, PlanMultiPoint, PlanPolygon, utc_now)
+from domain.blasting.entities import BlastEvent, utc_now
+from domain.assessment.entities import AssessmentArea, AssessmentEventLink
+from application.state.assessment_domain_state import AssessmentDomainState
+from domain.geometry.types import PlanMultiPoint, PlanPolygon
 from domain.geometry.operations import (points_from_multipoint_inside_polygon,
                        polygon_intersects_polygon)
 
