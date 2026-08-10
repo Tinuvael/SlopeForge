@@ -18,7 +18,7 @@ class AssessmentAreaCreationPage(QWidget):
         self.controller = EntityPageController(context, domain_id)
         self.edit_area_id = edit_area_id
         self.editor = AssessmentGeometryEditorWidget(
-            self.controller.state, self.controller.save, self,
+            self.controller.state, self.controller.save_assessment_area_geometry, self,
             read_only=not context.current_user.can_edit,
         )
         layout = QVBoxLayout(self)

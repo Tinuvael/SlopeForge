@@ -4,12 +4,13 @@ from ui.presentation_labels import domain_message
 from PySide6.QtWidgets import QMainWindow,QMessageBox,QStackedWidget,QVBoxLayout,QHBoxLayout,QWidget
 from app.config import APP_NAME,APP_VERSION
 from app.qt import apply_window_icon
-from app.use_case_factory import create_blast_event_use_case
+from app.use_case_factory import (create_blast_event_use_case, create_domain_use_case,
+    create_generate_project_report_use_case, create_project_navigation_queries,
+    create_project_use_case)
 from application.use_cases.create_blast_event import CreateBlastEventCommand
+from application.use_cases.create_domain import CreateDomainCommand
+from application.use_cases.create_project import CreateProjectCommand
 from database.app_context import AppContext
-from repositories.domain_repository import DomainRepository
-from repositories.project_lines_repository import ProjectLinesRepository
-from services.project_service import ProjectService
 from ui.header import Header
 from ui.pages.block_page import BlockPage
 from widgets.project_tree import ProjectTree
@@ -20,7 +21,10 @@ class MainWindow(QMainWindow):
         self.selected_site_id=None; self.selected_site_name=None; self.selected_domain_id=None; self.selected_domain_name=None; self.selected_block_id=None; self.selected_contour_event_id=None; self.selected_assessment_area_id=None
         self.assessment_page=None; self.assessment_domain_id=None; self.assessment_site_id=None
         self.tree=ProjectTree(context); self.tree.setMaximumWidth(320); self.block_page=BlockPage(context); self.page=self.block_page; self.page_stack=QStackedWidget(); self.page_stack.addWidget(self.block_page)
-        self.header=Header(context); self.create_blast_event=create_blast_event_use_case(context); self.domain_repo=DomainRepository(context.session_factory); self.project_service=ProjectService(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory)
+        self.header=Header(context); self.create_blast_event=create_blast_event_use_case(context)
+        self.create_project=create_project_use_case(context); self.create_domain=create_domain_use_case(context)
+        self.navigation_queries=create_project_navigation_queries(context)
+        self.generate_project_report=create_generate_project_report_use_case(context)
         self.tree.site_selected.connect(self.select_site); self.tree.domain_selected.connect(self.select_domain); self.tree.block_selected.connect(self.open_block_from_tree); self.tree.contour_event_selected.connect(self.open_contour_from_tree); self.tree.assessment_area_selected.connect(self.open_area_from_tree)
         self.header.add_project_requested.connect(self._add_project); self.header.add_domain_requested.connect(self._add_domain); self.header.add_blast_event_requested.connect(self._add_blast_event); self.header.add_assessment_area_requested.connect(self._add_area)
         self.header.report_requested.connect(self._project_report)
@@ -66,7 +70,7 @@ class MainWindow(QMainWindow):
     def _set_context(self,site_id,site_name=None,domain_id=None,domain_name=None,block_id=None,area_id=None,contour_id=None):
         self.selected_site_id=site_id; self.selected_site_name=site_name or self.selected_site_name; self.selected_domain_id=domain_id; self.selected_domain_name=domain_name; self.selected_block_id=block_id; self.selected_contour_event_id=contour_id; self.selected_assessment_area_id=area_id; self._update_add(); self.header.set_archive_context(area_id is not None or contour_id is not None)
     def _update_add(self):
-        active=bool(self.selected_site_id and self.lines_repo.get_active(self.selected_site_id)); self.header.update_add_availability(self.selected_site_id is not None,self.selected_domain_id is not None,active)
+        active=bool(self.selected_site_id and self.navigation_queries.project_has_active_lines(self.selected_site_id)); self.header.update_add_availability(self.selected_site_id is not None,self.selected_domain_id is not None,active)
     def select_site(self,site_id,site_name):
         if not self._guard_leave(): return False
         try:
@@ -77,7 +81,7 @@ class MainWindow(QMainWindow):
         page.domain_requested.connect(lambda domain_id:self._open_domain_dashboard(domain_id,site_id,site_name))
         self._activate_page(page); self._set_context(site_id,site_name); return True
     def _open_domain_dashboard(self,domain_id,site_id,site_name):
-        domain=self.domain_repo.get(domain_id); self.select_domain(domain_id,domain.name,site_id,site_name)
+        domain=self.navigation_queries.get_domain_context(domain_id); self.select_domain(domain_id,domain.domain_name,site_id,site_name)
     def select_domain(self,domain_id,domain_name,site_id,site_name):
         if not self._guard_leave(): return False
         try:
@@ -90,9 +94,9 @@ class MainWindow(QMainWindow):
         page.assessment_area_requested.connect(lambda area_id:self.open_area_from_tree(area_id,domain_id,site_id,domain_name))
         self._activate_page(page); self._set_context(site_id,site_name,domain_id,domain_name); return True
     def open_block_from_tree(self,block_id,domain_id=None,site_id=None):
-        domain=self.domain_repo.get(domain_id) if domain_id else None
+        domain=self.navigation_queries.get_domain_context(domain_id) if domain_id else None
         if self._show(self.block_page):
-            self.block_page.open_block_id(block_id); self._set_context(site_id,domain.site.name if domain else None,domain_id,domain.name if domain else None,block_id); self.header.set_archive_context(True,self.block_page.current_block.is_archived); return True
+            self.block_page.open_block_id(block_id); self._set_context(site_id,domain.site_name if domain else None,domain_id,domain.domain_name if domain else None,block_id); self.header.set_archive_context(True,self.block_page.current_block.is_archived); return True
         return False
     def open_area_from_tree(self,area_id,domain_id,site_id,domain_name):
         if not self._guard_leave(): return False
@@ -102,39 +106,40 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self,tr("Assessment Area"),f"Could not open the assessment area. The current page was preserved.\n\n{domain_message(str(exc))}"); return False
         page.edit_boundaries_requested.connect(self._edit_area_boundaries)
         self._activate_page(page)
-        domain=self.domain_repo.get(domain_id); self.assessment_page=None; self.area_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,area_id=area_id); return True
+        domain=self.navigation_queries.get_domain_context(domain_id); self.assessment_page=None; self.area_page=page; self._set_context(site_id,domain.site_name,domain_id,domain_name,area_id=area_id); return True
     def open_contour_from_tree(self,event_id,domain_id,site_id,domain_name):
         if not self._guard_leave(): return False
         from ui.pages.contour_event_page import ContourEventPage
         try: page=ContourEventPage(self.context,domain_id,domain_name,event_id)
         except Exception as exc: QMessageBox.critical(self,tr("Contour blast"),f"Could not open the contour blast.\n\n{domain_message(str(exc))}"); return False
         self._activate_page(page)
-        domain=self.domain_repo.get(domain_id); self.contour_page=page; self._set_context(site_id,domain.site.name,domain_id,domain_name,contour_id=event_id); self.header.set_archive_context(True,page.blast_event.is_archived); return True
+        domain=self.navigation_queries.get_domain_context(domain_id); self.contour_page=page; self._set_context(site_id,domain.site_name,domain_id,domain_name,contour_id=event_id); self.header.set_archive_context(True,page.blast_event.is_archived); return True
     def _add_project(self):
         from ui.project_dialog import ProjectDialog
-        from application.state.assessment_domain_state import AssessmentDomainState
-        from application.services.project_lines import ProjectLinesDatasetService
         d=ProjectDialog(self)
         if not d.exec(): return
-        dataset=None
         try:
-            if d.csv_path.text(): dataset,_=ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(d.csv_path.text())
-            site_id=self.project_service.create_project(d.name.text(),d.description.toPlainText())
-            if dataset:
-                try: self.lines_repo.import_dataset(site_id,dataset,make_active=True)
-                except Exception as exc:
-                    QMessageBox.warning(self,tr("Project created without lines"),f"The project was created, but Project Lines were not saved: {domain_message(str(exc))}\nImport them again from the project page.")
-            self.refresh_project_data(); self.select_site(site_id,d.name.text())
+            user=self.context.current_user
+            result=self.create_project.execute(CreateProjectCommand(d.name.text(),d.description.toPlainText(),d.csv_path.text() or None,user.id,user.can_edit))
+            if result.project_lines_warning:
+                QMessageBox.warning(self,tr("Project created without lines"),f"The project was created, but Project Lines were not saved: {domain_message(result.project_lines_warning)}\nImport them again from the project page.")
+            self.refresh_project_data(); self.select_site(result.site_id,result.project_name)
         except Exception as exc: QMessageBox.warning(self,tr("Could not create project"),domain_message(str(exc)))
     def _project_report(self):
         if self.selected_site_id is None:return
         from ui.dialogs.project_report_dialog import ProjectReportDialog
-        ProjectReportDialog(self.context,self.selected_site_id,self.selected_site_name or tr("Project"),self).exec()
+        ProjectReportDialog(self.generate_project_report,self.selected_site_id,self.selected_site_name or tr("Project"),self).exec()
     def _add_domain(self):
         if self.selected_site_id is None:return
         from ui.add_dialog import AddDialog
         d=AddDialog("domain")
-        if d.exec(): self.domain_repo.create(self.selected_site_id,d.name.text(),d.description.toPlainText()); self.refresh_project_data()
+        if not d.exec(): return
+        try:
+            user=self.context.current_user
+            self.create_domain.execute(CreateDomainCommand(self.selected_site_id,d.name.text(),d.description.toPlainText(),user.id,user.can_edit))
+            self.refresh_project_data()
+        except Exception as exc:
+            QMessageBox.warning(self,tr("Could not create domain"),domain_message(str(exc)))
     def _add_blast_event(self):
         if self.selected_domain_id is None:return
         from ui.dialogs.blast_event_dialog import BlastEventDialog
@@ -159,7 +164,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self,tr("Could not create blast event"),domain_message(str(exc)))
     def _add_area(self):
         if self.selected_domain_id is None:return
-        if not self.lines_repo.get_active(self.selected_site_id):
+        if not self.navigation_queries.project_has_active_lines(self.selected_site_id):
             QMessageBox.information(self,tr("Project Lines"),tr("Load Project Lines for the project first.")); self.select_site(self.selected_site_id,self.selected_site_name); return
         if not self._guard_leave(): return
         from ui.pages.assessment_area_creation_page import AssessmentAreaCreationPage

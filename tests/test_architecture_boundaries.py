@@ -29,7 +29,7 @@ PERMANENTLY_REMOVED_IMPORTS = {
 MINE_COMPATIBILITY_FILES = {
     "database/models.py", "repositories/blast_block_repository.py",
     "repositories/mine_repository.py", "repositories/site_repository.py",
-    "services/project_service.py", "widgets/project_tree.py", "ui/header.py",
+    "infrastructure/db/project_creation.py", "widgets/project_tree.py", "ui/header.py",
 }
 
 
@@ -183,3 +183,43 @@ def test_block_archive_use_case_has_clean_application_dependencies() -> None:
     path = ROOT / "application/use_cases/set_blast_block_archived.py"
     forbidden = ("PySide6", "sqlalchemy", "database", "repositories", "ui")
     assert not any(has_prefix(name, forbidden) for name in imports(path))
+
+
+def test_phase_4c_final_orchestration_boundaries() -> None:
+    main = ROOT / "ui/main_window.py"
+    imported = imports(main)
+    assert not any(name in imported for name in (
+        "repositories.domain_repository", "repositories.project_lines_repository",
+        "services.project_service",
+    ))
+    source = main.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    methods = {node.name: ast.get_source_segment(source, node) or "" for node in ast.walk(tree)
+               if isinstance(node, ast.FunctionDef)}
+    assert not any(name in methods["_add_project"] for name in (
+        "AssessmentDomainState", "ProjectLinesDatasetService", "ProjectLinesRepository", "ProjectService"))
+    assert "DomainRepository.create" not in methods["_add_domain"]
+
+    report_dialog = ROOT / "ui/dialogs/project_report_dialog.py"
+    assert not ({"services.project_report_service", "reports.excel_project_report"} & imports(report_dialog))
+
+    editor_source = (ROOT / "ui/editors/assessment_geometry_editor.py").read_text(encoding="utf-8")
+    editor_tree = ast.parse(editor_source)
+    confirm = next(node for node in ast.walk(editor_tree)
+                   if isinstance(node, ast.FunctionDef) and node.name == "confirm_boundaries")
+    confirm_source = ast.get_source_segment(editor_source, confirm) or ""
+    assert not any(call in confirm_source for call in (
+        "create_area(", "revise_area(", "refresh_suggestions(", "_save_callback("))
+
+
+def test_phase_4c_application_modules_are_framework_free() -> None:
+    paths = list((ROOT / "application/use_cases").glob("*.py")) + [
+        ROOT / "application/ports/project_creation.py",
+        ROOT / "application/ports/domain_creation.py",
+        ROOT / "application/ports/project_navigation.py",
+        ROOT / "application/ports/project_report.py",
+        ROOT / "application/dto/project_report.py",
+    ]
+    forbidden = ("PySide6", "sqlalchemy", "database", "repositories", "ui", "infrastructure")
+    assert not {relative(path) for path in paths
+                if any(has_prefix(name, forbidden) for name in imports(path))}

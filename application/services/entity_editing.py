@@ -2,12 +2,22 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 
 from application.ports.assessment_state import AssessmentStatePersistence
 from application.services.assessment_event_links import AssessmentEventLinkService
+from application.services.assessment_areas import AssessmentAreaService
 from application.services.blast_events import BlastEventService
 from domain.assessment.evaluation import AssessmentAreaEvaluationService
 from domain.blasting.technical_card import TechnicalCardService
+
+
+@dataclass(frozen=True)
+class AssessmentGeometryCommitResult:
+    area_id: str
+    created: bool
+    link_refresh_result: object | None
+    link_refresh_warning: str | None
 
 
 class AssessmentEditingSession:
@@ -26,6 +36,7 @@ class AssessmentEditingSession:
         self.technical_cards = TechnicalCardService(self.state)
         self.evaluations = AssessmentAreaEvaluationService(self.state)
         self.links = AssessmentEventLinkService(self.state)
+        self.areas = AssessmentAreaService(self.state)
 
     def _require_edit(self) -> None:
         if not self.can_edit:
@@ -108,6 +119,59 @@ class AssessmentEditingSession:
 
     def refresh_event_link_suggestions(self, area):
         return self._mutate_links(area, self.links.refresh_suggestions)
+
+    def save_assessment_area_geometry(self, *, assessment_area_id=None, name=None,
+                                      assessment_date=None, selection_polygon,
+                                      selected_fragments, change_reason=None):
+        """Create/revise geometry, refresh links, and persist with in-place rollback."""
+        self._require_edit()
+        created = assessment_area_id is None
+        area = None
+        old_revision_count = old_active_id = None
+        old_links = []
+        old_statuses = []
+        if not created:
+            area = next((item for item in self.state.assessment_areas
+                         if item.id == assessment_area_id), None)
+            if area is None:
+                raise ValueError("Assessment Area not found in this Domain")
+            old_revision_count = len(area.geometry_revisions)
+            old_active_id = area.active_geometry_revision_id
+            old_links = list(area.event_links)
+            old_statuses = [(link, link.status) for link in old_links]
+        try:
+            if created:
+                area = self.areas.create_area(
+                    name=name or "", assessment_date=assessment_date,
+                    selection_polygon=selection_polygon, selected_fragments=selected_fragments)
+                old_links = []
+            else:
+                self.areas.revise_area(area, selection_polygon=selection_polygon,
+                                       selected_fragments=selected_fragments,
+                                       change_reason=change_reason)
+            links_before_refresh = list(area.event_links)
+            statuses_before_refresh = [(link, link.status) for link in links_before_refresh]
+            try:
+                link_result = self.links.refresh_suggestions(area)
+                warning = None
+            except Exception as exc:
+                area.event_links[:] = links_before_refresh
+                for link, status in statuses_before_refresh:
+                    link.status = status
+                link_result = None
+                warning = str(exc)
+            self.save()
+            return AssessmentGeometryCommitResult(area.id, created, link_result, warning)
+        except Exception:
+            if created and area in self.state.assessment_areas:
+                self.state.assessment_areas.remove(area)
+            elif area is not None:
+                del area.geometry_revisions[old_revision_count:]
+                area.active_geometry_revision_id = old_active_id
+                area.event_links[:] = old_links
+                for link, status in old_statuses:
+                    link.status = status
+            raise
 
     def technical_card_draft(self, event):
         return self.technical_cards.edit_or_create(event)

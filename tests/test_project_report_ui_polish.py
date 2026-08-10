@@ -246,10 +246,10 @@ def test_russian_standard_buttons_are_never_blank(tmp_path):
 def test_report_saved_file_is_opened_without_success_modal(monkeypatch,tmp_path):
     app(); import ui.dialogs.project_report_dialog as module
     target=tmp_path/"report.xlsx"; context=SimpleNamespace(session_factory=object())
-    dialog=module.ProjectReportDialog(context,1,"Project")
+    generator=SimpleNamespace(execute=lambda command: SimpleNamespace(output_path=target.resolve()))
+    dialog=module.ProjectReportDialog(generator,1,"Project")
     monkeypatch.setattr(module.QFileDialog,"getSaveFileName",lambda *_:(str(target),"xlsx"))
-    monkeypatch.setattr(module.ProjectReportService,"collect",lambda *_:object())
-    monkeypatch.setattr(module,"write_project_report",lambda _report,path:target.write_bytes(b"xlsx"))
+    generator.execute=lambda command: (target.write_bytes(b"xlsx"), SimpleNamespace(output_path=target.resolve()))[1]
     opened=[]; monkeypatch.setattr(module.QDesktopServices,"openUrl",lambda url:opened.append(url.toLocalFile()) or True)
     monkeypatch.setattr(module.QMessageBox,"information",lambda *_:pytest.fail("success modal is redundant"))
     dialog.generate()
@@ -258,8 +258,10 @@ def test_report_saved_file_is_opened_without_success_modal(monkeypatch,tmp_path)
 
 def test_report_open_failure_warns_but_keeps_saved_file(monkeypatch,tmp_path):
     app(); import ui.dialogs.project_report_dialog as module
-    target=tmp_path/"report.xlsx"; dialog=module.ProjectReportDialog(SimpleNamespace(session_factory=object()),1,"Project")
-    monkeypatch.setattr(module.QFileDialog,"getSaveFileName",lambda *_:(str(target),"xlsx")); monkeypatch.setattr(module.ProjectReportService,"collect",lambda *_:object()); monkeypatch.setattr(module,"write_project_report",lambda _report,path:target.write_bytes(b"xlsx")); monkeypatch.setattr(module.QDesktopServices,"openUrl",lambda _url:False)
+    target=tmp_path/"report.xlsx"
+    generator=SimpleNamespace(execute=lambda command: (target.write_bytes(b"xlsx"), SimpleNamespace(output_path=target.resolve()))[1])
+    dialog=module.ProjectReportDialog(generator,1,"Project")
+    monkeypatch.setattr(module.QFileDialog,"getSaveFileName",lambda *_:(str(target),"xlsx")); monkeypatch.setattr(module.QDesktopServices,"openUrl",lambda _url:False)
     warnings=[]; monkeypatch.setattr(module.QMessageBox,"warning",lambda *args:warnings.append(args[2]))
     dialog.generate()
     assert target.exists() and warnings==["The report was saved, but could not be opened automatically."]

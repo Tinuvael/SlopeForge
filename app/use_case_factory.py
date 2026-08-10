@@ -5,6 +5,15 @@ from application.services.entity_editing import AssessmentEditingSession
 from infrastructure.db.assessment_state import SqlAlchemyAssessmentStatePersistence
 from application.use_cases.set_blast_block_archived import SetBlastBlockArchived
 from infrastructure.db.blast_block_archive import SqlAlchemyBlastBlockArchivePersistence
+from application.use_cases.create_project import CreateProject
+from application.use_cases.create_domain import CreateDomain
+from application.use_cases.generate_project_report import GenerateProjectReport
+from infrastructure.db.project_creation import SqlAlchemyProjectCreation
+from infrastructure.db.project_lines_creation import SqlAlchemyProjectLinesCreationSupport
+from infrastructure.db.domain_creation import SqlAlchemyDomainCreation
+from infrastructure.db.project_navigation import SqlAlchemyProjectNavigationQueries
+from infrastructure.db.project_report import SqlAlchemyProjectReportQuery
+from infrastructure.reports.excel_project_report import OpenPyxlProjectReportWriter
 
 
 def create_blast_event_use_case(context):
@@ -25,3 +34,21 @@ def create_set_blast_block_archived_use_case(context):
     return SetBlastBlockArchived(
         SqlAlchemyBlastBlockArchivePersistence(context.session_factory)
     )
+
+
+def create_project_use_case(context):
+    return CreateProject(SqlAlchemyProjectCreation(context.session_factory),
+                         SqlAlchemyProjectLinesCreationSupport(context.session_factory))
+
+
+def create_domain_use_case(context):
+    return CreateDomain(SqlAlchemyDomainCreation(context.session_factory))
+
+
+def create_project_navigation_queries(context):
+    return SqlAlchemyProjectNavigationQueries(context.session_factory)
+
+
+def create_generate_project_report_use_case(context):
+    return GenerateProjectReport(SqlAlchemyProjectReportQuery(context.session_factory),
+                                 OpenPyxlProjectReportWriter())

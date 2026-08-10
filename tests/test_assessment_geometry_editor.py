@@ -1,4 +1,5 @@
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
@@ -48,6 +49,20 @@ class AcceptedCandidateDialog:
         return self.candidates
 
 
+
+def committer(state, save=lambda: None):
+    def commit(**values):
+        service = AssessmentAreaService(state)
+        area_id = values.pop("assessment_area_id")
+        if area_id:
+            area = next(item for item in state.assessment_areas if item.id == area_id)
+            service.revise_area(area, selection_polygon=values["selection_polygon"], selected_fragments=values["selected_fragments"])
+        else:
+            area = service.create_area(**values)
+        save()
+        return SimpleNamespace(area_id=area.id, link_refresh_result=SimpleNamespace(production_candidates=0, contour_candidates=0, suggestions_added=0), link_refresh_warning=None)
+    return commit
+
 def prepare(editor):
     editor.start_new_area()
     for point in polygon().ring[:-1]:
@@ -56,7 +71,7 @@ def prepare(editor):
 
 
 def test_drawing_undo_refinement_cancel_and_project_lines(state, app):
-    editor = AssessmentGeometryEditorWidget(state, lambda: None)
+    editor = AssessmentGeometryEditorWidget(state, committer(state))
     assert [item for item in editor.scene.items() if item.data(PROJECT_LINE_ROLE)]
     editor.set_project_lines_visible(False)
     assert not [item for item in editor.scene.items() if item.data(PROJECT_LINE_ROLE)]
@@ -71,7 +86,7 @@ def test_create_emits_id_saves_and_preserves_selected_fragments(monkeypatch, sta
     import ui.editors.assessment_geometry_editor as module
     monkeypatch.setattr(module, "AssessmentCandidateDialog", AcceptedCandidateDialog)
     saves = []; created = []
-    editor = AssessmentGeometryEditorWidget(state, lambda: saves.append(True))
+    editor = AssessmentGeometryEditorWidget(state, committer(state, lambda: saves.append(True)))
     editor.area_created.connect(created.append)
     prepare(editor)
     assert len([item for item in editor.scene.items() if item.data(ASSESSMENT_HANDLE_ROLE)]) == 4
@@ -87,7 +102,7 @@ def test_candidate_cancellation_keeps_refinement_without_persisting(monkeypatch,
     class Cancelled(AcceptedCandidateDialog):
         def exec(self): return QDialog.DialogCode.Rejected
     monkeypatch.setattr(module, "AssessmentCandidateDialog", Cancelled)
-    saves = []; editor = AssessmentGeometryEditorWidget(state, lambda: saves.append(True))
+    saves = []; editor = AssessmentGeometryEditorWidget(state, committer(state, lambda: saves.append(True)))
     prepare(editor); editor.confirm_boundaries()
     assert editor.workflow_state == "REFINING" and saves == [] and state.assessment_areas == []
     editor.deleteLater(); assert app
@@ -100,7 +115,7 @@ def test_edit_creates_revision_and_emits_existing_id(monkeypatch, state, app):
     area = service.create_area(name="Original", assessment_date=date.today(), selection_polygon=polygon(),
                                selected_fragments=service.generate_candidates(polygon()))
     first_revision = area.active_geometry_revision_id; revised = []
-    editor = AssessmentGeometryEditorWidget(state, lambda: None)
+    editor = AssessmentGeometryEditorWidget(state, committer(state))
     editor.area_revised.connect(revised.append); editor.start_edit(area.id)
     editor._handle_moved(1, 9, 0); editor._handle_released(1); editor.confirm_boundaries()
     assert revised == [area.id] and len(area.geometry_revisions) == 2
@@ -112,7 +127,7 @@ def test_persistence_failure_rolls_back_and_reports_no_completion(monkeypatch, s
     import ui.editors.assessment_geometry_editor as module
     monkeypatch.setattr(module, "AssessmentCandidateDialog", AcceptedCandidateDialog)
     def fail(): raise RuntimeError("database unavailable")
-    editor = AssessmentGeometryEditorWidget(state, fail); emitted = []
+    editor = AssessmentGeometryEditorWidget(state, committer(state, fail)); emitted = []
     editor.area_created.connect(emitted.append); prepare(editor)
     with pytest.raises(RuntimeError, match="database unavailable"):
         editor.confirm_boundaries()

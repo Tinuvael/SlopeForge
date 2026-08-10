@@ -1,7 +1,6 @@
 """Read-only collection of detached data for the first Project report."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -12,39 +11,7 @@ from database.models import BlastBlock, Domain, Site
 from database import assessment_models as orm
 
 
-@dataclass(frozen=True)
-class BlastReportRow:
-    report_date: date; event_date: date | None; actual_blast_date: date | None
-    domain: str; event_type: str; name: str; block_number: str | None
-    horizon: float; archived: bool; technical_card_status: str | None
-    actual_volume_m3: float | None; actual_explosive_mass_kg: float | None
-    actual_drilling_length_m: float | None
-
-
-@dataclass(frozen=True)
-class AssessmentReportRow:
-    name: str; domain: str; assessment_date: date; elevation_interval: str
-    geometry_revision: int; evaluation_status: str | None; dai: float | None
-    fci: float | None; quadrant: str | None; production_blocks: tuple[str, ...]
-    contour_blasts: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class ProjectReport:
-    project: str; from_date: date; to_date: date
-    blasts: tuple[BlastReportRow, ...]; assessments: tuple[AssessmentReportRow, ...]
-
-    @property
-    def completed_assessments(self): return sum(x.evaluation_status == "completed" for x in self.assessments)
-    @property
-    def average_dai(self):
-        values=[x.dai for x in self.assessments if x.evaluation_status == "completed" and x.dai is not None]
-        return sum(values)/len(values) if values else None
-    @property
-    def average_fci(self):
-        values=[x.fci for x in self.assessments if x.evaluation_status == "completed" and x.fci is not None]
-        return sum(values)/len(values) if values else None
-
+from application.dto.project_report import AssessmentReportRow, BlastReportRow, ProjectReport
 
 def _date(value: Any) -> date | None:
     if isinstance(value, date): return value
@@ -54,7 +21,7 @@ def _date(value: Any) -> date | None:
     return None
 
 
-class ProjectReportService:
+class SqlAlchemyProjectReportQuery:
     def __init__(self, session_factory): self.session_factory=session_factory
 
     def collect(self, site_id: int, from_date: date, to_date: date) -> ProjectReport:
