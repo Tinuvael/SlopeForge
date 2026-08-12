@@ -1,15 +1,22 @@
-from datetime import date
+from datetime import date, datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 import pytest
 
+from application.services.project_lines import ProjectLinesDatasetService
+from application.state.assessment_domain_state import AssessmentDomainState
+from domain.project.project_lines import ProjectLinesDataset
+
 try:
     from PySide6.QtWidgets import QApplication
-    from repositories.dashboard_repository import AreaRow,BlastRow,DomainDashboardSnapshot,DomainSummary,MapGeometry,SiteDashboardSnapshot
+    from repositories.dashboard_repository import AreaRow,BlastRow,DomainDashboardSnapshot,DomainSummary,MapGeometry,SiteDashboardSnapshot,_project_line_geometries
     from ui.pages.dashboards.charts import CompactChart
     from ui.pages.dashboards.domain_dashboard import DomainDashboardPage
     from ui.pages.dashboards.plan_overview import DashboardPlanOverviewWidget
 except ImportError as exc:
     pytest.skip(f"Qt runtime unavailable: {exc}",allow_module_level=True)
+
+SEPARATED_PARTS = Path(__file__).parent / "fixtures" / "project_lines_separated_parts.csv"
 
 @pytest.fixture(scope="module")
 def app(): return QApplication.instance() or QApplication([])
@@ -34,3 +41,24 @@ def test_read_only_map_constructs_empty_and_populated(app):
     empty=DomainDashboardSnapshot(DomainSummary(7,"North")); empty_map=DashboardPlanOverviewWidget(empty); assert not empty_map.scene.items()
     plan=DashboardPlanOverviewWidget(snapshot()); assert plan.scene.items(); assert plan.fit_button.text()=="Fit"; assert plan.project_lines_checkbox.text()=="Project Lines"
     assert not hasattr(plan,"draw_button") and not hasattr(plan,"edit_button") and not hasattr(plan,"confirm_button")
+
+def test_project_line_parts_survive_import_serialization_projection_and_render(app):
+    imported, _ = ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(
+        SEPARATED_PARTS, imported_at=datetime(2026, 1, 1, tzinfo=timezone.utc)
+    )
+    reloaded = ProjectLinesDataset.from_dict(imported.to_dict())
+    persisted_row = SimpleNamespace(lines_json=[line.to_dict() for line in reloaded.lines])
+    projected = _project_line_geometries(persisted_row)
+
+    assert [geometry.entity_id for geometry in projected] == ["WEST", "EAST"]
+    assert [geometry.points for geometry in projected] == [
+        ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0)),
+        ((1000.0, 1000.0), (1010.0, 1000.0), (1010.0, 1010.0)),
+    ]
+
+    plan = DashboardPlanOverviewWidget(
+        DomainDashboardSnapshot(DomainSummary(7, "North"), project_lines=projected)
+    )
+    assert len(plan._project_items) == 2
+    assert [item.path().elementCount() for item in plan._project_items] == [3, 3]
+    assert all(not item.path().isClosed() for item in plan._project_items)
