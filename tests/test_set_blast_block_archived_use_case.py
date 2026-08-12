@@ -14,8 +14,8 @@ class Persistence:
 
 def test_block_archive_and_restore_delegate_to_focused_port():
     persistence = Persistence(); use_case = SetBlastBlockArchived(persistence)
-    use_case.execute(SetBlastBlockArchivedCommand(3, True, 9, True))
-    use_case.execute(SetBlastBlockArchivedCommand(3, False, 9, True))
+    use_case.execute(SetBlastBlockArchivedCommand(3, True, 9, True, 4))
+    use_case.execute(SetBlastBlockArchivedCommand(3, False, 9, True, 5))
     assert persistence.calls == [(3, True, 9), (3, False, 9)]
 
 
@@ -23,5 +23,5 @@ def test_block_archive_and_restore_delegate_to_focused_port():
 def test_viewer_cannot_archive_or_restore_block(archived):
     persistence = Persistence(); use_case = SetBlastBlockArchived(persistence)
     with pytest.raises(PermissionError):
-        use_case.execute(SetBlastBlockArchivedCommand(3, archived, 9, False))
+        use_case.execute(SetBlastBlockArchivedCommand(3, archived, 9, False, 4))
     assert persistence.calls == []

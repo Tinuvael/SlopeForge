@@ -112,7 +112,7 @@ def test_existing_block_dialog_preserves_zero_and_none_and_locks_linked_domain()
     dialog=source("ui/block_dialog.py")
     assert '"" if block.horizon_m is None else str(block.horizon_m)' in dialog
     assert "self.planned_date.setDate(self.planned_date.minimumDate())" in dialog
-    assert "is_linked_to_production_event" in dialog and "self.domain.setEnabled(False)" in dialog
+    assert "Moving a Block between Domains is not available yet" in dialog and "self.domain.setEnabled(False)" in dialog
 
 def test_contour_event_ui_and_tree_architecture():
     tree=source("widgets/project_tree.py")

@@ -13,7 +13,7 @@ class AssessmentStateSnapshot:
     site_id: int
     workspace_id: int | None
     state: AssessmentDomainState
-    expected_version: int = 0
+    expected_version: int
 
 
 class AssessmentStatePersistence(Protocol):

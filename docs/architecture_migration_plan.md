@@ -13,7 +13,9 @@ The live architecture gate is GitHub issue #79. If this document and #79 differ,
 - Phase 5C complete: Domain owns optimistic concurrency; focused commands use an
   expected-version CAS, normal whole-state Assessment writes are gone, and a
   deterministic multi-Domain transaction guard is ready for future #75 work. Domain
-  moves are not implemented.
+  moves are not implemented. The aggregate repository is now read-only and permanent
+  AST/signature ratchets prevent the removed writer or optional version contracts from
+  returning.
 
 ## Remaining architecture sequence
 

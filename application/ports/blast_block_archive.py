@@ -3,6 +3,5 @@ from typing import Protocol
 
 
 class BlastBlockArchivePersistence(Protocol):
-    def load_domain_version(self, block_id: int) -> int: ...
     def set_archived(self, block_id: int, expected_version: int,
                      archived: bool, actor_id: int) -> int: ...

@@ -77,14 +77,14 @@ def test_create_audit_entry_and_sorting(pg_session_factory):
 def test_update_audit_only_changed_fields_and_noop_has_no_entries(pg_session_factory, seeded_block):
     service = service_for(pg_session_factory)
     user = CurrentUser(seeded_block["user_id"], "admin", "Admin User", "admin")
-    service.update_block(seeded_block["block_id"], BlastBlockInput("B-001", seeded_block["mine_id"], seeded_block["site_b_id"], "760.500", date(2026, 7, 15), "blasted", "Updated"), user)
+    service.update_block(seeded_block["block_id"], BlastBlockInput("B-001", seeded_block["mine_id"], seeded_block["site_b_id"], "760.500", date(2026, 7, 15), "blasted", "Updated"), user, expected_version=0)
     rows = AuditLogRepository(pg_session_factory).list_for_block(seeded_block["block_id"])
     fields = [row.field_name for row in rows]
     assert set(fields) == {"site_id", "horizon_m", "planned_blast_date", "status", "comment"}
     assert any(row.old_value == "Site A" and row.new_value == "Site B" for row in rows)
     assert any(row.old_value == "Запланирован" and row.new_value == "Взорван" for row in rows)
     count = len(rows)
-    service.update_block(seeded_block["block_id"], BlastBlockInput("B-001", seeded_block["mine_id"], seeded_block["site_b_id"], "760.5", date(2026, 7, 15), "blasted", "Updated"), user)
+    service.update_block(seeded_block["block_id"], BlastBlockInput("B-001", seeded_block["mine_id"], seeded_block["site_b_id"], "760.5", date(2026, 7, 15), "blasted", "Updated"), user, expected_version=0)
     assert len(AuditLogRepository(pg_session_factory).list_for_block(seeded_block["block_id"])) == count
 
 
@@ -92,7 +92,7 @@ def test_audit_failure_rolls_back_block_create(pg_session_factory, seeded_block)
     service = service_for(pg_session_factory, FailingAuditLogRepository(pg_session_factory))
     user = CurrentUser(seeded_block["user_id"], "admin", "Admin User", "admin")
     with pytest.raises(RuntimeError):
-        service.create_block(BlastBlockInput("ROLLBACK", seeded_block["mine_id"], seeded_block["site_id"], "", None, "planned", ""), user)
+        service.create_block(BlastBlockInput("ROLLBACK", seeded_block["mine_id"], seeded_block["site_id"], "", None, "planned", ""), user, expected_version=0)
     with pg_session_factory() as session:
         assert session.scalar(select(BlastBlock).where(BlastBlock.block_number == "ROLLBACK")) is None
 
@@ -102,4 +102,4 @@ def test_viewer_can_read_history_but_cannot_edit(pg_session_factory, seeded_bloc
     assert repo.list_for_block(seeded_block["block_id"]) == []
     service = service_for(pg_session_factory)
     with pytest.raises(PermissionDenied):
-        service.update_block(seeded_block["block_id"], BlastBlockInput("X", seeded_block["mine_id"], seeded_block["site_id"], "", None, "planned", ""), CurrentUser(999, "viewer", None, "viewer"))
+        service.update_block(seeded_block["block_id"], BlastBlockInput("X", seeded_block["mine_id"], seeded_block["site_id"], "", None, "planned", ""), CurrentUser(999, "viewer", None, "viewer"), expected_version=0)

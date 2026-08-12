@@ -15,6 +15,11 @@ Completed architecture work:
 - Phase 5B: normal application writes became focused operations for BlastEvent, Technical Card, Assessment geometry, links, evaluations, archive state, and attachment metadata.
 - Phase 5C: `Domain.version` became the stable optimistic-concurrency owner. Focused writes use expected-version CAS in the same transaction, and normal Assessment editing no longer has a whole-state save API. The guard supports deterministic multi-Domain transactions for future #75 work, but moves are not implemented.
 
+`AssessmentStateRepository` is read-only: the retired whole-state synchronization
+implementation was deleted rather than retained as test support. Block pages use the
+editing controller's current version as their single token, so a successful Technical
+Card, geometry, or attachment write cannot make a later Block edit self-stale.
+
 Phase 5C is complete. Phase 6A (Assessment ownership/schema normalization) is the next architecture phase; issue #79 as a whole is not complete.
 
 ## Dependency direction
