@@ -12,7 +12,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOTS = ("app", "application", "database", "domain", "infrastructure", "repositories", "services", "reports", "ui", "widgets", "tools")
+SOURCE_ROOTS = ("app", "application", "database", "domain", "infrastructure", "repositories", "ui", "tools")
 IGNORED_PARTS = {".git", ".venv", "venv", "env", "build", "dist", "__pycache__", ".pytest_cache", ".mypy_cache"}
 
 
@@ -156,7 +156,11 @@ def report(include_tests: bool = False) -> str:
             lines.append("-")
 
     section("assessment workspace imports", lambda s, d: "assessment_workspace" in s or "assessment_workspace" in d)
-    section("UI direct persistence/service imports", lambda s, d: s.startswith("ui.") and layer(d) in {"database", "repositories", "services"})
+    section(
+        "UI direct outer-layer imports",
+        lambda s, d: s.startswith("ui.")
+        and layer(d) in {"database", "repositories", "infrastructure"},
+    )
 
     domain_like = {m for m in graph if m.startswith("domain.")}
     lines += ["", "## Domain-like external framework imports"]

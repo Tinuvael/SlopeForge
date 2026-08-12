@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QCheckBox, QDialog, QFormLayout, QHBoxLayout, QLab
 
 from app.config import APP_NAME
 from app.qt import apply_window_icon
-from services.auth_service import AuthError, AuthService
+from infrastructure.services.auth_service import AuthError, AuthService
 
 
 class FirstAdminDialog(QDialog):

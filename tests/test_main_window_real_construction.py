@@ -10,7 +10,7 @@ QtWidgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
 QApplication = QtWidgets.QApplication
 QWidget = QtWidgets.QWidget
 
-from database.app_context import AppContext, CurrentUser  # noqa: E402
+from app.context import AppContext, CurrentUser  # noqa: E402
 
 
 @dataclass
@@ -103,7 +103,7 @@ class FakeHeader(QWidget):
 def test_real_main_window_constructs_lazily_without_assessment_query(monkeypatch, tmp_path):
     app = QApplication.instance() or QApplication([])
 
-    import widgets.project_tree as project_tree
+    import ui.widgets.project_tree as project_tree
     import ui.main_window as main_window
 
     FakeBlastBlockService.queries = 0

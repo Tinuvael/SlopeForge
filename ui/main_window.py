@@ -10,10 +10,10 @@ from app.use_case_factory import (create_blast_event_use_case, create_domain_use
 from application.use_cases.create_blast_event import CreateBlastEventCommand
 from application.use_cases.create_domain import CreateDomainCommand
 from application.use_cases.create_project import CreateProjectCommand
-from database.app_context import AppContext
+from app.context import AppContext
 from ui.header import Header
 from ui.pages.block_page import BlockPage
-from widgets.project_tree import ProjectTree
+from ui.widgets.project_tree import ProjectTree
 
 class MainWindow(QMainWindow):
     def __init__(self, context: AppContext):

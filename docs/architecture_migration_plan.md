@@ -69,18 +69,29 @@ Explicitly audit at least:
 If a path has no normal production responsibility, remove it rather than wiring new UI back to it.
 The revisioned BlastEvent Technical Card remains the canonical engineering record unless a separate product decision explicitly changes that.
 
-### Phase 7 — NEXT: normalization and architecture freeze
+### Phase 7A — COMPLETE: package and compatibility normalization
 
-After schema cleanup:
+After schema cleanup, Phase 7A:
 
 - move remaining active DB/repository/service/report/widget modules to canonical paths where the move has practical value;
 - remove shims, dead compatibility, unused imports, and misleading names;
 - reduce architecture-audit allowlists;
-- resolve the known DXF-version-sensitive test debt as its own focused work;
-- update current docs/README;
-- verify a clean PostgreSQL database through migrations;
-- run full tests and Windows/Python 3.12 manual checks;
-- freeze architecture until after MVP release.
+- removed the dead SQLite runtime, tracked DB, lazy compatibility export, empty
+  widget placeholders, and backwards report shim;
+- moved ProjectTree to `ui/widgets`, AppContext to `app/context.py`, and the
+  concrete OpenPyXL implementation to `infrastructure/reports`;
+- placed `CurrentUser` in `application/dto/current_user.py`, leaving AppContext
+  in bootstrap while preventing any `infrastructure -> app` dependency;
+- moved active concrete services under `infrastructure/services`, deleted the
+  uncalled import-time distance script, and retained the tightly coupled root database/repository graph
+  rather than performing a mechanical move with no boundary benefit.
+
+### Phase 7B — NEXT: validation and architecture freeze
+
+- resolve the known DXF-version-sensitive test debt as focused work;
+- verify PostgreSQL from a clean database through migrations;
+- run Windows/Python 3.12 release validation;
+- perform the final architecture freeze. Issue #79 remains open until then.
 
 ## Core prerequisites around architecture
 
@@ -130,7 +141,7 @@ At minimum:
 ```bash
 pytest <targeted tests>
 python tools/architecture_audit.py
-python -m compileall app application domain infrastructure database repositories services ui widgets
+python -m compileall app application domain infrastructure database repositories ui
 git diff --check
 QT_QPA_PLATFORM=offscreen pytest -q
 ```

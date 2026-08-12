@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from services.session_service import token_hash
-from services.user_admin_service import UserAdminPermissionError, UserAdminService
-from database.app_context import CurrentUser
+from infrastructure.services.session_service import token_hash
+from infrastructure.services.user_admin_service import UserAdminPermissionError, UserAdminService
+from app.context import CurrentUser
 
 
 def test_remember_token_hash_does_not_store_plain_token() -> None:

@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from database.app_context import CurrentUser
+from application.dto.current_user import CurrentUser
 from database.models import User
-from services.session_service import RememberTokenService
+from infrastructure.services.session_service import RememberTokenService
 
 ROLES = {"admin", "editor", "viewer"}
 

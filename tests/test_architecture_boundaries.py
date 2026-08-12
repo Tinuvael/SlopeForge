@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PRODUCTION_ROOTS = ("app", "application", "database", "domain", "infrastructure", "repositories", "services", "reports", "ui", "widgets")
+PRODUCTION_ROOTS = ("app", "application", "database", "domain", "infrastructure", "repositories", "ui")
 REMOVED_PACKAGE = "prototype" + "_2d"
 
 # Deliberately retired entry points outside the canonical layer layout.  The
@@ -17,6 +17,11 @@ PERMANENTLY_REMOVED_PATHS = {
     "ui/directory_dialog.py",
     "ui/prototype_2d",
     REMOVED_PACKAGE,
+    "database/database.py",
+    "data/slopeforge.db",
+    "reports",
+    "widgets",
+    "services",
 }
 
 PERMANENTLY_REMOVED_IMPORTS = {
@@ -29,7 +34,18 @@ PERMANENTLY_REMOVED_IMPORTS = {
 MINE_COMPATIBILITY_FILES = {
     "database/models.py", "repositories/blast_block_repository.py",
     "repositories/mine_repository.py", "repositories/site_repository.py",
-    "infrastructure/db/project_creation.py", "widgets/project_tree.py", "ui/header.py",
+    "infrastructure/db/project_creation.py", "ui/widgets/project_tree.py", "ui/header.py",
+}
+
+RETIRED_ROOT_IMPORTS = ("reports", "widgets", "services", "database.database")
+
+# These three pre-Phase-7A application services directly select existing file
+# and geometry adapters. Replacing them requires real ports/composition work and
+# is explicitly outside this package-only follow-up; no other exception is allowed.
+APPLICATION_INFRASTRUCTURE_EXCEPTIONS = {
+    "application/services/attachments.py",
+    "application/services/blast_events.py",
+    "application/services/project_lines.py",
 }
 
 
@@ -43,6 +59,17 @@ def imports(path: Path) -> set[str]:
         if isinstance(node, ast.Import):
             result.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
+            result.add(node.module)
+    return result
+
+
+def absolute_imports(path: Path) -> set[str]:
+    """Return imports without confusing ``from . import widgets`` with a root package."""
+    result = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            result.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
             result.add(node.module)
     return result
 
@@ -77,8 +104,24 @@ def test_production_and_tests_do_not_import_removed_ui_compatibility() -> None:
     assert offenders == set()
 
 
+def test_retired_package_imports_do_not_return() -> None:
+    candidates = set(production_files()) | set((ROOT / "tests").rglob("*.py"))
+    offenders = {
+        relative(path) for path in candidates
+        if any(has_prefix(name, RETIRED_ROOT_IMPORTS) for name in absolute_imports(path))
+    }
+    assert offenders == set()
+
+
+def test_phase_7a_canonical_module_locations() -> None:
+    assert (ROOT / "ui/widgets/project_tree.py").is_file()
+    assert (ROOT / "infrastructure/reports/excel_project_report.py").is_file()
+    assert (ROOT / "app/context.py").is_file()
+    assert (ROOT / "application/dto/current_user.py").is_file()
+
+
 def test_domain_is_framework_and_outer_layer_free() -> None:
-    forbidden = ("PySide6", "sqlalchemy", "database", "repositories", "infrastructure", "application", "ui")
+    forbidden = ("PySide6", "sqlalchemy", "app", "database", "repositories", "infrastructure", "application", "ui")
     offenders = {
         relative(path) for path in (ROOT / "domain").rglob("*.py")
         if any(has_prefix(name, forbidden) for name in imports(path))
@@ -87,10 +130,22 @@ def test_domain_is_framework_and_outer_layer_free() -> None:
 
 
 def test_application_is_qt_and_concrete_persistence_free() -> None:
-    forbidden = ("PySide6", "sqlalchemy", "database", "repositories")
+    forbidden = ("PySide6", "sqlalchemy", "app", "database", "repositories", "infrastructure", "ui")
     offenders = {
         relative(path) for path in (ROOT / "application").rglob("*.py")
         if any(has_prefix(name, forbidden) for name in imports(path))
+    }
+    assert offenders == APPLICATION_INFRASTRUCTURE_EXCEPTIONS
+    assert all(
+        any(has_prefix(name, ("infrastructure",)) for name in imports(ROOT / path))
+        for path in APPLICATION_INFRASTRUCTURE_EXCEPTIONS
+    )
+
+
+def test_infrastructure_does_not_import_bootstrap_layer() -> None:
+    offenders = {
+        relative(path) for path in (ROOT / "infrastructure").rglob("*.py")
+        if any(has_prefix(name, ("app",)) for name in imports(path))
     }
     assert offenders == set()
 

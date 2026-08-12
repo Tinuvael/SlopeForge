@@ -103,13 +103,13 @@ def load_main_with_fakes(monkeypatch):
             "StartupError": RuntimeError,
             "initialize_database_runtime": lambda: (FakeSettings(Path("/tmp/startup-storage")), object(), lambda: None),
         },
-        "services.auth_service": {"AuthService": FakeAuthService},
-        "services.session_service": {"RememberTokenService": FakeRememberTokenService},
+        "infrastructure.services.auth_service": {"AuthService": FakeAuthService},
+        "infrastructure.services.session_service": {"RememberTokenService": FakeRememberTokenService},
         "ui.auth_dialogs": {"FirstAdminDialog": FakeDialog, "LoginDialog": FakeDialog},
         "ui.main_window": {"MainWindow": FakeMainWindow},
     }
-    from database.app_context import AppContext
-    fake_modules["database.app_context"] = {"AppContext": AppContext}
+    from app.context import AppContext
+    fake_modules["app.context"] = {"AppContext": AppContext}
     for name, attrs in fake_modules.items():
         module = types.ModuleType(name)
         for key, value in attrs.items():

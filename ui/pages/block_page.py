@@ -6,11 +6,11 @@ from ui.presentation_labels import domain_message
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget
 
-from database.app_context import AppContext
+from app.context import AppContext
 from repositories.audit_log_repository import AuditLogRepository
 from repositories.blast_block_repository import BlastBlockRepository, BlastBlockRow
 from repositories.domain_repository import DomainRepository
-from services.blast_block_service import BlastBlockService
+from infrastructure.services.blast_block_service import BlastBlockService
 from ui.block_dialog import BlockDialog
 from ui.pages.block_card_widgets import (
     AttachmentPreviewWidget,

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from repositories.audit_log_repository import AuditLogEntryRow
 from repositories.blast_block_repository import BlastBlockRow
-from services.blast_block_service import AUDIT_FIELD_LABELS, STATUS_LABELS
+from infrastructure.services.blast_block_service import AUDIT_FIELD_LABELS, STATUS_LABELS
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 
 ACTION_LABELS = {"create": "Create", "update": "Update", "delete": "Delete", "attach": "Attach", "detach": "Detach"}

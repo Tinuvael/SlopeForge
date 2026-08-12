@@ -3,7 +3,7 @@ from app.localization import tr
 from datetime import date
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import QComboBox,QDateEdit,QDialog,QFormLayout,QHBoxLayout,QLabel,QLineEdit,QMessageBox,QPushButton,QTextEdit,QVBoxLayout
-from services.blast_block_service import BlastBlockInput,PermissionDenied,STATUS_LABELS,ValidationError
+from infrastructure.services.blast_block_service import BlastBlockInput,PermissionDenied,STATUS_LABELS,ValidationError
 class BlockDialog(QDialog):
     def __init__(self, service, domain_repo, user, domain_id=None, block=None,
                  read_only=False, expected_version=None):

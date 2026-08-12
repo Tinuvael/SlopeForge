@@ -12,10 +12,6 @@ datas = [
     (str(project_root / "translations"), "translations"),
 ]
 
-if (project_root / "data").exists():
-    datas.append((str(project_root / "data"), "data"))
-
-
 a = Analysis(
     ["main.py"],
     pathex=[str(project_root)],

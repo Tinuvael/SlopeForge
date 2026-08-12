@@ -20,7 +20,7 @@ def test_header_search_is_synchronized_with_project_tree():
     main = source("ui/main_window.py")
     assert "header.search.textChanged.connect(self._sync_tree_search)" in main
     assert "tree.search.textChanged.connect(self._sync_header_search)" in main
-    tree = source("widgets/project_tree.py")
+    tree = source("ui/widgets/project_tree.py")
     assert "number_query=self.search.text()" in tree
     assert "event.name.lower()" in tree
 
@@ -36,7 +36,7 @@ def test_normal_entity_pages_do_not_import_ui_prototype_package():
 
 
 def test_all_tree_entity_types_share_show_archived_filter():
-    tree = source("widgets/project_tree.py")
+    tree = source("ui/widgets/project_tree.py")
     assert "list_areas(self.show_archived.isChecked())" in tree
     assert "list_contour_events(self.show_archived.isChecked())" in tree
     assert "show_archived=self.show_archived.isChecked()" in tree
@@ -88,7 +88,7 @@ def test_header_ctrl_f_focuses_and_selects_search_text():
 def test_project_tree_search_filters_real_displayed_rows(monkeypatch):
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from types import SimpleNamespace
-    from widgets import project_tree as module
+    from ui.widgets import project_tree as module
 
     app = _app()
     site = SimpleNamespace(id=1, name="Project")

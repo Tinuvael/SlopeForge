@@ -7,7 +7,7 @@ Use this as the consolidated manual release-candidate pass. Active issue #63 is 
 ```bash
 pytest <relevant tests>
 python tools/architecture_audit.py
-python -m compileall app application domain infrastructure database repositories services ui widgets
+python -m compileall app application domain infrastructure database repositories ui
 git diff --check
 QT_QPA_PLATFORM=offscreen pytest -q
 ```

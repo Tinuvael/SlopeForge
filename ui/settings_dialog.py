@@ -9,8 +9,8 @@ from PySide6.QtWidgets import QComboBox, QDialog, QFormLayout, QHBoxLayout, QLab
 from app.config import APP_AUTHOR, APP_COPYRIGHT, APP_DESCRIPTION, APP_ICON_PATH, APP_NAME, APP_REPOSITORY_URL, APP_VERSION
 from app.qt import apply_window_icon
 from app.resources import resource_path
-from database.app_context import AppContext
-from services.session_service import RememberTokenService
+from app.context import AppContext
+from infrastructure.services.session_service import RememberTokenService
 from ui.user_admin_page import UserAdminPage
 
 
