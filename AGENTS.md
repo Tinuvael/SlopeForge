@@ -59,7 +59,7 @@ Issue #79 is the architecture gate:
 - 6A: COMPLETE — `AssessmentWorkspace` was a persistence-only container and is removed; Blast events and Assessment areas now have direct Domain ownership, while persistence logical IDs use `logical_id`.
 - 6B: COMPLETE — duplicate legacy engineering persistence and Block-owned attachments are removed; the revisioned Technical Card and AssessmentEntityAttachment remain canonical.
 - 7A: COMPLETE — package/shim/dead-compatibility normalization.
-- 7B code cleanup: COMPLETE — DXF import now has a stable WCS/closure adapter contract.
+- 7B code cleanup: COMPLETE — DXF import now has a stable WCS/XYZ closure adapter contract.
   External release validation remains pending for PostgreSQL from scratch and
   Windows/Python 3.12, so issue #79 remains open.
 

@@ -81,6 +81,14 @@ def build_production_geometry(
         )
 
     ring = [PlanPoint(point.x, point.y) for point in selected.points]
+    while (
+        len(ring) >= 2
+        and sqrt((ring[-1].x - ring[0].x) ** 2 + (ring[-1].y - ring[0].y) ** 2)
+        <= closure_tolerance
+        and sqrt((ring[-2].x - ring[0].x) ** 2 + (ring[-2].y - ring[0].y) ** 2)
+        <= closure_tolerance
+    ):
+        ring.pop()
     ring[-1] = ring[0]
     polygon = PlanPolygon(tuple(ring))
     maximum_elevation = _line_max_z(selected)

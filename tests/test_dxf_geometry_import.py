@@ -8,6 +8,8 @@ from ezdxf.lldxf.const import (
 )
 
 from domain.geometry.blast import build_contour_geometry, build_production_geometry
+from domain.geometry.types import PlanPoint
+from domain.project.domain_geometry import build_domain_polygons
 from application.state.assessment_domain_state import AssessmentDomainState
 from infrastructure.geometry_import.dxf import DxfImportError, import_dxf_polylines
 from infrastructure.geometry_import.lines import LineGeometryImportError, import_line_geometry
@@ -49,7 +51,7 @@ def test_2d_and_3d_polyline_wcs_order_and_varying_z(tmp_path):
     assert result.summary.polyline_2d_count == result.summary.polyline_3d_count == 1
 
 
-def test_closed_legacy_3d_polyline_with_different_endpoint_z_is_not_duplicated(tmp_path):
+def test_closed_legacy_3d_polyline_preserves_implicit_xyz_closing_segment(tmp_path):
     def build(msp):
         line = msp.add_polyline3d(
             [(0, 0, 630), (4, 0, 620), (0, 4, 610), (0, 0, 600)]
@@ -63,8 +65,19 @@ def test_closed_legacy_3d_polyline_with_different_endpoint_z_is_not_duplicated(t
         (4, 0, 620),
         (0, 4, 610),
         (0, 0, 600),
+        (0, 0, 630),
     ]
-    assert imported.summary.total_vertices == 4
+    assert imported.summary.total_vertices == 5
+
+    domain = build_domain_polygons(imported.lines)
+    assert domain.polygons[0].ring == (
+        PlanPoint(0, 0), PlanPoint(4, 0), PlanPoint(0, 4), PlanPoint(0, 0)
+    )
+
+    production = build_production_geometry(imported.lines)
+    assert production.plan_geometry.ring == (
+        PlanPoint(0, 0), PlanPoint(4, 0), PlanPoint(0, 4), PlanPoint(0, 0)
+    )
 
 
 def test_explicitly_closed_polyline_is_not_closed_twice(tmp_path):

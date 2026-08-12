@@ -88,8 +88,8 @@ After schema cleanup, Phase 7A:
 
 ### Phase 7B — code cleanup COMPLETE; external validation pending
 
-- the known DXF-version-sensitive test debt is resolved by explicit WCS and XY
-  closure normalization in the importer;
+- the known DXF-version-sensitive test debt is resolved by explicit WCS/XYZ
+  closure normalization in the importer and XY normalization in plan builders;
 - PostgreSQL clean-database migration/integration validation is **NOT EXECUTED**
   until a dedicated `TEST_DATABASE_URL` is available;
 - Windows/Python 3.12 runtime validation is **NOT EXECUTED** in the Linux

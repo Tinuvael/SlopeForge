@@ -227,9 +227,10 @@ retained to avoid a mechanical high-risk move.
 
 ## Phase 7B code cleanup — COMPLETE; external validation pending
 
-The DXF adapter now normalizes closed polylines by WCS plan position, preserving
-the original order and varying Z values without adding a duplicate closing
-vertex when the explicit endpoints share XY but differ in Z. Straight
+The DXF adapter preserves a closed polyline's complete WCS XYZ path, including
+an implicit closing 3D segment when explicit endpoints share XY but differ in
+Z. Domain and Production builders normalize repeated terminal points only when
+deriving their XY footprints. Straight
 LWPOLYLINE, legacy 2D POLYLINE, and legacy 3D POLYLINE behavior is covered by
 focused regressions; curved and unsupported entity policy is unchanged.
 
