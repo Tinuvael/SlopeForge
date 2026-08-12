@@ -31,8 +31,18 @@ class DxfImportResult:
     summary: DxfImportSummary
 
 
-def _same_xyz(a, b, tolerance: float = 1e-9) -> bool:
-    return all(isclose(float(x), float(y), abs_tol=tolerance, rel_tol=0.0) for x, y in zip(a, b))
+def _same_xy(a, b, tolerance: float = 1e-9) -> bool:
+    """Return whether two WCS vertices describe the same plan position.
+
+    DXF's closed flag closes a polyline in its plane; it does not require the
+    first and last elevations to match.  SlopeForge's line contract therefore
+    normalizes closure in XY while retaining every explicit source vertex and
+    its Z value.
+    """
+    return all(
+        isclose(float(x), float(y), abs_tol=tolerance, rel_tol=0.0)
+        for x, y in zip(a[:2], b[:2])
+    )
 
 
 def import_dxf_polylines(path: str | Path) -> DxfImportResult:
@@ -94,7 +104,7 @@ def import_dxf_polylines(path: str | Path) -> DxfImportResult:
         layer = str(entity.dxf.get("layer", "0"))
         source_id = str(handle) if handle else f"DXF-{imported_order:06d}"
         xyz = [(float(v.x), float(v.y), float(v.z)) for v in vertices]
-        if closed and xyz and not _same_xyz(xyz[0], xyz[-1]):
+        if closed and xyz and not _same_xy(xyz[0], xyz[-1]):
             xyz.append(xyz[0])
         points = [DataminePoint(x, y, z, index, extra_values={
             "dxf_entity_type": entity_type, "dxf_handle": handle,

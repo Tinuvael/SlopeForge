@@ -14,6 +14,11 @@ QT_QPA_PLATFORM=offscreen pytest -q
 
 For schema/persistence validation, also run PostgreSQL integration tests with a dedicated `TEST_DATABASE_URL` and verify migrations from a clean database.
 
+Phase 7B code cleanup is complete. The architecture gate is not complete until
+the dedicated PostgreSQL checks below and the Windows/Python 3.12 runtime pass
+have both been executed successfully; do not infer either result from Linux
+unit-test coverage.
+
 ## Windows / Python 3.12
 
 - Launch on the supported Windows/Python 3.12 environment.

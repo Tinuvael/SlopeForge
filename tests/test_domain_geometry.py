@@ -57,6 +57,9 @@ def test_real_dxf_importer_projects_2d_and_nonplanar_3d(tmp_path):
     path=tmp_path/'domains.dxf'; doc.saveas(path)
     result=build_domain_polygons(import_line_geometry(path).lines)
     assert len(result.polygons)==2
+    assert result.polygons[1].ring == (
+        PlanPoint(10,10), PlanPoint(12,10), PlanPoint(10,12), PlanPoint(10,10)
+    )
 
 def test_self_intersecting_import_is_skipped_but_valid_peer_survives():
     valid=line([(0,0,0),(4,0,0),(4,4,0),(0,4,0),(0,0,9)],"valid")

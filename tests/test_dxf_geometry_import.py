@@ -36,7 +36,10 @@ def test_lwpolyline_wcs_metadata_elevation_and_closed_normalization(tmp_path):
 
 def test_2d_and_3d_polyline_wcs_order_and_varying_z(tmp_path):
     def build(msp):
-        msp.add_polyline2d([(1,2),(3,4)], dxfattribs={"layer":"2D", "elevation": 610})
+        # POLYLINE elevation is a DXF point (group codes 10/20/30), not a
+        # scalar.  ezdxf 1.4 validates that representation when constructing
+        # the test entity.
+        msp.add_polyline2d([(1,2),(3,4)], dxfattribs={"layer":"2D", "elevation": (0, 0, 610)})
         msp.add_polyline3d([(5,6,630),(7,8,614)], dxfattribs={"layer":"HOLES"})
     result = import_dxf_polylines(save(tmp_path, build))
     assert [(p.x,p.y,p.z) for p in result.lines[0].points] == [(1,2,610),(3,4,610)]
@@ -44,6 +47,24 @@ def test_2d_and_3d_polyline_wcs_order_and_varying_z(tmp_path):
     assert [(p.x,p.y,p.z) for p in result.lines[1].points] == [(5,6,630),(7,8,614)]
     assert not result.lines[1].is_horizontal
     assert result.summary.polyline_2d_count == result.summary.polyline_3d_count == 1
+
+
+def test_closed_legacy_3d_polyline_with_different_endpoint_z_is_not_duplicated(tmp_path):
+    def build(msp):
+        line = msp.add_polyline3d(
+            [(0, 0, 630), (4, 0, 620), (0, 4, 610), (0, 0, 600)]
+        )
+        line.close()
+
+    imported = import_dxf_polylines(save(tmp_path, build, "closed-3d.dxf"))
+
+    assert [(point.x, point.y, point.z) for point in imported.lines[0].points] == [
+        (0, 0, 630),
+        (4, 0, 620),
+        (0, 4, 610),
+        (0, 0, 600),
+    ]
+    assert imported.summary.total_vertices == 4
 
 
 def test_explicitly_closed_polyline_is_not_closed_twice(tmp_path):
