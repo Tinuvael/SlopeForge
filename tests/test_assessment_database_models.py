@@ -70,11 +70,22 @@ for prefix in ("PySide6", "PyQt6", "ui", "widgets"):
     assert result.returncode == 0, result.stderr
 
 
-def test_expected_tables_and_legacy_tables_are_unchanged():
+def test_canonical_tables_exist_and_retired_parallel_schema_cannot_return():
     assert EXPECTED <= set(Base.metadata.tables)
-    assert models.Attachment.__table__.name == "attachments"
-    assert set(models.Attachment.__table__.c.keys()) == {"id", "blast_block_id", "attachment_kind", "subtype", "original_filename", "stored_relative_path", "mime_type", "file_size_bytes", "file_date", "description", "uploaded_by_user_id", "created_at", "updated_at"}
+    retired = {
+        "rock_mass_profiles", "rock_structures", "blast_designs",
+        "drilling_patterns", "charge_segments", "blast_executions",
+        "wall_assessments", "attachments", "explosive_types", "lithologies",
+    }
+    assert retired.isdisjoint(Base.metadata.tables)
     assert "blast_blocks" in Base.metadata.tables
+    assert "mines" in Base.metadata.tables
+    assert "assessment_entity_attachments" in Base.metadata.tables
+    assert "blast_event_technical_card_revisions" in Base.metadata.tables
+    assert "project_lines_datasets" in Base.metadata.tables
+    assert {relationship.key for relationship in models.BlastBlock.__mapper__.relationships}.isdisjoint(
+        {"rock_mass_profile", "blast_design"}
+    )
     assert not EXPECTED.intersection(models.__dict__)
 
 
