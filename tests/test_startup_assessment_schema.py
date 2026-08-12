@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 import database.startup as startup
 from database.settings import Settings
@@ -9,6 +11,13 @@ from database.settings import Settings
 class FakeInspector:
     def __init__(self, tables=()): self.tables = tables
     def get_table_names(self): return list(self.tables)
+
+
+def test_expected_alembic_head_resolves_real_repository_graph():
+    """Exercise the production path/config rather than a mocked head helper."""
+    repository_heads = ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
+    assert repository_heads == ["20260812_0011"]
+    assert startup._expected_alembic_head() == repository_heads[0]
 
 
 def arrange_startup(monkeypatch, *, revision="20260812_0011", tables=None):
