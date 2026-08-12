@@ -10,6 +10,8 @@ icon_path = project_root / "app" / "icons" / "slopeforge_icon.ico"
 datas = [
     (str(project_root / "app" / "icons"), "app/icons"),
     (str(project_root / "translations"), "translations"),
+    (str(project_root / "alembic.ini"), "."),
+    (str(project_root / "alembic"), "alembic"),
 ]
 
 a = Analysis(

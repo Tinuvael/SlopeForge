@@ -2862,5 +2862,13 @@
             <source>Moving a Block between Domains is not available yet</source>
             <translation>Перемещение блока между доменами пока недоступно</translation>
         </message>
+        <message>
+            <source>Data integrity error</source>
+            <translation>Ошибка целостности данных</translation>
+        </message>
+        <message>
+            <source>The exact BlastEvent geometry revision referenced by this Assessment link is missing. The current geometry was not substituted.</source>
+            <translation>Точная ревизия геометрии взрывного события, указанная в этой связи оценки, отсутствует. Текущая геометрия не была подставлена вместо неё.</translation>
+        </message>
     </context>
 </TS>

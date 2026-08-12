@@ -97,7 +97,12 @@ class AssessmentAreaPage(QWidget):
     def show_link_on_plan(self):
         link=self._selected_link()
         if not link:return
-        event=self.controller.links.event(link.blast_event_id); revision=event.active_geometry_revision(); area_revision=self.area.active_geometry_revision(); dataset=next((d for d in self.controller.state.datasets if d.id==area_revision.source_dataset_id),None); self.plan.set_geometry(revision.plan_geometry if revision else area_revision.final_geometry_frozen,dataset.lines if dataset else [],f"{event.name} | {event.elevation:g}"); self.tabs.setCurrentIndex(0)
+        event=self.controller.links.event(link.blast_event_id)
+        revision=self.controller.links.linked_revision(event,link)
+        if revision is None:
+            QMessageBox.warning(self,tr("Data integrity error"),tr("The exact BlastEvent geometry revision referenced by this Assessment link is missing. The current geometry was not substituted."))
+            return
+        area_revision=self.area.active_geometry_revision(); dataset=next((d for d in self.controller.state.datasets if d.id==area_revision.source_dataset_id),None); self.plan.set_geometry(revision.plan_geometry,dataset.lines if dataset else [],f"{event.name} | {event.elevation:g}"); self.tabs.setCurrentIndex(0)
 
     def _attachment_tab(self,title):
         kind="photo" if title=="Photos" else "document"; from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget
