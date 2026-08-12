@@ -64,6 +64,7 @@ class Domain(TimestampMixin, Base):
     site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="RESTRICT"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     site: Mapped[Site] = relationship(back_populates="domains")
     assessment_workspace: Mapped[Optional["AssessmentWorkspace"]] = relationship(
         back_populates="domain", uselist=False

@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 import pytest
 
 from application.ports.assessment_state import AssessmentStateSnapshot
+from application.ports.domain_version import DomainWriteResult
 from application.services.entity_editing import AssessmentEditingSession
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
@@ -19,13 +20,17 @@ class MemoryPersistence:
         self.saves = 0
 
     def load(self, domain_id):
-        return AssessmentStateSnapshot(domain_id, 7, None, self.state)
+        return AssessmentStateSnapshot(domain_id, 7, None, self.state, self.saves)
 
-    def save(self, domain_id, state):
-        self.saves += 1
-        if self.fail:
-            raise RuntimeError("database unavailable")
-        return AssessmentStateSnapshot(domain_id, 7, 42, deepcopy(state))
+    def __getattr__(self, name):
+        if name.startswith(("persist_", "append_", "synchronize_", "add_", "update_", "delete_")):
+            def focused(domain_id, expected_version, *args):
+                if self.fail:
+                    raise RuntimeError("database unavailable")
+                self.saves += 1
+                return DomainWriteResult(expected_version + 1, 42)
+            return focused
+        raise AttributeError(name)
 
 
 def entities():
@@ -47,7 +52,7 @@ def session(*, fail=False, can_edit=True):
     persistence = MemoryPersistence(AssessmentDomainState(
         blast_events=[event], assessment_areas=[area]), fail=fail)
     return AssessmentEditingSession(
-        persistence, 3, actor_id=11, can_edit=can_edit), persistence, event, area
+        persistence, 3, actor_id=11, can_edit=can_edit, writes=persistence), persistence, event, area
 
 
 def test_card_draft_creation_save_and_existing_revision_copy():
@@ -154,8 +159,7 @@ def test_lazy_owner_rollback_only_removes_new_empty_owner():
 
 def test_successful_owner_save_keeps_owner_and_viewer_mutations_are_rejected():
     editing, persistence, event, area = session()
-    owner, _ = editing.prepare_evaluation_attachment_owner(area)
-    editing.save()
+    owner = editing.ensure_evaluation_owner(area)
     assert owner in editing.state.evaluations and persistence.saves == 1
 
     viewer, _, viewer_event, viewer_area = session(can_edit=False)
@@ -245,7 +249,7 @@ def geometry_session(tmp_path, *, fail=False, can_edit=True):
     source.write_text("XP,YP,ZP,SID,PTN\n0,2,90,lo,1\n10,2,90,lo,2\n0,8,110,hi,1\n10,8,110,hi,2\n", encoding="utf-8")
     ProjectLinesDatasetService(state).import_dataset(source)
     persistence = MemoryPersistence(state, fail=fail)
-    editing = AssessmentEditingSession(persistence, 3, actor_id=11, can_edit=can_edit)
+    editing = AssessmentEditingSession(persistence, 3, actor_id=11, can_edit=can_edit, writes=persistence)
     polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(10, 0), PlanPoint(10, 10), PlanPoint(0, 10), PlanPoint(0, 0)))
     candidates = editing.areas.generate_candidates(polygon)
     return editing, persistence, polygon, candidates

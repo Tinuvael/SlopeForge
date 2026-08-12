@@ -13,6 +13,7 @@ from database.models import BlastBlock, Domain
 from repositories.audit_log_repository import AuditLogRepository
 from repositories.blast_block_repository import BlastBlockRepository, BlastBlockRow
 from repositories.domain_repository import DomainRepository
+from infrastructure.db.domain_version import guard_domain_versions
 
 VALID_STATUSES = {"planned", "blasted", "assessed"}
 STATUS_LABELS = {"planned": "Planned", "blasted": "Blasted", "assessed": "Assessed"}
@@ -67,7 +68,8 @@ class BlastBlockService:
                 return block.id
         except SQLAlchemyError as exc: raise ValidationError("Could not save the block in PostgreSQL. Check the data and database migrations.") from exc
 
-    def update_block(self, block_id: int, data: BlastBlockInput, user: CurrentUser) -> int:
+    def update_block(self, block_id: int, data: BlastBlockInput, user: CurrentUser,
+                     expected_version: int | None = None) -> int:
         self._check_can_edit(user); horizon = self._validate(data)
         if self.session_factory is None:
             self.block_repository.update_block(block_id=block_id,domain_id=data.domain_id,block_number=data.block_number,horizon_m=horizon,planned_blast_date=data.planned_blast_date,status=data.status,comment=data.comment)
@@ -81,6 +83,9 @@ class BlastBlockService:
                     from database.assessment_models import BlastEvent
                     linked=session.scalar(select(BlastEvent.id).where(BlastEvent.blast_block_id==block.id,BlastEvent.event_type=="production"))
                     if linked is not None: raise ValidationError("Domain cannot be changed for a Block linked to a production BlastEvent")
+                if expected_version is None:
+                    raise ValidationError("Reload the Block before saving it")
+                guard_domain_versions(session, {block.domain_id: expected_version})
                 if old_domain.site_id != new_domain.site_id: raise ValidationError("A block can only move between Domains of the same project")
                 new_values = {"block_number": data.block_number.strip(), "domain_id": data.domain_id, "horizon_m": horizon, "planned_blast_date": data.planned_blast_date, "status": data.status, "comment": data.comment or None}
                 old_values = {field: getattr(block, field) for field in AUDITED_FIELDS}

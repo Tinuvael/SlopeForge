@@ -7,7 +7,8 @@ from application.use_cases.set_blast_block_archived import (
 
 class Persistence:
     def __init__(self): self.calls = []
-    def set_archived(self, block_id, archived, actor_id):
+    def load_domain_version(self, block_id): return 4
+    def set_archived(self, block_id, expected_version, archived, actor_id):
         self.calls.append((block_id, archived, actor_id))
 
 

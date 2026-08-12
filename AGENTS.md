@@ -46,11 +46,11 @@ Root `database/`, `repositories/`, `services/`, `reports/`, and `widgets/` are t
 
 ### Current migration state
 
-Phase 4, 5A, and 5B are complete; Phase 5 is not complete. Normal UI writes are focused, but compatibility whole-state Assessment persistence and last-writer-wins same-entity edits remain.
+Phase 4, 5A, 5B, and 5C are complete. Domain is the stable optimistic-concurrency owner; normal Assessment editing uses expected-version focused writes and has no whole-state save API. The reusable transaction guard can atomically protect multiple Domains for future #75 work, but Domain moves are not implemented.
 
 Issue #79 is the architecture gate:
 
-- 5C: optimistic concurrency + remove normal compatibility whole-state writes.
+- 5C: COMPLETE — optimistic concurrency + removal of normal compatibility whole-state writes.
 - 6A: normalize Assessment ownership/schema; remove `AssessmentWorkspace` if proven transitional.
 - 6B: classify/remove duplicate legacy engineering persistence.
 - 7: final package/naming/shim cleanup, DXF debt, docs/Windows/PostgreSQL validation, then architecture freeze for MVP.

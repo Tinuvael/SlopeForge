@@ -24,5 +24,5 @@ class BlockDialog(QDialog):
         q=self.planned_date.date(); planned=None if q==self.planned_date.minimumDate() else date(q.year(),q.month(),q.day())
         return BlastBlockInput(self.domain.currentData(),self.block_number.text(),self.horizon.text(),planned,self.status.currentData(),self.comment.toPlainText())
     def _save(self):
-        try: self.saved_block_id=self.service.update_block(self.block.id,self._input(),self.user) if self.block else self.service.create_block(self._input(),self.user); self.accept()
+        try: self.saved_block_id=self.service.update_block(self.block.id,self._input(),self.user,expected_version=self.block.domain_version) if self.block else self.service.create_block(self._input(),self.user); self.accept()
         except (ValidationError,PermissionDenied,ValueError) as exc: QMessageBox.warning(self,tr("Could not save block"),str(exc))

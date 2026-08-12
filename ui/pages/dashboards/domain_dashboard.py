@@ -17,7 +17,7 @@ from .widgets import EmptyStateWidget,MetricCard,metric,quadrant_presentation,se
 class DomainDashboardPage(QWidget):
     block_requested=Signal(int); contour_requested=Signal(str); assessment_area_requested=Signal(str)
     def __init__(self,context,domain_id,name=None):
-        super().__init__(); self.context=context; self.domain_id=domain_id; self.repo=DashboardRepository(context.session_factory); self.geometry_repo=DomainGeometryRepository(context.session_factory); self.snapshot=self.repo.domain_snapshot(domain_id); d=self.snapshot.domain
+        super().__init__(); self.context=context; self.domain_id=domain_id; self.repo=DashboardRepository(context.session_factory); self.geometry_repo=DomainGeometryRepository(context.session_factory); self.expected_version=self.geometry_repo.get_domain_version(domain_id); self.snapshot=self.repo.domain_snapshot(domain_id); d=self.snapshot.domain
         root=QVBoxLayout(self); h=QLabel(name or d.name); h.setStyleSheet("font-size:24px;font-weight:700"); root.addWidget(h); root.addWidget(QLabel(tr("Domain overview"))); self.tabs=QTabWidget(); root.addWidget(self.tabs); self.tabs.addTab(self._overview(),ui_icon("analytics"),tr("Overview")); self.tabs.addTab(self._blasts(),ui_icon("blast-blocks"),tr("Blast events")); self.tabs.addTab(self._areas(),ui_icon("assessment-area"),tr("Assessment areas")); self.tabs.addTab(self._analytics(),ui_icon("analytics"),tr("Analytics")); self.tabs.addTab(DashboardPlanOverviewWidget(self.snapshot),ui_icon("map"),tr("Map"))
     def _table(self,headers,rows):
         t=QTableWidget(len(rows),len(headers)); t.setHorizontalHeaderLabels(headers); t.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -61,13 +61,13 @@ class DomainDashboardPage(QWidget):
         path,_=QFileDialog.getOpenFileName(self,tr("Select Domain geometry file"),"",tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
         if not path:return
         try:
-            imported=import_line_geometry(path); result=build_domain_polygons(imported.lines); self.geometry_repo.replace_imported(self.domain_id,result.polygons,Path(path).name); self._refresh()
+            imported=import_line_geometry(path); result=build_domain_polygons(imported.lines); stored=self.geometry_repo.replace_imported(self.domain_id,self.expected_version,result.polygons,Path(path).name); self.expected_version=stored.domain_version; self._refresh()
             text="\n".join((tr("File: %1").replace("%1",Path(path).name),tr("Imported polygons: %1").replace("%1",str(len(result.polygons))),tr("Skipped open lines: %1").replace("%1",str(result.skipped_open_lines)),tr("Skipped degenerate lines: %1").replace("%1",str(result.skipped_degenerate_lines))))
             QMessageBox.information(self,tr("Domain geometry"),text)
         except Exception as exc: QMessageBox.warning(self,tr("Import error"),domain_message(str(exc)))
     def edit_geometry(self):
         stored=self.geometry_repo.get_for_domain(self.domain_id); dialog=DomainGeometryEditorDialog(stored.polygons if stored else (),self.snapshot.project_lines,self)
-        if dialog.exec(): self.geometry_repo.replace_drawn(self.domain_id,dialog.polygons); self._refresh()
+        if dialog.exec(): stored=self.geometry_repo.replace_drawn(self.domain_id,self.expected_version,dialog.polygons); self.expected_version=stored.domain_version; self._refresh()
     def clear_geometry(self):
         if QMessageBox.question(self,tr("Clear geometry"),tr("Clear the current Domain geometry?"))==QMessageBox.StandardButton.Yes:
-            self.geometry_repo.clear(self.domain_id); self._refresh()
+            self.expected_version=self.geometry_repo.clear(self.domain_id,self.expected_version); self._refresh()

@@ -22,6 +22,7 @@ class LoadedAssessmentState:
     site_id: int
     workspace_id: int | None
     state: AssessmentDomainState
+    expected_version: int = 0
 
 
 def _workspace_query(domain_id: int):
@@ -173,7 +174,8 @@ class AssessmentStateRepository:
             datasets = list(session.scalars(select(orm.ProjectLinesDataset).where(
                 orm.ProjectLinesDataset.site_id == domain.site_id)))
             return LoadedAssessmentState(domain.id, domain.site_id,
-                workspace.id if workspace else None, _state_from_workspace(workspace, datasets))
+                workspace.id if workspace else None,
+                _state_from_workspace(workspace, datasets), domain.version)
 
     def replace_for_domain(self, domain_id: int, state: AssessmentDomainState) -> LoadedAssessmentState:
         """Compatibility-only whole-state synchronization retained through Phase 5C."""
@@ -207,7 +209,7 @@ class AssessmentStateRepository:
             _workspace_query(domain_id).execution_options(populate_existing=True)
         ).one()
         saved = _state_from_workspace(saved_workspace, datasets)
-        return LoadedAssessmentState(domain_id, domain.site_id, workspace_id, saved)
+        return LoadedAssessmentState(domain_id, domain.site_id, workspace_id, saved, domain.version)
 
     @staticmethod
     def _synchronize(session, workspace, state, dataset_rows):

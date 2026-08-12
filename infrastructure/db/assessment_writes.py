@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from database import assessment_models as orm
 from database.models import Domain
+from application.ports.domain_version import DomainWriteResult
+from infrastructure.db.domain_version import guard_domain_versions
 
 
 class SqlAlchemyAssessmentWrites:
@@ -35,28 +37,31 @@ class SqlAlchemyAssessmentWrites:
             raise ValueError(f"Assessment entity {logical_id!r} is not persisted")
         return row
 
-    def persist_area_archive(self, domain_id, area):
+    def persist_area_archive(self, domain_id, expected_version, area):
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w = self._workspace(s, domain_id)
             row = self._logical(s, orm.AssessmentArea, w.id, area.id)
             row.is_archived, row.archived_at, row.archive_reason = (
                 area.is_archived, area.archived_at, area.archive_reason)
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
-    def persist_contour_archive(self, domain_id, event):
+    def persist_contour_archive(self, domain_id, expected_version, event):
         if event.event_type != "contour":
             raise ValueError("Only contour BlastEvents can use contour archive")
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w = self._workspace(s, domain_id)
             row = self._logical(s, orm.BlastEvent, w.id, event.id)
             if row.event_type != "contour":
                 raise ValueError("Stored BlastEvent is not contour")
             row.is_archived, row.archived_at, row.archive_reason = (
                 event.is_archived, event.archived_at, event.archive_reason)
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
-    def append_blast_geometry_revision(self, domain_id, event_id, revision):
+    def append_blast_geometry_revision(self, domain_id, expected_version, event_id, revision):
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w = self._workspace(s, domain_id)
             event = self._logical(s, orm.BlastEvent, w.id, event_id)
             duplicate = s.scalar(select(orm.BlastEventGeometryRevision.id).where(
@@ -75,10 +80,11 @@ class SqlAlchemyAssessmentWrites:
                 source_geometry_json=[x.to_dict() for x in revision.source_geometry],
                 plan_geometry_json=revision.plan_geometry.to_dict(),
                 elevation_m=revision.elevation, is_active=True))
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
-    def persist_technical_card_revision(self, domain_id, card, revision):
+    def persist_technical_card_revision(self, domain_id, expected_version, card, revision):
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w = self._workspace(s, domain_id)
             event = self._logical(s, orm.BlastEvent, w.id, card.blast_event_id)
             row = s.scalar(select(orm.BlastEventTechnicalCard).where(
@@ -103,7 +109,7 @@ class SqlAlchemyAssessmentWrites:
                 geometry_revision=geometry, event_type=revision.event_type,
                 status=revision.status, author=revision.author,
                 change_reason=revision.change_reason, payload_json=payload, is_active=True))
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
     @staticmethod
     def _sync_links(s, area_row, revision_id, links):
@@ -134,9 +140,10 @@ class SqlAlchemyAssessmentWrites:
             row.frozen_intersection_geometry_json = (link.frozen_intersection_geometry.to_dict()
                                                        if link.frozen_intersection_geometry else None)
 
-    def persist_assessment_area_geometry(self, domain_id, area):
+    def persist_assessment_area_geometry(self, domain_id, expected_version, area):
         revision = area.active_geometry_revision()
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w = self._workspace(s, domain_id, create=True)
             row = s.scalar(select(orm.AssessmentArea).where(
                 orm.AssessmentArea.workspace_id == w.id, orm.AssessmentArea.domain_id == area.id))
@@ -172,17 +179,18 @@ class SqlAlchemyAssessmentWrites:
             links = [link for link in area.event_links
                      if link.assessment_area_geometry_revision_id == revision.id]
             self._sync_links(s, row, revision.id, links)
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
-    def synchronize_area_links(self, domain_id, area):
+    def synchronize_area_links(self, domain_id, expected_version, area):
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w = self._workspace(s, domain_id)
             row = self._logical(s, orm.AssessmentArea, w.id, area.id)
             revision_id = area.active_geometry_revision_id
             links = [link for link in area.event_links
                      if link.assessment_area_geometry_revision_id == revision_id]
             self._sync_links(s, row, revision_id, links)
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
     @staticmethod
     def _evaluation_owner(s, workspace_id, evaluation, *, create):
@@ -206,14 +214,16 @@ class SqlAlchemyAssessmentWrites:
             s.add(row); s.flush()
         return row
 
-    def persist_evaluation_owner(self, domain_id, evaluation):
+    def persist_evaluation_owner(self, domain_id, expected_version, evaluation):
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w = self._workspace(s, domain_id)
             self._evaluation_owner(s, w.id, evaluation, create=True)
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
-    def persist_evaluation_revision(self, domain_id, evaluation, revision):
+    def persist_evaluation_revision(self, domain_id, expected_version, evaluation, revision):
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w = self._workspace(s, domain_id)
             owner = self._evaluation_owner(s, w.id, evaluation, create=True)
             geometry = s.scalar(select(orm.AssessmentAreaGeometryRevision).where(
@@ -233,7 +243,7 @@ class SqlAlchemyAssessmentWrites:
                 face_condition_index=revision.face_condition_index,
                 result_quadrant=revision.result_quadrant,
                 payload_json=revision.to_dict(), is_active=True))
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
     @staticmethod
     def _set_attachment(row, item, event=None, evaluation=None):
@@ -258,10 +268,11 @@ class SqlAlchemyAssessmentWrites:
             raise ValueError("Attachment belongs to another Assessment workspace")
         return row
 
-    def add_attachment_metadata_batch(self, domain_id, attachments, evaluation_owner=None):
+    def add_attachment_metadata_batch(self, domain_id, expected_version, attachments, evaluation_owner=None):
         if not attachments:
             raise ValueError("Attachment batch is empty")
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w=self._workspace(s,domain_id)
             event=evaluation=None
             owner_type, owner_id = attachments[0].owner_type, attachments[0].owner_id
@@ -279,10 +290,11 @@ class SqlAlchemyAssessmentWrites:
                 row=orm.AssessmentEntityAttachment(domain_id=attachment.id); s.add(row)
                 self._set_attachment(row,attachment,event,evaluation)
                 s.flush()
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
-    def update_attachment_metadata(self, domain_id, attachment):
+    def update_attachment_metadata(self, domain_id, expected_version, attachment):
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w=self._workspace(s,domain_id)
             row=self._attachment_for_workspace(s,w.id,attachment.id)
             # Metadata editing never reparents an attachment.
@@ -290,14 +302,15 @@ class SqlAlchemyAssessmentWrites:
                          "original_filename", "stored_filename", "relative_path",
                          "file_date", "description", "mime_type", "file_size_bytes"):
                 setattr(row, name, getattr(attachment, name))
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
-    def delete_attachment_metadata(self, domain_id, attachment_id):
+    def delete_attachment_metadata(self, domain_id, expected_version, attachment_id):
         with self._session_factory.begin() as s:
+            new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             w=self._workspace(s,domain_id)
             row=self._attachment_for_workspace(s,w.id,attachment_id)
             s.delete(row)
-            return w.id
+            return DomainWriteResult(new_version, w.id)
 
     @classmethod
     def insert_event_in_session(cls, s, domain_id, event):

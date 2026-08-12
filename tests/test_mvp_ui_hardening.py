@@ -307,13 +307,17 @@ def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
     controller = AssessmentEditingSession.__new__(AssessmentEditingSession)
     controller.state = state
     controller.evaluations = AssessmentAreaEvaluationService(state)
-    saves = []
-    controller.can_edit = True; controller.save = lambda: saves.append(True)
+    from application.ports.domain_version import DomainWriteResult
+    class Writes:
+        def __getattr__(self, name):
+            return lambda domain_id, expected_version, *args: DomainWriteResult(expected_version + 1, 1)
+    controller.can_edit = True; controller.domain_id = 1; controller.expected_version = 0
+    controller.workspace_id = None; controller._writes = Writes()
 
     transient, _draft = controller.evaluation_draft(area)
     owner = controller.ensure_evaluation_owner(area, transient)
     assert owner is transient and owner.revisions == [] and len(state.evaluations) == 1
-    assert saves == [True]
+    assert controller.expected_version == 1
 
     reused, first_draft = controller.evaluation_draft(area)
     assert reused is owner and first_draft.evaluation_id == owner.id

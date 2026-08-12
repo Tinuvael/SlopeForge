@@ -6,12 +6,13 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from application.state.assessment_domain_state import AssessmentDomainState
+from application.ports.assessment_state import AssessmentStateSnapshot
 from domain.blasting.entities import BlastEvent
 from database.models import BlastBlock
 from repositories.assessment_state_repository import AssessmentStateRepository
 from repositories.audit_log_repository import AuditLogRepository
 from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
+from infrastructure.db.domain_version import guard_domain_versions
 
 
 class SqlAlchemyBlastEventCreationPersistence:
@@ -21,19 +22,25 @@ class SqlAlchemyBlastEventCreationPersistence:
         self._audit = AuditLogRepository(session_factory)
         self._failure_hook = failure_hook
 
-    def load_state(self, domain_id: int) -> AssessmentDomainState:
-        return self._states.load_for_domain(domain_id).state
+    def load_state(self, domain_id: int) -> AssessmentStateSnapshot:
+        loaded = self._states.load_for_domain(domain_id)
+        return AssessmentStateSnapshot(loaded.domain_id, loaded.site_id, loaded.workspace_id,
+                                       loaded.state, loaded.expected_version)
 
-    def persist_contour(self, domain_id: int, event: BlastEvent) -> None:
+    def persist_contour(self, domain_id: int, expected_version: int, event: BlastEvent) -> int:
         with self._session_factory.begin() as session:
+            new_version = guard_domain_versions(session, {domain_id: expected_version})[domain_id]
             SqlAlchemyAssessmentWrites.insert_event_in_session(session, domain_id, event)
+            self._fail("after_event_flush")
+            return new_version
 
     def persist_production(
-        self, domain_id: int, event: BlastEvent, actor_id: int | None,
+        self, domain_id: int, expected_version: int, event: BlastEvent, actor_id: int | None,
     ) -> int:
         if event.event_type != "production" or event.blast_block_id is not None:
             raise ValueError("Expected an unlinked production Blast Event")
         with self._session_factory.begin() as session:
+            guard_domain_versions(session, {domain_id: expected_version})
             block = BlastBlock(
                 domain_id=domain_id,
                 block_number=event.name.strip(),

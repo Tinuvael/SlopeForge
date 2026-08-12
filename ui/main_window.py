@@ -205,7 +205,7 @@ class MainWindow(QMainWindow):
             from app.use_case_factory import create_set_blast_block_archived_use_case
             from application.use_cases.set_blast_block_archived import SetBlastBlockArchivedCommand
             user=self.context.current_user
-            create_set_blast_block_archived_use_case(self.context).execute(SetBlastBlockArchivedCommand(block.id,not block.is_archived,user.id,user.can_edit)); self.selected_block_id=None; self.header.set_archive_context(False); self.refresh_project_data(); return
+            create_set_blast_block_archived_use_case(self.context).execute(SetBlastBlockArchivedCommand(block.id,not block.is_archived,user.id,user.can_edit,block.domain_version)); self.selected_block_id=None; self.header.set_archive_context(False); self.refresh_project_data(); return
         if self.selected_assessment_area_id and getattr(self,"area_page",None):
             area=self.area_page.area; action="Restore" if area.is_archived else "Archive"
             if QMessageBox.question(self,action,f'{action} Assessment Area "{area.name}"?') != QMessageBox.StandardButton.Yes:return

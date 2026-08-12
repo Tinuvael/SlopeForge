@@ -10,10 +10,14 @@ The live architecture gate is GitHub issue #79. If this document and #79 differ,
 - Phase 4 complete: important workflows moved from Qt UI into application use cases/services.
 - Phase 5A complete: relational Assessment graph synchronization preserves existing workspace/entity/revision DB rows instead of replace-delete-recreate behavior.
 - Phase 5B complete: ordinary UI/application writes are focused operations.
+- Phase 5C complete: Domain owns optimistic concurrency; focused commands use an
+  expected-version CAS, normal whole-state Assessment writes are gone, and a
+  deterministic multi-Domain transaction guard is ready for future #75 work. Domain
+  moves are not implemented.
 
 ## Remaining architecture sequence
 
-### Phase 5C — optimistic concurrency and compatibility-write removal
+### Phase 5C — COMPLETE
 
 Goals:
 

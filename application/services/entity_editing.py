@@ -25,13 +25,14 @@ class AssessmentEditingSession:
     """Owns the stable live graph and coordinates focused write workflows."""
 
     def __init__(self, persistence: AssessmentStatePersistence, domain_id: int, *,
-                 actor_id: int, can_edit: bool, writes: AssessmentWrites | None = None):
+                 actor_id: int, can_edit: bool, writes: AssessmentWrites):
         snapshot = persistence.load(domain_id)
         self._persistence = persistence
         self._writes = writes
         self.domain_id = snapshot.domain_id
         self.site_id = snapshot.site_id
         self.workspace_id = snapshot.workspace_id
+        self.expected_version = snapshot.expected_version
         self.state = snapshot.state
         self.actor_id = actor_id
         self.can_edit = can_edit
@@ -44,27 +45,12 @@ class AssessmentEditingSession:
         if not self.can_edit:
             raise PermissionError("2D Assessment is read-only for the current user")
 
-    def save(self) -> None:
-        """Compatibility-only whole-state save, retained until Phase 5C."""
-        self._require_edit()
-        snapshot = self._persistence.save(self.domain_id, self.state)
-        # Keep the live object graph: widgets hold references into it.
-        self.workspace_id = snapshot.workspace_id
-
     def _write(self, operation: str, *args):
-        # The fallback supports old embedders/tests only. Desktop composition always
-        # supplies the Phase 5B focused adapter.
-        if getattr(self, "_writes", None) is None:
-            # Compatibility for legacy programmatic embedders which construct the
-            # coordinator without the desktop factory. Ordinary UI never enters it.
-            if not hasattr(self, "_persistence"):
-                if "save" in self.__dict__:  # legacy test/tool supplied its own sink
-                    return self.save()
-                raise RuntimeError("Assessment persistence is not configured")
-            snapshot = self._persistence.save(self.domain_id, self.state)
-            self.workspace_id = snapshot.workspace_id
-            return self.workspace_id
-        self.workspace_id = getattr(self._writes, operation)(self.domain_id, *args)
+        result = getattr(self._writes, operation)(
+            self.domain_id, self.expected_version, *args
+        )
+        self.workspace_id = result.workspace_id
+        self.expected_version = result.new_version
         return self.workspace_id
 
     def _save_archive_change(self, entity, archived: bool, operation: str) -> None:
