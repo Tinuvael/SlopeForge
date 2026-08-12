@@ -1,634 +1,265 @@
-# Концепция оценки постановки борта в SlopeForge
+# Final-wall assessment product model
 
-## 1. Назначение системы
+This document captures the stable product intent for SlopeForge final-wall assessment. It is not a migration diary.
+For unfinished implementation details, the active GitHub issue is authoritative after verifying current `main`.
 
-SlopeForge должен накапливать данные о проектных линиях, взрывных событиях и фактическом качестве постановки конечного борта.
+## Purpose
 
-Основная задача программы — связать в одной системе:
+SlopeForge should accumulate a reproducible engineering history that connects:
 
-- проектную геометрию борта;
-- параметры массива;
-- параметры буровзрывных работ;
-- промежуточные оценки после отдельных взрывных событий;
-- конечную оценку сформированного участка борта;
-- фотографии, документы, выводы и рекомендации.
+- Project Lines / final-wall reference geometry;
+- rock-mass / geomechanical inputs;
+- blast design;
+- actual execution;
+- BlastEvent geometry and revisions;
+- final-wall Assessment Areas and geometry revisions;
+- completed DAI / FCI assessment results;
+- photos, documents, notes, and audit/history.
 
-В перспективе накопленная база должна использоваться как эмпирическая основа для подбора параметров БВР в сопоставимых горно-геологических условиях.
+After MVP, this accumulated database should support empirical/statistical analysis of what blast/geomechanical conditions are associated with better or worse wall outcomes and may later support ML experiments. The MVP itself does not implement automated recommendations or ML.
 
-## 2. Основные объекты
-
-Основные рабочие объекты системы:
-
-1. `ProjectLinesDataset` — версия импортированных проектных линий Datamine.
-2. `BlastEvent` — единое взрывное событие двух типов.
-3. `AssessmentArea` — участок конечной оценки борта со стабильным ID и неизменяемыми ревизиями геометрии.
-
-Старая концепция ручного создания уступа по верхнему и нижнему сегментам больше не является целевой.
-
-## 3. Версионные проектные линии
-
-Проектные линии импортируются из CSV Datamine.
-
-Поддерживаемые поля:
-
-- `XP` / `X`;
-- `YP` / `Y`;
-- `ZP` / `Z`;
-- `SID` или другой идентификатор линии;
-- `PTN` / `PID` или другой порядок точек;
-- при наличии `TYPE`, `PVALUE` и дополнительные исходные атрибуты.
-
-Каждый импорт создаёт отдельный `ProjectLinesDataset`:
+## Product hierarchy
 
 ```text
-ProjectLinesDataset
-├── id
-├── name
-├── imported_at
-├── source_file_name
-├── is_active
-└── lines
+Project / Quarry
+└── Domain
+    ├── Blast events
+    │   └── Horizon [virtual]
+    │       ├── Production Block
+    │       └── Contour BlastEvent
+    └── Assessment areas
+        └── Elevation Interval [virtual]
+            └── Assessment Area
 ```
 
-Правила:
+Internal `Site` is the user-facing Project/Quarry. Legacy `Mine` is not normal UI terminology.
 
-- только один Dataset является активным;
-- новые Assessment Area создаются по активному Dataset;
-- старые Dataset не удаляются;
-- повторный импорт проектных линий не изменяет ранее созданные Assessment Area;
-- в основном интерфейсе отображаются только активные проектные линии;
-- название активного Dataset показывается в хедере рабочего экрана.
+Horizon and Elevation Interval are virtual groups, not persistent business entities.
 
-## 4. Единый объект Blast Event
+## Project Lines
 
-Взрывной блок и контурное бурение хранятся как один объект `BlastEvent` с переключателем типа:
+Project Lines are reference geometry for the whole Project/Site and are shared by every Domain.
 
-```text
-Тип события:
-○ production — взрывной блок
-○ contour — контурное бурение и последующий взрыв
-```
+Multiple datasets may exist historically; one dataset is active for current work.
+Historical Assessment geometry must remain reproducible after a new dataset is imported or activated.
 
-Базовая структура:
+Project Lines are managed from the Project dashboard, not as a separate tree branch.
 
-```text
-BlastEvent
-├── id
-├── name
-├── event_type
-├── event_date
-├── elevation
-├── geometry_revisions
-├── active_geometry_revision_id
-├── is_archived
-├── archived_at
-└── archive_reason
-```
+Supported import currently includes Datamine CSV and supported straight DXF polyline entities through the existing geometry import infrastructure.
 
-Карточки обоих типов пока имеют одинаковую общую структуру. Различается смысл предварительной оценки:
+## BlastEvent
 
-- `production` — предварительная оценка постановки борта в конечное положение;
-- `contour` — оценка качества и точности контурного бурения.
+There is one BlastEvent concept with two types:
 
-Формы характеристик и оценок проектируются отдельным этапом.
+- `production`;
+- `contour`.
 
-## 5. Геометрия production Blast Event
+### Production
 
-Источник — CSV Datamine с одной или несколькими 3D-полилиниями блока.
+A production BlastEvent is linked 1:1 with a BlastBlock. The Block page is the normal user-facing page and provides the Production engineering workflow.
 
-Алгоритм импорта:
+Do not count the linked Block and BlastEvent as two independent blasts in dashboards/reports.
 
-1. импортировать и сгруппировать линии;
-2. определить максимальный `Z` каждой линии;
-3. выбрать линию с наибольшим максимальным `Z`;
-4. проверить, что линия замкнута с учётом допуска;
-5. спроецировать её координаты в XY;
-6. создать плановый Polygon;
-7. принять максимальный `Z` выбранной линии как отметку геометрической ревизии.
+### Contour
 
-На плане взрывной блок отображается как площадь.
+A Contour BlastEvent has no BlastBlock and opens the Contour Blast page.
+It has Blast design, Execution fact, Photos, Documents, and History, but no Geomechanics tab under the current product model.
 
-Если верхняя линия не замкнута, импорт должен завершаться понятной ошибкой.
+## Blast geometry revisions
 
-Пользователь также задаёт рабочий горизонт события. На первом этапе он считается основной отметкой `BlastEvent` и участвует в связи с Assessment Area.
+BlastEvent geometry is revisioned. Reimporting geometry creates a new revision rather than silently overwriting the old one.
 
-## 6. Геометрия contour Blast Event
+Historical Assessment links should preserve the exact BlastEvent geometry revision that was relevant when the link was confirmed/stored.
 
-Источник — CSV Datamine, где каждая контурная скважина представлена отдельной 3D-линией.
+## Technical Card
 
-Для каждой скважины программа:
+The revisioned BlastEvent Technical Card is the canonical active engineering record.
 
-1. находит вершину с максимальным `Z`;
-2. считает её устьем скважины;
-3. сохраняет исходную 3D-линию;
-4. отображает XY-координату устья на плане.
+Production uses:
 
-Порядок точек в линии не используется для определения устья.
+- Geomechanics;
+- Blast design;
+- Execution fact.
 
-Итоговая плановая геометрия события — `MultiPoint` из устьев скважин.
+Contour uses:
 
-Импортированные максимальные отметки устьев сохраняются в исходной геометрии, но не должны автоматически заменять горизонт, указанный пользователем.
+- Blast design;
+- Execution fact.
 
-## 7. Ревизии геометрии Blast Event
+Do not redesign existing proven calculations as incidental UI cleanup.
 
-Геометрию Blast Event разрешено исправлять повторным импортом.
+Open issues #77 and #78 define the planned simplification of Geomechanics and the composable borehole charge builder. They should be implemented only after architecture issue #79 classifies/removes duplicate legacy engineering persistence.
 
-Повторный импорт не перезаписывает старую геометрию, а создаёт новую ревизию:
+## Assessment Area
+
+An Assessment Area is a stable final-wall assessment object within a Domain.
+More than one Assessment Area may exist on the same physical wall/bench, and spatial overlap is not inherently forbidden.
+
+Assessment geometry is revisioned. Boundary changes create a new geometry revision; previous revisions remain historical records.
+
+The user-facing page target is:
 
 ```text
-BlastEventGeometryRevision
-├── id
-├── blast_event_id
-├── revision_number
-├── imported_at
-├── source_file_name
-├── source_geometry
-├── plan_geometry
-├── elevation
-└── is_active
-```
-
-Правила:
-
-- первая загрузка создаёт revision 1;
-- переимпорт создаёт revision 2, 3 и далее;
-- новая ревизия становится активной;
-- старая ревизия сохраняется;
-- новые Assessment Area используют активную ревизию;
-- ранее созданные Assessment Area продолжают ссылаться на ту ревизию, которая была подтверждена при их создании.
-
-## 8. Assessment Area
-
-`AssessmentArea` — главный объект конечной оценки сформированного участка борта.
-
-На одном физическом уступе может существовать несколько Assessment Area, например северная, центральная и южная части. Области могут пространственно перекрываться. Перекрытие не запрещается.
-
-Создание области:
-
-1. пользователь запускает режим создания Assessment Area;
-2. на плане отображаются активные проектные линии, Blast Event и устья контурных скважин;
-3. пользователь рисует один Selection Polygon;
-4. программа проецирует его на все пересечённые горизонты;
-5. проектные линии обрезаются полигоном;
-6. пользователь подтверждает список горизонтов;
-7. при нескольких отдельных фрагментах на одном горизонте пользователь выбирает нужный;
-8. минимальная отметка становится нижней границей;
-9. максимальная отметка становится верхней границей;
-10. остальные подтверждённые отметки становятся внутренними горизонтами;
-11. программа формирует боковые границы;
-12. вся результирующая геометрия замораживается.
-
-Следует различать:
-
-- `selection_polygon_frozen` — исходную пользовательскую область выбора;
-- `final_geometry_frozen` — итоговую геометрию участка оценки, построенную по обрезанным проектным линиям.
-
-## 9. Неизменяемость Assessment Area
-
-Assessment Area никогда не удаляется физически, а его ID остаётся стабильным. Исправление границ создаёт новую неизменяемую ревизию геометрии и делает её активной. Предыдущие ревизии сохраняются для истории и воспроизводимости; по умолчанию показывается только активная ревизия. Редактирование никогда не перезаписывает старую геометрию молча.
-
-Разрешённые действия:
-
-- просмотр;
-- заполнение конечной оценки;
-- добавление фотографий, документов и комментариев;
-- архивирование;
-- создание новой Assessment Area взамен ошибочной.
-
-Геометрия области, подтверждённые горизонты, Dataset и ревизии связанных событий должны сохраняться неизменными для исторической воспроизводимости.
-
-## 10. Структура Assessment Area
-
-```text
-AssessmentArea
-├── id
-├── name
-├── assessment_date
-├── source_dataset_id
-├── selection_polygon_frozen
-├── final_geometry_frozen
-├── lower_elevation
-├── upper_elevation
-├── horizon_slices
-├── event_links
-├── final_assessment
-├── photos
-├── documents
-├── notes
-├── is_archived
-├── archived_at
-└── archive_reason
-```
-
-Обрезанные линии горизонтов хранятся как отдельные замороженные срезы:
-
-```text
-AssessmentHorizonSlice
-├── id
-├── source_line_id
-├── elevation
-├── role: lower_boundary | internal_horizon | upper_boundary
-└── frozen_geometry
-```
-
-Форма конечной оценки будет спроектирована отдельно. На первом этапе достаточно предусмотреть дату оценки и место для будущих полей.
-
-## 11. Автоматический поиск связанных Blast Event
-
-После построения Assessment Area программа предлагает связанные Blast Event.
-
-Для любого события обязательно выполняется условие по отметке:
-
-```text
-lower_Z < event_Z <= upper_Z
-```
-
-Нижняя отметка самой Assessment Area в выборку не входит.
-
-Дополнительно требуется пространственное пересечение.
-
-Для `production`:
-
-```text
-blast_polygon intersects selection_polygon
-```
-
-Для `contour`:
-
-```text
-хотя бы одно устье скважины находится внутри или пересекает selection_polygon
-```
-
-Одной отметки недостаточно.
-
-Найденные связи имеют статус `suggested`. Пользователь подтверждает или исключает каждую связь.
-
-```text
-AssessmentEventLink
-├── id
-├── assessment_area_geometry_revision_id
-├── blast_event_id
-├── geometry_revision_id
-├── status: suggested | confirmed | excluded
-├── source: automatic | manual
-├── created_at
-└── frozen_intersection_geometry
-```
-
-Одно Blast Event может быть связано с несколькими Assessment Area.
-
-### Реализованное связывание
-
-Автоматический поиск реализован в общем рабочем пространстве. Он использует отметку
-самого `BlastEvent`: `lower_elevation < elevation <= upper_elevation`. Для production
-проверяется пересечение полигона события с `selection_polygon_frozen`, включая касание
-границы. Для contour выбираются только устья внутри или на границе этого полигона;
-копии совпавших точек замораживаются в `PlanMultiPoint`. Для production полная геометрия
-пересечения намеренно не строится и в связи остаётся `None`.
-
-Автоматические связи создаются как `suggested/automatic`; пользователь может подтвердить
-(`confirmed`) или исключить (`excluded`) их. Ручная связь создаётся как `confirmed/manual`
-даже вне автоматических условий. Каждая связь хранит точные ID ревизий Assessment Area и
-BlastEvent. После редактирования границ новая ревизия получает отдельный набор предложений,
-а старые связи не изменяются. Подтверждённая или исключённая ссылка на неактивную ревизию
-BlastEvent сохраняется и показывается как устаревшая.
-
-Архивирование объектов не удаляет связи. Архивные BlastEvent не попадают в новый
-автоматический или ручной поиск, но существующие ссылки читаются; у архивной Assessment Area
-связи доступны только для просмотра.
-
-Поиск обрабатывает **каждый отдельный BlastEvent ID**: одинаковые отметки, названия, типы и
-имена CSV не объединяют события. Результат пересчёта показывает диагностические количества
-просмотренных событий, отказов по отметке и геометрии, совпадений production/contour,
-сохранённых решений и новых предложений. Одно contour-событие создаёт одну связь независимо
-от числа совпавших устьев; число устьев видно в диалоге.
-
-В обычном режиме Assessment Areas геометрии BlastEvent скрыты, чтобы не загромождать план.
-Точная сохранённая ревизия одного события появляется только после команды «Показать на плане»
-в диалоге связей и убирается кнопкой «Скрыть BlastEvent». Отображение слоёв не участвует в
-автоматическом расчёте.
-
-Текущая production-модель поддерживает один полигон на одно событие. Если CSV содержит
-несколько замкнутых production-полигонов, импорт сохраняет прежнее поведение выбора одного
-полигона, но теперь явно предупреждает, что блоки следует импортировать отдельными событиями.
-
-При выборе CSV в карточке BlastEvent рабочий горизонт предлагается автоматически, но остаётся
-редактируемым. Для production используется медиана Z точек той же верхней линии, которая выбрана
-для `PlanPolygon`; остальные линии CSV не участвуют. Для contour используется медиана Z только
-принятых устьев: нижние точки скважин и плоские вспомогательные строки исключаются существующим
-фильтром импорта. Ручное значение сохраняется как `BlastEvent.elevation`, тогда как
-`BlastEventGeometryRevision.elevation` продолжает описывать импортированную геометрию.
-
-## 12. Промежуточные и конечные оценки
-
-Промежуточная оценка относится к Blast Event, а не к отдельному ручному сегменту проектной линии.
-
-Смысл:
-
-- для производственного блока оценивается ожидаемое или предварительно наблюдаемое влияние взрыва на постановку борта;
-- для контурного события оценивается точность и качество контурного бурения.
-
-Assessment Area содержит конечную оценку уже сформированного участка борта и ссылки на участвовавшие Blast Event.
-
-Общая схема:
-
-```text
-ProjectLinesDataset
-        ↓
-Blast Event + промежуточная оценка
-        ↓
 Assessment Area
-        ↓
-Конечная оценка борта
+├── Overview
+├── Assessment
+├── Linked events
+├── Photos
+├── Documents
+└── History
 ```
 
-## 13. Архивирование
+Issue #71 merges Assessment inputs and the live Result matrix into one Assessment page while preserving the existing scoring model.
 
-Объекты не удаляются физически.
+## Assessment geometry: current implementation vs target
 
-Архивирование применяется как минимум к:
+### Current `main`
 
-- Blast Event;
-- Assessment Area;
-- в перспективе к версиям других рабочих объектов.
+The currently implemented creation flow is still based on a user selection polygon, horizontal Project-Line candidates, scalar lower/upper elevations, and a derived final polygon between selected horizontal fragments.
 
-Архивный объект:
+That workflow is a known limitation and should not be treated as the final product model.
 
-- не показывается в стандартных рабочих списках;
-- остаётся доступным в разделе «Архив»;
-- сохраняет геометрию, ревизии, вложения и связи;
-- не участвует в автоматическом поиске для новых Assessment Area;
-- при необходимости может быть восстановлен.
+### Target model — issue #80
 
-## 14. Документы и фотографии
+The replacement is a single continuous boundary drawing operation with CAD/GIS-style snapping/tracing to Project Lines.
 
-Вложения должны поддерживаться для:
+Core interaction:
 
-- Blast Event;
-- промежуточной оценки Blast Event;
-- Assessment Area;
-- конечной оценки Assessment Area.
+1. Click on/near a Project Line.
+2. The point snaps and that line becomes the active trace line.
+3. Move along it; the preview follows the actual Project Line geometry, not a straight chord.
+4. Click to commit the traced span.
+5. Move away to create an explicit straight connector.
+6. Click another Project Line to snap/switch the active trace source.
+7. Continue mixing traced spans and free connectors.
+8. Press **Close boundary** to close and validate the Assessment Area.
 
-Документы и фотографии не отображаются отдельными узлами дерева. Они открываются в карточке выбранного объекта.
+This one workflow must support:
 
-## 15. Основной интерфейс
+- parallel upper/lower lines;
+- sloping/non-horizontal Project Lines;
+- interrupted source lines with explicit gap connectors;
+- curved source lines;
+- triangular/wedge Areas;
+- general irregular simple polygons.
 
-Главная рабочая область должна переключаться в зависимости от выбранного объекта или действия.
+There is no separate "select upper boundary, then lower boundary" workflow.
 
-### Режим Blast Event
+### Canonical target geometry representation
 
-Открывается карточка события с общей структурой:
+The engineering definition should preserve an ordered closed Assessment boundary made from generic segments, conceptually:
 
 ```text
-Общие характеристики
-Параметры БВР
-Геомеханика
-Предварительная оценка
-Фото
-Документы
-История геометрии
+AssessmentBoundary
+└── segments[]
+    ├── ProjectLineSpan
+    └── StraightConnector
 ```
 
-Для `production` и `contour` пока используется одинаковый каркас карточки с переключателем типа.
+A `ProjectLineSpan` preserves:
 
-### Режим создания Assessment Area
+- source Project Lines dataset;
+- source line stable identity/provenance;
+- start/end anchors;
+- frozen traced XYZ geometry between the anchors.
 
-Центральная часть переключается в специализированный 2D-редактор:
+A `StraightConnector` preserves explicit user-created geometry between boundary points and must not pretend to be Project Line source geometry.
+
+A frozen/derived plan polygon remains useful for:
+
+- map rendering;
+- spatial BlastEvent linking;
+- dashboards;
+- future spatial/statistical analysis.
+
+The polygon is therefore a derived representation of the ordered boundary, not the only historical engineering definition.
+
+For non-horizontal source geometry, preserve real Z variation. Elevation Interval shown in the tree/read model can be derived as a deterministic summary/range; it must not force the stored geometry back into horizontal slices.
+
+## Assessment creation target
+
+Issue #70 should be built after #65, #79, and #80.
+
+Target creation flow:
 
 ```text
-активные проектные линии
-+ полигоны production Blast Event
-+ устья contour Blast Event
-+ инструмент Selection Polygon
-+ подтверждение горизонтов и фрагментов
+General information
+-> Boundary
+-> Review
+-> Save
 ```
 
-После сохранения открывается карточка созданной Assessment Area.
+Do not add a separate upper/lower/horizon-selection step.
 
-2D-редактор является специализированным режимом, а не главным постоянным объектом программы.
+Editing boundaries on an existing Area is a focused geometry-revision workflow and should not duplicate metadata editing for Area name/Domain.
 
-## 16. Дерево проекта
+## Linked BlastEvents
 
-Рекомендуемая верхнеуровневая структура:
+An Assessment Area can have multiple linked BlastEvents and one BlastEvent can be related to multiple Areas.
+
+Links preserve provenance and state such as suggested/confirmed/excluded and automatic/manual according to the existing model.
+
+For later workflow status, only confirmed links with the qualifying completed current Assessment should contribute to an `Assessed` Blast status; suggested links are not equivalent to confirmed engineering relationships.
+
+The target inline spatial preview for Linked events is tracked separately in issue #72 and must not change link semantics.
+
+## Assessment scoring
+
+The current scoring model is correct and should not be redesigned during MVP cleanup.
+
+- DAI = Design Achievement Index.
+- FCI = Face Condition Index.
+- They are separate indices.
+- Quadrant X = FCI.
+- Quadrant Y = DAI.
+- Do not average DAI and FCI into a single score.
+- Completed stored evaluation results are historical facts used by dashboards/read models.
+
+## Attachments
+
+Attachment ownership is intentionally singular:
 
 ```text
-Карьер / проект
-├── Datasets
-├── Blast Events
-├── Assessment Areas
-├── Archive
-└── Reports
+Production Block
+-> linked production BlastEvent
+-> Photos / Documents
+
+Contour BlastEvent
+-> Photos / Documents
+
+Assessment Area
+-> Assessment evaluation
+-> Photos / Documents
 ```
 
-Дерево используется для навигации.
+One physical attachment must not be duplicated across owners merely for presentation convenience.
 
-В нём не требуется показывать:
+## Historical reproducibility
 
-- отдельные исходные линии Datamine;
-- точки геометрии;
-- внутренние срезы Assessment Area;
-- связи;
-- фотографии и документы.
+A later user should be able to answer questions such as:
 
-Активный ProjectLinesDataset показывается в хедере.
+- Which Project Lines dataset defined this Assessment Area revision?
+- Which exact Project-Line spans/connectors formed its boundary?
+- Which BlastEvent geometry revision was linked?
+- What geomechanical/blast-design values were stored at that time?
+- What was actually executed?
+- Which Assessment revision was completed and what DAI/FCI were stored?
 
-## 17. Последовательность рабочего процесса
+Reimports, new active datasets, later catalogue edits, metadata moves, and UI changes must not silently mutate historical completed engineering records.
+
+## Analytics direction after MVP
+
+The intended analysis chain is approximately:
 
 ```text
-Создать проект
-        ↓
-Импортировать Project Lines Dataset
-        ↓
-Создать и заполнить Blast Event
-        ↓
-Импортировать его геометрию
-        ↓
-Выполнить бурение и взрывание
-        ↓
-Заполнить промежуточную оценку события
-        ↓
-Создать Assessment Area
-        ↓
-Нарисовать Selection Polygon
-        ↓
-Подтвердить горизонты и фрагменты
-        ↓
-Заморозить геометрию
-        ↓
-Подтвердить предложенные Blast Event
-        ↓
-Заполнить конечную оценку борта
+Project / Domain context
++ geomechanics
++ blast design
++ execution facts
++ geometry / event-link provenance
+-> completed final-wall outcome (DAI, FCI)
 ```
 
-## 18. Этапы разработки
+The transactional MVP should preserve these facts cleanly but should not include a feature store, ML model, AI recommendation system, or advanced analytical schema yet.
 
-### Этап 1. Доменное ядро
-
-- версионные ProjectLinesDataset;
-- единый BlastEvent;
-- production и contour import geometry;
-- ревизии геометрии;
-- архивирование;
-- заготовка AssessmentArea;
-- сериализация и тесты.
-
-### Этап 2. Минимальный UI Blast Event
-
-- создание события;
-- переключатель типа;
-- название, дата и горизонт;
-- импорт и переимпорт CSV;
-- отображение полигона или устьев на плане;
-- просмотр ревизий.
-
-### Этап 3. Создание Assessment Area
-
-- рисование Selection Polygon;
-- пересечение с активными проектными линиями;
-- подтверждение горизонтов;
-- выбор фрагментов;
-- построение и замораживание итоговой геометрии.
-
-### Этап 4. Связи
-
-- **реализовано:** автоматический поиск Blast Event по отметке и пространственному пересечению;
-- **реализовано:** подтверждение, исключение, восстановление и ручное добавление связей;
-- **реализовано:** хранение конкретных ревизий геометрии обоих объектов.
-
-### Этап 5. Оценочные формы и отчёты
-
-- формы production и contour assessment;
-- форма конечной оценки;
-- фотографии и документы;
-- отчёты и аналитика;
-- накопление эмпирической базы БВР.
-
-## 19. Ключевой принцип
-
-> Project Lines Dataset задаёт версионную проектную основу. Blast Event хранит параметры и ревизии фактической геометрии. Assessment Area имеет стабильную идентичность, историю неизменяемых ревизий границ и ревизионно-точные связи с событиями.
-# Технические карточки BlastEvent
-
-Каждому стабильному `BlastEvent` может принадлежать одна инженерная техническая
-карточка. Карточка хранится в общем `AssessmentDomainState`, а не в отдельном
-файле. Каждое сохранение создаёт новую неизменяемую ревизию карточки. Ревизия
-содержит точный ID активной на момент сохранения `BlastEventGeometryRevision`;
-поэтому переимпорт геометрии не меняет старые расчёты и исходные данные.
-
-Для **production** карточка включает общие параметры блока, минимальное
-геомеханическое описание (текстовый местный класс прочности хранится отдельно
-от UCS), основную сеть и любое число независимых групп бурения. Каталог содержит
-основные, буферные, врубовые, бровочные, подошвенные, разгрузочные,
-вспомогательные и пользовательские группы. Последнюю основную сеть удалить
-нельзя.
-
-Для **contour** геомеханика пока не обязательна. Хранятся методы cushion, trim,
-presplit, midsplit, postsplit, линия незаряженных скважин и пользовательский
-метод, а также один или несколько функциональных рядов.
-
-Площадь полигона считается формулой «шнуровки» в доменных X/Y. Глубина без
-перебура равна `max(средняя глубина − перебур, 0)`, объём — принятой площади,
-умноженной на высоту уступа. Итоги по скважинам и метрам суммируются по
-включённым группам; выход породы, удельное бурение и удельный расход ВВ являются
-безопасными отношениями без NaN/Infinity. Для площади, объёма и длины бурения
-сохраняются одновременно расчётное и, при наличии, вручную принятое значения.
-
-Проектные показатели отделены от секции фактического исполнения. Текстовая
-конструкция заряда, параметры ВВ, воздушные промежутки и заметки о деках уже
-сериализуются; список `charge_decks` зарезервирован для будущего детального
-редактора схемы заряда без изменения текущего формата.
-
-## Проектное и фактическое бурение
-
-**ЛНС (`burden_m`)** означает линию наименьшего сопротивления. Для рядной сетки это обычно
-расстояние между рядами либо расстояние первого ряда до свободной поверхности. **Шаг
-(`spacing_m`)** — расстояние между соседними скважинами внутри одного ряда. Расстояние
-последнего ряда до проектного контура (`toe_standoff_m`) — отдельный параметр, оно не является ЛНС.
-
-Проектные `BlastDrillingGroup` и фактические `ActualDrillingGroup` разделены. Фактическая группа
-связывается с проектной только стабильным `design_group_id`, а не ссылкой на изменяемый объект.
-Группа с `design_group_id=None` не предусмотрена проектом. Заполнение факта создаёт независимый
-снимок: дальнейшая правка проекта его не синхронизирует. Доступны режимы заполнения пустых полей,
-добавления отсутствующих групп и полной замены с отдельным предупреждением.
-
-Фактические итоги считаются по включённым группам: метраж берётся из явного значения либо как
-число скважин × средняя глубина; масса ВВ — из общей массы либо как число скважин × масса на
-скважину. Средняя глубина взвешивается по числу скважин. Выход горной массы равен объёму / метражу,
-удельное бурение — метражу / объёму, удельный расход ВВ — массе ВВ / объёму. Нулевые и
-отсутствующие знаменатели дают пустое значение, а не NaN или бесконечность.
-
-Каждая ревизия хранит собственные проектные и фактические группы, метаданные копирования и
-ревизию геометрии, поэтому новая правка не меняет историю. Старые JSON без фактических групп
-загружаются как раньше. Старый `BlastDrillingGroup.actual_drilling_length_m` переносится в
-соответствующую фактическую группу с предупреждением миграции и больше не участвует в проектном
-расчёте; следующее сохранение использует новую разделённую структуру.
-
-
----
-
-# Версионная оценка состояния борта
-
-Оценка принадлежит **Assessment Area**, а не BlastEvent. Одна область может иметь несколько датированных `AssessmentAreaEvaluation`; каждое сохранение создаёт неизменяемую ревизию. Ревизия ссылается на точный `AssessmentAreaGeometryRevision`, поэтому изменение границ не переносит старые результаты на новую геометрию.
-
-## Матрицы и выбор
-
-Встроены снимки шаблонов `controlled_blasting_v1` и `no_controlled_blasting_v1`. Первый автоматически предлагается только при подтверждённой (не suggested) связи текущей ревизии области с контурным BlastEvent, иначе предлагается второй. Ручное изменение требует причины. Полный снимок шаблона хранится с ревизией, поэтому будущая правка шаблона не пересчитает историю.
-
-Обе матрицы имеют независимые секции по 100 баллов: достижение проектной геометрии и состояние борта. Угол без контурного бурения при дробном дефиците получает балл следующего худшего целого порога (например, 2,4° оценивается как 3°). Для частоты повреждений 1–5/м² исходная матрица не задаёт скрытых порогов: пользователь обязан явно выбрать категорию либо ручной балл и объяснить решение. Любой ручной балл должен быть от нуля до максимума и иметь причину.
-
-## Индексы и итог
-
-`Design Achievement Index = принятые design-баллы / 100`; `Face Condition Index = принятые condition-баллы / 100`. До заполнения обязательных критериев индексы не рассчитываются. Итог — не среднее, а квадрант с X = Face Condition и Y = Design Achievement. Пороги хранятся в шаблоне: X = 0,60, Y = 0,65. Получаются зелёный «Хорошие результаты», жёлтый «геометрия достигнута / состояние недостаточно», оранжевый «состояние хорошее / геометрия неприемлема» и красный «Неприемлемые результаты».
-
-Подтверждённые связи копируются как неизменяемые снимки: ID связи и события, имя, тип, ревизия геометрии и технической карточки, отметка и признак production/contour. Поздняя правка BlastEvent или карточки не изменит старую оценку. Архивирование области не удаляет оценки; просмотр остаётся доступным, создание и редактирование запрещены до восстановления.
-
-Методологически набор наблюдений соответствует post-excavation performance monitoring: положение подошвы и бровки, достижение геометрии, следы скважин, свободные блоки, трещины и разрушение. **Веса и пороги взяты из внутренней методики проекта.** *Guidelines for Open Pit Slope Design* поддерживает состав контролируемых показателей, но не определяет эти конкретные веса.
-
-Фактический угол, ширина бермы и отклонение подошвы вводятся вручную: автоматической съёмки as-built и распознавания фотографий в этой версии нет.
-
-## Ввод значений и подсказки оператора
-
-Числовое поле сначала показывает `—`: это означает «наблюдение ещё не введено» и не даёт баллов. Явно введённый `0` — полноценное измерение (например, нулевая потеря бровки) и оценивается матрицей. Поле можно вернуть в пустое состояние кнопкой «Очистить».
-
-На вкладке «Геометрия» вводятся проектный и фактический углы откоса уступа в градусах, проектная и фактическая ширина бермы в метрах и абсолютное горизонтальное отклонение фактической подошвы от проектной в метрах. Недобор угла и уменьшение ширины рассчитываются автоматически и показываются только для чтения. Рядом видны текущие баллы и полные правила:
-
-- controlled angle: 0° — 50; >0–3° — 25; >3–5° — 10; >5° — 0;
-- no-controlled angle: 40 баллов на проекте, затем минус 4 за каждый начатый градус до 0 при 10°;
-- берма: 0 м — 40; >0–<1 м — 35; 1–<2 м — 25; 2–<3 м — 15; ≥3 м — 0;
-- подошва controlled: 0 м — 10; >0–<1 м — 8; 1–<2 м — 5; ≥2 м — 0;
-- подошва no-controlled: 0 м — 20; >0–<1 м — 15; 1–<2 м — 5; ≥2 м — 0.
-
-На вкладке состояния вводятся процент видимых следов контурных скважин (только controlled), потеря бровки в метрах и частота признаков взрывного повреждения в шт/м²; блоки, профиль и трещины выбираются русскими категориями. Следы: ≥80% — 20; 70–<80% — 15; 60–<70% — 12; 50–<60% — 8; 30–<50% — 5; 10–<30% — 2; <10% — 0. Потеря бровки: 0 м — 15; >0–<1 м — 12; 1–<2 м — 10; 2–<3 м — 5; ≥3 м — 0. Баллы категорий показаны прямо в списке.
-
-При повреждении <1 шт/м² автоматически назначается максимум, при >5 — 0. Для диапазона 1–5 включительно внутренняя матрица не задаёт промежуточный балл: форма открывает «Экспертный балл для промежуточного диапазона» и требует балл 0…максимум и текстовое обоснование. Для любого другого критерия экспертная корректировка доступна через «Изменить балл вручную» и также требует причины.
-
-## Сохранение, повторное открытие и закрытие
-
-Диалог сначала полностью восстанавливает измерения, категории, ручные баллы, причины и заметки из активной ревизии и лишь затем включает живой пересчёт. Предпросмотр работает на отдельной копии и не изменяет историю. Первое успешное сохранение добавляет оценку в общий `AssessmentDomainState`, создаёт ревизию и записывает тот же JSON; отмена новой формы не оставляет пустой объект. Ошибка записи не закрывает форму и откатывает несохранённую ревизию.
-
-При редактировании завершённой оценки создаётся следующая ревизия, а старая доступна только для чтения через двойной щелчок в истории. При закрытии формы с изменениями пользователь выбирает: сохранить черновик, не сохранять либо продолжить редактирование; автоматического сохранения или молчаливого удаления изменений нет.
-# Фото и документы сущностей
-
-Прототип хранит файлы рядом с JSON-файлом состояния, в каталоге `files`. Один физический
-файл имеет ровно одного владельца: `BlastEvent` либо `AssessmentAreaEvaluation`. Для них
-используются независимые пути `files/blast_events/<BlastEvent.id>/` и
-`files/assessments/<AssessmentAreaEvaluation.id>/`, внутри которых находятся обычные
-папки `photos` и `documents`. Имена папок определяются стабильными внутренними ID:
-переименование сущности не меняет путь. Пользователь может открыть эту папку в файловом
-менеджере прямо из SlopeForge.
-
-Файлы оценки относятся ко всей `AssessmentAreaEvaluation` и видны одинаково из всех её
-ревизий. Создание новой ревизии не копирует файлы и не создаёт папки `R001`, `R002` и т. п.
-Добавление или удаление файла изменяет текущую общую коллекцию оценки. В модели нет
-ревизий вложений, общих assets/links, наследования и SHA-дедупликации. Поэтому один и тот
-же исходный файл, отдельно добавленный к BlastEvent и оценке, существует в двух физических
-копиях; удаление одной не затрагивает другую.
-
-В JSON сохраняются только метаданные и относительный путь. При удалении после явного
-подтверждения удаляются и физический файл, и запись. Если удаление с диска завершилось
-ошибкой, запись сохраняется. Уже отсутствующий файл помечается как «Файл отсутствует»:
-приложение продолжает работать, позволяет открыть папку и удалить повреждённую запись.
-Архивные сущности разрешают просмотр и открытие, но не изменение коллекции.
-
-Это локальный слой прототипа и он не меняет PostgreSQL/Alembic. При будущей интеграции
-каталог BlastEvent будет сопоставлен с хранилищем вложений основного `BlastBlock`, а каталог
-`AssessmentAreaEvaluation` — с будущим хранилищем файлов оценок.
+Later work can create read-side projections/views/ETL that flatten revisioned data into analysis-ready observations while leaving the operational revision model intact.
