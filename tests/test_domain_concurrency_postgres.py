@@ -45,7 +45,7 @@ def domains(factory):
         ids = first.id, second.id, site.id, mine.id
     yield ids
     with factory.begin() as session:
-        session.query(AuditLogEntry).delete(); session.query(orm.AssessmentWorkspace).delete()
+        session.query(AuditLogEntry).delete(); session.query(orm.BlastEvent).delete()
         session.query(BlastBlock).filter(BlastBlock.domain_id.in_(ids[:2])).delete()
         session.query(Domain).filter(Domain.id.in_(ids[:2])).delete()
         session.query(Site).filter_by(id=ids[2]).delete(); session.query(Mine).filter_by(id=ids[3]).delete()
@@ -82,8 +82,7 @@ def test_single_and_multi_domain_cas_and_failure_rollback(factory, domains):
 def test_two_stale_focused_assessment_sessions(factory, domains):
     domain_id, *_ = domains
     with factory.begin() as session:
-        workspace = orm.AssessmentWorkspace(domain_id=domain_id); session.add(workspace); session.flush()
-        row = orm.BlastEvent(workspace_id=workspace.id, domain_id="C-1", name="Contour",
+        row = orm.BlastEvent(domain_id=domain_id, logical_id="C-1", name="Contour",
                              event_type="contour", event_date=date.today(), elevation_m=100)
         session.add(row)
     event_a = BlastEvent("C-1", "Contour", "contour", date.today(), 100)

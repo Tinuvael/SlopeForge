@@ -20,7 +20,7 @@ class MemoryPersistence:
         self.saves = 0
 
     def load(self, domain_id):
-        return AssessmentStateSnapshot(domain_id, 7, None, self.state, self.saves)
+        return AssessmentStateSnapshot(domain_id, 7, self.state, self.saves)
 
     def __getattr__(self, name):
         if name.startswith(("persist_", "append_", "synchronize_", "add_", "update_", "delete_")):
@@ -28,7 +28,7 @@ class MemoryPersistence:
                 if self.fail:
                     raise RuntimeError("database unavailable")
                 self.saves += 1
-                return DomainWriteResult(expected_version + 1, 42)
+                return DomainWriteResult(expected_version + 1)
             return focused
         raise AttributeError(name)
 
@@ -63,7 +63,7 @@ def test_card_draft_creation_save_and_existing_revision_copy():
     editing.save_technical_card(card, draft, "draft")
     assert len(card.revisions) == 1
     assert card.active_revision_id == card.revisions[0].id
-    assert persistence.saves == 1 and editing.workspace_id == 42
+    assert persistence.saves == 1 and editing.expected_version == 1
 
     source = card.active_revision()
     _, edited = editing.technical_card_draft(event)

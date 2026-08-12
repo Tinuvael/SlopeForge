@@ -24,7 +24,7 @@ class SqlAlchemyBlastEventCreationPersistence:
 
     def load_state(self, domain_id: int) -> AssessmentStateSnapshot:
         loaded = self._states.load_for_domain(domain_id)
-        return AssessmentStateSnapshot(loaded.domain_id, loaded.site_id, loaded.workspace_id,
+        return AssessmentStateSnapshot(loaded.domain_id, loaded.site_id,
                                        loaded.state, loaded.expected_version)
 
     def persist_contour(self, domain_id: int, expected_version: int, event: BlastEvent) -> int:

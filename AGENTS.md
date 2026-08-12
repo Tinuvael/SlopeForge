@@ -51,8 +51,8 @@ Phase 4, 5A, 5B, and 5C are complete. Domain is the stable optimistic-concurrenc
 Issue #79 is the architecture gate:
 
 - 5C: COMPLETE — optimistic concurrency + removal of normal compatibility whole-state writes.
-- 6A: normalize Assessment ownership/schema; remove `AssessmentWorkspace` if proven transitional.
-- 6B: classify/remove duplicate legacy engineering persistence.
+- 6A: COMPLETE — `AssessmentWorkspace` was a persistence-only container and is removed; Blast events and Assessment areas now have direct Domain ownership, while persistence logical IDs use `logical_id`.
+- 6B: NEXT — classify/remove duplicate legacy engineering persistence.
 - 7: final package/naming/shim cleanup, DXF debt, docs/Windows/PostgreSQL validation, then architecture freeze for MVP.
 
 Do not build persistence-heavy new workflows on ownership that #79 is scheduled to remove.

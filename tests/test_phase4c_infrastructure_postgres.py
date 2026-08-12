@@ -57,8 +57,8 @@ def cleanup_project(factory, site_id):
         site = session.get(Site, site_id)
         if site is None: return
         mine_id = site.mine_id
-        session.execute(delete(orm.AssessmentWorkspace).where(
-            orm.AssessmentWorkspace.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
+        session.execute(delete(orm.BlastEvent).where(orm.BlastEvent.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
+        session.execute(delete(orm.AssessmentArea).where(orm.AssessmentArea.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
         session.execute(delete(orm.ProjectLinesDataset).where(orm.ProjectLinesDataset.site_id == site_id))
         session.execute(delete(BlastBlock).where(BlastBlock.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
         session.execute(delete(Domain).where(Domain.site_id == site_id))

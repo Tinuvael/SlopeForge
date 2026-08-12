@@ -103,24 +103,24 @@ class DashboardRepository:
             domain=s.get(Domain,domain_id)
             if domain is None: raise LookupError(f"Domain {domain_id} not found")
             blocks=list(s.scalars(select(BlastBlock).where(BlastBlock.domain_id==domain_id,BlastBlock.is_archived.is_(False))))
-            contours=list(s.scalars(select(a.BlastEvent).join(a.BlastEvent.workspace).where(a.AssessmentWorkspace.domain_id==domain_id,a.BlastEvent.event_type=="contour",a.BlastEvent.is_archived.is_(False))))
+            contours=list(s.scalars(select(a.BlastEvent).where(a.BlastEvent.domain_id==domain_id,a.BlastEvent.event_type=="contour",a.BlastEvent.is_archived.is_(False))))
             rows=s.execute(select(a.AssessmentArea,a.AssessmentAreaGeometryRevision,a.AssessmentAreaEvaluationRevision)
-                .join(a.AssessmentArea.workspace).join(a.AssessmentArea.geometry_revisions)
+                .join(a.AssessmentArea.geometry_revisions)
                 .outerjoin(a.AssessmentAreaEvaluation,(a.AssessmentAreaEvaluation.assessment_area_id==a.AssessmentArea.id)&a.AssessmentAreaEvaluation.is_archived.is_(False))
                 .outerjoin(a.AssessmentAreaEvaluationRevision,(a.AssessmentAreaEvaluationRevision.evaluation_id==a.AssessmentAreaEvaluation.id)&a.AssessmentAreaEvaluationRevision.is_active.is_(True))
-                .where(a.AssessmentWorkspace.domain_id==domain_id,a.AssessmentArea.is_archived.is_(False),a.AssessmentAreaGeometryRevision.is_active.is_(True))).all()
+                .where(a.AssessmentArea.domain_id==domain_id,a.AssessmentArea.is_archived.is_(False),a.AssessmentAreaGeometryRevision.is_active.is_(True))).all()
             areas=[]; intervals={}; quadrants={}
             for area,geo,ev in rows:
                 interval=f"{_number(geo.lower_elevation_m)}–{_number(geo.upper_elevation_m)}"
                 intervals[interval]=intervals.get(interval,0)+1
                 status=ev.status if ev else None; q=ev.result_quadrant if ev and status=="completed" else None
                 if q: quadrants[q]=quadrants.get(q,0)+1
-                areas.append(AreaRow(area.id,area.name,interval,(ev.assessment_date if ev else area.assessment_date),status,float(ev.design_achievement_index) if ev and ev.design_achievement_index is not None else None,float(ev.face_condition_index) if ev and ev.face_condition_index is not None else None,q))
+                areas.append(AreaRow(area.logical_id,area.name,interval,(ev.assessment_date if ev else area.assessment_date),status,float(ev.design_achievement_index) if ev and ev.design_achievement_index is not None else None,float(ev.face_condition_index) if ev and ev.face_condition_index is not None else None,q))
             completed=[x for x in areas if x.status=="completed"]
             avg=lambda key: (sum(v)/len(v) if (v:=[getattr(x,key) for x in completed if getattr(x,key) is not None]) else None)
             summary=DomainSummary(domain.id,domain.name,len(blocks),len(contours),len(areas),len(completed),sum(x.status=="draft" for x in areas),avg("dai"),avg("fci"))
             blasts=[BlastRow(x.id,"Production",x.block_number,_number(x.horizon_m),x.planned_blast_date,x.status) for x in blocks]
-            blasts += [BlastRow(x.id,"Contour",x.name,_number(x.elevation_m),x.event_date,"—") for x in contours]
+            blasts += [BlastRow(x.logical_id,"Contour",x.name,_number(x.elevation_m),x.event_date,"—") for x in contours]
             activity=[(f"Assessment Area: {area.name}",area.updated_at) for area,_,_ in rows]
             activity += [(f"Evaluation: {area.name}",ev.created_at) for area,_,ev in rows if ev is not None]
             activity += [(f"Block {x.block_number}",x.updated_at) for x in blocks]+[(x.name,x.updated_at) for x in contours]
@@ -129,14 +129,14 @@ class DashboardRepository:
             dataset=s.scalar(select(a.ProjectLinesDataset).where(a.ProjectLinesDataset.site_id==domain.site_id,a.ProjectLinesDataset.is_active.is_(True)))
             project_lines=_project_line_geometries(dataset)
             active_block_ids={x.id for x in blocks}
-            geometry_rows=s.execute(select(a.BlastEvent,a.BlastEventGeometryRevision).join(a.BlastEvent.workspace).join(a.BlastEvent.geometry_revisions).where(a.AssessmentWorkspace.domain_id==domain_id,a.BlastEvent.is_archived.is_(False),a.BlastEventGeometryRevision.is_active.is_(True))).all()
+            geometry_rows=s.execute(select(a.BlastEvent,a.BlastEventGeometryRevision).join(a.BlastEvent.geometry_revisions).where(a.BlastEvent.domain_id==domain_id,a.BlastEvent.is_archived.is_(False),a.BlastEventGeometryRevision.is_active.is_(True))).all()
             production_geometries=[]; contour_geometries=[]
             for event,revision in geometry_rows:
                 points=_geometry_points(revision.plan_geometry_json)
                 if not points: continue
                 target=production_geometries if event.event_type=="production" and event.blast_block_id in active_block_ids else contour_geometries if event.event_type=="contour" else None
-                if target is not None: target.append(MapGeometry(event.blast_block_id if event.blast_block_id else event.id,points))
-            assessment_geometries=tuple(MapGeometry(area.id,_geometry_points(geo.final_geometry_json),ev.result_quadrant if ev and ev.status=="completed" else None) for area,geo,ev in rows if _geometry_points(geo.final_geometry_json))
+                if target is not None: target.append(MapGeometry(event.blast_block_id if event.blast_block_id else event.logical_id,points))
+            assessment_geometries=tuple(MapGeometry(area.logical_id,_geometry_points(geo.final_geometry_json),ev.result_quadrant if ev and ev.status=="completed" else None) for area,geo,ev in rows if _geometry_points(geo.final_geometry_json))
             if site_geometry is None: site_geometry=_load_site_domain_geometry(s,domain.site_id)
             domain_geometries,source_kind,source_file_name=site_geometry.for_domain(domain_id)
             return DomainDashboardSnapshot(summary,areas,blasts,intervals,quadrants,recent,project_lines,tuple(production_geometries),tuple(contour_geometries),assessment_geometries,domain_geometries,source_kind,source_file_name)

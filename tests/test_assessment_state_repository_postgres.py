@@ -72,9 +72,8 @@ def assessment_context(session_factory):
         context = AssessmentContext(site.id, domain.id, mine.id)
     yield context
     with session_factory.begin() as session:
-        workspace = session.scalar(select(orm.AssessmentWorkspace).where(
-            orm.AssessmentWorkspace.domain_id == context.domain_id))
-        if workspace: session.delete(workspace); session.flush()
+        session.query(orm.BlastEvent).filter_by(domain_id=context.domain_id).delete()
+        session.query(orm.AssessmentArea).filter_by(domain_id=context.domain_id).delete()
         session.query(orm.ProjectLinesDataset).filter_by(site_id=context.site_id).delete()
         session.query(BlastBlock).filter_by(domain_id=context.domain_id).delete()
         session.query(Domain).filter_by(id=context.domain_id).delete()
@@ -114,7 +113,7 @@ def test_missing_domain_and_empty_domain(session_factory, assessment_context):
     repository = AssessmentStateRepository(session_factory)
     with pytest.raises(AssessmentSiteNotFoundError): repository.load_for_domain(2_000_000_000)
     loaded = repository.load_for_domain(assessment_context.domain_id)
-    assert loaded.workspace_id is None and semantic(loaded.state) == semantic(type(loaded.state)())
+    assert semantic(loaded.state) == semantic(type(loaded.state)())
 
 
 def test_read_loads_realistic_seeded_graph(session_factory, assessment_context):
@@ -122,7 +121,7 @@ def test_read_loads_realistic_seeded_graph(session_factory, assessment_context):
     persist_project_lines(session_factory, assessment_context.site_id, expected)
     saved = AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, expected)
     loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
-    assert loaded.workspace_id == saved.workspace_id
+    assert loaded.domain_id == saved.domain_id
     assert semantic(loaded.state) == semantic(expected)
     assert loaded.state.active_dataset().id == "D2"
     assert loaded.state.blast_events[0].active_geometry_revision_id == "BE-P-R2"
@@ -153,7 +152,7 @@ def test_cross_event_card_geometry_corruption_is_detected(session_factory, asses
     AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, state)
     with session_factory.begin() as session:
         contour_geometry = session.scalar(select(orm.BlastEventGeometryRevision.id).join(orm.BlastEvent).where(
-            orm.BlastEvent.domain_id == "BE-C"))
+            orm.BlastEvent.logical_id == "BE-C"))
         card_revision = session.scalar(select(orm.BlastEventTechnicalCardRevision.id))
         session.execute(update(orm.BlastEventTechnicalCardRevision).where(
             orm.BlastEventTechnicalCardRevision.id == card_revision).values(
@@ -175,7 +174,7 @@ def test_cross_area_evaluation_geometry_corruption_is_detected(session_factory, 
     AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, state)
     with session_factory.begin() as session:
         other_geometry = session.scalar(select(orm.AssessmentAreaGeometryRevision.id).join(orm.AssessmentArea).where(
-            orm.AssessmentArea.domain_id == "AA-OTHER"))
+            orm.AssessmentArea.logical_id == "AA-OTHER"))
         evaluation_revision = session.scalar(select(orm.AssessmentAreaEvaluationRevision.id))
         session.execute(update(orm.AssessmentAreaEvaluationRevision).where(
             orm.AssessmentAreaEvaluationRevision.id == evaluation_revision).values(
@@ -220,7 +219,7 @@ def test_focused_attachment_batch_rolls_back_every_row_on_second_insert(session_
             assessment_context.domain_id, 0, [first, second])
     with session_factory() as session:
         assert session.scalar(select(func.count()).select_from(orm.AssessmentEntityAttachment).where(
-            orm.AssessmentEntityAttachment.domain_id == first.id)) == 0
+            orm.AssessmentEntityAttachment.logical_id == first.id)) == 0
 
 
 def test_focused_lazy_owner_and_attachment_batch_roll_back_together(session_factory, assessment_context):
@@ -237,9 +236,9 @@ def test_focused_lazy_owner_and_attachment_batch_roll_back_together(session_fact
             assessment_context.domain_id, 0, [first, second], owner)
     with session_factory() as session:
         assert session.scalar(select(orm.AssessmentAreaEvaluation.id).where(
-            orm.AssessmentAreaEvaluation.domain_id == owner.id)) is None
+            orm.AssessmentAreaEvaluation.logical_id == owner.id)) is None
         assert session.scalar(select(orm.AssessmentEntityAttachment.id).where(
-            orm.AssessmentEntityAttachment.domain_id == first.id)) is None
+            orm.AssessmentEntityAttachment.logical_id == first.id)) is None
 
 
 def test_active_link_write_does_not_leak_historical_live_mutation(session_factory, assessment_context):
@@ -305,24 +304,19 @@ def test_cross_domain_evaluation_and_attachment_mutations_are_rejected(session_f
     with session_factory.begin() as session:
         foreign_domain = Domain(site_id=assessment_context.site_id, name="Foreign focused guard")
         session.add(foreign_domain); session.flush()
-        foreign_workspace = orm.AssessmentWorkspace(domain_id=foreign_domain.id)
-        session.add(foreign_workspace); session.flush()
         foreign_domain_id = foreign_domain.id
     writer = SqlAlchemyAssessmentWrites(session_factory)
     attachment = deepcopy(state.attachments[0]); attachment.title = "must not change"
     try:
-        with pytest.raises(ValueError, match="another Assessment workspace"):
+        with pytest.raises(ValueError, match="another Domain"):
             writer.persist_evaluation_owner(foreign_domain_id, 0, state.evaluations[0])
-        with pytest.raises(ValueError, match="another Assessment workspace"):
+        with pytest.raises(ValueError, match="another Domain"):
             writer.update_attachment_metadata(foreign_domain_id, 0, attachment)
-        with pytest.raises(ValueError, match="another Assessment workspace"):
+        with pytest.raises(ValueError, match="another Domain"):
             writer.delete_attachment_metadata(foreign_domain_id, 0, attachment.id)
         loaded = AssessmentStateRepository(session_factory).load_for_domain(
             assessment_context.domain_id).state
         assert next(x.title for x in loaded.attachments if x.id == attachment.id) != "must not change"
     finally:
         with session_factory.begin() as session:
-            workspace = session.scalar(select(orm.AssessmentWorkspace).where(
-                orm.AssessmentWorkspace.domain_id == foreign_domain_id))
-            if workspace: session.delete(workspace); session.flush()
             session.query(Domain).filter_by(id=foreign_domain_id).delete()

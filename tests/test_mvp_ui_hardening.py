@@ -310,9 +310,9 @@ def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
     from application.ports.domain_version import DomainWriteResult
     class Writes:
         def __getattr__(self, name):
-            return lambda domain_id, expected_version, *args: DomainWriteResult(expected_version + 1, 1)
+            return lambda domain_id, expected_version, *args: DomainWriteResult(expected_version + 1)
     controller.can_edit = True; controller.domain_id = 1; controller.expected_version = 0
-    controller.workspace_id = None; controller._writes = Writes()
+    controller._writes = Writes()
 
     transient, _draft = controller.evaluation_draft(area)
     owner = controller.ensure_evaluation_owner(area, transient)

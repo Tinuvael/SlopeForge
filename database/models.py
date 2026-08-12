@@ -66,10 +66,9 @@ class Domain(TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     site: Mapped[Site] = relationship(back_populates="domains")
-    assessment_workspace: Mapped[Optional["AssessmentWorkspace"]] = relationship(
-        back_populates="domain", uselist=False
-    )
     blast_blocks: Mapped[list["BlastBlock"]] = relationship(back_populates="domain")
+    blast_events: Mapped[list["BlastEvent"]] = relationship(back_populates="domain")
+    assessment_areas: Mapped[list["AssessmentArea"]] = relationship(back_populates="domain")
     geometry: Mapped[Optional["DomainGeometry"]] = relationship(
         back_populates="domain", uselist=False, cascade="all, delete-orphan", passive_deletes=True
     )

@@ -12,7 +12,6 @@ class SqlAlchemyAssessmentStatePersistence:
         return AssessmentStateSnapshot(
             domain_id=loaded.domain_id,
             site_id=loaded.site_id,
-            workspace_id=loaded.workspace_id,
             expected_version=loaded.expected_version,
             state=loaded.state,
         )

@@ -23,7 +23,8 @@ def test_startup_requires_assessment_tables_and_does_not_run_migrations(monkeypa
 
     message = str(caught.value)
     assert "assessment_" in message or "blast_event_" in message
-    assert "assessment_workspaces" in startup.Base.metadata.tables
+    assert "assessment_workspaces" not in startup.Base.metadata.tables
+    assert "blast_events" in startup.Base.metadata.tables
     assert "assessment_entity_attachments" in startup.Base.metadata.tables
 
 
