@@ -80,6 +80,8 @@ After schema cleanup, Phase 7A:
   widget placeholders, and backwards report shim;
 - moved ProjectTree to `ui/widgets`, AppContext to `app/context.py`, and the
   concrete OpenPyXL implementation to `infrastructure/reports`;
+- placed `CurrentUser` in `application/dto/current_user.py`, leaving AppContext
+  in bootstrap while preventing any `infrastructure -> app` dependency;
 - moved active concrete services under `infrastructure/services`, deleted the
   uncalled import-time distance script, and retained the tightly coupled root database/repository graph
   rather than performing a mechanical move with no boundary benefit.

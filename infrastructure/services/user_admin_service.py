@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from app.context import CurrentUser
+from application.dto.current_user import CurrentUser
 from database.models import User
 from infrastructure.services.session_service import RememberTokenService
 

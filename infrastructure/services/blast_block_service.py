@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select
 
-from app.context import CurrentUser
+from application.dto.current_user import CurrentUser
 from database.models import BlastBlock, Domain
 from repositories.audit_log_repository import AuditLogRepository
 from repositories.blast_block_repository import BlastBlockRepository, BlastBlockRow

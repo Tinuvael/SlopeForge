@@ -15,7 +15,8 @@ def test_report_is_deterministic_and_contains_expected_hotspots() -> None:
     second = report()
 
     assert first == second
-    assert "## UI direct persistence/service imports" in first
+    assert "## UI direct outer-layer imports" in first
+    assert "ui.auth_dialogs -> infrastructure.services.auth_service" in first
     assert "## Circular internal dependencies\n-" in first
 
 

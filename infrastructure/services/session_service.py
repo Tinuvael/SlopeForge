@@ -11,9 +11,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
-from app.context import CurrentUser
+from application.dto.current_user import CurrentUser
 from database.models import RememberToken, User
 
 REMEMBER_DAYS = 90

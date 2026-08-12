@@ -61,6 +61,13 @@ New adapters belong in `infrastructure/`. Root `reports/`, `widgets/`, and
 `services/` were removed: their active implementations are canonical under
 `infrastructure/reports/`, `ui/widgets/`, and `infrastructure/services/`.
 
+`CurrentUser` is an application DTO in `application/dto/current_user.py`.
+`AppContext` remains bootstrap-only composition in `app/context.py` and imports
+that DTO. Infrastructure never imports `app`. Three older application services
+(`attachments`, `blast_events`, and `project_lines`) still select existing file
+or geometry adapters directly; they are narrowly ratcheted exceptions whose
+proper port/composition redesign is outside this package-only phase.
+
 ## Product ownership model
 
 User-facing hierarchy:
@@ -199,6 +206,15 @@ the backwards root report shim were deleted. Active concrete services moved to
 `infrastructure/services/`; the uncalled import-time distance script was deleted.
 Architecture ratchets prevent these
 paths/imports from returning.
+
+The corrected audit exposes all 23 deliberate direct UI outer-layer imports:
+authentication (1), Block dialog/cards/page (8), geometry-import dialogs and
+Domain dashboard import support (2), dashboard repositories (4), settings/user
+administration services (4), and ProjectTree repositories (4), for 23 unique
+edges.
+These working MVP dependencies remain visible rather than being hidden by the
+move from `services.*` to `infrastructure.services.*`. Replacing them would be a
+workflow redesign, not package normalization.
 
 Mine remains an intentional internal Site-persistence compatibility detail, not
 normal product hierarchy. The active root database/repository graph is
