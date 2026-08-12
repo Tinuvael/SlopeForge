@@ -7,6 +7,7 @@ import importlib
 import math
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,6 +21,9 @@ from domain.geometry.types import DatamineLine, DataminePoint
 from domain.blasting.technical_card import BlastEventTechnicalCard, new_technical_card
 from domain.assessment.evaluation import AssessmentAreaEvaluation, AssessmentAreaEvaluationService
 from repositories.assessment_state_mapper import AssessmentStateValidationError, validate_assessment_state
+from repositories.assessment_state_repository import (
+    AssessmentPersistenceCorruptionError, _assert_link_same_domain,
+)
 
 NOW = datetime(2026, 8, 4, 12, tzinfo=timezone.utc)
 
@@ -89,6 +93,16 @@ def invalid(state, text=None):
 
 def test_empty_state_is_valid(): validate_assessment_state(AssessmentDomainState())
 def test_rich_state_is_valid(rich_state): validate_assessment_state(rich_state)
+
+
+def test_persistence_link_domain_guard_compares_integer_owners_not_logical_ids():
+    area = SimpleNamespace(domain_id=7, logical_id="AREA-7")
+    same_domain = SimpleNamespace(blast_event=SimpleNamespace(domain_id=7))
+    foreign_domain = SimpleNamespace(blast_event=SimpleNamespace(domain_id=8))
+
+    _assert_link_same_domain(area, same_domain)
+    with pytest.raises(AssessmentPersistenceCorruptionError, match="different Domains"):
+        _assert_link_same_domain(area, foreign_domain)
 
 
 def test_duplicate_top_level_ids(rich_state):

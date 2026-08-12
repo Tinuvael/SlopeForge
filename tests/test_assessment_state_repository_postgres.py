@@ -133,6 +133,34 @@ def test_read_loads_realistic_seeded_graph(session_factory, assessment_context):
     assert loaded.state.assessment_areas[0].geometry_revisions[-1].change_reason is None
 
 
+def test_cross_domain_assessment_event_link_is_rejected(session_factory, assessment_context):
+    """A relationally valid FK must still not bridge two owning Domains."""
+    state = build_rich_state()
+    persist_project_lines(session_factory, assessment_context.site_id, state)
+    AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, state)
+    with session_factory.begin() as session:
+        foreign = Domain(site_id=assessment_context.site_id, name="Foreign link owner")
+        session.add(foreign); session.flush()
+        foreign_event = orm.BlastEvent(
+            domain_id=foreign.id, logical_id="FOREIGN-EVENT", name="Foreign",
+            event_type="contour", elevation_m=100,
+        )
+        session.add(foreign_event); session.flush()
+        foreign_geometry = orm.BlastEventGeometryRevision(
+            blast_event=foreign_event, logical_id="FOREIGN-GEOMETRY", revision_number=1,
+            imported_at=datetime.now(timezone.utc), source_file_name="foreign.csv",
+            source_geometry_json=[], plan_geometry_json={"type": "Point", "coordinates": [0, 0]},
+            elevation_m=100, is_active=True,
+        )
+        session.add(foreign_geometry); session.flush()
+        link_id = session.scalar(select(orm.AssessmentEventLink.id))
+        session.execute(update(orm.AssessmentEventLink).where(
+            orm.AssessmentEventLink.id == link_id).values(
+                blast_event_geometry_revision_id=foreign_geometry.id))
+    with pytest.raises(AssessmentPersistenceCorruptionError, match="different Domains"):
+        AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
+
+
 def test_payload_mismatch_is_corruption(session_factory, assessment_context):
     state = build_rich_state()
     persist_project_lines(session_factory, assessment_context.site_id, state)

@@ -19,6 +19,18 @@ _LOGICAL_TABLES = (
     "assessment_entity_attachments",
 )
 
+_CONSTRAINT_RENAMES = (
+    ("project_lines_datasets", "uq_project_lines_datasets_site_domain_id", "uq_project_lines_datasets_site_logical_id"),
+    ("blast_event_geometry_revisions", "uq_blast_event_geometry_revisions_parent_domain_id", "uq_blast_event_geometry_revisions_parent_logical_id"),
+    ("blast_event_technical_cards", "uq_blast_event_technical_cards_domain_id", "uq_blast_event_technical_cards_logical_id"),
+    ("blast_event_technical_card_revisions", "uq_technical_card_revisions_parent_domain_id", "uq_technical_card_revisions_parent_logical_id"),
+    ("assessment_area_geometry_revisions", "uq_assessment_area_geometry_revisions_parent_domain_id", "uq_assessment_area_geometry_revisions_parent_logical_id"),
+    ("assessment_event_links", "uq_assessment_event_links_parent_domain_id", "uq_assessment_event_links_parent_logical_id"),
+    ("assessment_area_evaluations", "uq_assessment_area_evaluations_domain_id", "uq_assessment_area_evaluations_logical_id"),
+    ("assessment_area_evaluation_revisions", "uq_assessment_evaluation_revisions_parent_domain_id", "uq_assessment_evaluation_revisions_parent_logical_id"),
+    ("assessment_entity_attachments", "uq_assessment_entity_attachments_domain_id", "uq_assessment_entity_attachments_logical_id"),
+)
+
 
 def upgrade() -> None:
     # Preserve the public/domain-layer identifiers while giving ownership FKs
@@ -51,18 +63,7 @@ def upgrade() -> None:
     # Constraint names are documentation too: rename those that described a
     # logical identifier as a Domain FK. PostgreSQL keeps their definitions
     # valid through the column rename.
-    renames = (
-        ("project_lines_datasets", "uq_project_lines_datasets_site_domain_id", "uq_project_lines_datasets_site_logical_id"),
-        ("blast_event_geometry_revisions", "uq_blast_event_geometry_revisions_parent_domain_id", "uq_blast_event_geometry_revisions_parent_logical_id"),
-        ("blast_event_technical_cards", "uq_blast_event_technical_cards_domain_id", "uq_blast_event_technical_cards_logical_id"),
-        ("blast_event_technical_card_revisions", "uq_technical_card_revisions_parent_domain_id", "uq_technical_card_revisions_parent_logical_id"),
-        ("assessment_area_geometry_revisions", "uq_assessment_area_geometry_revisions_parent_domain_id", "uq_assessment_area_geometry_revisions_parent_logical_id"),
-        ("assessment_event_links", "uq_assessment_event_links_parent_domain_id", "uq_assessment_event_links_parent_logical_id"),
-        ("assessment_area_evaluations", "uq_assessment_area_evaluations_domain_id", "uq_assessment_area_evaluations_logical_id"),
-        ("assessment_area_evaluation_revisions", "uq_assessment_evaluation_revisions_parent_domain_id", "uq_assessment_evaluation_revisions_parent_logical_id"),
-        ("assessment_entity_attachments", "uq_assessment_entity_attachments_domain_id", "uq_assessment_entity_attachments_logical_id"),
-    )
-    for table, old, new in renames:
+    for table, old, new in _CONSTRAINT_RENAMES:
         op.execute(sa.text(f"ALTER TABLE {table} RENAME CONSTRAINT {old} TO {new}"))
 
 
@@ -71,10 +72,14 @@ def downgrade() -> None:
     op.create_table(
         "assessment_workspaces",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("domain_id", sa.Integer(), sa.ForeignKey("domains.id", ondelete="RESTRICT"), nullable=False, unique=True),
+        sa.Column("domain_id", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
+    op.create_foreign_key("fk_assessment_workspaces_domain_id", "assessment_workspaces",
+                          "domains", ["domain_id"], ["id"], ondelete="RESTRICT")
+    op.create_unique_constraint("uq_assessment_workspaces_domain_id",
+                                "assessment_workspaces", ["domain_id"])
     op.execute("INSERT INTO assessment_workspaces (domain_id) SELECT id FROM domains")
     for table in ("blast_events", "assessment_areas"):
         op.add_column(table, sa.Column("workspace_id", sa.Integer(), nullable=True))
@@ -93,5 +98,9 @@ def downgrade() -> None:
     op.create_index("ix_assessment_areas_workspace_id", "assessment_areas", ["workspace_id"])
     op.drop_constraint("fk_assessment_areas_domain_id", "assessment_areas", type_="foreignkey")
     op.drop_column("assessment_areas", "domain_id")
+    # Restore names as well as columns: migration 0006 addresses these exact
+    # historical constraint names when continuing toward base.
+    for table, old, new in reversed(_CONSTRAINT_RENAMES):
+        op.execute(sa.text(f"ALTER TABLE {table} RENAME CONSTRAINT {new} TO {old}"))
     for table in _LOGICAL_TABLES + ("blast_events", "assessment_areas"):
         op.alter_column(table, "logical_id", new_column_name="domain_id")

@@ -44,6 +44,14 @@ def _assert_payload(payload, expected, kind: str) -> None:
                 f"{kind} payload field {key!r} disagrees with relational data")
 
 
+def _assert_link_same_domain(area_row: orm.AssessmentArea,
+                             target: orm.BlastEventGeometryRevision) -> None:
+    """Reject links whose two parent aggregates have different Domain owners."""
+    if target.blast_event.domain_id != area_row.domain_id:
+        raise AssessmentPersistenceCorruptionError(
+            "AssessmentEventLink connects revisions from different Domains")
+
+
 def _state_from_domain(events_rows: list[orm.BlastEvent], areas_rows: list[orm.AssessmentArea],
                        dataset_rows: list[orm.ProjectLinesDataset]) -> AssessmentDomainState:
     events, areas, cards, evaluations, attachments = [], [], [], [], []
@@ -99,9 +107,7 @@ def _state_from_domain(events_rows: list[orm.BlastEvent], areas_rows: list[orm.A
                 "horizon_slices": revision.horizon_slices_json, "change_reason": revision.change_reason})
             for link in sorted(revision.event_links, key=lambda x: (x.created_at, x.id)):
                 target = link.blast_event_geometry_revision
-                if target.blast_event.domain_id != row.logical_id:
-                    raise AssessmentPersistenceCorruptionError(
-                        "AssessmentEventLink connects revisions from different Domains")
+                _assert_link_same_domain(row, target)
                 event_domain, geometry_domain = geometry_owner[link.blast_event_geometry_revision_id]
                 links.append({"id": link.logical_id, "assessment_area_geometry_revision_id": revision.logical_id,
                     "blast_event_id": event_domain, "geometry_revision_id": geometry_domain,
