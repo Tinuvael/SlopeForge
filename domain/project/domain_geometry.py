@@ -36,7 +36,17 @@ def build_domain_polygons(
         if len(xy) < 2 or hypot(xy[0].x - xy[-1].x, xy[0].y - xy[-1].y) > tolerance:
             open_count += 1
             continue
-        vertices = xy[:-1]
+        # A closed 3D source can end A(z2), A(z1): DXF needs both points to
+        # retain its vertical closing segment, while the XY footprint needs
+        # exactly one terminal A.  Normalize only this derived projection.
+        ring = list(xy)
+        while (
+            len(ring) >= 2
+            and hypot(ring[-1].x - ring[0].x, ring[-1].y - ring[0].y) <= tolerance
+            and hypot(ring[-2].x - ring[0].x, ring[-2].y - ring[0].y) <= tolerance
+        ):
+            ring.pop()
+        vertices = tuple(ring[:-1])
         distinct: list[PlanPoint] = []
         for point in vertices:
             if not any(hypot(point.x-other.x, point.y-other.y) <= tolerance for other in distinct):

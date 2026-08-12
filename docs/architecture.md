@@ -20,7 +20,9 @@ implementation was deleted rather than retained as test support. Block pages use
 editing controller's current version as their single token, so a successful Technical
 Card, geometry, or attachment write cannot make a later Block edit self-stale.
 
-Phases 5C, 6A, 6B, and 7A are complete. Phase 7B is next; issue #79 as a whole is not complete.
+Phases 5C, 6A, 6B, and 7A are complete. Phase 7B code cleanup is complete;
+PostgreSQL-from-scratch and Windows/Python 3.12 runtime validation were not
+available in the Linux development environment, so issue #79 remains open.
 
 ## Dependency direction
 
@@ -185,13 +187,16 @@ Architecture PRs should reduce transitional allowlists rather than add new excep
 Before architecture freeze for MVP:
 
 - complete #79 Phase 5C/6/7;
-- resolve remaining known DXF-version-sensitive test debt separately from unrelated work;
+- keep the resolved DXF adapter contract covered across supported ezdxf versions;
 - verify PostgreSQL from a clean database;
 - verify Windows/Python 3.12 behavior;
 - update README/current docs;
 - remove proven dead shims/compatibility paths.
 
-After Phase 7, freeze architecture until after MVP release except for defects that block release correctness.
+After #79 is closed, freeze architecture until after MVP release except for
+release-blocking defects and focused work required by explicit product issues.
+Do not restart package reshuffles, generic abstraction campaigns, microservices,
+or speculative analytics architecture without a concrete need.
 
 
 ## Phase 7A — COMPLETE
@@ -218,9 +223,21 @@ workflow redesign, not package normalization.
 
 Mine remains an intentional internal Site-persistence compatibility detail, not
 normal product hierarchy. The active root database/repository graph is
-retained to avoid a mechanical high-risk move. Phase 7B remains: DXF debt,
-PostgreSQL-from-scratch verification, Windows/Python 3.12 validation, and final
-architecture freeze. Issue #79 remains open.
+retained to avoid a mechanical high-risk move.
+
+## Phase 7B code cleanup — COMPLETE; external validation pending
+
+The DXF adapter preserves a closed polyline's complete WCS XYZ path, including
+an implicit closing 3D segment when explicit endpoints share XY but differ in
+Z. Domain and Production builders normalize repeated terminal points only when
+deriving their XY footprints. Straight
+LWPOLYLINE, legacy 2D POLYLINE, and legacy 3D POLYLINE behavior is covered by
+focused regressions; curved and unsupported entity policy is unchanged.
+
+PostgreSQL-from-scratch validation was **NOT EXECUTED** because
+`TEST_DATABASE_URL` was unavailable. Windows/Python 3.12 runtime validation was
+**NOT EXECUTED** because this pass ran on Linux with Python 3.14. Issue #79 must
+remain open until both external release checks are executed successfully.
 
 ## Phase 6A — COMPLETE
 

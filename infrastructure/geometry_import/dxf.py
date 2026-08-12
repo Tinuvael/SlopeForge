@@ -32,7 +32,10 @@ class DxfImportResult:
 
 
 def _same_xyz(a, b, tolerance: float = 1e-9) -> bool:
-    return all(isclose(float(x), float(y), abs_tol=tolerance, rel_tol=0.0) for x, y in zip(a, b))
+    return all(
+        isclose(float(x), float(y), abs_tol=tolerance, rel_tol=0.0)
+        for x, y in zip(a, b)
+    )
 
 
 def import_dxf_polylines(path: str | Path) -> DxfImportResult:

@@ -86,12 +86,16 @@ After schema cleanup, Phase 7A:
   uncalled import-time distance script, and retained the tightly coupled root database/repository graph
   rather than performing a mechanical move with no boundary benefit.
 
-### Phase 7B — NEXT: validation and architecture freeze
+### Phase 7B — code cleanup COMPLETE; external validation pending
 
-- resolve the known DXF-version-sensitive test debt as focused work;
-- verify PostgreSQL from a clean database through migrations;
-- run Windows/Python 3.12 release validation;
-- perform the final architecture freeze. Issue #79 remains open until then.
+- the known DXF-version-sensitive test debt is resolved by explicit WCS/XYZ
+  closure normalization in the importer and XY normalization in plan builders;
+- PostgreSQL clean-database migration/integration validation is **NOT EXECUTED**
+  until a dedicated `TEST_DATABASE_URL` is available;
+- Windows/Python 3.12 runtime validation is **NOT EXECUTED** in the Linux
+  development environment;
+- perform the final architecture freeze only after those external checks pass.
+  Issue #79 remains open until then.
 
 ## Core prerequisites around architecture
 
