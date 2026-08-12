@@ -27,7 +27,7 @@ The MVP does not provide PDF reports, GIS, AI recommendations, TARP, or automati
 
 ## Database setup
 
-SlopeForge uses PostgreSQL, SQLAlchemy 2.x, psycopg 3, Alembic, environment variables, and Argon2 password hashing. See [docs/database_setup.md](docs/database_setup.md).
+SlopeForge uses PostgreSQL as its only application database, with SQLAlchemy 2.x, psycopg 3, Alembic, environment variables, and Argon2 password hashing. The desktop package does not bundle a SQLite database. See [docs/database_setup.md](docs/database_setup.md).
 
 ## Development
 

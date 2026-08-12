@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from database.app_context import CurrentUser
+from app.context import CurrentUser
 from database.models import User
 
 

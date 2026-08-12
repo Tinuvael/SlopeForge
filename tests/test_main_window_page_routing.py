@@ -5,13 +5,13 @@ from pathlib import Path
 def source(path): return Path(path).read_text(encoding="utf-8")
 
 def test_tree_is_primary_navigation_without_project_lines_branch():
-    tree=source("widgets/project_tree.py")
+    tree=source("ui/widgets/project_tree.py")
     assert '"Project Lines"' not in tree
     assert '"type":"horizon"' in tree and '"type":"interval"' in tree
     assert 'kind in {"folder","horizon","interval"}' in tree
 
 def test_project_and_domain_filters_are_user_facing():
-    tree=source("widgets/project_tree.py")
+    tree=source("ui/widgets/project_tree.py")
     assert "project_filter" in tree and "domain_filter" in tree and "status_filter" in tree
     assert "mine_filter" not in tree and "site_filter" not in tree
     assert "Show archived" in tree
@@ -56,7 +56,7 @@ def test_archive_button_and_block_service_are_connected():
     assert "archive_button" in source("ui/header.py")
     main=source("ui/main_window.py")
     assert "archive_requested.connect(self._archive_selected)" in main
-    assert "set_archived" in source("services/blast_block_service.py")
+    assert "set_archived" in source("infrastructure/services/blast_block_service.py")
 
 def test_block_page_embeds_geometry_and_revision_safe_technical_card_tabs():
     block=source("ui/pages/block_page.py")
@@ -115,7 +115,7 @@ def test_existing_block_dialog_preserves_zero_and_none_and_locks_linked_domain()
     assert "Moving a Block between Domains is not available yet" in dialog and "self.domain.setEnabled(False)" in dialog
 
 def test_contour_event_ui_and_tree_architecture():
-    tree=source("widgets/project_tree.py")
+    tree=source("ui/widgets/project_tree.py")
     assert '"Blast events"' in tree and '"Blast blocks"' not in tree
     assert "list_contour_events" in tree and '"type":"contour"' in tree
     header=source("ui/header.py")

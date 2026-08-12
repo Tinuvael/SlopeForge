@@ -1,6 +1,6 @@
 # PostgreSQL setup
 
-SlopeForge uses PostgreSQL as its application database through SQLAlchemy 2.x, psycopg 3, and Alembic.
+SlopeForge uses PostgreSQL as its only application database through SQLAlchemy 2.x, psycopg 3, and Alembic. The retired desktop SQLite file is not a runtime or packaged asset.
 
 ## Install dependencies
 
@@ -97,7 +97,7 @@ Fast/normal development checks:
 ```bash
 pytest <relevant tests>
 python tools/architecture_audit.py
-python -m compileall app application domain infrastructure database repositories services ui widgets
+python -m compileall app application domain infrastructure database repositories ui
 git diff --check
 ```
 

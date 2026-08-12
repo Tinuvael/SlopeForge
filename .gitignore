@@ -61,6 +61,9 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Retired SlopeForge desktop SQLite runtime file (not database fixtures).
+/data/slopeforge.db
+
 # Flask stuff:
 instance/
 .webassets-cache
@@ -216,4 +219,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-

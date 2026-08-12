@@ -90,7 +90,7 @@ def test_internal_group_ids_are_not_rendered_in_technical_card():
 
 def test_header_tree_and_block_tabs_use_translated_presentation_labels():
     header = (ROOT / "ui" / "header.py").read_text(encoding="utf-8")
-    tree_source = (ROOT / "widgets" / "project_tree.py").read_text(encoding="utf-8")
+    tree_source = (ROOT / "ui" / "widgets" / "project_tree.py").read_text(encoding="utf-8")
     block = (ROOT / "ui" / "pages" / "block_page.py").read_text(encoding="utf-8")
     for label in ("Add project", "Add domain", "Add blast event", "Add assessment area", "Archive"):
         assert f'tr("{label}")' in header

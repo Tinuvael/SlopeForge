@@ -42,7 +42,12 @@ PySide6 UI
 - `app/` + `main.py`: bootstrap, configuration, localization, dependency wiring.
 - Do not add microservices or interface-per-class ceremonial abstractions without a real boundary need.
 
-Root `database/`, `repositories/`, `services/`, `reports/`, and `widgets/` are transitional while architecture cleanup remains open. Move/remove them only after caller classification.
+Root `reports/`, `widgets/`, and `services/` were retired in Phase 7A. Report
+writers and concrete authentication/session/Block services now live under
+`infrastructure/`, and Qt widgets under `ui/widgets/`. Root `database/` and
+`repositories/` remain an active, coupled ORM graph intentionally retained until
+a focused move has more benefit than import churn. New adapters belong under
+`infrastructure/`.
 
 ### Current migration state
 
@@ -53,7 +58,8 @@ Issue #79 is the architecture gate:
 - 5C: COMPLETE — optimistic concurrency + removal of normal compatibility whole-state writes.
 - 6A: COMPLETE — `AssessmentWorkspace` was a persistence-only container and is removed; Blast events and Assessment areas now have direct Domain ownership, while persistence logical IDs use `logical_id`.
 - 6B: COMPLETE — duplicate legacy engineering persistence and Block-owned attachments are removed; the revisioned Technical Card and AssessmentEntityAttachment remain canonical.
-- 7: NEXT — final package/naming/shim cleanup, DXF debt, docs/Windows/PostgreSQL validation, then architecture freeze for MVP.
+- 7A: COMPLETE — package/shim/dead-compatibility normalization.
+- 7B: NEXT — DXF debt, PostgreSQL-from-scratch verification, Windows/Python 3.12 validation, and final architecture freeze.
 
 Do not build persistence-heavy new workflows on ownership that #79 is scheduled to remove.
 
@@ -151,7 +157,7 @@ For every PR:
 ```bash
 pytest <relevant tests>
 python tools/architecture_audit.py
-python -m compileall app application domain infrastructure database repositories services ui widgets
+python -m compileall app application domain infrastructure database repositories ui
 git diff --check
 ```
 

@@ -4,7 +4,7 @@ from app.localization import tr
 
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout
 
-from services.user_admin_service import UserAdminError, UserAdminService
+from infrastructure.services.user_admin_service import UserAdminError, UserAdminService
 
 
 class UserEditDialog(QDialog):

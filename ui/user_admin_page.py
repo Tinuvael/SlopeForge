@@ -4,9 +4,9 @@ from app.localization import tr
 
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
-from database.app_context import AppContext
-from services.session_service import RememberTokenService
-from services.user_admin_service import UserAdminService
+from app.context import AppContext
+from infrastructure.services.session_service import RememberTokenService
+from infrastructure.services.user_admin_service import UserAdminService
 from ui.user_admin_dialogs import PasswordDialog, UserEditDialog
 
 

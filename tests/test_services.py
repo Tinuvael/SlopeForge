@@ -5,9 +5,9 @@ from decimal import Decimal
 
 import pytest
 
-from database.app_context import CurrentUser
-from services.auth_service import AuthError, AuthService
-from services.blast_block_service import BlastBlockInput, BlastBlockService, PermissionDenied, ValidationError
+from app.context import CurrentUser
+from infrastructure.services.auth_service import AuthError, AuthService
+from infrastructure.services.blast_block_service import BlastBlockInput, BlastBlockService, PermissionDenied, ValidationError
 
 
 admin = CurrentUser(id=1, username="admin", full_name="Admin", role="admin")
@@ -111,7 +111,7 @@ def test_repository_rolls_back_when_save_fails() -> None:
 def test_audit_value_formatting_and_changed_fields() -> None:
     from datetime import date
     from decimal import Decimal
-    from services.blast_block_service import build_audit_changes, format_audit_value
+    from infrastructure.services.blast_block_service import build_audit_changes, format_audit_value
 
     assert format_audit_value("status", "planned") == "Запланирован"
     assert format_audit_value("planned_blast_date", date(2026, 7, 15)) == "15.07.2026"

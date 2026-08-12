@@ -6,12 +6,12 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
-from database.app_context import CurrentUser
+from app.context import CurrentUser
 from database.models import AuditLogEntry, BlastBlock, Domain, Mine, Site, User
 from repositories.audit_log_repository import AuditLogRepository
 from repositories.blast_block_repository import BlastBlockRepository
 from repositories.domain_repository import DomainRepository
-from services.blast_block_service import BlastBlockInput, BlastBlockService, PermissionDenied
+from infrastructure.services.blast_block_service import BlastBlockInput, BlastBlockService, PermissionDenied
 
 URL=os.getenv("TEST_DATABASE_URL")
 if not URL: pytest.skip("TEST_DATABASE_URL is not set",allow_module_level=True)

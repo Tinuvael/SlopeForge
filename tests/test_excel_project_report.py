@@ -1,6 +1,6 @@
 from datetime import date
 from openpyxl import load_workbook
-from reports.excel_project_report import write_project_report
+from infrastructure.reports.excel_project_report import write_project_report
 from application.dto.project_report import BlastReportRow,ProjectReport
 
 

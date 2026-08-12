@@ -10,10 +10,10 @@ from app.platform import set_windows_app_user_model_id
 from app.qt import apply_application_icon
 from app.localization import install_selected_translator, tr
 from app.splash import SlopeForgeSplash
-from database.app_context import AppContext
+from app.context import AppContext
 from database.startup import StartupError, initialize_database_runtime
-from services.auth_service import AuthService
-from services.session_service import RememberTokenService
+from infrastructure.services.auth_service import AuthService
+from infrastructure.services.session_service import RememberTokenService
 from ui.auth_dialogs import FirstAdminDialog, LoginDialog
 from ui.main_window import MainWindow
 

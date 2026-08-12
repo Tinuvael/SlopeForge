@@ -20,7 +20,7 @@ implementation was deleted rather than retained as test support. Block pages use
 editing controller's current version as their single token, so a successful Technical
 Card, geometry, or attachment write cannot make a later Block edit self-stale.
 
-Phases 5C, 6A, and 6B are complete. Phase 7 is next; issue #79 as a whole is not complete.
+Phases 5C, 6A, 6B, and 7A are complete. Phase 7B is next; issue #79 as a whole is not complete.
 
 ## Dependency direction
 
@@ -45,18 +45,21 @@ Layer rules:
 
 Do not introduce interfaces/repositories mechanically for every class. Add boundaries when they isolate I/O, transactions, or testable business behavior.
 
-## Transitional packages
+## Active infrastructure-oriented root packages
 
-The repository still has root-level packages created before the canonical layering was established:
+Phase 7A audited the root-level packages created before canonical layering.
+The following remain active:
 
 - `database/`
 - `repositories/`
-- `services/`
-- `reports/`
-- `widgets/`
 
-They are not automatically dead. Some are active runtime code and some contain compatibility/legacy paths.
-Issue #79 Phase 6/7 must classify each relevant path as `ACTIVE`, `ACTIVE_BUT_MISPLACED`, `COMPATIBILITY_ONLY`, or `DEAD` before moving/removing it.
+`database/` owns the coupled ORM metadata/models, PostgreSQL startup and CLI, and
+`repositories/` owns active SQLAlchemy read/write adapters. Moving that graph now
+would be broad import churn without changing its concrete-infrastructure nature,
+so these paths are intentionally retained and are no longer unlabeled shims.
+New adapters belong in `infrastructure/`. Root `reports/`, `widgets/`, and
+`services/` were removed: their active implementations are canonical under
+`infrastructure/reports/`, `ui/widgets/`, and `infrastructure/services/`.
 
 ## Product ownership model
 
@@ -183,6 +186,25 @@ Before architecture freeze for MVP:
 
 After Phase 7, freeze architecture until after MVP release except for defects that block release correctness.
 
+
+## Phase 7A — COMPLETE
+
+Caller and packaging audit removed the unused SQLite `Database`, its lazy
+`database.db` compatibility export, and the tracked `data/slopeforge.db` artifact.
+PyInstaller no longer bundles the whole `data/` directory. `AppContext` is now
+bootstrap composition in `app/context.py`; `ProjectTree` is Qt presentation in
+`ui/widgets/project_tree.py`; and the concrete OpenPyXL writer is owned by
+`infrastructure/reports/excel_project_report.py`. Empty widget placeholders and
+the backwards root report shim were deleted. Active concrete services moved to
+`infrastructure/services/`; the uncalled import-time distance script was deleted.
+Architecture ratchets prevent these
+paths/imports from returning.
+
+Mine remains an intentional internal Site-persistence compatibility detail, not
+normal product hierarchy. The active root database/repository graph is
+retained to avoid a mechanical high-risk move. Phase 7B remains: DXF debt,
+PostgreSQL-from-scratch verification, Windows/Python 3.12 validation, and final
+architecture freeze. Issue #79 remains open.
 
 ## Phase 6A — COMPLETE
 
