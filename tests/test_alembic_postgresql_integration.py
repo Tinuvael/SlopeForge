@@ -208,3 +208,47 @@ def test_0006_preserves_dataset_reference_and_downgrades_multiple_domains(
     finally:
         engine.dispose()
         command.downgrade(config, "base")
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
+def test_0011_removes_and_restores_legacy_schema(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Phase 6B drops duplicate tables/enums and accurately restores the 0010 boundary."""
+    url = os.environ["TEST_DATABASE_URL"]
+    if "test" not in (make_url(url).database or "").lower():
+        pytest.fail("Refusing migration test outside a test database", pytrace=False)
+    from alembic import command
+    from alembic.config import Config
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage-0011"))
+    config = Config("alembic.ini")
+    engine = create_engine(url)
+    retired_tables = {
+        "rock_mass_profiles", "rock_structures", "blast_designs", "drilling_patterns",
+        "charge_segments", "blast_executions", "wall_assessments", "attachments",
+        "explosive_types", "lithologies",
+    }
+    retired_enums = {"structure_type", "drilling_role", "charge_segment_type", "wall_rating", "attachment_kind"}
+    try:
+        command.downgrade(config, "base")
+        command.upgrade(config, "20260812_0010")
+        with engine.begin() as connection:
+            connection.execute(text("INSERT INTO lithologies (name, is_active) VALUES ('legacy', true)"))
+            assert retired_tables <= set(connection.scalars(text(
+                "SELECT tablename FROM pg_tables WHERE schemaname=current_schema()")))
+        command.upgrade(config, "20260812_0011")
+        with engine.connect() as connection:
+            tables = set(connection.scalars(text("SELECT tablename FROM pg_tables WHERE schemaname=current_schema()")))
+            enums = set(connection.scalars(text("SELECT typname FROM pg_type WHERE typtype='e'")))
+            assert retired_tables.isdisjoint(tables)
+            assert retired_enums.isdisjoint(enums)
+            assert {"blast_event_technical_card_revisions", "assessment_entity_attachments", "mines"} <= tables
+            assert {"user_role", "blast_block_status"} <= enums
+        command.downgrade(config, "20260812_0010")
+        with engine.connect() as connection:
+            tables = set(connection.scalars(text("SELECT tablename FROM pg_tables WHERE schemaname=current_schema()")))
+            enums = set(connection.scalars(text("SELECT typname FROM pg_type WHERE typtype='e'")))
+            assert retired_tables <= tables
+            assert retired_enums <= enums
+        command.downgrade(config, "base")
+        command.upgrade(config, "head")
+    finally:
+        engine.dispose()

@@ -52,8 +52,8 @@ Issue #79 is the architecture gate:
 
 - 5C: COMPLETE — optimistic concurrency + removal of normal compatibility whole-state writes.
 - 6A: COMPLETE — `AssessmentWorkspace` was a persistence-only container and is removed; Blast events and Assessment areas now have direct Domain ownership, while persistence logical IDs use `logical_id`.
-- 6B: NEXT — classify/remove duplicate legacy engineering persistence.
-- 7: final package/naming/shim cleanup, DXF debt, docs/Windows/PostgreSQL validation, then architecture freeze for MVP.
+- 6B: COMPLETE — duplicate legacy engineering persistence and Block-owned attachments are removed; the revisioned Technical Card and AssessmentEntityAttachment remain canonical.
+- 7: NEXT — final package/naming/shim cleanup, DXF debt, docs/Windows/PostgreSQL validation, then architecture freeze for MVP.
 
 Do not build persistence-heavy new workflows on ownership that #79 is scheduled to remove.
 

@@ -20,7 +20,7 @@ implementation was deleted rather than retained as test support. Block pages use
 editing controller's current version as their single token, so a successful Technical
 Card, geometry, or attachment write cannot make a later Block edit self-stale.
 
-Phase 5C is complete. Phase 6A (Assessment ownership/schema normalization) is the next architecture phase; issue #79 as a whole is not complete.
+Phases 5C, 6A, and 6B are complete. Phase 7 is next; issue #79 as a whole is not complete.
 
 ## Dependency direction
 
@@ -98,7 +98,7 @@ Contour:
 - navigation opens the Contour Blast page;
 - no Geomechanics tab under the current product model.
 
-The revisioned BlastEvent Technical Card is the canonical active engineering record for geomechanics/blast design/execution. Older parallel engineering tables in `database/models.py` must be classified under #79 before #77/#78; do not create two sources of engineering truth.
+The revisioned BlastEvent Technical Card is the only canonical active engineering persistence for geomechanics, blast design, and execution. Phase 6B removed the older parallel Block engineering tables. A future shared explosive catalogue is not implemented here and remains #78A scope.
 
 ## Assessment model
 
@@ -187,3 +187,22 @@ After Phase 7, freeze architecture until after MVP release except for defects th
 ## Phase 6A — COMPLETE
 
 AssessmentWorkspace was audited as a persistence-only container and removed. The physical ownership path is now `Site -> Domain -> BlastBlock / BlastEvent / AssessmentArea`; BlastEvent and AssessmentArea use a real integer `domain_id` foreign key. Stable public persistence identifiers are separately named `logical_id`. Child revisions retain ownership through their parent. ProjectLinesDataset remains Site-owned and shared by all Site Domains. Phase 6B legacy-engineering classification is next. Domain moves from #75 are not implemented.
+
+
+## Phase 6B — COMPLETE
+
+Caller, navigation, bootstrap, report, repository, test, migration, and packaging imports were audited before removal. The result is:
+
+| Item | Classification | Evidence and action |
+| --- | --- | --- |
+| RockMassProfile, RockStructure, BlastDesign, DrillingPattern, ChargeSegment | DEAD | Only ORM declarations, historical migration code, and tests of that retired schema remained; removed. |
+| BlastExecution | DEAD | Current Actual Execution is revisioned Technical Card data; the old table had no normal reader/writer; removed. |
+| WallAssessment | DEAD | Current Assessment uses geometry/evaluation revisions with stored DAI and FCI; the old table had no normal flow; removed. |
+| Lithology and old ExplosiveType | DEAD | They only supported the retired engineering graph; removed. This does not implement the #78A catalogue. |
+| old Attachment and AttachmentRepository | DEAD | No production composition caller remained; removed with the competing Block-owned table. |
+| AssessmentEntityAttachment | ACTIVE | Current entity attachment service/controller and Photos/Documents pages use it; retained as canonical one-owner persistence. |
+| Mine and MineRepository | ACTIVE_BUT_MISPLACED | Project creation, Site repositories, read models, bootstrap, and PostgreSQL tests still depend on the Mine → Site compatibility pair; retained for Phase 7 or a dedicated Project schema decision. |
+| BlastBlock.status and planned_blast_date | ACTIVE | Current CRUD, UI, dashboards, reports, and audit history use them; retained pending #75. |
+| AuditLogEntry and legacy entity_type labels | COMPATIBILITY_ONLY (labels); ACTIVE (Block audit) | Block create/update audit remains active. Historical allowed labels do not keep tables alive, so the constraint is unchanged to avoid unrelated audit redesign. |
+
+Migration `20260812_0011` drops dependent tables in foreign-key-safe order, then explicitly drops the five unused PostgreSQL enum types. Downgrade recreates enum types before restoring the exact legacy tables, constraints, indexes, defaults, and nullability at the 0010 boundary. `user_role` and `blast_block_status` remain. Project Lines remain Site-owned, and Technical Card/evaluation revision history and stored DAI/FCI are unchanged.

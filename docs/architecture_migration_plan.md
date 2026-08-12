@@ -50,7 +50,7 @@ After 5C:
 
 The development database is disposable, so prefer the clean target schema over compatibility complexity for current test records. Still use proper Alembic migrations and keep one Alembic head.
 
-### Phase 6B — duplicate legacy engineering/schema classification
+### Phase 6B — COMPLETE: duplicate legacy engineering/schema classification
 
 Before implementing the large Geomechanics/Blast design redesigns (#77/#78), classify current legacy-looking persistence paths using actual callers/tests/migrations/packaging evidence.
 
@@ -69,7 +69,7 @@ Explicitly audit at least:
 If a path has no normal production responsibility, remove it rather than wiring new UI back to it.
 The revisioned BlastEvent Technical Card remains the canonical engineering record unless a separate product decision explicitly changes that.
 
-### Phase 7 — normalization and architecture freeze
+### Phase 7 — NEXT: normalization and architecture freeze
 
 After schema cleanup:
 
@@ -141,3 +141,8 @@ Schema/persistence work also requires PostgreSQL integration tests against an ex
 ## Phase 6A — COMPLETE
 
 AssessmentWorkspace was audited as a persistence-only container and removed. The physical ownership path is now `Site -> Domain -> BlastBlock / BlastEvent / AssessmentArea`; BlastEvent and AssessmentArea use a real integer `domain_id` foreign key. Stable public persistence identifiers are separately named `logical_id`. Child revisions retain ownership through their parent. ProjectLinesDataset remains Site-owned and shared by all Site Domains. Phase 6B legacy-engineering classification is next. Domain moves from #75 are not implemented.
+
+
+## Phase 6B — COMPLETE
+
+The production caller audit classified the parallel RockMassProfile/RockStructure/BlastDesign/DrillingPattern/ChargeSegment/BlastExecution/WallAssessment graph, its Lithology and old ExplosiveType support tables, and the old directly Block-owned Attachment path as DEAD. They were removed in Alembic 0011. Revisioned BlastEvent Technical Card persistence is the sole canonical engineering path, while AssessmentEntityAttachment remains the canonical one-owner attachment path. Mine is retained as ACTIVE_BUT_MISPLACED because current Project/Site creation and read paths still require it. BlastBlock status and planned date remain ACTIVE pending #75. No #78A explosive catalogue was implemented. Phase 7 is next; #79 remains open.

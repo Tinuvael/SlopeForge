@@ -30,7 +30,7 @@ def test_domain_geometry_migration_parent_and_single_head():
         revision=re.search(r'^revision\s*=\s*["\']([^"\']+)',text,re.M)
         down=re.search(r'^down_revision\s*=\s*["\']([^"\']+)',text,re.M)
         if revision: revisions[revision.group(1)]=down.group(1) if down else None
-    assert set(revisions)-{parent for parent in revisions.values() if parent}=={"20260812_0010"}
+    assert set(revisions)-{parent for parent in revisions.values() if parent}=={"20260812_0011"}
 
 
 def test_project_lines_are_project_owned_and_independent_of_domains():

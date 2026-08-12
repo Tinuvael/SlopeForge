@@ -3,18 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
 
 from database.base import Base
-from database.models import ChargeSegment, RockMassProfile, RockStructure, User
+from database.models import User
 from database.settings import Settings
 from database.storage import StoragePathError, copy_attachment, ensure_inside_storage
-
-
-def constraint_names(table_name: str, constraint_type: type) -> set[str]:
-    return {c.name for c in Base.metadata.tables[table_name].constraints if isinstance(c, constraint_type)}
 
 
 def test_password_hashing_and_verification() -> None:
@@ -24,21 +19,6 @@ def test_password_hashing_and_verification() -> None:
     assert password_hash.startswith("$argon2")
     assert verify_password("strong-password", password_hash)
     assert not verify_password("wrong-password", password_hash)
-
-
-def test_range_constraints_are_declared() -> None:
-    rock_constraints = constraint_names(RockMassProfile.__tablename__, CheckConstraint)
-    structure_constraints = constraint_names(RockStructure.__tablename__, CheckConstraint)
-    assert "ck_rock_mass_profiles_rqd_percent_range" in rock_constraints
-    assert "ck_rock_mass_profiles_rmr_range" in rock_constraints
-    assert "ck_rock_mass_profiles_gsi_range" in rock_constraints
-    assert "ck_rock_structures_dip_deg_range" in structure_constraints
-    assert "ck_rock_structures_dip_direction_deg_range" in structure_constraints
-
-
-def test_charge_segment_order_is_unique() -> None:
-    constraints = constraint_names(ChargeSegment.__tablename__, UniqueConstraint)
-    assert "uq_charge_segments_pattern_sequence" in constraints
 
 
 def test_first_user_admin_logic_with_mocked_session() -> None:
