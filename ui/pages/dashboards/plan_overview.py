@@ -22,8 +22,9 @@ class DashboardPlanOverviewWidget(QWidget):
         for x,y in points[1:]: path.lineTo(x,-y)
         if close:path.closeSubpath()
         return path
-    def _add_path(self,geometry,color,width=1.5,fill=None,project=False):
-        item=QGraphicsPathItem(self._path(geometry.points,close=len(geometry.points)>2)); item.setPen(QPen(QColor(color),width))
+    def _add_path(self,geometry,color,width=1.5,fill=None,project=False,close=None):
+        if close is None: close=len(geometry.points)>2
+        item=QGraphicsPathItem(self._path(geometry.points,close=close)); item.setPen(QPen(QColor(color),width))
         fill_color=QColor(fill) if fill else None
         if fill_color: fill_color.setAlpha(48)
         item.setBrush(QBrush(fill_color) if fill_color else QBrush(Qt.BrushStyle.NoBrush)); self.scene.addItem(item)
@@ -33,7 +34,7 @@ class DashboardPlanOverviewWidget(QWidget):
         for geometry in getattr(self.snapshot,"domain_geometries",()):
             color=QColor(palette[geometry.palette_index % len(palette)]); color.setAlpha(55 if geometry.is_current else 22)
             item=QGraphicsPathItem(self._path(geometry.points,close=True)); item.setPen(QPen(QColor(color.red(),color.green(),color.blue(),150 if geometry.is_current else 70),2 if geometry.is_current else 1)); item.setBrush(QBrush(color)); item.setZValue(-100); item.setToolTip(geometry.domain_name); self.scene.addItem(item); self._domain_items.append(item)
-        for geometry in self.snapshot.project_lines:self._add_path(geometry,"#CBD5E1",1,project=True)
+        for geometry in self.snapshot.project_lines:self._add_path(geometry,"#CBD5E1",1,project=True,close=False)
         for geometry in self.snapshot.production_geometries:self._add_path(geometry,"#2563EB",2,"#2563EB")
         for geometry in self.snapshot.contour_geometries:
             for x,y in geometry.points:
