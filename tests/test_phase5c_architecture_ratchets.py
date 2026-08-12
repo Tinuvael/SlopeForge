@@ -54,3 +54,18 @@ def test_every_focused_assessment_write_requires_expected_version():
         parameters = inspect.signature(method).parameters
         assert "expected_version" in parameters, name
         assert parameters["expected_version"].default is inspect.Parameter.empty, name
+
+
+def test_phase6a_workspace_container_cannot_return():
+    """Phase 6A owns Assessment roots directly through Domain FKs."""
+    from database.base import Base
+    from database import assessment_models  # noqa: F401
+    assert "assessment_workspaces" not in Base.metadata.tables
+    for name in ("blast_events", "assessment_areas"):
+        table = Base.metadata.tables[name]
+        assert table.c.domain_id.type.python_type is int
+        assert table.c.logical_id.type.python_type is str
+        assert next(iter(table.c.domain_id.foreign_keys)).target_fullname == "domains.id"
+        assert "workspace_id" not in table.c
+    project_lines = Base.metadata.tables["project_lines_datasets"]
+    assert "site_id" in project_lines.c and "domain_id" not in project_lines.c

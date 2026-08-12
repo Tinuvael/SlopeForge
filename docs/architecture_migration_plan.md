@@ -136,3 +136,8 @@ QT_QPA_PLATFORM=offscreen pytest -q
 ```
 
 Schema/persistence work also requires PostgreSQL integration tests against an explicitly isolated `TEST_DATABASE_URL` and Alembic checks from a clean database.
+
+
+## Phase 6A — COMPLETE
+
+AssessmentWorkspace was audited as a persistence-only container and removed. The physical ownership path is now `Site -> Domain -> BlastBlock / BlastEvent / AssessmentArea`; BlastEvent and AssessmentArea use a real integer `domain_id` foreign key. Stable public persistence identifiers are separately named `logical_id`. Child revisions retain ownership through their parent. ProjectLinesDataset remains Site-owned and shared by all Site Domains. Phase 6B legacy-engineering classification is next. Domain moves from #75 are not implemented.

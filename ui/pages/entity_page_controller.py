@@ -28,10 +28,6 @@ class EntityPageController:
         return self.editing.site_id
 
     @property
-    def workspace_id(self):
-        return self.editing.workspace_id
-
-    @property
     def expected_version(self):
         """Canonical version for every command issued by this open entity page."""
         return self.editing.expected_version

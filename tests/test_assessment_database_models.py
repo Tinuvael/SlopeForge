@@ -14,7 +14,7 @@ from database.base import Base
 from database import assessment_models, models  # assessment import registers its metadata
 
 EXPECTED = {
-    "assessment_workspaces", "project_lines_datasets", "blast_events",
+    "project_lines_datasets", "blast_events",
     "blast_event_geometry_revisions", "blast_event_technical_cards",
     "blast_event_technical_card_revisions", "assessment_areas",
     "assessment_area_geometry_revisions", "assessment_event_links",
@@ -52,7 +52,8 @@ sqlalchemy.create_engine = forbidden
 sqlalchemy.engine.create_engine = forbidden
 sqlalchemy.engine.Engine.connect = forbidden
 import database.assessment_models as module
-assert module.Base.metadata.tables["assessment_workspaces"] is not None
+assert "assessment_workspaces" not in module.Base.metadata.tables
+assert module.Base.metadata.tables["blast_events"].c.domain_id is not None
 for prefix in ("PySide6", "PyQt6", "ui", "widgets"):
     assert not any(name == prefix or name.startswith(prefix + ".") for name in sys.modules), prefix
 '''
@@ -77,13 +78,18 @@ def test_expected_tables_and_legacy_tables_are_unchanged():
     assert not EXPECTED.intersection(models.__dict__)
 
 
-def test_workspace_and_top_level_domain_uniqueness():
-    assert ("domain_id",) in uniques("assessment_workspaces")
-    assert ("site_id", "domain_id") in uniques("project_lines_datasets")
-    assert ("workspace_id", "domain_id") in uniques("blast_events")
-    assert ("workspace_id", "domain_id") in uniques("assessment_areas")
-    assert ("domain_id",) in uniques("assessment_area_evaluations")
-    assert fk("assessment_workspaces", "domain_id").ondelete == "RESTRICT"
+def test_direct_domain_ownership_and_logical_identity():
+    assert "assessment_workspaces" not in Base.metadata.tables
+    assert ("site_id", "logical_id") in uniques("project_lines_datasets")
+    assert ("domain_id", "logical_id") in uniques("blast_events")
+    assert ("domain_id", "logical_id") in uniques("assessment_areas")
+    assert ("logical_id",) in uniques("assessment_area_evaluations")
+    for name in ("blast_events", "assessment_areas"):
+        assert table(name).c.domain_id.type.python_type is int
+        assert table(name).c.logical_id.type.python_type is str
+        assert fk(name, "domain_id").target_fullname == "domains.id"
+    assert "domain_id" not in table("project_lines_datasets").c
+    assert fk("project_lines_datasets", "site_id").target_fullname == "sites.id"
 
 
 def test_optional_frozen_link_geometry_uses_sql_null():
@@ -124,7 +130,7 @@ def test_revision_identity_numbers_and_active_partial_indexes():
         "assessment_area_evaluation_revisions": "evaluation_id",
     }
     for name, parent in revisions.items():
-        assert (parent, "domain_id") in uniques(name)
+        assert (parent, "logical_id") in uniques(name)
         assert (parent, "revision_number") in uniques(name)
         assert "revision_number > 0" in checks(name)
         partial = [i for i in table(name).indexes if i.unique and i.dialect_options["postgresql"]["where"] is not None]
@@ -169,20 +175,19 @@ def test_attachment_owner_and_other_checks():
     assert "owner_type = 'assessment_evaluation'" in sql
     assert "file_size_bytes >= 0" in sql
     assert "btrim(relative_path)" in sql
-    assert ("domain_id",) in uniques("assessment_entity_attachments")
+    assert ("logical_id",) in uniques("assessment_entity_attachments")
 
 
 def test_all_foreign_key_delete_actions():
     expected = {
-        ("assessment_workspaces", "domain_id"): "RESTRICT",
         ("project_lines_datasets", "site_id"): "RESTRICT",
-        ("blast_events", "workspace_id"): "CASCADE",
+        ("blast_events", "domain_id"): "RESTRICT",
         ("blast_events", "blast_block_id"): "SET NULL",
         ("blast_event_geometry_revisions", "blast_event_id"): "CASCADE",
         ("blast_event_technical_cards", "blast_event_id"): "CASCADE",
         ("blast_event_technical_card_revisions", "technical_card_id"): "CASCADE",
         ("blast_event_technical_card_revisions", "blast_event_geometry_revision_id"): "RESTRICT",
-        ("assessment_areas", "workspace_id"): "CASCADE",
+        ("assessment_areas", "domain_id"): "RESTRICT",
         ("assessment_area_geometry_revisions", "assessment_area_id"): "CASCADE",
         ("assessment_area_geometry_revisions", "source_dataset_id"): "RESTRICT",
         ("assessment_event_links", "assessment_area_geometry_revision_id"): "CASCADE",
@@ -210,7 +215,8 @@ def test_new_migration_is_single_schema_only_revision():
     assert len(additions) == 1
     source = additions[0].read_text()
     assert 'down_revision = "20260715_0003"' in source
-    for name in EXPECTED:
+    historical = EXPECTED | {"assessment_workspaces"}
+    for name in historical:
         assert f"CREATE TABLE {name}" in source
         assert f"op.drop_table('{name}')" in source
     assert not any(line.lstrip().lower().startswith(("insert ", "update ", "delete ")) for line in source.splitlines())

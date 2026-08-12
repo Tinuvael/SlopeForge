@@ -46,8 +46,6 @@ def context():
     yield factory, ids
     with factory.begin() as session:
         domain_ids = ids[3:]
-        session.execute(delete(orm.AssessmentWorkspace).where(
-            orm.AssessmentWorkspace.domain_id.in_(domain_ids)))
         session.execute(delete(orm.ProjectLinesDataset).where(
             orm.ProjectLinesDataset.site_id.in_(ids[1:3])))
         session.execute(delete(Domain).where(Domain.id.in_(ids[3:])))
@@ -66,7 +64,7 @@ def test_add_list_activate_archive_restore_and_stable_pk(context):
     repo = ProjectLinesRepository(factory)
     first = repo.add_dataset(ids[1], dataset("D-X"))
     second = repo.add_dataset(ids[1], dataset("D-Y"))
-    assert [row.domain_id for row in repo.list_for_site(ids[1])] == ["D-X", "D-Y"]
+    assert [row.logical_id for row in repo.list_for_site(ids[1])] == ["D-X", "D-Y"]
     assert repo.get_active(ids[1]) is None  # import and activation are separate operations
     repo.set_active(ids[1], "D-X")
     assert repo.get_active(ids[1]).id == first.id
@@ -93,8 +91,8 @@ def test_atomic_import_rolls_back_row_when_activation_fails(context, monkeypatch
     with pytest.raises(RuntimeError, match="activation failure"):
         repo.import_dataset(ids[1], dataset("D-FAILED"), make_active=True)
 
-    assert [row.domain_id for row in repo.list_for_site(ids[1])] == ["D-X"]
-    assert repo.get_active(ids[1]).domain_id == "D-X"
+    assert [row.logical_id for row in repo.list_for_site(ids[1])] == ["D-X"]
+    assert repo.get_active(ids[1]).logical_id == "D-X"
 
 
 def test_repeated_dashboard_style_import_allocates_new_site_dataset_id(context):
@@ -107,7 +105,7 @@ def test_repeated_dashboard_style_import_allocates_new_site_dataset_id(context):
     repo.import_dataset(ids[1], second, make_active=True)
 
     rows = repo.list_for_site(ids[1])
-    assert [row.domain_id for row in rows] == ["D-001", "D-002"]
+    assert [row.logical_id for row in rows] == ["D-001", "D-002"]
     assert first.id == "D-001" and second.id == "D-002"
     assert [row.source_file_name for row in rows] == ["D-001.csv", "D-001.csv"]
     assert sum(row.is_active for row in rows) == 1
@@ -170,7 +168,7 @@ def test_csv_to_dxf_and_same_file_reimports_create_history(context, tmp_path):
         datasets.append(imported)
 
     rows = repo.list_for_site(ids[1])
-    assert [row.domain_id for row in rows] == ["D-001", "D-002", "D-003"]
+    assert [row.logical_id for row in rows] == ["D-001", "D-002", "D-003"]
     assert [item.id for item in datasets] == ["D-001", "D-002", "D-003"]
     assert [row.source_file_name for row in rows] == [
         "project.csv", "project.dxf", "project.dxf"

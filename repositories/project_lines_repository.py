@@ -39,7 +39,7 @@ class ProjectLinesRepository:
             if site is None:
                 raise ValueError(f"Site {site_id} does not exist")
             dataset.id = self._available_domain_id(session, site_id, dataset.id)
-            row = orm.ProjectLinesDataset(site_id=site_id, domain_id=dataset.id, name=dataset.name,
+            row = orm.ProjectLinesDataset(site_id=site_id, logical_id=dataset.id, name=dataset.name,
                 imported_at=dataset.imported_at, source_file_name=dataset.source_file_name,
                 is_active=False, is_archived=False,
                 lines_json=[line.to_dict() for line in dataset.lines])
@@ -53,7 +53,7 @@ class ProjectLinesRepository:
 
     @staticmethod
     def _available_domain_id(session: Session, site_id: int, proposed_id: str) -> str:
-        used = set(session.scalars(select(orm.ProjectLinesDataset.domain_id).where(
+        used = set(session.scalars(select(orm.ProjectLinesDataset.logical_id).where(
             orm.ProjectLinesDataset.site_id == site_id
         )))
         if proposed_id not in used:
@@ -78,7 +78,7 @@ class ProjectLinesRepository:
             if dataset_domain_id is not None:
                 target = session.scalar(select(orm.ProjectLinesDataset).where(
                     orm.ProjectLinesDataset.site_id == site_id,
-                    orm.ProjectLinesDataset.domain_id == dataset_domain_id))
+                    orm.ProjectLinesDataset.logical_id == dataset_domain_id))
                 if target is None:
                     raise ProjectLinesDatasetNotFoundError(dataset_domain_id)
                 if target.is_archived:
@@ -112,7 +112,7 @@ class ProjectLinesRepository:
     def _find(session: Session, site_id: int, dataset_domain_id: str):
         row = session.scalar(select(orm.ProjectLinesDataset).where(
             orm.ProjectLinesDataset.site_id == site_id,
-            orm.ProjectLinesDataset.domain_id == dataset_domain_id))
+            orm.ProjectLinesDataset.logical_id == dataset_domain_id))
         if row is None:
             raise ProjectLinesDatasetNotFoundError(dataset_domain_id)
         return row

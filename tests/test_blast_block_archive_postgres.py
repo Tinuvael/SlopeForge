@@ -22,7 +22,7 @@ if not URL:
 if "test" not in (make_url(URL).database or "").lower():
     pytest.fail("Refusing destructive tests: PostgreSQL database name must contain 'test'", pytrace=False)
 
-from database.assessment_models import AssessmentWorkspace, BlastEvent
+from database.assessment_models import BlastEvent
 from database.models import AuditLogEntry, BlastBlock, Domain, Mine, Site
 from infrastructure.db.blast_block_archive import SqlAlchemyBlastBlockArchivePersistence
 
@@ -61,19 +61,16 @@ def linked_block(session_factory):
             is_archived=False,
         )
         session.add(block); session.flush()
-        workspace = AssessmentWorkspace(domain_id=domain.id)
-        session.add(workspace); session.flush()
         blast_event = BlastEvent(
-            workspace_id=workspace.id, domain_id="BE-P", name="Production",
+            domain_id=domain.id, logical_id="BE-P", name="Production",
             event_type="production", event_date=date(2026, 8, 10),
             elevation_m=Decimal("100"), blast_block_id=block.id, is_archived=False,
         )
         session.add(blast_event); session.flush()
-        ids = mine.id, site.id, domain.id, workspace.id, block.id, blast_event.id
+        ids = mine.id, site.id, domain.id, block.id, blast_event.id
     yield ids
-    mine_id, site_id, domain_id, workspace_id, block_id, _ = ids
+    mine_id, site_id, domain_id, block_id, _ = ids
     with session_factory.begin() as session:
-        session.query(AssessmentWorkspace).filter_by(id=workspace_id).delete()
         session.query(BlastBlock).filter_by(id=block_id).delete()
         session.query(Domain).filter_by(id=domain_id).delete()
         session.query(Site).filter_by(id=site_id).delete()

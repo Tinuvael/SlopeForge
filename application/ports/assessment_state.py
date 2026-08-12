@@ -11,7 +11,6 @@ from application.state.assessment_domain_state import AssessmentDomainState
 class AssessmentStateSnapshot:
     domain_id: int
     site_id: int
-    workspace_id: int | None
     state: AssessmentDomainState
     expected_version: int
 

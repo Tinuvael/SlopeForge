@@ -16,8 +16,8 @@ def test_dashboard_charts_never_import_matplotlib_qt_backend():
 
 def test_dashboard_read_model_uses_entity_ids_not_domain_ids():
     repository=source("repositories/dashboard_repository.py")
-    assert "AreaRow(area.id," in repository
-    assert 'BlastRow(x.id,"Contour"' in repository
+    assert "AreaRow(area.logical_id," in repository
+    assert 'BlastRow(x.logical_id,"Contour"' in repository
     assert "AreaRow(area.domain_id," not in repository
     assert 'BlastRow(x.domain_id,"Contour"' not in repository
 

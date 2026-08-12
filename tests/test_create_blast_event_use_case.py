@@ -17,7 +17,7 @@ class MemoryPersistence:
         self.fail = fail
 
     def load_state(self, domain_id):
-        return AssessmentStateSnapshot(domain_id, 1, None, deepcopy(self.persisted), 0)
+        return AssessmentStateSnapshot(domain_id, 1, deepcopy(self.persisted), 0)
 
     def persist_contour(self, domain_id, expected_version, event):
         if self.fail: raise RuntimeError("injected persistence failure")

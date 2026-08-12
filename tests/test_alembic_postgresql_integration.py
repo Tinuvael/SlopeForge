@@ -9,6 +9,81 @@ from sqlalchemy.engine import make_url
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
+def test_0010_preserves_ids_and_restores_full_downgrade_history(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Exercise the Phase 6A boundary itself, then continue through old history."""
+    url = os.environ["TEST_DATABASE_URL"]
+    if "test" not in (make_url(url).database or "").lower():
+        pytest.fail("Refusing migration test outside a test database", pytrace=False)
+    from alembic import command
+    from alembic.config import Config
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage-0010"))
+    config = Config("alembic.ini")
+    command.downgrade(config, "base")
+    command.upgrade(config, "20260812_0009")
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            mine = connection.scalar(text("INSERT INTO mines (name) VALUES ('phase6a') RETURNING id"))
+            site = connection.scalar(text(
+                "INSERT INTO sites (mine_id, name) VALUES (:m, 'phase6a') RETURNING id"), {"m": mine})
+            domain = connection.scalar(text(
+                "INSERT INTO domains (site_id, name) VALUES (:s, 'North') RETURNING id"), {"s": site})
+            workspace = connection.scalar(text(
+                "INSERT INTO assessment_workspaces (domain_id) VALUES (:d) RETURNING id"), {"d": domain})
+            dataset = connection.scalar(text("""INSERT INTO project_lines_datasets
+                (site_id, domain_id, name, imported_at, source_file_name, is_active, is_archived, lines_json)
+                VALUES (:s, 'LINES-1', 'Lines', now(), 'lines.csv', true, false, '[]'::jsonb)
+                RETURNING id"""), {"s": site})
+            event = connection.scalar(text("""INSERT INTO blast_events
+                (workspace_id, domain_id, name, event_type, elevation_m, is_archived)
+                VALUES (:w, 'EVENT-1', 'Event', 'contour', 100, false) RETURNING id"""), {"w": workspace})
+            area = connection.scalar(text("""INSERT INTO assessment_areas
+                (workspace_id, domain_id, name, assessment_date, is_archived)
+                VALUES (:w, 'AREA-1', 'Area', CURRENT_DATE, false) RETURNING id"""), {"w": workspace})
+        command.upgrade(config, "20260812_0010")
+        with engine.connect() as connection:
+            assert not connection.scalar(text("SELECT to_regclass('assessment_workspaces') IS NOT NULL"))
+            assert connection.execute(text(
+                "SELECT domain_id, logical_id FROM blast_events WHERE id=:id"), {"id": event}).one() == (domain, "EVENT-1")
+            assert connection.execute(text(
+                "SELECT domain_id, logical_id FROM assessment_areas WHERE id=:id"), {"id": area}).one() == (domain, "AREA-1")
+            assert connection.scalar(text(
+                "SELECT logical_id FROM project_lines_datasets WHERE id=:id"), {"id": dataset}) == "LINES-1"
+            assert connection.scalar(text("""SELECT count(*) FROM information_schema.table_constraints
+                WHERE table_name IN ('blast_events','assessment_areas')
+                  AND constraint_type='FOREIGN KEY' AND constraint_name IN
+                  ('fk_blast_events_domain_id','fk_assessment_areas_domain_id')""")) == 2
+        command.downgrade(config, "20260812_0009")
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT to_regclass('assessment_workspaces') IS NOT NULL"))
+            restored_event = connection.execute(text(
+                "SELECT workspace_id, domain_id FROM blast_events WHERE id=:id"), {"id": event}).one()
+            restored_area = connection.execute(text(
+                "SELECT workspace_id, domain_id FROM assessment_areas WHERE id=:id"), {"id": area}).one()
+            assert restored_event[0] == restored_area[0]
+            assert connection.scalar(text(
+                "SELECT domain_id FROM assessment_workspaces WHERE id=:id"),
+                {"id": restored_event[0]}) == domain
+            assert restored_event[1] == "EVENT-1" and restored_area[1] == "AREA-1"
+            expected = {
+                "fk_assessment_workspaces_domain_id", "uq_assessment_workspaces_domain_id",
+                "uq_project_lines_datasets_site_domain_id",
+                "uq_blast_events_workspace_domain_id", "uq_assessment_areas_workspace_domain_id",
+            }
+            names = set(connection.scalars(text(
+                "SELECT conname FROM pg_constraint WHERE conname = ANY(:names)"), {"names": list(expected)}))
+            assert names == expected
+        command.downgrade(config, "base")
+        command.upgrade(config, "head")
+        from alembic.script import ScriptDirectory
+        assert len(ScriptDirectory.from_config(config).get_heads()) == 1
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
 def test_0009_backfills_non_null_domain_version_and_round_trips(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     url = os.environ["TEST_DATABASE_URL"]

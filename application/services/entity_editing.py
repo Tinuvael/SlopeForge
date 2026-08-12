@@ -31,7 +31,6 @@ class AssessmentEditingSession:
         self._writes = writes
         self.domain_id = snapshot.domain_id
         self.site_id = snapshot.site_id
-        self.workspace_id = snapshot.workspace_id
         self.expected_version = snapshot.expected_version
         self.state = snapshot.state
         self.actor_id = actor_id
@@ -49,9 +48,8 @@ class AssessmentEditingSession:
         result = getattr(self._writes, operation)(
             self.domain_id, self.expected_version, *args
         )
-        self.workspace_id = result.workspace_id
         self.expected_version = result.new_version
-        return self.workspace_id
+        return result.new_version
 
     def _save_archive_change(self, entity, archived: bool, operation: str) -> None:
         self._require_edit()
