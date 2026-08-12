@@ -11,9 +11,9 @@ from sqlalchemy import create_engine, delete, event, func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-URL = os.environ.get("SLOPEFORGE_TEST_DATABASE_URL")
+URL = os.environ.get("TEST_DATABASE_URL")
 if not URL:
-    pytest.skip("SLOPEFORGE_TEST_DATABASE_URL is not set; Phase 4C DB tests skipped", allow_module_level=True)
+    pytest.skip("TEST_DATABASE_URL is not set; Phase 4C DB tests skipped", allow_module_level=True)
 if "test" not in (make_url(URL).database or "").lower():
     pytest.fail("Refusing destructive Phase 4C tests outside a test database", pytrace=False)
 
@@ -25,7 +25,7 @@ from infrastructure.db.project_creation import SqlAlchemyProjectCreation
 from infrastructure.db.project_lines_creation import SqlAlchemyProjectLinesCreationSupport
 from infrastructure.db.project_navigation import SqlAlchemyProjectNavigationQueries
 from infrastructure.db.project_report import SqlAlchemyProjectReportQuery
-from repositories.assessment_state_repository import AssessmentStateRepository
+from tests.assessment_graph_seeder import AssessmentGraphSeeder
 from repositories.project_lines_repository import ProjectLinesRepository
 from tests.test_assessment_state_mapper import build_rich_state
 
@@ -147,5 +147,49 @@ def test_domain_adapter_and_navigation_are_site_scoped(factory):
         assert not queries.project_has_active_lines(site_id)
         with pytest.raises(ValueError, match="does not exist"):
             queries.get_domain_context(2_000_000_000)
+    finally:
+        cleanup_project(factory, site_id)
+def test_concrete_report_query_preserves_actual_date_stored_scores_and_links(factory):
+    site_id = SqlAlchemyProjectCreation(factory).create_project("Report integration project", None)
+    domain_id = SqlAlchemyDomainCreation(factory).create_domain(site_id, "North", None)
+    state = build_rich_state()
+    production, contour = state.blast_events
+    block_id = None
+    try:
+        with factory.begin() as session:
+            block = BlastBlock(domain_id=domain_id, block_number="PB-7", status="planned")
+            session.add(block); session.flush(); block_id = block.id
+        production.blast_block_id = block_id
+        production.event_date = date(2026, 7, 1)
+        contour.event_date = date(2026, 8, 7)
+        actual = state.technical_cards[0].active_revision().actual_execution
+        actual.actual_blast_date = date(2026, 8, 6)
+        actual.actual_block_volume_m3 = 1234
+        actual.actual_total_explosive_mass_kg = 87
+        actual.actual_total_drilling_length_m = 456
+        area = state.assessment_areas[0]
+        area.event_links[0].assessment_area_geometry_revision_id = area.active_geometry_revision_id
+        area.event_links[0].geometry_revision_id = production.active_geometry_revision_id
+        evaluation = state.evaluations[0].active_revision()
+        evaluation.status = "completed"
+        evaluation.design_achievement_index = .23
+        evaluation.face_condition_index = .87
+        evaluation.result_quadrant = "stored-quadrant"
+        for dataset in state.datasets:
+            ProjectLinesRepository(factory).add_dataset(site_id, dataset)
+        ProjectLinesRepository(factory).set_active(site_id, state.active_dataset().id)
+        AssessmentGraphSeeder(factory).seed_for_domain(domain_id, state)
+
+        report = SqlAlchemyProjectReportQuery(factory).collect(site_id, date(2026, 8, 1), date(2026, 8, 31))
+        assert [(row.event_type, row.report_date) for row in report.blasts] == [
+            ("production", date(2026, 8, 6)), ("contour", date(2026, 8, 7))]
+        production_row = report.blasts[0]
+        assert (production_row.block_number, production_row.actual_volume_m3,
+                production_row.actual_explosive_mass_kg, production_row.actual_drilling_length_m) == ("PB-7", 1234, 87, 456)
+        assessment = report.assessments[0]
+        assert assessment.dai == pytest.approx(.23) and assessment.fci == pytest.approx(.87)
+        assert report.average_dai == pytest.approx(.23) and report.average_fci == pytest.approx(.87)
+        assert assessment.production_blocks == ("PB-7",) and assessment.contour_blasts == ("BE-C",)
+        assert SqlAlchemyProjectReportQuery(factory).collect(site_id, date(2026, 9, 1), date(2026, 9, 30)).blasts == ()
     finally:
         cleanup_project(factory, site_id)

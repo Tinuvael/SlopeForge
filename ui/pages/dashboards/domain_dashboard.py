@@ -67,7 +67,16 @@ class DomainDashboardPage(QWidget):
         except Exception as exc: QMessageBox.warning(self,tr("Import error"),domain_message(str(exc)))
     def edit_geometry(self):
         stored=self.geometry_repo.get_for_domain(self.domain_id); dialog=DomainGeometryEditorDialog(stored.polygons if stored else (),self.snapshot.project_lines,self)
-        if dialog.exec(): stored=self.geometry_repo.replace_drawn(self.domain_id,self.expected_version,dialog.polygons); self.expected_version=stored.domain_version; self._refresh()
+        if dialog.exec():
+            try:
+                stored=self.geometry_repo.replace_drawn(self.domain_id,self.expected_version,dialog.polygons)
+                self.expected_version=stored.domain_version; self._refresh()
+            except Exception as exc:
+                QMessageBox.warning(self,tr("Domain geometry"),domain_message(str(exc)))
     def clear_geometry(self):
         if QMessageBox.question(self,tr("Clear geometry"),tr("Clear the current Domain geometry?"))==QMessageBox.StandardButton.Yes:
-            self.expected_version=self.geometry_repo.clear(self.domain_id,self.expected_version); self._refresh()
+            try:
+                new_version=self.geometry_repo.clear(self.domain_id,self.expected_version)
+                self.expected_version=new_version; self._refresh()
+            except Exception as exc:
+                QMessageBox.warning(self,tr("Domain geometry"),domain_message(str(exc)))

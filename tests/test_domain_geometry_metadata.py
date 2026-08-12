@@ -51,4 +51,19 @@ def test_domain_dashboard_permissions_and_import_filter_are_explicit():
     assert 'bool(current) and can_edit' in source
     assert "*.csv *.dxf" in source
     # Persistence is deliberately guarded by modal acceptance.
-    assert "if dialog.exec(): stored=self.geometry_repo.replace_drawn" in source
+    assert "if dialog.exec():" in source and "replace_drawn" in source
+
+
+def test_domain_geometry_edit_and_clear_present_persistence_errors():
+    """Qt callbacks must not leak optimistic-concurrency conflicts."""
+    import ast
+    tree=ast.parse(Path("ui/pages/dashboards/domain_dashboard.py").read_text())
+    methods={node.name:node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef)}
+    for name,persistence_method in (("edit_geometry","replace_drawn"),("clear_geometry","clear")):
+        method=methods[name]
+        handlers=[node for node in ast.walk(method) if isinstance(node,ast.Try)]
+        assert any(any(isinstance(call,ast.Attribute) and call.attr==persistence_method
+                       for call in ast.walk(handler)) and handler.handlers
+                   for handler in handlers)
+        assert any(isinstance(node,ast.Attribute) and node.attr=="warning"
+                   for node in ast.walk(method))

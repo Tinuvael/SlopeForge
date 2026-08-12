@@ -211,7 +211,11 @@ class MainWindow(QMainWindow):
                 create_set_blast_block_archived_use_case(self.context).execute(SetBlastBlockArchivedCommand(block.id,not block.is_archived,user.id,user.can_edit,version))
             except Exception as exc:
                 QMessageBox.warning(self,tr("Could not archive block"),domain_message(str(exc))); return
-            self.selected_block_id=None; self.header.set_archive_context(False); self.refresh_project_data(); return
+            # Reopen from persistence after the successful command.  This rebuilds
+            # both the frozen Block row and the entity editing controller at N+1.
+            block_id, domain_id, site_id = block.id, block.domain_id, block.site_id
+            self.refresh_project_data()
+            self.open_block_from_tree(block_id,domain_id,site_id); return
         if self.selected_assessment_area_id and getattr(self,"area_page",None):
             area=self.area_page.area; action="Restore" if area.is_archived else "Archive"
             if QMessageBox.question(self,action,f'{action} Assessment Area "{area.name}"?') != QMessageBox.StandardButton.Yes:return
