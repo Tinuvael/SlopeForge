@@ -1,6 +1,6 @@
-# SlopeForge PostgreSQL setup
+# PostgreSQL setup
 
-SlopeForge keeps the PySide desktop entry point (`python main.py`). New MVP data (users, mines, sites, blast blocks) goes to PostgreSQL only. Legacy SQLite code remains isolated for old UI parts that are not migrated yet.
+SlopeForge uses PostgreSQL as its application database through SQLAlchemy 2.x, psycopg 3, and Alembic.
 
 ## Install dependencies
 
@@ -8,9 +8,9 @@ SlopeForge keeps the PySide desktop entry point (`python main.py`). New MVP data
 python -m pip install -r requirements.txt
 ```
 
-## Create `.env`
+## Configure environment
 
-Copy the example and edit credentials/paths.
+Copy `.env.example` to `.env` and set the local database/storage values.
 
 Linux/macOS:
 
@@ -25,62 +25,42 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-Example local PostgreSQL:
+Example:
 
 ```env
 DATABASE_URL=postgresql+psycopg://slopeforge_user:change-me@localhost:5432/slopeforge
 STORAGE_ROOT=C:/SlopeForge/storage
 ```
 
-Example PostgreSQL on a LAN server:
+A LAN PostgreSQL server and shared storage path are also valid, for example:
 
 ```env
 DATABASE_URL=postgresql+psycopg://slopeforge_user:change-me@192.168.1.20:5432/slopeforge
 STORAGE_ROOT=//fileserver/SlopeForge/storage
 ```
 
-`.env` is ignored by Git. Real system environment variables have priority over values from `.env`. Never commit passwords.
+`.env` is ignored by Git. Never commit credentials. Real process/system environment variables override `.env` values.
 
+## Create the database
 
-## Prepare database
-
-The app reads `.env` automatically, but command examples can also export variables explicitly.
-
-Linux/macOS:
+If the configured PostgreSQL user can create databases:
 
 ```bash
-set -a; source .env; set +a
 python -m database.cli prepare-db
 ```
 
-Windows PowerShell:
+If it cannot, create the database with an administrator account and grant the application user access.
 
-```powershell
-Get-Content .env | ForEach-Object {
-    if ($_ -match '^\s*([^#][^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), 'Process') }
-}
-python -m database.cli prepare-db
-```
-
-If your PostgreSQL user cannot create databases, ask an administrator to create `slopeforge` and grant access.
-
-## Run migrations
-
-Linux/macOS:
+## Apply migrations
 
 ```bash
 python -m database.cli migrate
 python -m database.cli migration-status
 ```
 
-Windows PowerShell:
+Do not use `alembic stamp` to hide a physical schema mismatch. During MVP development the current development data is disposable, so it is acceptable to recreate the development database when a clean schema migration/rebuild is simpler than preserving test records.
 
-```powershell
-python -m database.cli migrate
-python -m database.cli migration-status
-```
-
-## First administrator and login
+## First administrator
 
 CLI setup:
 
@@ -88,58 +68,77 @@ CLI setup:
 python -m database.cli init
 ```
 
-GUI setup:
+Or launch the desktop application:
 
 ```bash
 python main.py
 ```
 
-If the `users` table is empty, the GUI shows a first-admin dialog. The first user becomes `admin`; later users do not automatically become admins. If users already exist, the GUI shows the login dialog.
+If there are no users, the GUI can create the first administrator. Existing users prevent the first-admin flow from running again.
 
-## Minimal manual scenario
+## Run SlopeForge
 
-1. Install dependencies.
-2. Create and edit `.env`.
-3. Run `python -m database.cli prepare-db` if the database does not exist.
-4. Run `python -m database.cli migrate`.
-5. Run `python main.py`.
-6. Create first administrator.
-7. Log in.
-8. Open `Справочники`, create a mine and a site.
-9. Click `Новый блок`, fill common block fields, save.
-10. Close and restart the app.
-11. Log in again, find the saved block, open and edit it.
+```bash
+python main.py
+```
+
+Normal UI terminology is Project / Quarry and Domain. Legacy internal `Mine`/`Site` names may still exist in transitional persistence code while architecture issue #79 is open, but they should not be exposed in normal user workflows.
 
 ## Attachment storage
 
-Files are stored on disk under `STORAGE_ROOT`, not inside PostgreSQL. The database stores only relative paths like:
+Attachment metadata is stored in PostgreSQL; physical files are stored under `STORAGE_ROOT` through the current storage/infrastructure layer.
 
-```text
-mine_<id>/site_<id>/block_<id>/attachments/<unique_file_name>
-```
-
-Physical files are deleted only by an explicit storage operation, not by cascade from database rows.
+Do not assume a database cascade removes physical files. File deletion/copy/move must go through the application/storage workflow so rollback and one-owner semantics are preserved.
 
 ## Tests
 
+Fast/normal development checks:
+
 ```bash
-pytest
-python -m compileall database repositories services ui tests alembic
+pytest <relevant tests>
+python tools/architecture_audit.py
+python -m compileall app application domain infrastructure database repositories services ui widgets
+git diff --check
 ```
 
-PostgreSQL integration tests are skipped unless `TEST_DATABASE_URL` is set:
+For Qt tests without a display server:
+
+```bash
+QT_QPA_PLATFORM=offscreen pytest -q
+```
+
+### PostgreSQL integration tests
+
+Destructive PostgreSQL/Alembic integration tests run only when `TEST_DATABASE_URL` is set.
+Use a dedicated database whose database name clearly contains `test`.
 
 Linux/macOS:
 
 ```bash
-TEST_DATABASE_URL=postgresql+psycopg://user:password@host:5432/slopeforge_test pytest
+TEST_DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/slopeforge_test \
+QT_QPA_PLATFORM=offscreen pytest -q
 ```
 
 Windows PowerShell:
 
 ```powershell
-$env:TEST_DATABASE_URL = 'postgresql+psycopg://user:password@host:5432/slopeforge_test'
-pytest
+$env:TEST_DATABASE_URL = 'postgresql+psycopg://user:password@localhost:5432/slopeforge_test'
+$env:QT_QPA_PLATFORM = 'offscreen'
+pytest -q
 ```
 
-Do not use SQLite as a replacement for PostgreSQL integration tests.
+Never point `TEST_DATABASE_URL` at the normal development or production database. Migration integration tests intentionally perform upgrade/downgrade cycles and may destroy data in the target test database.
+
+## Clean-database validation
+
+For schema/architecture release checks:
+
+1. Use a new disposable PostgreSQL database.
+2. Set `DATABASE_URL` to that database.
+3. Run `python -m database.cli migrate`.
+4. Run `python -m database.cli migration-status` and confirm the expected head.
+5. Launch `python main.py` and create the first administrator.
+6. Exercise a minimal Project → Domain → Blast Event / Assessment Area flow appropriate to the current MVP.
+7. Restart and confirm persisted data remains available.
+
+For the complete release-candidate manual pass, see `docs/release_checklist.md`.
