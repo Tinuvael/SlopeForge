@@ -30,7 +30,7 @@ def test_domain_geometry_migration_parent_and_single_head():
         revision=re.search(r'^revision\s*=\s*["\']([^"\']+)',text,re.M)
         down=re.search(r'^down_revision\s*=\s*["\']([^"\']+)',text,re.M)
         if revision: revisions[revision.group(1)]=down.group(1) if down else None
-    assert set(revisions)-{parent for parent in revisions.values() if parent}=={"20260809_0008"}
+    assert set(revisions)-{parent for parent in revisions.values() if parent}=={"20260812_0009"}
 
 
 def test_project_lines_are_project_owned_and_independent_of_domains():
@@ -51,4 +51,19 @@ def test_domain_dashboard_permissions_and_import_filter_are_explicit():
     assert 'bool(current) and can_edit' in source
     assert "*.csv *.dxf" in source
     # Persistence is deliberately guarded by modal acceptance.
-    assert "if dialog.exec(): self.geometry_repo.replace_drawn" in source
+    assert "if dialog.exec():" in source and "replace_drawn" in source
+
+
+def test_domain_geometry_edit_and_clear_present_persistence_errors():
+    """Qt callbacks must not leak optimistic-concurrency conflicts."""
+    import ast
+    tree=ast.parse(Path("ui/pages/dashboards/domain_dashboard.py").read_text())
+    methods={node.name:node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef)}
+    for name,persistence_method in (("edit_geometry","replace_drawn"),("clear_geometry","clear")):
+        method=methods[name]
+        handlers=[node for node in ast.walk(method) if isinstance(node,ast.Try)]
+        assert any(any(isinstance(call,ast.Attribute) and call.attr==persistence_method
+                       for call in ast.walk(handler)) and handler.handlers
+                   for handler in handlers)
+        assert any(isinstance(node,ast.Attribute) and node.attr=="warning"
+                   for node in ast.walk(method))

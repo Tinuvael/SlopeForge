@@ -14,9 +14,9 @@ from sqlalchemy import create_engine, func, select, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
-URL = os.environ.get("SLOPEFORGE_TEST_DATABASE_URL")
+URL = os.environ.get("TEST_DATABASE_URL")
 if not URL:
-    pytest.skip("SLOPEFORGE_TEST_DATABASE_URL is not set; PostgreSQL integration tests skipped", allow_module_level=True)
+    pytest.skip("TEST_DATABASE_URL is not set; PostgreSQL integration tests skipped", allow_module_level=True)
 DATABASE_NAME = make_url(URL).database or ""
 if "test" not in DATABASE_NAME.lower():
     pytest.fail("Refusing destructive tests: PostgreSQL database name must contain 'test'", pytrace=False)
@@ -27,6 +27,7 @@ from repositories.assessment_state_mapper import (
     AssessmentPersistenceCorruptionError, AssessmentSiteNotFoundError,
 )
 from repositories.assessment_state_repository import AssessmentStateRepository
+from tests.assessment_graph_seeder import AssessmentGraphSeeder
 from repositories.project_lines_repository import ProjectLinesRepository
 from tests.test_assessment_state_mapper import build_rich_state
 from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
@@ -116,10 +117,10 @@ def test_missing_domain_and_empty_domain(session_factory, assessment_context):
     assert loaded.workspace_id is None and semantic(loaded.state) == semantic(type(loaded.state)())
 
 
-def test_rich_replace_round_trip_and_active_history(session_factory, assessment_context):
+def test_read_loads_realistic_seeded_graph(session_factory, assessment_context):
     repository = AssessmentStateRepository(session_factory); expected = build_rich_state()
     persist_project_lines(session_factory, assessment_context.site_id, expected)
-    saved = repository.replace_for_domain(assessment_context.domain_id, expected)
+    saved = AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, expected)
     loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
     assert loaded.workspace_id == saved.workspace_id
     assert semantic(loaded.state) == semantic(expected)
@@ -133,383 +134,10 @@ def test_rich_replace_round_trip_and_active_history(session_factory, assessment_
     assert loaded.state.assessment_areas[0].geometry_revisions[-1].change_reason is None
 
 
-def relational_ids(session, domain_id):
-    workspace = session.scalar(select(orm.AssessmentWorkspace).where(
-        orm.AssessmentWorkspace.domain_id == domain_id))
-    events = list(session.scalars(select(orm.BlastEvent).where(
-        orm.BlastEvent.workspace_id == workspace.id)))
-    areas = list(session.scalars(select(orm.AssessmentArea).where(
-        orm.AssessmentArea.workspace_id == workspace.id)))
-    event_ids = [row.id for row in events]
-    area_ids = [row.id for row in areas]
-    cards = list(session.scalars(select(orm.BlastEventTechnicalCard).where(
-        orm.BlastEventTechnicalCard.blast_event_id.in_(event_ids))))
-    evaluations = list(session.scalars(select(orm.AssessmentAreaEvaluation).where(
-        orm.AssessmentAreaEvaluation.assessment_area_id.in_(area_ids))))
-    return {
-        "workspace": workspace.id,
-        "events": {row.domain_id: row.id for row in events},
-        "event_revisions": {row.domain_id: row.id for row in session.scalars(select(
-            orm.BlastEventGeometryRevision).where(
-                orm.BlastEventGeometryRevision.blast_event_id.in_(event_ids)))},
-        "cards": {row.domain_id: row.id for row in cards},
-        "card_revisions": {(row.technical_card.domain_id, row.domain_id): row.id
-                           for row in session.scalars(select(
-            orm.BlastEventTechnicalCardRevision).where(
-                orm.BlastEventTechnicalCardRevision.technical_card_id.in_([x.id for x in cards])))},
-        "areas": {row.domain_id: row.id for row in areas},
-        "area_revisions": {row.domain_id: row.id for row in session.scalars(select(
-            orm.AssessmentAreaGeometryRevision).where(
-                orm.AssessmentAreaGeometryRevision.assessment_area_id.in_(area_ids)))},
-        "links": {(row.assessment_area_geometry_revision.domain_id, row.domain_id): row.id
-                  for row in session.scalars(select(
-            orm.AssessmentEventLink).join(orm.AssessmentAreaGeometryRevision).where(
-                orm.AssessmentAreaGeometryRevision.assessment_area_id.in_(area_ids)))},
-        "evaluations": {row.domain_id: row.id for row in evaluations},
-        "evaluation_revisions": {(row.evaluation.domain_id, row.domain_id): row.id
-                                 for row in session.scalars(select(
-            orm.AssessmentAreaEvaluationRevision).where(
-                orm.AssessmentAreaEvaluationRevision.evaluation_id.in_([x.id for x in evaluations])))},
-        "attachments": {row.domain_id: row.id for row in session.scalars(select(
-            orm.AssessmentEntityAttachment).where(
-                (orm.AssessmentEntityAttachment.blast_event_id.in_(event_ids)) |
-                (orm.AssessmentEntityAttachment.assessment_area_evaluation_id.in_(
-                    [x.id for x in evaluations]))))},
-    }
-
-
-def test_repeated_replace_preserves_all_rows_and_removes_only_omitted_subtree(
-    session_factory, assessment_context,
-):
-    repository = AssessmentStateRepository(session_factory); state = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    first = repository.replace_for_domain(assessment_context.domain_id, state)
-    with session_factory() as session:
-        original_ids = relational_ids(session, assessment_context.domain_id)
-    identical = repository.replace_for_domain(assessment_context.domain_id, deepcopy(state))
-    with session_factory() as session:
-        identical_ids = relational_ids(session, assessment_context.domain_id)
-    assert identical.workspace_id == first.workspace_id
-    assert identical_ids == original_ids
-
-    replacement = deepcopy(state); replacement.blast_events[1].is_archived = True
-    second = repository.replace_for_domain(assessment_context.domain_id, replacement)
-    with session_factory() as session:
-        scalar_update_ids = relational_ids(session, assessment_context.domain_id)
-        assert session.scalar(select(func.count()).select_from(orm.AssessmentWorkspace).where(
-            orm.AssessmentWorkspace.domain_id == assessment_context.domain_id)) == 1
-    assert first.workspace_id == second.workspace_id
-    assert scalar_update_ids == original_ids
-    assert second.state.blast_events[1].is_archived is True
-    assert [x.id for x in second.state.blast_events] == [x.id for x in replacement.blast_events]
-
-    # BE-C owns LINK-OLD and its attachment; omit that valid dependent subtree.
-    omitted = deepcopy(replacement)
-    omitted.blast_events = [event for event in omitted.blast_events if event.id != "BE-C"]
-    omitted.assessment_areas[0].event_links = [
-        link for link in omitted.assessment_areas[0].event_links if link.blast_event_id != "BE-C"]
-    omitted.attachments = [item for item in omitted.attachments if item.owner_id != "BE-C"]
-    repository.replace_for_domain(assessment_context.domain_id, omitted)
-    with session_factory() as session:
-        after_omission = relational_ids(session, assessment_context.domain_id)
-    assert "BE-C" not in after_omission["events"]
-    assert "BE-P" in after_omission["events"]
-    assert after_omission["events"]["BE-P"] == original_ids["events"]["BE-P"]
-    assert after_omission["areas"] == original_ids["areas"]
-
-
-def test_new_card_and_evaluation_revisions_only_insert_the_new_rows(
-    session_factory, assessment_context,
-):
-    repository = AssessmentStateRepository(session_factory)
-    state = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    repository.replace_for_domain(assessment_context.domain_id, state)
-    with session_factory() as session:
-        before = relational_ids(session, assessment_context.domain_id)
-
-    replacement = deepcopy(state)
-    card = replacement.technical_cards[0]
-    old_card_active = card.active_revision_id
-    new_card = card.save_revision(deepcopy(card.active_revision()), change_reason="Phase 5A")
-    evaluation = replacement.evaluations[0]
-    old_evaluation_active = evaluation.active_revision_id
-    new_evaluation = evaluation.save_revision(deepcopy(evaluation.active_revision()))
-    new_evaluation.design_achievement_index = 0.23
-    new_evaluation.face_condition_index = 0.87
-    assert new_evaluation.design_achievement_index != new_evaluation.face_condition_index
-
-    repository.replace_for_domain(assessment_context.domain_id, replacement)
-    with session_factory() as session:
-        after = relational_ids(session, assessment_context.domain_id)
-        card_active = list(session.scalars(select(orm.BlastEventTechnicalCardRevision.domain_id).where(
-            orm.BlastEventTechnicalCardRevision.is_active)))
-        evaluation_active = list(session.scalars(select(
-            orm.AssessmentAreaEvaluationRevision.domain_id).where(
-                orm.AssessmentAreaEvaluationRevision.is_active)))
-        stored_evaluation = session.scalar(select(orm.AssessmentAreaEvaluationRevision).where(
-            orm.AssessmentAreaEvaluationRevision.domain_id == new_evaluation.id))
-
-    assert after["workspace"] == before["workspace"]
-    assert after["cards"] == before["cards"]
-    assert after["evaluations"] == before["evaluations"]
-    assert {key: after["card_revisions"][key] for key in before["card_revisions"]} == before["card_revisions"]
-    assert {key: after["evaluation_revisions"][key]
-            for key in before["evaluation_revisions"]} == before["evaluation_revisions"]
-    assert set(after["card_revisions"]) - set(before["card_revisions"]) == {(card.id, new_card.id)}
-    assert set(after["evaluation_revisions"]) - set(before["evaluation_revisions"]) == {
-        (evaluation.id, new_evaluation.id)}
-    assert old_card_active not in card_active and card_active == [new_card.id]
-    assert old_evaluation_active not in evaluation_active and evaluation_active == [new_evaluation.id]
-    assert float(stored_evaluation.design_achievement_index) == pytest.approx(0.23)
-    assert float(stored_evaluation.face_condition_index) == pytest.approx(0.87)
-    restored = repository.load_for_domain(assessment_context.domain_id).state
-    restored_revision = restored.evaluations[0].active_revision()
-    assert restored_revision.design_achievement_index == pytest.approx(0.23)
-    assert restored_revision.face_condition_index == pytest.approx(0.87)
-
-
-def test_card_revision_omission_is_scoped_to_its_card(session_factory, assessment_context):
-    from domain.blasting.technical_card import new_technical_card
-
-    repository = AssessmentStateRepository(session_factory)
-    state = build_rich_state()
-    first_card = state.technical_cards[0]
-    shared_revision_id = first_card.revisions[0].id
-    second_card, draft = new_technical_card(state.blast_events[1])
-    second_card.id = "TC-C"
-    draft.technical_card_id = second_card.id
-    second_revision = second_card.save_revision(draft)
-    second_revision.id = shared_revision_id
-    second_card.active_revision_id = shared_revision_id
-    state.technical_cards.append(second_card)
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    repository.replace_for_domain(assessment_context.domain_id, state)
-    with session_factory() as session:
-        before = relational_ids(session, assessment_context.domain_id)
-
-    replacement = deepcopy(state)
-    replacement.technical_cards[0].revisions = [replacement.technical_cards[0].revisions[1]]
-    repository.replace_for_domain(assessment_context.domain_id, replacement)
-    with session_factory() as session:
-        after = relational_ids(session, assessment_context.domain_id)
-        duplicate_rows = list(session.scalars(select(
-            orm.BlastEventTechnicalCardRevision).where(
-                orm.BlastEventTechnicalCardRevision.domain_id == shared_revision_id)))
-
-    assert (first_card.id, shared_revision_id) not in after["card_revisions"]
-    assert after["card_revisions"][(second_card.id, shared_revision_id)] == before[
-        "card_revisions"][(second_card.id, shared_revision_id)]
-    assert after["cards"] == before["cards"]
-    assert len(duplicate_rows) == 1
-
-
-def test_link_can_take_unique_key_of_an_omitted_link(session_factory, assessment_context):
-    repository = AssessmentStateRepository(session_factory)
-    state = build_rich_state()
-    retained = next(link for link in state.assessment_areas[0].event_links
-                    if link.id == "LINK-ACTIVE")
-    conflicting = deepcopy(retained)
-    conflicting.id = "LINK-CONFLICT"
-    conflicting.source = "manual"
-    state.assessment_areas[0].event_links.append(conflicting)
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    repository.replace_for_domain(assessment_context.domain_id, state)
-    with session_factory() as session:
-        before = relational_ids(session, assessment_context.domain_id)
-
-    replacement = deepcopy(state)
-    replacement.assessment_areas[0].event_links = [
-        link for link in replacement.assessment_areas[0].event_links
-        if link.id != "LINK-CONFLICT"]
-    next(link for link in replacement.assessment_areas[0].event_links
-         if link.id == "LINK-ACTIVE").source = "manual"
-    repository.replace_for_domain(assessment_context.domain_id, replacement)
-    with session_factory() as session:
-        after = relational_ids(session, assessment_context.domain_id)
-        stored = session.scalar(select(orm.AssessmentEventLink).where(
-            orm.AssessmentEventLink.domain_id == "LINK-ACTIVE"))
-
-    link_key = (retained.assessment_area_geometry_revision_id, retained.id)
-    assert after["links"][link_key] == before["links"][link_key]
-    assert (retained.assessment_area_geometry_revision_id, "LINK-CONFLICT") not in after["links"]
-    assert stored.source == "manual"
-
-
-def test_empty_replacement_keeps_workspace_and_external_rows(session_factory, assessment_context):
-    repository = AssessmentStateRepository(session_factory)
-    state = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    first = repository.replace_for_domain(assessment_context.domain_id, state)
-    with session_factory.begin() as session:
-        block = BlastBlock(domain_id=assessment_context.domain_id, block_number="OUTSIDE", status="planned")
-        session.add(block); session.flush(); block_id = block.id
-        dataset_snapshot = [(row.id, row.domain_id, row.name, row.is_active, row.is_archived,
-                             row.lines_json) for row in session.scalars(select(
-            orm.ProjectLinesDataset).where(
-                orm.ProjectLinesDataset.site_id == assessment_context.site_id).order_by(
-                    orm.ProjectLinesDataset.id))]
-
-    empty = type(state)(datasets=deepcopy(state.datasets))
-    saved = repository.replace_for_domain(assessment_context.domain_id, empty)
-    with session_factory() as session:
-        assert session.get(Domain, assessment_context.domain_id) is not None
-        stored_block = session.get(BlastBlock, block_id)
-        assert stored_block.status == "planned" and stored_block.comment is None
-        assert [(row.id, row.domain_id, row.name, row.is_active, row.is_archived, row.lines_json)
-                for row in session.scalars(select(orm.ProjectLinesDataset).where(
-                    orm.ProjectLinesDataset.site_id == assessment_context.site_id).order_by(
-                        orm.ProjectLinesDataset.id))] == dataset_snapshot
-        assert session.scalar(select(func.count()).select_from(orm.BlastEvent)) == 0
-        assert session.scalar(select(func.count()).select_from(orm.AssessmentArea)) == 0
-    assert saved.workspace_id == first.workspace_id
-    assert repository.load_for_domain(assessment_context.domain_id).workspace_id == first.workspace_id
-
-
-def test_real_in_place_mutations_roll_back_with_caller_session(session_factory, assessment_context):
-    repository = AssessmentStateRepository(session_factory)
-    state = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    committed = repository.replace_for_domain(assessment_context.domain_id, state)
-    with session_factory() as session:
-        before_ids = relational_ids(session, assessment_context.domain_id)
-    before_payload = semantic(committed.state)
-
-    replacement = deepcopy(state)
-    replacement.blast_events[0].is_archived = True
-    replacement.blast_events = [event for event in replacement.blast_events if event.id != "BE-C"]
-    replacement.assessment_areas[0].event_links = [
-        link for link in replacement.assessment_areas[0].event_links if link.blast_event_id != "BE-C"]
-    replacement.technical_cards[0].save_revision(
-        deepcopy(replacement.technical_cards[0].active_revision()), change_reason="rollback")
-    with pytest.raises(RuntimeError, match="after real synchronization"):
-        with session_factory.begin() as session:
-            repository.replace_for_domain_in_session(
-                session, assessment_context.domain_id, replacement)
-            raise RuntimeError("after real synchronization")
-
-    restored = repository.load_for_domain(assessment_context.domain_id)
-    with session_factory() as session:
-        assert relational_ids(session, assessment_context.domain_id) == before_ids
-    assert restored.workspace_id == committed.workspace_id
-    assert semantic(restored.state) == before_payload
-
-
-def test_active_geometry_transitions_and_dependent_history_deletion(
-    session_factory, assessment_context,
-):
-    repository = AssessmentStateRepository(session_factory)
-    state = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    repository.replace_for_domain(assessment_context.domain_id, state)
-    with session_factory() as session:
-        before = relational_ids(session, assessment_context.domain_id)
-
-    switched = deepcopy(state)
-    event = switched.blast_events[0]
-    event.active_geometry_revision_id = event.geometry_revisions[0].id
-    event.geometry_revisions[0].is_active = True
-    event.geometry_revisions[1].is_active = False
-    area = switched.assessment_areas[0]
-    area.active_geometry_revision_id = area.geometry_revisions[0].id
-    repository.replace_for_domain(assessment_context.domain_id, switched)
-    with session_factory() as session:
-        assert session.scalar(select(func.count()).select_from(
-            orm.BlastEventGeometryRevision).where(
-                orm.BlastEventGeometryRevision.is_active)) == 1
-        assert session.scalar(select(func.count()).select_from(
-            orm.AssessmentAreaGeometryRevision).where(
-                orm.AssessmentAreaGeometryRevision.is_active)) == 1
-
-    no_active = deepcopy(switched)
-    no_active.blast_events[1].active_geometry_revision_id = None
-    for revision in no_active.blast_events[1].geometry_revisions:
-        revision.is_active = False
-    repository.replace_for_domain(assessment_context.domain_id, no_active)
-
-    # BE-P-R1 is referenced by LINK-OLD and the first card revision.  Omit all
-    # three together and retain the historical identities that remain.
-    replacement = deepcopy(state)
-    replacement.blast_events[0].geometry_revisions = [
-        revision for revision in replacement.blast_events[0].geometry_revisions
-        if revision.id != "BE-P-R1"]
-    replacement.assessment_areas[0].event_links = [
-        link for link in replacement.assessment_areas[0].event_links
-        if link.geometry_revision_id != "BE-P-R1"]
-    replacement.technical_cards[0].revisions = [
-        revision for revision in replacement.technical_cards[0].revisions
-        if revision.geometry_revision_id != "BE-P-R1"]
-    repository.replace_for_domain(assessment_context.domain_id, replacement)
-    with session_factory() as session:
-        after = relational_ids(session, assessment_context.domain_id)
-        assert session.scalar(select(func.count()).select_from(
-            orm.BlastEventGeometryRevision).where(
-                orm.BlastEventGeometryRevision.domain_id == "BE-P-R1")) == 0
-    assert after["events"] == before["events"]
-    assert after["event_revisions"]["BE-P-R2"] == before["event_revisions"]["BE-P-R2"]
-    assert after["cards"] == before["cards"]
-
-
-def test_attachment_metadata_updates_in_place(session_factory, assessment_context):
-    repository = AssessmentStateRepository(session_factory)
-    state = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    repository.replace_for_domain(assessment_context.domain_id, state)
-    with session_factory() as session:
-        before = relational_ids(session, assessment_context.domain_id)
-        owner_before = session.scalar(select(orm.AssessmentEntityAttachment.blast_event_id).where(
-            orm.AssessmentEntityAttachment.domain_id == "ATT-E"))
-
-    replacement = deepcopy(state)
-    next(item for item in replacement.attachments if item.id == "ATT-E").title = "Updated title"
-    repository.replace_for_domain(assessment_context.domain_id, replacement)
-    with session_factory() as session:
-        after = relational_ids(session, assessment_context.domain_id)
-        stored = session.scalar(select(orm.AssessmentEntityAttachment).where(
-            orm.AssessmentEntityAttachment.domain_id == "ATT-E"))
-    assert after["attachments"] == before["attachments"]
-    assert stored.title == "Updated title"
-    assert stored.blast_event_id == owner_before
-
-
-def test_real_cascade_graph_preserves_foundation_and_clears_block_link(session_factory, assessment_context):
-    with session_factory.begin() as session:
-        block = BlastBlock(domain_id=assessment_context.domain_id, block_number="B-1", status="planned")
-        session.add(block); session.flush(); block_id = block.id
-    repository = AssessmentStateRepository(session_factory)
-    state = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    repository.replace_for_domain(assessment_context.domain_id, state)
-    repository.replace_for_domain(assessment_context.domain_id, state)
-    with session_factory() as session:
-        assert session.get(Site, assessment_context.site_id) is not None and session.get(BlastBlock, block_id) is not None
-        assert all(value is None for value in session.scalars(select(orm.BlastEvent.blast_block_id)))
-
-
-def test_failed_replace_rolls_back_previous_workspace(session_factory, assessment_context, monkeypatch):
-    repository = AssessmentStateRepository(session_factory); state = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    committed = repository.replace_for_domain(assessment_context.domain_id, state)
-    def fail(*args): raise RuntimeError("injected synchronization failure")
-    monkeypatch.setattr(repository, "_synchronize", fail)
-    with pytest.raises(RuntimeError): repository.replace_for_domain(assessment_context.domain_id, deepcopy(state))
-    loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
-    assert loaded.workspace_id == committed.workspace_id and semantic(loaded.state) == semantic(state)
-
-
-def test_replace_performs_no_filesystem_operations(session_factory, assessment_context, monkeypatch):
-    def forbidden(*args, **kwargs): raise AssertionError("filesystem operation")
-    for name in ("unlink", "rename", "replace", "read_bytes", "write_bytes"):
-        monkeypatch.setattr(Path, name, forbidden)
-    state = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id, state)
-
-
 def test_payload_mismatch_is_corruption(session_factory, assessment_context):
     state = build_rich_state()
     persist_project_lines(session_factory, assessment_context.site_id, state)
-    AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id, state)
+    AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, state)
     with session_factory.begin() as session:
         row = session.scalar(select(orm.BlastEventTechnicalCardRevision).order_by(orm.BlastEventTechnicalCardRevision.id))
         payload = dict(row.payload_json); payload["status"] = "completed"
@@ -522,7 +150,7 @@ def test_payload_mismatch_is_corruption(session_factory, assessment_context):
 def test_cross_event_card_geometry_corruption_is_detected(session_factory, assessment_context):
     state = build_rich_state()
     persist_project_lines(session_factory, assessment_context.site_id, state)
-    AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id, state)
+    AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, state)
     with session_factory.begin() as session:
         contour_geometry = session.scalar(select(orm.BlastEventGeometryRevision.id).join(orm.BlastEvent).where(
             orm.BlastEvent.domain_id == "BE-C"))
@@ -544,7 +172,7 @@ def test_cross_area_evaluation_geometry_corruption_is_detected(session_factory, 
         object.__setattr__(revision, "assessment_area_id", other.id)
         object.__setattr__(revision, "id", "OTHER-" + revision.id)
     other.active_geometry_revision_id = "OTHER-AA-R2"; state.assessment_areas.append(other)
-    AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id, state)
+    AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, state)
     with session_factory.begin() as session:
         other_geometry = session.scalar(select(orm.AssessmentAreaGeometryRevision.id).join(orm.AssessmentArea).where(
             orm.AssessmentArea.domain_id == "AA-OTHER"))
@@ -554,87 +182,6 @@ def test_cross_area_evaluation_geometry_corruption_is_detected(session_factory, 
                 assessment_area_geometry_revision_id=other_geometry))
     with pytest.raises(AssessmentPersistenceCorruptionError, match="another Assessment Area"):
         AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id)
-
-
-def test_optional_production_link_snapshot_persists_as_sql_null(session_factory, assessment_context):
-    """Production suggestions intentionally have no frozen intersection snapshot."""
-    repository=AssessmentStateRepository(session_factory); state=build_rich_state(); persist_project_lines(session_factory,assessment_context.site_id,state)
-    active=next(link for link in state.assessment_areas[0].event_links if link.id=="LINK-ACTIVE")
-    active.frozen_intersection_geometry=None
-    saved=repository.replace_for_domain(assessment_context.domain_id,state)
-    restored=next(link for link in saved.state.assessment_areas[0].event_links if link.id=="LINK-ACTIVE")
-    contour_snapshot=next(link for link in saved.state.assessment_areas[0].event_links if link.id=="LINK-OLD")
-    assert restored.frozen_intersection_geometry is None
-    assert contour_snapshot.frozen_intersection_geometry is not None
-    with session_factory() as session:
-        row=session.scalar(select(orm.AssessmentEventLink).where(orm.AssessmentEventLink.domain_id=="LINK-ACTIVE"))
-        assert row.frozen_intersection_geometry_json is None
-
-
-def test_real_block_page_embeds_engineering_and_persists_ucs(session_factory, assessment_context, tmp_path):
-    widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
-    from database.app_context import AppContext,CurrentUser
-    from ui.pages.block_page import BlockPage
-    app=widgets.QApplication.instance() or widgets.QApplication([])
-    with session_factory.begin() as session:
-        block=BlastBlock(domain_id=assessment_context.domain_id,block_number="QT-BLOCK",status="planned")
-        session.add(block); session.flush(); block_id=block.id
-    state=build_rich_state(); production=next(e for e in state.blast_events if e.event_type=="production"); production.blast_block_id=block_id
-    persist_project_lines(session_factory,assessment_context.site_id,state); AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id,state)
-    context=AppContext(session_factory,CurrentUser(1,"qt-editor","Qt Editor","editor"),tmp_path)
-    page=BlockPage(context); page.resize(1400,900); page.show(); page.open_block_id(block_id); app.processEvents()
-    editor=page.technical_card_editor.editor
-    page.tabs.setCurrentWidget(page.geomechanics_tab); app.processEvents()
-    assert page.geomechanics_tab.isVisibleTo(page)
-    for control in (editor.lithology,editor.geotechnical_domain,editor.strength_class,editor.ucs,editor.ucs_min,editor.ucs_max,editor.rqd,editor.rqd_min,editor.rqd_max,editor.rock_properties,editor.fracturing,editor.water,editor.geo_notes):
-        assert page.geomechanics_tab.isAncestorOf(control) and control.isVisibleTo(page.geomechanics_tab)
-    page.tabs.setCurrentWidget(page.design_tab); app.processEvents(); assert page.design_tab.isVisibleTo(page) and editor.group_cards_layout.count()>=1
-    burden=page.design_tab.findChild(widgets.QDoubleSpinBox,"burden_m"); spacing=page.design_tab.findChild(widgets.QDoubleSpinBox,"spacing_m")
-    assert burden is not None and burden.isVisibleTo(page.design_tab); assert spacing is not None and spacing.isVisibleTo(page.design_tab)
-    page.tabs.setCurrentWidget(page.execution_tab); app.processEvents(); assert page.execution_tab.isVisibleTo(page)
-    assert page.execution_tab.isAncestorOf(editor.completion_status) and editor.completion_status.isVisibleTo(page.execution_tab) and editor.actual_summary_widgets
-    editor.ucs.setValue(147.0); page._save_technical_card_draft()
-    reloaded=AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state
-    card=next(c for c in reloaded.technical_cards if c.blast_event_id==production.id)
-    assert card.active_revision().geomechanical_parameters.representative_ucs_mpa==147.0
-    page.deleteLater(); app.processEvents()
-
-
-def test_focused_area_edit_boundaries_round_trip_preserves_entity_graph(session_factory, assessment_context, tmp_path, monkeypatch):
-    widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
-    from database.app_context import AppContext,CurrentUser
-    from ui.main_window import MainWindow
-    app=widgets.QApplication.instance() or widgets.QApplication([])
-    state=build_rich_state(); persist_project_lines(session_factory,assessment_context.site_id,state); repository=AssessmentStateRepository(session_factory); repository.replace_for_domain(assessment_context.domain_id,state)
-    original=repository.load_for_domain(assessment_context.domain_id).state; area=original.assessment_areas[0]; area_id=area.id; revision_ids=[r.id for r in area.geometry_revisions]; evaluation_ids=[e.id for e in original.evaluations]; attachment_ids=[a.id for a in original.attachments]
-    context=AppContext(session_factory,CurrentUser(1,"area-editor","Area Editor","editor"),tmp_path)
-    window=MainWindow(context); window.show(); window._set_context(assessment_context.site_id,"Project",assessment_context.domain_id,"North",area_id=area_id)
-    assert window.open_area_from_tree(area_id,assessment_context.domain_id,assessment_context.site_id,"North")
-    window._edit_area_boundaries(area_id); focused=window.assessment_page; app.processEvents(); assert focused.controller.workspace.workflow_state=="REFINING"
-    warnings=[]
-    monkeypatch.setattr(widgets.QMessageBox,"warning",lambda *args,**kwargs:(warnings.append(args),widgets.QMessageBox.StandardButton.Cancel)[1])
-    focused._close_page(); app.processEvents()
-    assert warnings and window.assessment_page is focused and window.page_stack.currentWidget() is focused
-    focused._cancel_drawing(); assert focused.controller.workspace.workflow_state=="IDLE"
-    focused._start_drawing(); assert focused.controller.workspace.workflow_state=="REFINING" and focused.controller.workspace.selected_area.id==area_id
-    saved_signals=[]; focused.controller.state_saved.connect(lambda:saved_signals.append(True)); completed=[]; focused.area_created.connect(completed.append)
-    focused.controller.workspace._save(); assert saved_signals==[True] and completed==[]
-    save_now_calls=[]; monkeypatch.setattr(focused,"save_now",lambda:save_now_calls.append(True))
-    def confirm_after_persistence():
-        edited=focused.controller.workspace.selected_area; polygon=edited.selection_polygon_frozen; candidates=focused.controller.workspace.area_service.generate_candidates(polygon)
-        focused.controller.workspace.area_service.revise_area(edited,selection_polygon=polygon,selected_fragments=candidates)
-        focused.controller.workspace.link_service.refresh_suggestions(edited); focused.controller.workspace._save(); focused.controller.workspace.cancel_area_drawing()
-    monkeypatch.setattr(focused.controller.workspace,"confirm_refined_polygon",confirm_after_persistence)
-    warning_count=len(warnings); focused._confirm(); app.processEvents()
-    assert completed==[area_id] and len(warnings)==warning_count and save_now_calls==[]
-    assert window.assessment_page is None and window.area_page.area.id==area_id and window.page_stack.indexOf(focused)==-1
-    reloaded=repository.load_for_domain(assessment_context.domain_id).state
-    assert [a.id for a in reloaded.assessment_areas]==[area_id]
-    saved_area=reloaded.assessment_areas[0]; assert len(saved_area.geometry_revisions)==len(revision_ids)+1
-    assert set(revision_ids).issubset({r.id for r in saved_area.geometry_revisions})
-    assert saved_area.active_geometry_revision().source_dataset_id in {d.id for d in reloaded.datasets}
-    assert [e.id for e in reloaded.evaluations]==evaluation_ids and [a.id for a in reloaded.attachments]==attachment_ids
-    window.close(); app.processEvents()
 
 
 def test_zero_revision_evaluation_container_round_trips(session_factory, assessment_context):
@@ -647,7 +194,7 @@ def test_zero_revision_evaluation_container_round_trips(session_factory, assessm
     owner = AssessmentAreaEvaluationService(state).create_evaluation(area)
     state.evaluations.append(owner)
     repository = AssessmentStateRepository(session_factory)
-    repository.replace_for_domain(assessment_context.domain_id, state)
+    AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, state)
 
     reloaded = repository.load_for_domain(assessment_context.domain_id).state
     owners = [item for item in reloaded.evaluations if item.assessment_area_id == area.id]
@@ -657,138 +204,12 @@ def test_zero_revision_evaluation_container_round_trips(session_factory, assessm
     assert owners[0].active_revision_id is None
 
 
-def test_session_aware_replace_rolls_back_with_caller_transaction(session_factory, assessment_context):
-    repository = AssessmentStateRepository(session_factory)
-    state = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, state)
-    with pytest.raises(RuntimeError, match="rollback marker"):
-        with session_factory.begin() as session:
-            repository.replace_for_domain_in_session(session, assessment_context.domain_id, state)
-            raise RuntimeError("rollback marker")
-    assert repository.load_for_domain(assessment_context.domain_id).workspace_id is None
-
-
-@pytest.mark.parametrize("failure_stage", ["after_block_flush", "after_state_replace", "before_commit"])
-def test_atomic_production_creation_rolls_back_both_sides(
-    session_factory, assessment_context, tmp_path, failure_stage,
-):
-    from application.use_cases.create_blast_event import CreateBlastEvent, CreateBlastEventCommand
-    from infrastructure.db.blast_event_creation import SqlAlchemyBlastEventCreationPersistence
-
-    path = tmp_path / "production.csv"
-    path.write_text("SID,PTN,X,Y,Z\nA,1,0,0,100\nA,2,10,0,100\nA,3,10,10,100\nA,4,0,10,100\nA,5,0,0,100\n")
-
-    def fail(stage):
-        if stage == failure_stage:
-            raise RuntimeError(f"injected failure: {stage}")
-
-    use_case = CreateBlastEvent(SqlAlchemyBlastEventCreationPersistence(session_factory, failure_hook=fail))
-    with pytest.raises(RuntimeError, match="injected failure"):
-        use_case.execute(CreateBlastEventCommand(
-            assessment_context.domain_id, "P-atomic", "production", None, 100,
-            str(path), None, True,
-        ))
-
-    with session_factory() as session:
-        assert session.scalar(select(func.count()).select_from(BlastBlock).where(
-            BlastBlock.domain_id == assessment_context.domain_id)) == 0
-        assert session.scalar(select(func.count()).select_from(orm.BlastEvent).where(
-            orm.BlastEvent.event_type == "production")) == 0
-
-
-def test_atomic_production_creation_commits_link_and_audit(session_factory, assessment_context, tmp_path):
-    from application.use_cases.create_blast_event import CreateBlastEvent, CreateBlastEventCommand
-    from infrastructure.db.blast_event_creation import SqlAlchemyBlastEventCreationPersistence
-    from database.models import AuditLogEntry
-
-    path = tmp_path / "production-success.csv"
-    path.write_text("SID,PTN,X,Y,Z\nA,1,0,0,100\nA,2,10,0,100\nA,3,10,10,100\nA,4,0,10,100\nA,5,0,0,100\n")
-    result = CreateBlastEvent(SqlAlchemyBlastEventCreationPersistence(session_factory)).execute(
-        CreateBlastEventCommand(assessment_context.domain_id, "P-success", "production",
-                                None, 100, str(path), None, True))
-    with session_factory() as session:
-        blocks = list(session.scalars(select(BlastBlock).where(
-            BlastBlock.domain_id == assessment_context.domain_id)))
-        events = list(session.scalars(select(orm.BlastEvent).where(
-            orm.BlastEvent.domain_id == result.event_id)))
-        audits = list(session.scalars(select(AuditLogEntry).where(
-            AuditLogEntry.blast_block_id == result.blast_block_id)))
-    assert len(blocks) == len(events) == len(audits) == 1
-    assert events[0].blast_block_id == blocks[0].id == result.blast_block_id
-    assert blocks[0].block_number == "P-success" and blocks[0].horizon_m == 100
-    assert blocks[0].status == "planned" and blocks[0].comment is None
-    assert audits[0].action == "create" and audits[0].description == "Создан взрывной блок"
-
-
-@pytest.mark.parametrize("failure_stage", ["after_block_flush", "after_state_replace", "before_commit"])
-def test_atomic_production_failure_preserves_preexisting_rich_state(
-    session_factory, assessment_context, tmp_path, failure_stage,
-):
-    """Rollback restores the old workspace graph, not only an initially empty Domain."""
-    from application.use_cases.create_blast_event import CreateBlastEvent, CreateBlastEventCommand
-    from database.models import AuditLogEntry
-    from infrastructure.db.blast_event_creation import SqlAlchemyBlastEventCreationPersistence
-
-    repository = AssessmentStateRepository(session_factory)
-    original = build_rich_state()
-    persist_project_lines(session_factory, assessment_context.site_id, original)
-    with session_factory.begin() as session:
-        existing_block = BlastBlock(
-            domain_id=assessment_context.domain_id,
-            block_number="P-existing",
-            horizon_m=100,
-            planned_blast_date=None,
-            status="planned",
-            comment=None,
-            created_by_user_id=None,
-        )
-        session.add(existing_block)
-        session.flush()
-        original.blast_events[0].blast_block_id = existing_block.id
-        existing_block_id = existing_block.id
-    before = repository.replace_for_domain(assessment_context.domain_id, original)
-    before_payload = semantic(before.state)
-    with session_factory() as session:
-        before_ids = relational_ids(session, assessment_context.domain_id)
-
-    path = tmp_path / "production-over-rich-state.csv"
-    path.write_text(
-        "SID,PTN,X,Y,Z\nA,1,0,0,100\nA,2,10,0,100\n"
-        "A,3,10,10,100\nA,4,0,10,100\nA,5,0,0,100\n"
-    )
-
-    def fail(stage):
-        if stage == failure_stage:
-            raise RuntimeError(f"injected failure: {stage}")
-
-    use_case = CreateBlastEvent(
-        SqlAlchemyBlastEventCreationPersistence(session_factory, failure_hook=fail))
-    with pytest.raises(RuntimeError, match="injected failure"):
-        use_case.execute(CreateBlastEventCommand(
-            assessment_context.domain_id, "P-new", "production", None, 100,
-            str(path), None, True,
-        ))
-
-    after = repository.load_for_domain(assessment_context.domain_id)
-    assert after.workspace_id == before.workspace_id
-    assert semantic(after.state) == before_payload
-    assert after.state.blast_events[0].blast_block_id == existing_block_id
-    with session_factory() as session:
-        assert relational_ids(session, assessment_context.domain_id) == before_ids
-        domain_block_ids = select(BlastBlock.id).where(
-            BlastBlock.domain_id == assessment_context.domain_id)
-        assert session.scalar(select(func.count()).select_from(BlastBlock).where(
-            BlastBlock.domain_id == assessment_context.domain_id)) == 1
-        assert session.scalar(select(func.count()).select_from(AuditLogEntry).where(
-            AuditLogEntry.blast_block_id.in_(domain_block_ids))) == 0
-
 
 def _persist_rich_for_focused_write(session_factory, context):
     state = build_rich_state()
     persist_project_lines(session_factory, context.site_id, state)
-    AssessmentStateRepository(session_factory).replace_for_domain(context.domain_id, state)
+    AssessmentGraphSeeder(session_factory).seed_for_domain(context.domain_id, state)
     return state
-
 
 def test_focused_attachment_batch_rolls_back_every_row_on_second_insert(session_factory, assessment_context):
     state = _persist_rich_for_focused_write(session_factory, assessment_context)
@@ -796,7 +217,7 @@ def test_focused_attachment_batch_rolls_back_every_row_on_second_insert(session_
     second = deepcopy(first)
     with pytest.raises(Exception):
         SqlAlchemyAssessmentWrites(session_factory).add_attachment_metadata_batch(
-            assessment_context.domain_id, [first, second])
+            assessment_context.domain_id, 0, [first, second])
     with session_factory() as session:
         assert session.scalar(select(func.count()).select_from(orm.AssessmentEntityAttachment).where(
             orm.AssessmentEntityAttachment.domain_id == first.id)) == 0
@@ -806,14 +227,14 @@ def test_focused_lazy_owner_and_attachment_batch_roll_back_together(session_fact
     state = build_rich_state(); state.evaluations = []
     state.attachments = [x for x in state.attachments if x.owner_type == "blast_event"]
     persist_project_lines(session_factory, assessment_context.site_id, state)
-    AssessmentStateRepository(session_factory).replace_for_domain(assessment_context.domain_id, state)
+    AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, state)
     owner = deepcopy(build_rich_state().evaluations[0]); owner.id = "EVAL-LAZY"
     owner.revisions = []; owner.active_revision_id = None
     first = deepcopy(build_rich_state().attachments[1]); first.owner_id = owner.id
     first.id = "ATT-LAZY-DUP"; second = deepcopy(first)
     with pytest.raises(Exception):
         SqlAlchemyAssessmentWrites(session_factory).add_attachment_metadata_batch(
-            assessment_context.domain_id, [first, second], owner)
+            assessment_context.domain_id, 0, [first, second], owner)
     with session_factory() as session:
         assert session.scalar(select(orm.AssessmentAreaEvaluation.id).where(
             orm.AssessmentAreaEvaluation.domain_id == owner.id)) is None
@@ -829,7 +250,7 @@ def test_active_link_write_does_not_leak_historical_live_mutation(session_factor
     historical_before = historical.status
     historical.status = "excluded" if historical.status != "excluded" else "confirmed"
     active.status = "excluded" if active.status != "excluded" else "confirmed"
-    SqlAlchemyAssessmentWrites(session_factory).synchronize_area_links(assessment_context.domain_id, area)
+    SqlAlchemyAssessmentWrites(session_factory).synchronize_area_links(assessment_context.domain_id, 0, area)
     loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state.assessment_areas[0]
     assert next(x.status for x in loaded.event_links if x.id == historical.id) == historical_before
     assert next(x.status for x in loaded.event_links if x.id == active.id) == active.status
@@ -847,7 +268,7 @@ def test_area_geometry_write_does_not_leak_historical_link_mutation(session_fact
         old.upper_elevation, old.horizon_slices, "focused revision")
     area.geometry_revisions.append(revision); area.active_geometry_revision_id = revision.id
     SqlAlchemyAssessmentWrites(session_factory).persist_assessment_area_geometry(
-        assessment_context.domain_id, area)
+        assessment_context.domain_id, 0, area)
     loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state.assessment_areas[0]
     assert loaded.active_geometry_revision_id == revision.id
     assert next(x.status for x in loaded.event_links if x.id == historical.id) == historical_before
@@ -860,7 +281,7 @@ def test_technical_card_identity_mismatch_is_rejected(session_factory, assessmen
     revision.revision_number = 3; card.revisions.append(revision)
     with pytest.raises(ValueError, match="logical ID"):
         SqlAlchemyAssessmentWrites(session_factory).persist_technical_card_revision(
-            assessment_context.domain_id, card, revision)
+            assessment_context.domain_id, 0, card, revision)
     loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state
     assert len(loaded.technical_cards[0].revisions) == 2
 
@@ -874,7 +295,7 @@ def test_cross_event_link_geometry_is_rejected(session_factory, assessment_conte
     active.geometry_revision_id = other.active_geometry_revision_id
     active.status = "excluded" if before != "excluded" else "confirmed"
     with pytest.raises(ValueError, match="not persisted"):
-        SqlAlchemyAssessmentWrites(session_factory).synchronize_area_links(assessment_context.domain_id, area)
+        SqlAlchemyAssessmentWrites(session_factory).synchronize_area_links(assessment_context.domain_id, 0, area)
     loaded = AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state.assessment_areas[0]
     assert next(x.status for x in loaded.event_links if x.id == active.id) == before
 
@@ -891,11 +312,11 @@ def test_cross_domain_evaluation_and_attachment_mutations_are_rejected(session_f
     attachment = deepcopy(state.attachments[0]); attachment.title = "must not change"
     try:
         with pytest.raises(ValueError, match="another Assessment workspace"):
-            writer.persist_evaluation_owner(foreign_domain_id, state.evaluations[0])
+            writer.persist_evaluation_owner(foreign_domain_id, 0, state.evaluations[0])
         with pytest.raises(ValueError, match="another Assessment workspace"):
-            writer.update_attachment_metadata(foreign_domain_id, attachment)
+            writer.update_attachment_metadata(foreign_domain_id, 0, attachment)
         with pytest.raises(ValueError, match="another Assessment workspace"):
-            writer.delete_attachment_metadata(foreign_domain_id, attachment.id)
+            writer.delete_attachment_metadata(foreign_domain_id, 0, attachment.id)
         loaded = AssessmentStateRepository(session_factory).load_for_domain(
             assessment_context.domain_id).state
         assert next(x.title for x in loaded.attachments if x.id == attachment.id) != "must not change"

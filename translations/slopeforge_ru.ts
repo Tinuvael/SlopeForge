@@ -2854,5 +2854,13 @@
             <source>Discard</source>
             <translation>Не сохранять</translation>
         </message>
+        <message>
+            <source>Could not archive block</source>
+            <translation>Не удалось архивировать блок</translation>
+        </message>
+        <message>
+            <source>Moving a Block between Domains is not available yet</source>
+            <translation>Перемещение блока между доменами пока недоступно</translation>
+        </message>
     </context>
 </TS>

@@ -4,6 +4,7 @@ from datetime import date
 import pytest
 
 from application.state.assessment_domain_state import AssessmentDomainState
+from application.ports.assessment_state import AssessmentStateSnapshot
 from application.use_cases.create_blast_event import (
     BlastEventCreationPermissionError, CreateBlastEvent, CreateBlastEventCommand,
 )
@@ -16,13 +17,13 @@ class MemoryPersistence:
         self.fail = fail
 
     def load_state(self, domain_id):
-        return deepcopy(self.persisted)
+        return AssessmentStateSnapshot(domain_id, 1, None, deepcopy(self.persisted), 0)
 
-    def persist_contour(self, domain_id, event):
+    def persist_contour(self, domain_id, expected_version, event):
         if self.fail: raise RuntimeError("injected persistence failure")
         self.persisted.blast_events.append(deepcopy(event))
 
-    def persist_production(self, domain_id, event, actor_id):
+    def persist_production(self, domain_id, expected_version, event, actor_id):
         if self.fail: raise RuntimeError("injected persistence failure")
         block_id = len(self.blocks) + 1
         event.blast_block_id = block_id

@@ -6,7 +6,7 @@ from datetime import date
 from typing import Protocol
 
 from application.services.blast_events import BlastEventService
-from application.state.assessment_domain_state import AssessmentDomainState
+from application.ports.assessment_state import AssessmentStateSnapshot
 from domain.blasting.entities import BlastEvent
 
 
@@ -37,12 +37,12 @@ class CreateBlastEventResult:
 class BlastEventCreationPersistence(Protocol):
     """Narrow port required by the Blast Event creation workflow."""
 
-    def load_state(self, domain_id: int) -> AssessmentDomainState: ...
+    def load_state(self, domain_id: int) -> AssessmentStateSnapshot: ...
 
-    def persist_contour(self, domain_id: int, event: BlastEvent) -> None: ...
+    def persist_contour(self, domain_id: int, expected_version: int, event: BlastEvent) -> int: ...
 
     def persist_production(
-        self, domain_id: int, event: BlastEvent, actor_id: int | None,
+        self, domain_id: int, expected_version: int, event: BlastEvent, actor_id: int | None,
     ) -> int: ...
 
 
@@ -54,8 +54,8 @@ class CreateBlastEvent:
         if not command.can_edit:
             raise BlastEventCreationPermissionError(
                 "Your role is not allowed to create or edit blast events")
-        state = self._persistence.load_state(command.domain_id)
-        service = BlastEventService(state)
+        snapshot = self._persistence.load_state(command.domain_id)
+        service = BlastEventService(snapshot.state)
         event = service.create_event(
             name=command.name,
             event_type=command.event_type,
@@ -64,11 +64,12 @@ class CreateBlastEvent:
             csv_path=command.geometry_file_path,
         )
         if event.event_type == "contour":
-            self._persistence.persist_contour(command.domain_id, event)
+            self._persistence.persist_contour(
+                command.domain_id, snapshot.expected_version, event)
             block_id = None
         else:
             block_id = self._persistence.persist_production(
-                command.domain_id, event, command.actor_id)
+                command.domain_id, snapshot.expected_version, event, command.actor_id)
             if block_id is None:  # defensive guarantee of the application contract
                 raise RuntimeError("Production Blast Event persistence did not create a BlastBlock")
         return CreateBlastEventResult(event.id, event.event_type, block_id, service.last_import_warning)

@@ -147,7 +147,9 @@ class BlockPage(QWidget):
     def edit_current_block(self) -> None:
         if not self.current_block or not self.context.current_user.can_edit:
             return
-        dialog = BlockDialog(self.block_service, self.domain_repo, self.context.current_user, block=self.current_block)
+        dialog = BlockDialog(self.block_service, self.domain_repo, self.context.current_user,
+                             block=self.current_block,
+                             expected_version=self.entity_controller.expected_version)
         if dialog.exec():
             self.current_block = self.block_service.get_block(dialog.saved_block_id or self.current_block.id)
             self.refresh()

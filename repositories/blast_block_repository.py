@@ -10,7 +10,7 @@ from database.models import BlastBlock, Domain, Site
 @dataclass(frozen=True)
 class BlastBlockRow:
     id: int; block_number: str; domain_id: int; domain_name: str; site_id: int; site_name: str; mine_id: int; mine_name: str
-    horizon_m: Decimal | None; planned_blast_date: date | None; status: str; author_name: str | None; created_at: datetime; updated_at: datetime; comment: str | None; created_by_user_id: int | None; is_archived: bool; archived_at: datetime | None
+    horizon_m: Decimal | None; planned_blast_date: date | None; status: str; author_name: str | None; created_at: datetime; updated_at: datetime; comment: str | None; created_by_user_id: int | None; is_archived: bool; archived_at: datetime | None; domain_version: int
 
 class BlastBlockRepository:
     def __init__(self, session_factory: Callable[[], Session]): self.session_factory = session_factory
@@ -39,4 +39,4 @@ class BlastBlockRepository:
     @staticmethod
     def _to_row(block):
         site = block.domain.site; author = (block.created_by_user.full_name or block.created_by_user.username) if block.created_by_user else None
-        return BlastBlockRow(block.id, block.block_number, block.domain_id, block.domain.name, site.id, site.name, site.mine_id, site.mine.name, block.horizon_m, block.planned_blast_date, block.status, author, block.created_at, block.updated_at, block.comment, block.created_by_user_id, block.is_archived, block.archived_at)
+        return BlastBlockRow(block.id, block.block_number, block.domain_id, block.domain.name, site.id, site.name, site.mine_id, site.mine.name, block.horizon_m, block.planned_blast_date, block.status, author, block.created_at, block.updated_at, block.comment, block.created_by_user_id, block.is_archived, block.archived_at, block.domain.version)

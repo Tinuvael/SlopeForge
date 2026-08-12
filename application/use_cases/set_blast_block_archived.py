@@ -10,6 +10,7 @@ class SetBlastBlockArchivedCommand:
     archived: bool
     actor_id: int
     can_edit: bool
+    expected_version: int
 
 
 class SetBlastBlockArchived:
@@ -19,4 +20,5 @@ class SetBlastBlockArchived:
     def execute(self, command: SetBlastBlockArchivedCommand) -> None:
         if not command.can_edit:
             raise PermissionError("Your role is not allowed to archive or restore blocks")
-        self._persistence.set_archived(command.block_id, command.archived, command.actor_id)
+        self._persistence.set_archived(
+            command.block_id, command.expected_version, command.archived, command.actor_id)

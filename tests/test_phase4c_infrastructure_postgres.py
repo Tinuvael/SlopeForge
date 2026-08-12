@@ -11,9 +11,9 @@ from sqlalchemy import create_engine, delete, event, func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-URL = os.environ.get("SLOPEFORGE_TEST_DATABASE_URL")
+URL = os.environ.get("TEST_DATABASE_URL")
 if not URL:
-    pytest.skip("SLOPEFORGE_TEST_DATABASE_URL is not set; Phase 4C DB tests skipped", allow_module_level=True)
+    pytest.skip("TEST_DATABASE_URL is not set; Phase 4C DB tests skipped", allow_module_level=True)
 if "test" not in (make_url(URL).database or "").lower():
     pytest.fail("Refusing destructive Phase 4C tests outside a test database", pytrace=False)
 
@@ -25,7 +25,7 @@ from infrastructure.db.project_creation import SqlAlchemyProjectCreation
 from infrastructure.db.project_lines_creation import SqlAlchemyProjectLinesCreationSupport
 from infrastructure.db.project_navigation import SqlAlchemyProjectNavigationQueries
 from infrastructure.db.project_report import SqlAlchemyProjectReportQuery
-from repositories.assessment_state_repository import AssessmentStateRepository
+from tests.assessment_graph_seeder import AssessmentGraphSeeder
 from repositories.project_lines_repository import ProjectLinesRepository
 from tests.test_assessment_state_mapper import build_rich_state
 
@@ -149,8 +149,6 @@ def test_domain_adapter_and_navigation_are_site_scoped(factory):
             queries.get_domain_context(2_000_000_000)
     finally:
         cleanup_project(factory, site_id)
-
-
 def test_concrete_report_query_preserves_actual_date_stored_scores_and_links(factory):
     site_id = SqlAlchemyProjectCreation(factory).create_project("Report integration project", None)
     domain_id = SqlAlchemyDomainCreation(factory).create_domain(site_id, "North", None)
@@ -180,7 +178,7 @@ def test_concrete_report_query_preserves_actual_date_stored_scores_and_links(fac
         for dataset in state.datasets:
             ProjectLinesRepository(factory).add_dataset(site_id, dataset)
         ProjectLinesRepository(factory).set_active(site_id, state.active_dataset().id)
-        AssessmentStateRepository(factory).replace_for_domain(domain_id, state)
+        AssessmentGraphSeeder(factory).seed_for_domain(domain_id, state)
 
         report = SqlAlchemyProjectReportQuery(factory).collect(site_id, date(2026, 8, 1), date(2026, 8, 31))
         assert [(row.event_type, row.report_date) for row in report.blasts] == [

@@ -50,7 +50,7 @@ def test_repository_filters_are_forwarded():
 
 def test_block_update_preserves_zero_horizon_and_empty_planned_date():
     repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo())
-    service.update_block(5,valid_input(horizon_text="0",planned_blast_date=None),editor)
+    service.update_block(5,valid_input(horizon_text="0",planned_blast_date=None),editor,expected_version=0)
     assert repo.updated[0]["horizon_m"] == Decimal("0")
     assert repo.updated[0]["planned_blast_date"] is None
 
@@ -67,8 +67,8 @@ def test_linked_production_block_domain_is_immutable():
         def begin(self): return Session()
     repo=FakeBlockRepo(); repo.session_factory=Factory()
     domains=FakeDomainRepo(); domains.domains.append(FakeDomain(8,site_id=10)); service=BlastBlockService(repo,domains,audit_repository=object())
-    with pytest.raises(ValidationError,match="Domain cannot be changed"):
-        service.update_block(5,valid_input(domain_id=8),editor)
+    with pytest.raises(ValidationError,match="Moving a Block between Domains"):
+        service.update_block(5,valid_input(domain_id=8),editor,expected_version=0)
 
 
 def test_auth_success_and_failure_with_fake_session() -> None:

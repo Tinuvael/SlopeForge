@@ -13,11 +13,8 @@ class AssessmentStateSnapshot:
     site_id: int
     workspace_id: int | None
     state: AssessmentDomainState
+    expected_version: int
 
 
 class AssessmentStatePersistence(Protocol):
     def load(self, domain_id: int) -> AssessmentStateSnapshot: ...
-
-    def save(self, domain_id: int, state: AssessmentDomainState) -> AssessmentStateSnapshot:
-        """Compatibility-only whole-state write; remove in Phase 5C."""
-        ...

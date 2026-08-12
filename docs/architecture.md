@@ -13,8 +13,14 @@ Completed architecture work:
 - Phase 4: application use cases own the important multi-step workflows; Qt UI no longer owns core transactions.
 - Phase 5A: whole-state Assessment persistence stopped deleting/recreating the workspace graph on ordinary synchronization.
 - Phase 5B: normal application writes became focused operations for BlastEvent, Technical Card, Assessment geometry, links, evaluations, archive state, and attachment metadata.
+- Phase 5C: `Domain.version` became the stable optimistic-concurrency owner. Focused writes use expected-version CAS in the same transaction, and normal Assessment editing no longer has a whole-state save API. The guard supports deterministic multi-Domain transactions for future #75 work, but moves are not implemented.
 
-Phase 5 is **not complete**. Compatibility whole-state APIs still exist and same-entity edits are still last-writer-wins. Issue #79 is the architecture gate for the remaining persistence/schema cleanup.
+`AssessmentStateRepository` is read-only: the retired whole-state synchronization
+implementation was deleted rather than retained as test support. Block pages use the
+editing controller's current version as their single token, so a successful Technical
+Card, geometry, or attachment write cannot make a later Block edit self-stale.
+
+Phase 5C is complete. Phase 6A (Assessment ownership/schema normalization) is the next architecture phase; issue #79 as a whole is not complete.
 
 ## Dependency direction
 

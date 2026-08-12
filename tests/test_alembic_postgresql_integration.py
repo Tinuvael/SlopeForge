@@ -8,6 +8,48 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
+def test_0009_backfills_non_null_domain_version_and_round_trips(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    url = os.environ["TEST_DATABASE_URL"]
+    if "test" not in (make_url(url).database or "").lower():
+        pytest.fail("Refusing migration test outside a test database", pytrace=False)
+    from alembic import command
+    from alembic.config import Config
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage-0009"))
+    config = Config("alembic.ini")
+    command.downgrade(config, "base")
+    command.upgrade(config, "20260809_0008")
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            mine = connection.scalar(text("INSERT INTO mines (name) VALUES ('v9') RETURNING id"))
+            site = connection.scalar(text(
+                "INSERT INTO sites (mine_id, name) VALUES (:mine, 'v9') RETURNING id"),
+                {"mine": mine})
+            domain = connection.scalar(text(
+                "INSERT INTO domains (site_id, name) VALUES (:site, 'v9') RETURNING id"),
+                {"site": site})
+        command.upgrade(config, "20260812_0009")
+        with engine.connect() as connection:
+            assert connection.scalar(text(
+                "SELECT version FROM domains WHERE id=:id"), {"id": domain}) == 0
+            assert connection.scalar(text("""
+                SELECT is_nullable FROM information_schema.columns
+                WHERE table_name='domains' AND column_name='version'
+            """)) == "NO"
+        command.downgrade(config, "20260809_0008")
+        with engine.connect() as connection:
+            assert connection.scalar(text("""
+                SELECT count(*) FROM information_schema.columns
+                WHERE table_name='domains' AND column_name='version'
+            """)) == 0
+        command.upgrade(config, "20260812_0009")
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set; PostgreSQL Alembic integration test skipped")
 def test_alembic_upgrade_downgrade_upgrade_cycle_on_postgresql(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     if "test" not in (make_url(os.environ["TEST_DATABASE_URL"]).database or "").lower():

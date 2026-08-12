@@ -191,15 +191,3 @@ def test_domains_share_one_site_history_but_sites_are_isolated(context):
     assert [item.id for item in south.state.datasets] == ["D-X"]
     assert north.state.active_dataset().id == south.state.active_dataset().id == "D-X"
     assert [item.id for item in other.state.datasets] == ["D-OTHER"]
-
-
-def test_domain_save_cannot_revert_site_active_dataset(context):
-    factory, ids = context
-    lines = ProjectLinesRepository(factory)
-    lines.add_dataset(ids[1], dataset("D-X")); lines.set_active(ids[1], "D-X")
-    assessments = AssessmentStateRepository(factory)
-    stale_north = assessments.load_for_domain(ids[3]).state
-    lines.add_dataset(ids[1], dataset("D-Y")); lines.set_active(ids[1], "D-Y")
-    assessments.replace_for_domain(ids[3], stale_north)
-    assert lines.get_active(ids[1]).domain_id == "D-Y"
-    assert [row.domain_id for row in lines.list_for_site(ids[1])] == ["D-X", "D-Y"]

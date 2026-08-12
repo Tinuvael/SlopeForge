@@ -31,6 +31,11 @@ class EntityPageController:
     def workspace_id(self):
         return self.editing.workspace_id
 
+    @property
+    def expected_version(self):
+        """Canonical version for every command issued by this open entity page."""
+        return self.editing.expected_version
+
     def event_for_block(self, block_id):
         return next((event for event in self.state.blast_events
                      if event.blast_block_id == block_id and event.event_type == "production"), None)
