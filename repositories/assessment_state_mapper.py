@@ -93,15 +93,9 @@ def validate_assessment_state(state: AssessmentDomainState) -> None:
             if revision.id in area_revisions:
                 _fail(f"duplicate area geometry revision ID {revision.id!r}")
             area_revisions[revision.id] = area.id
-            if revision.source_dataset_id not in dataset_ids:
-                _fail(f"source dataset {revision.source_dataset_id!r} does not exist")
-            if not all(math.isfinite(x) for x in (revision.lower_elevation, revision.upper_elevation)):
-                _fail("area elevations must be finite")
-            if revision.lower_elevation >= revision.upper_elevation:
-                _fail("lower elevation must be below upper elevation")
-            for item in revision.horizon_slices:
-                if not item.id.strip() or not math.isfinite(item.elevation):
-                    _fail("horizon slice IDs and elevations must be persistable")
+            for elevation in (revision.min_elevation, revision.max_elevation):
+                if elevation is not None and not math.isfinite(elevation):
+                    _fail("area elevation summary must be finite")
         _ids(area.event_links, "assessment event link")
         link_identities: set[tuple[str, str, str]] = set()
         for link in area.event_links:

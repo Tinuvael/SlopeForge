@@ -30,14 +30,15 @@ def evaluate_event(area: AssessmentArea, event: BlastEvent) -> AssessmentEventLi
     if event_revision is None:
         return AssessmentEventLinkCandidate(event.id, "", event.event_type, False, False,
                                             reason="no_active_geometry")
-    elevation = area_revision.lower_elevation < event.elevation <= area_revision.upper_elevation
+    elevation = ((area_revision.min_elevation is None or event.elevation >= area_revision.min_elevation) and
+                 (area_revision.max_elevation is None or event.elevation <= area_revision.max_elevation))
     geometry = event_revision.plan_geometry
     matched = None
     spatial = False
     if event.event_type == "production" and isinstance(geometry, PlanPolygon):
-        spatial = polygon_intersects_polygon(geometry, area_revision.selection_polygon_frozen)
+        spatial = polygon_intersects_polygon(geometry, area_revision.final_geometry_frozen)
     elif event.event_type == "contour" and isinstance(geometry, PlanMultiPoint):
-        points = points_from_multipoint_inside_polygon(geometry, area_revision.selection_polygon_frozen)
+        points = points_from_multipoint_inside_polygon(geometry, area_revision.final_geometry_frozen)
         spatial = bool(points)
         if points:
             matched = PlanMultiPoint(points)

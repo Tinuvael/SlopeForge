@@ -133,11 +133,6 @@ class SqlAlchemyAssessmentWrites:
                     assessment_date=area.assessment_date, is_archived=area.is_archived,
                     archived_at=area.archived_at, archive_reason=area.archive_reason)
                 s.add(row); s.flush()
-            dataset = s.scalar(select(orm.ProjectLinesDataset).join(Domain,
-                Domain.site_id == orm.ProjectLinesDataset.site_id).where(
-                    Domain.id == domain_id,
-                    orm.ProjectLinesDataset.logical_id == revision.source_dataset_id))
-            if dataset is None: raise ValueError("Project Lines dataset is outside this Site")
             duplicate = s.scalar(select(orm.AssessmentAreaGeometryRevision.id).where(
                 orm.AssessmentAreaGeometryRevision.assessment_area_id == row.id,
                 (orm.AssessmentAreaGeometryRevision.logical_id == revision.id) |
@@ -149,12 +144,9 @@ class SqlAlchemyAssessmentWrites:
             s.flush()
             s.add(orm.AssessmentAreaGeometryRevision(assessment_area=row,
                 logical_id=revision.id, revision_number=revision.revision_number,
-                created_at=revision.created_at, source_dataset=dataset,
-                selection_polygon_json=revision.selection_polygon_frozen.to_dict(),
+                created_at=revision.created_at, boundary_json=revision.boundary.to_dict(),
                 final_geometry_json=revision.final_geometry_frozen.to_dict(),
-                lower_elevation_m=revision.lower_elevation,
-                upper_elevation_m=revision.upper_elevation,
-                horizon_slices_json=[x.to_dict() for x in revision.horizon_slices],
+                min_elevation_m=revision.min_elevation, max_elevation_m=revision.max_elevation,
                 change_reason=revision.change_reason, is_active=True))
             s.flush()
             links = [link for link in area.event_links

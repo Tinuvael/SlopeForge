@@ -168,8 +168,8 @@ class AssessmentAreaGeometryRevision(Base):
     __tablename__ = "assessment_area_geometry_revisions"
     __table_args__ = (
         UniqueConstraint("assessment_area_id", "logical_id", name="uq_assessment_area_geometry_revisions_parent_logical_id"), UniqueConstraint("assessment_area_id", "revision_number", name="uq_assessment_area_geometry_revisions_parent_number"),
-        CheckConstraint("revision_number > 0", name="ck_assessment_area_geometry_revisions_number_positive"), CheckConstraint("lower_elevation_m < upper_elevation_m", name="ck_assessment_area_geometry_revisions_elevation_order"),
-        CheckConstraint("jsonb_typeof(selection_polygon_json) = 'object'", name="ck_assessment_area_geometry_revisions_selection_object"), CheckConstraint("jsonb_typeof(final_geometry_json) = 'object'", name="ck_assessment_area_geometry_revisions_final_object"), CheckConstraint("jsonb_typeof(horizon_slices_json) = 'array'", name="ck_assessment_area_geometry_revisions_slices_array"),
+        CheckConstraint("revision_number > 0", name="ck_assessment_area_geometry_revisions_number_positive"),
+        CheckConstraint("jsonb_typeof(boundary_json) = 'object'", name="ck_assessment_area_geometry_revisions_boundary_object"), CheckConstraint("jsonb_typeof(final_geometry_json) = 'object'", name="ck_assessment_area_geometry_revisions_final_object"),
         Index("ix_assessment_area_geometry_revisions_one_active", "assessment_area_id", unique=True, postgresql_where=text("is_active")),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -177,16 +177,13 @@ class AssessmentAreaGeometryRevision(Base):
     logical_id: Mapped[str] = mapped_column(String(255), nullable=False)
     revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    source_dataset_id: Mapped[int] = mapped_column(ForeignKey("project_lines_datasets.id", ondelete="RESTRICT"), nullable=False)
-    selection_polygon_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    boundary_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     final_geometry_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    lower_elevation_m: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
-    upper_elevation_m: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
-    horizon_slices_json: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    min_elevation_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 3))
+    max_elevation_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 3))
     change_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     assessment_area: Mapped[AssessmentArea] = relationship(back_populates="geometry_revisions")
-    source_dataset: Mapped[ProjectLinesDataset] = relationship()
     event_links: Mapped[list["AssessmentEventLink"]] = relationship(back_populates="assessment_area_geometry_revision", cascade="all, delete-orphan", passive_deletes=True)
 
 

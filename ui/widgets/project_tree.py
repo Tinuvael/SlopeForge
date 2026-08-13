@@ -86,7 +86,7 @@ class ProjectTree(QWidget):
                 areas_folder = self._item(tr("Assessment areas"), {"type":"folder", "folder_kind":"assessment_areas", **base}); domain_item.addChild(areas_folder)
                 intervals = {}
                 for area in areas_by_domain.get(domain.id, []):
-                    label = f"{tr('Interval')} {_number(area.lower_elevation)}–{_number(area.upper_elevation)}"
+                    label = f"{tr('Interval')} {_number(area.min_elevation) if area.min_elevation is not None else '—'}–{_number(area.max_elevation) if area.max_elevation is not None else '—'}"
                     folder = intervals.get(label)
                     if folder is None: folder = self._item(label, {"type":"interval", **base}); areas_folder.addChild(folder); intervals[label] = folder
                     text = area.name + (f" [{tr('Archived')}]" if area.is_archived else "")

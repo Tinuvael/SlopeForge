@@ -27,12 +27,12 @@ class NavigationRepository:
         active = orm.AssessmentAreaGeometryRevision.is_active.is_(True)
         with self.session_factory() as session:
             stmt = (select(orm.AssessmentArea.logical_id, orm.AssessmentArea.domain_id, orm.AssessmentArea.name,
-                     orm.AssessmentAreaGeometryRevision.lower_elevation_m, orm.AssessmentAreaGeometryRevision.upper_elevation_m,
+                     orm.AssessmentAreaGeometryRevision.min_elevation_m, orm.AssessmentAreaGeometryRevision.max_elevation_m,
                      orm.AssessmentArea.is_archived)
                     .join(orm.AssessmentArea.geometry_revisions)
                     .where(active)
-                    .order_by(orm.AssessmentArea.domain_id, orm.AssessmentAreaGeometryRevision.lower_elevation_m,
-                              orm.AssessmentAreaGeometryRevision.upper_elevation_m, orm.AssessmentArea.name))
+                    .order_by(orm.AssessmentArea.domain_id, orm.AssessmentAreaGeometryRevision.min_elevation_m,
+                              orm.AssessmentAreaGeometryRevision.max_elevation_m, orm.AssessmentArea.name))
             if not show_archived: stmt = stmt.where(orm.AssessmentArea.is_archived.is_(False))
             return [AreaNavigationRow(*row) for row in session.execute(stmt)]
 

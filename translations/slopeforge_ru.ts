@@ -2878,5 +2878,21 @@
             <source>The Blast Event was created successfully, but its page could not be opened. Refresh the project tree and open it again.</source>
             <translation>Взрывное событие успешно создано, но его страницу открыть не удалось. Обновите дерево проекта и откройте событие снова.</translation>
         </message>
+        <message>
+            <source>Draw boundary</source>
+            <translation>Рисовать границу</translation>
+        </message>
+        <message>
+            <source>Undo</source>
+            <translation>Отменить шаг</translation>
+        </message>
+        <message>
+            <source>Close boundary</source>
+            <translation>Замкнуть границу</translation>
+        </message>
+        <message>
+            <source>Save boundary</source>
+            <translation>Сохранить границу</translation>
+        </message>
     </context>
 </TS>
