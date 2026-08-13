@@ -8,6 +8,7 @@ from sqlalchemy.schema import CreateTable
 
 from database.base import Base
 from database.models import User
+from database import assessment_models  # noqa: F401  Register the complete ORM graph.
 from database.settings import Settings
 from database.storage import StoragePathError, copy_attachment, ensure_inside_storage
 
@@ -69,6 +70,25 @@ def test_mvp_baseline_is_self_contained() -> None:
     assert "down_revision = None" in migration
     for enum_name in ["user_role", "blast_block_status"]:
         assert f"name='{enum_name}'" in migration
+
+
+def test_mvp_baseline_upgrade_and_downgrade_resolve_all_runtime_names(monkeypatch) -> None:
+    """Calling migration functions catches undefined names hidden from compileall."""
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    class NoOpOperations:
+        def __getattr__(self, _name):
+            return lambda *args, **kwargs: None
+
+    path = Path("alembic/versions/0001_mvp_baseline.py")
+    spec = spec_from_file_location("mvp_baseline_runtime_names", path)
+    module = module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "op", NoOpOperations())
+    monkeypatch.setattr(module.sa.Enum, "drop", lambda *args, **kwargs: None)
+    module.upgrade()
+    module.downgrade()
 
 
 def test_first_admin_creation_uses_advisory_lock_and_rechecks_users() -> None:

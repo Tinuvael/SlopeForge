@@ -4,7 +4,11 @@ import os
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, inspect, text
+from datetime import date, datetime, timezone
+from decimal import Decimal
+
+from sqlalchemy import create_engine, inspect, select
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import make_url
 
 
@@ -42,77 +46,121 @@ def test_mvp_baseline_is_the_only_alembic_head() -> None:
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
-def test_mvp_baseline_upgrade_schema_smoke_and_round_trip(
+def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Build only the baseline, exercise the stacked schema, then base -> head."""
+    """Exercise the real post-#89 model against a DB created only from 0001."""
     from alembic import command
+    from database import assessment_models as orm
+    from database.models import BlastBlock, Domain, Mine, Site
+    from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
+    from domain.assessment.geometry import (
+        AssessmentBoundary, ProjectLineAnchor, ProjectLineSpan, SpatialPoint,
+        StraightConnector, derive_elevation_summary, derive_plan_polygon,
+    )
+    from domain.geometry.types import DatamineLine, DataminePoint
+    from domain.project.project_lines import ProjectLinesDataset
+    from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
+    from repositories.assessment_state_repository import AssessmentStateRepository
+    from repositories.project_lines_repository import ProjectLinesRepository
 
     url = os.environ["TEST_DATABASE_URL"]
     config = _alembic_config(monkeypatch, tmp_path, url)
     engine = create_engine(url)
-    boundary = {
-        "segments": [
-            {
-                "type": "project_line_span",
-                "dataset_logical_id": "LINES-1",
-                "source_line_id": "crest-1",
-                "start_fraction": 0.0,
-                "end_fraction": 1.0,
-                "frozen_points": [[0, 0, 110], [10, 0, 105]],
-            },
-            {
-                "type": "straight_connector",
-                "start": [10, 0, 105],
-                "end": [0, 0, 110],
-            },
-        ]
-    }
+    sessions = sessionmaker(engine, expire_on_commit=False)
+
+    def create_core_graph() -> tuple[int, int]:
+        with sessions.begin() as session:
+            mine = Mine(name="MVP baseline")
+            session.add(mine); session.flush()
+            site = Site(mine_id=mine.id, name="Project")
+            session.add(site); session.flush()
+            domain = Domain(site_id=site.id, name="North")
+            session.add(domain); session.flush()
+            block = BlastBlock(
+                domain_id=domain.id, block_number="B-1", status="planned",
+                is_archived=False,
+            )
+            session.add(block); session.flush()
+            session.add_all([
+                orm.BlastEvent(
+                    domain_id=domain.id, logical_id="PROD-1", name="Production",
+                    event_type="production", elevation_m=Decimal("100.000"),
+                    blast_block_id=block.id, is_archived=False,
+                ),
+                orm.BlastEvent(
+                    domain_id=domain.id, logical_id="CONT-1", name="Contour",
+                    event_type="contour", elevation_m=Decimal("105.000"),
+                    is_archived=False,
+                ),
+            ])
+            return site.id, domain.id
+
     try:
         command.downgrade(config, "base")
         command.upgrade(config, "head")
-        with engine.begin() as connection:
-            mine_id = connection.scalar(text("INSERT INTO mines (name) VALUES ('MVP') RETURNING id"))
-            site_id = connection.scalar(text("INSERT INTO sites (mine_id, name) VALUES (:m, 'Project') RETURNING id"), {"m": mine_id})
-            domain_id = connection.scalar(text("INSERT INTO domains (site_id, name) VALUES (:s, 'North') RETURNING id"), {"s": site_id})
-            connection.execute(text("""INSERT INTO project_lines_datasets
-                (site_id, logical_id, name, imported_at, source_file_name, is_active, is_archived, lines_json)
-                VALUES (:site, 'LINES-1', 'Survey', now(), 'survey.csv', true, false,
-                        CAST(:lines AS jsonb))"""), {"site": site_id, "lines": '[{"id":"crest-1","points":[[0,0,110],[10,0,105]]}]'})
-            block_id = connection.scalar(text("""INSERT INTO blast_blocks
-                (domain_id, block_number, status, is_archived)
-                VALUES (:domain, 'B-1', 'planned', false) RETURNING id"""), {"domain": domain_id})
-            connection.execute(text("""INSERT INTO blast_events
-                (domain_id, logical_id, name, event_type, elevation_m, blast_block_id, is_archived)
-                VALUES (:domain, 'PROD-1', 'Production', 'production', 100, :block, false),
-                       (:domain, 'CONT-1', 'Contour', 'contour', 105, NULL, false)"""), {"domain": domain_id, "block": block_id})
-            area_id = connection.scalar(text("""INSERT INTO assessment_areas
-                (domain_id, logical_id, name, assessment_date, is_archived)
-                VALUES (:domain, 'AREA-1', 'North wall', CURRENT_DATE, false) RETURNING id"""), {"domain": domain_id})
-            connection.execute(text("""INSERT INTO assessment_area_geometry_revisions
-                (assessment_area_id, logical_id, revision_number, created_at, boundary_json,
-                 final_geometry_json, min_elevation_m, max_elevation_m, change_reason, is_active)
-                VALUES (:area, 'GEOM-1', 1, now(), CAST(:boundary AS jsonb),
-                        '{"type":"Polygon","coordinates":[[[0,0],[10,0],[0,0]]]}'::jsonb,
-                        NULL, 110, 'Initial traced boundary', true)"""), {"area": area_id, "boundary": __import__("json").dumps(boundary)})
-        with engine.connect() as connection:
-            row = connection.execute(text("""SELECT r.boundary_json, r.final_geometry_json,
-                r.min_elevation_m, r.max_elevation_m
-                FROM assessment_area_geometry_revisions r
-                JOIN assessment_areas a ON a.id=r.assessment_area_id
-                WHERE a.logical_id='AREA-1'""")).one()
-            assert [segment["type"] for segment in row.boundary_json["segments"]] == [
-                "project_line_span", "straight_connector"
-            ]
-            assert row.final_geometry_json["type"] == "Polygon"
-            assert row.min_elevation_m is None
-            assert float(row.max_elevation_m) == 110
-            assert connection.scalar(text("SELECT count(*) FROM blast_events")) == 2
+        site_id, domain_id = create_core_graph()
 
-        # The initial baseline must be fully reversible and repeatable.
+        # Real Project Lines serialization, including sloping high-precision XYZ.
+        source_line = DatamineLine("crest-1", 0, (
+            DataminePoint(0.0, 0.0, 101.12349),
+            DataminePoint(10.0, 0.0, 109.98751),
+        ))
+        dataset = ProjectLinesDataset(
+            "LINES-1", "Survey", datetime(2026, 8, 13, tzinfo=timezone.utc),
+            "survey.csv", True, [source_line],
+        )
+        ProjectLinesRepository(sessions).import_dataset(site_id, dataset, make_active=True)
+
+        start_point = SpatialPoint(0.0, 0.0, 101.12349)
+        end_point = SpatialPoint(10.0, 0.0, 109.98751)
+        start_anchor = ProjectLineAnchor("LINES-1", "crest-1", 0, 0.0, start_point)
+        end_anchor = ProjectLineAnchor("LINES-1", "crest-1", 0, 1.0, end_point)
+        corner = SpatialPoint(4.0, 8.0, None)
+        boundary = AssessmentBoundary((
+            ProjectLineSpan(start_anchor, end_anchor, (start_point, end_point)),
+            StraightConnector(end_point, corner, start_anchor=end_anchor),
+            StraightConnector(corner, start_point, end_anchor=start_anchor),
+        ))
+        minimum, maximum = derive_elevation_summary(boundary)
+        area = AssessmentArea(
+            "AREA-1", "North wall", date(2026, 8, 13),
+            [AssessmentAreaGeometryRevision(
+                "GEOM-1", "AREA-1", 1,
+                datetime(2026, 8, 13, tzinfo=timezone.utc), boundary,
+                derive_plan_polygon(boundary), minimum, maximum,
+                "Initial traced boundary",
+            )],
+            "GEOM-1",
+        )
+        result = SqlAlchemyAssessmentWrites(sessions).persist_assessment_area_geometry(
+            domain_id, 0, area
+        )
+        loaded = AssessmentStateRepository(sessions).load_for_domain(domain_id)
+        loaded_area = loaded.state.assessment_areas[0]
+        loaded_revision = loaded_area.active_geometry_revision()
+        assert loaded.expected_version == result.new_version == 1
+        assert loaded_area.id == "AREA-1"
+        assert loaded_revision.boundary == boundary
+        assert loaded_revision.final_geometry_frozen == derive_plan_polygon(boundary)
+        assert (loaded_revision.min_elevation, loaded_revision.max_elevation) == (minimum, maximum)
+        assert [type(segment).__name__ for segment in loaded_revision.boundary.segments] == [
+            "ProjectLineSpan", "StraightConnector", "StraightConnector"
+        ]
+        assert {event.id for event in loaded.state.blast_events} == {"PROD-1", "CONT-1"}
+        assert loaded.state.active_dataset().id == "LINES-1"
+        with sessions() as session:
+            stored = session.scalar(select(orm.AssessmentAreaGeometryRevision))
+            assert stored.min_elevation_m == Decimal("101.123")
+            assert stored.max_elevation_m == Decimal("109.988")
+
         command.downgrade(config, "base")
         assert "users" not in inspect(engine).get_table_names()
         command.upgrade(config, "head")
+        _, rebuilt_domain_id = create_core_graph()
+        rebuilt = AssessmentStateRepository(sessions).load_for_domain(rebuilt_domain_id)
+        assert {event.id for event in rebuilt.state.blast_events} == {"PROD-1", "CONT-1"}
+        assert rebuilt.state.assessment_areas == []
         assert set(inspect(engine).get_table_names()) >= {
             "users", "sites", "domains", "blast_events", "blast_blocks",
             "project_lines_datasets", "assessment_areas",
