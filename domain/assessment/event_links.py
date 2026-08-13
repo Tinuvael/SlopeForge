@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isclose
 from typing import Literal
 
 from domain.assessment.entities import AssessmentArea
@@ -30,8 +31,13 @@ def evaluate_event(area: AssessmentArea, event: BlastEvent) -> AssessmentEventLi
     if event_revision is None:
         return AssessmentEventLinkCandidate(event.id, "", event.event_type, False, False,
                                             reason="no_active_geometry")
-    elevation = ((area_revision.min_elevation is None or event.elevation >= area_revision.min_elevation) and
-                 (area_revision.max_elevation is None or event.elevation <= area_revision.max_elevation))
+    minimum, maximum = area_revision.min_elevation, area_revision.max_elevation
+    if minimum is None or maximum is None:
+        elevation = False
+    elif isclose(minimum, maximum, abs_tol=1e-8):
+        elevation = isclose(event.elevation, minimum, abs_tol=1e-8)
+    else:
+        elevation = minimum < event.elevation <= maximum
     geometry = event_revision.plan_geometry
     matched = None
     spatial = False

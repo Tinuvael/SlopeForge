@@ -295,13 +295,14 @@ def test_dynamic_domain_validation_messages_are_presented_in_english():
 def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
     from datetime import date, datetime, timezone
     from domain.geometry.types import PlanPoint, PlanPolygon
-    from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
+    from domain.assessment.entities import AssessmentArea
+    from tests.assessment_boundary_fixtures import geometry_revision
     from application.state.assessment_domain_state import AssessmentDomainState
     from domain.assessment.evaluation import AssessmentAreaEvaluationService
     from application.services.entity_editing import AssessmentEditingSession
 
     polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(1, 0), PlanPoint(1, 1), PlanPoint(0, 0)))
-    geometry = AssessmentAreaGeometryRevision("AGR-1", "AREA-1", 1, datetime.now(timezone.utc), "DATASET-1", polygon, polygon, 100, 110, ())
+    geometry = geometry_revision("AGR-1", "AREA-1", 1, datetime.now(timezone.utc), polygon, dataset_id="DATASET-1", minimum=100, maximum=110)
     area = AssessmentArea("AREA-1", "Wall", date.today(), [geometry], geometry.id)
     state = AssessmentDomainState(assessment_areas=[area])
     controller = AssessmentEditingSession.__new__(AssessmentEditingSession)
@@ -330,13 +331,14 @@ def test_zero_revision_evaluation_owner_is_reused_for_first_draft():
 def test_attachment_owner_can_be_prepared_without_an_intermediate_save():
     from datetime import date, datetime, timezone
     from domain.geometry.types import PlanPoint, PlanPolygon
-    from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
+    from domain.assessment.entities import AssessmentArea
+    from tests.assessment_boundary_fixtures import geometry_revision
     from application.state.assessment_domain_state import AssessmentDomainState
     from domain.assessment.evaluation import AssessmentAreaEvaluationService
     from application.services.entity_editing import AssessmentEditingSession
 
     polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(1, 0), PlanPoint(1, 1), PlanPoint(0, 0)))
-    geometry = AssessmentAreaGeometryRevision("AGR-1", "AREA-1", 1, datetime.now(timezone.utc), "DATASET-1", polygon, polygon, 100, 110, ())
+    geometry = geometry_revision("AGR-1", "AREA-1", 1, datetime.now(timezone.utc), polygon, dataset_id="DATASET-1", minimum=100, maximum=110)
     area = AssessmentArea("AREA-1", "Wall", date.today(), [geometry], geometry.id)
     state = AssessmentDomainState(assessment_areas=[area])
     controller = AssessmentEditingSession.__new__(AssessmentEditingSession)

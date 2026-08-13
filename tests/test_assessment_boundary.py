@@ -55,9 +55,39 @@ def test_continuity_and_self_intersection_rejected():
     a,b,c,d=map(lambda p: SpatialPoint(*p),[(0,0),(2,2),(0,2),(2,0)])
     with pytest.raises(ValueError,match="continuous"):
         AssessmentBoundary((StraightConnector(a,b),StraightConnector(c,d),StraightConnector(d,a)))
-    bow=AssessmentBoundary((StraightConnector(a,b),StraightConnector(b,c),StraightConnector(c,d),StraightConnector(d,a)))
-    with pytest.raises(ValueError): derive_plan_polygon(bow)
+    with pytest.raises(ValueError):
+        AssessmentBoundary((StraightConnector(a,b),StraightConnector(b,c),StraightConnector(c,d),StraightConnector(d,a)))
 
 def test_frozen_dataset_a_is_unchanged_when_b_appears():
     boundary=rectangle(); frozen=boundary.to_dict(); _dataset_b=line("replacement",[(0,0,999),(1,1,999)])
     assert boundary.to_dict()==frozen and boundary.segments[0].start_anchor.source_dataset_id=="A"
+
+def test_boundary_schema_and_frozen_provenance_invariants():
+    source=line("L",[(0,0,100),(10,0,110)])
+    start,end=anchor("D",source,0,0),anchor("D",source,0,1)
+    with pytest.raises(ValueError,match="source IDs"):
+        type(start)("", "L", 0, 0, start.frozen_point_xyz)
+    with pytest.raises(ValueError,match="start"):
+        ProjectLineSpan(start,end,(SpatialPoint(1,0,100),end.frozen_point_xyz))
+    with pytest.raises(ValueError,match="non-zero"):
+        StraightConnector(start.frozen_point_xyz,start.frozen_point_xyz,start,start)
+    with pytest.raises(ValueError,match="does not match"):
+        StraightConnector(start.frozen_point_xyz,SpatialPoint(1,1),None,end)
+    with pytest.raises(ValueError,match="schema version"):
+        AssessmentBoundary.from_dict({"version":2,"segments":[]})
+
+
+@pytest.mark.parametrize("first_snapped,last_snapped",[(True,True),(True,False),(False,True),(False,False)])
+def test_closing_connector_preserves_optional_endpoint_anchors(first_snapped,last_snapped):
+    source=line("L",[(0,0,100),(10,0,110)])
+    first_anchor=anchor("D",source,0,0) if first_snapped else None
+    last_anchor=anchor("D",source,0,1) if last_snapped else None
+    first=first_anchor.frozen_point_xyz if first_anchor else SpatialPoint(0,0)
+    last=last_anchor.frozen_point_xyz if last_anchor else SpatialPoint(10,0)
+    connector=StraightConnector(last,first,last_anchor,first_anchor)
+    restored=StraightConnector(**{
+        "start_point": SpatialPoint.from_dict(connector.to_dict()["start_point"]),
+        "end_point": SpatialPoint.from_dict(connector.to_dict()["end_point"]),
+        "start_anchor": type(last_anchor).from_dict(connector.to_dict()["start_anchor"]) if last_anchor else None,
+        "end_anchor": type(first_anchor).from_dict(connector.to_dict()["end_anchor"]) if first_anchor else None})
+    assert restored==connector

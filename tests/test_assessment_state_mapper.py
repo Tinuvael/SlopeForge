@@ -11,9 +11,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
+from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent
-from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentEventLink, AssessmentHorizonSlice
+from domain.assessment.entities import AssessmentArea, AssessmentEventLink
+from tests.assessment_boundary_fixtures import geometry_revision
 from domain.project.project_lines import ProjectLinesDataset
 from domain.attachments.entities import EntityAttachment
 from application.state.assessment_domain_state import AssessmentDomainState
@@ -53,12 +54,10 @@ def build_rich_state():
     datasets = [ProjectLinesDataset("D1", "old", NOW, "old.csv", False, [line()]),
                 ProjectLinesDataset("D2", "active", NOW, "active.csv", True, [line("L2", 110)])]
     production, contour = event("BE-P", "production", 100), event("BE-C", "contour", 110)
-    revisions = [AssessmentAreaGeometryRevision(
-        f"AA-R{number}", "AA", number, NOW, "D2", polygon(number), polygon(number + .5),
-        90 + number, 120 + number,
-        (AssessmentHorizonSlice(f"HS-{number}", "L2", 100 + number, "internal_horizon",
-            PlanLineString((PlanPoint(0, number), PlanPoint(10, number)))),), None if number == 2 else "initial")
-        for number in (1, 2)]
+    revisions = [geometry_revision(
+        f"AA-R{number}", "AA", number, NOW, polygon(number), dataset_id="D2", line_id="L2",
+        minimum=90 + number, maximum=120 + number,
+        change_reason=None if number == 2 else "initial") for number in (1, 2)]
     area = AssessmentArea("AA", "Area", date(2026, 8, 4), revisions, "AA-R2", [
         AssessmentEventLink("BE-P", "BE-P-R1", "confirmed", "manual", polygon(), "LINK-OLD", "AA-R1", NOW),
         AssessmentEventLink("BE-C", "BE-C-R2", "confirmed", "automatic", polygon(1), "LINK-ACTIVE", "AA-R2", NOW),
@@ -131,8 +130,26 @@ def test_multiple_active_datasets(rich_state):
 
 
 def test_missing_source_dataset(rich_state):
-    object.__setattr__(rich_state.assessment_areas[0].geometry_revisions[0], "source_dataset_id", "missing")
-    invalid(rich_state, "source dataset")
+    anchor = rich_state.assessment_areas[0].geometry_revisions[0].boundary.segments[0].start_anchor
+    object.__setattr__(anchor, "source_dataset_id", "missing")
+    invalid(rich_state, "missing dataset")
+
+
+def test_inactive_historical_dataset_remains_valid(rich_state):
+    revision = rich_state.assessment_areas[0].geometry_revisions[0]
+    for anchor in (revision.boundary.segments[0].start_anchor, revision.boundary.segments[0].end_anchor):
+        object.__setattr__(anchor, "source_dataset_id", "D1")
+        object.__setattr__(anchor, "source_line_id", "L1")
+    validate_assessment_state(rich_state)
+
+
+def test_invalid_source_line_and_segment_are_rejected(rich_state):
+    anchor = rich_state.assessment_areas[0].geometry_revisions[0].boundary.segments[0].start_anchor
+    object.__setattr__(anchor, "source_line_id", "missing")
+    invalid(rich_state, "missing Project Line")
+    object.__setattr__(anchor, "source_line_id", "L2")
+    object.__setattr__(anchor, "source_segment_index", 99)
+    invalid(rich_state, "outside")
 
 
 def test_invalid_blast_geometry_link(rich_state):
@@ -172,10 +189,10 @@ def test_non_finite_elevations(rich_state, target, attribute):
     setattr(obj, attribute, math.inf); invalid(rich_state, "finite")
 
 
-def test_invalid_elevation_interval(rich_state):
+def test_non_finite_area_elevation_summary(rich_state):
     revision = rich_state.assessment_areas[0].geometry_revisions[0]
-    object.__setattr__(revision, "lower_elevation", revision.upper_elevation)
-    invalid(rich_state, "below")
+    object.__setattr__(revision, "min_elevation", math.inf)
+    invalid(rich_state, "finite")
 
 
 def test_none_change_reason_is_valid(rich_state):

@@ -90,8 +90,10 @@ def test_draw_close_save_emits_and_does_not_restart(state, app):
     editor._drawing_click(10,0); editor._drawing_click(0,0)
     editor.finish_polygon()
     assert editor.workflow_state == "CLOSED"
-    editor.confirm_boundaries()
+    saved_date=date(2026,8,13)
+    editor.confirm_boundaries(name="West wall",assessment_date=saved_date)
     assert len(state.assessment_areas) == 1 and emitted == [state.assessment_areas[0].id]
+    assert state.assessment_areas[0].name=="West wall" and state.assessment_areas[0].assessment_date==saved_date
     assert editor.workflow_state == "IDLE" and not editor.has_active_workflow()
 
 
@@ -102,3 +104,18 @@ def test_undo_closed_reopens_and_cancel_clears_draft(state, app):
     assert editor.workflow_state == "DRAWING"
     editor.cancel_workflow()
     assert editor.workflow_state == "IDLE" and editor._segments == []
+
+def test_close_preserves_first_snapped_anchor(state, app):
+    editor=AssessmentGeometryEditorWidget(state,committer(state)); editor.start_new_area()
+    editor._drawing_click(0,10); first=editor._first_anchor
+    editor._drawing_click(10,10); editor._drawing_click(10,0); editor._drawing_click(0,0)
+    editor.finish_polygon()
+    assert editor._segments[-1].end_anchor==first
+
+
+def test_page_owns_name_and_date_fields_and_grid_is_not_exposed():
+    from pathlib import Path
+    source=Path("ui/pages/assessment_area_creation_page.py").read_text(encoding="utf-8")
+    assert "self.area_name" in source and "self.assessment_date" in source
+    assert "name=self.area_name.text()" in source
+    assert "Grid" not in source

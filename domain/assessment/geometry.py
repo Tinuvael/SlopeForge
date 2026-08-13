@@ -38,6 +38,8 @@ class ProjectLineAnchor:
     frozen_point_xyz: SpatialPoint
 
     def __post_init__(self):
+        if not self.source_dataset_id.strip() or not self.source_line_id.strip():
+            raise ValueError("Project Line anchor source IDs must be non-empty")
         if self.source_segment_index < 0 or not 0 <= self.interpolation_fraction <= 1:
             raise ValueError("Invalid Project Line anchor position")
 
@@ -64,6 +66,10 @@ class ProjectLineSpan:
             raise ValueError("A traced span must stay on one Project Line")
         if len(self.frozen_trace_xyz) < 2:
             raise ValueError("A traced span needs at least two points")
+        if self.frozen_trace_xyz[0] != self.start_anchor.frozen_point_xyz:
+            raise ValueError("Traced span start must match its frozen anchor")
+        if self.frozen_trace_xyz[-1] != self.end_anchor.frozen_point_xyz:
+            raise ValueError("Traced span end must match its frozen anchor")
 
     def to_dict(self):
         return {"type": "project_line_span", "start_anchor": self.start_anchor.to_dict(),
@@ -76,6 +82,14 @@ class StraightConnector:
     end_point: SpatialPoint
     start_anchor: ProjectLineAnchor | None = None
     end_anchor: ProjectLineAnchor | None = None
+
+    def __post_init__(self):
+        if hypot(self.end_point.x-self.start_point.x, self.end_point.y-self.start_point.y) <= EPSILON:
+            raise ValueError("Straight connector must have non-zero plan length")
+        if self.start_anchor and self.start_anchor.frozen_point_xyz != self.start_point:
+            raise ValueError("Connector start does not match its frozen anchor")
+        if self.end_anchor and self.end_anchor.frozen_point_xyz != self.end_point:
+            raise ValueError("Connector end does not match its frozen anchor")
 
     def to_dict(self):
         return {"type": "straight_connector", "start_point": self.start_point.to_dict(),
@@ -107,12 +121,15 @@ class AssessmentBoundary:
         if len(self.segments) < 3:
             raise ValueError("Assessment boundary requires at least three segments")
         validate_boundary_continuity(self)
+        derive_plan_polygon(self)
 
     def to_dict(self):
         return {"version": 1, "segments": [s.to_dict() for s in self.segments]}
 
     @classmethod
     def from_dict(cls, value):
+        if value.get("version") != 1:
+            raise ValueError(f"Unsupported Assessment boundary schema version: {value.get('version')!r}")
         return cls(tuple(segment_from_dict(s) for s in value["segments"]))
 
 

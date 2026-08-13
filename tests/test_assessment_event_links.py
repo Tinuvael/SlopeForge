@@ -7,6 +7,7 @@ from application.services.blast_events import BlastEventService
 from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent
 from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
+from tests.assessment_boundary_fixtures import geometry_revision
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.operations import (points_from_multipoint_inside_polygon,
     polygon_intersects_polygon)
@@ -19,9 +20,8 @@ def polygon(*coordinates):
 
 def area(selection=None):
     selection = selection or polygon((0, 0), (10, 0), (10, 10), (0, 10))
-    revision = AssessmentAreaGeometryRevision("AA-1-R001", "AA-1", 1,
-        datetime(2026, 1, 1, tzinfo=timezone.utc), "D-1", selection, selection,
-        600, 630, ())
+    revision = geometry_revision("AA-1-R001", "AA-1", 1,
+        datetime(2026, 1, 1, tzinfo=timezone.utc), selection, minimum=600, maximum=630)
     return AssessmentArea("AA-1", "Area", date(2026, 1, 1), [revision], revision.id)
 
 
@@ -49,7 +49,7 @@ def test_polygon_intersection_crossing_containment_touch_and_disjoint():
 
 def test_contour_freezes_only_copied_matching_collars_including_boundary():
     multipoint = PlanMultiPoint((PlanPoint(5, 5), PlanPoint(0, 4), PlanPoint(20, 20)))
-    matched = points_from_multipoint_inside_polygon(multipoint, area().selection_polygon_frozen)
+    matched = points_from_multipoint_inside_polygon(multipoint, area().final_geometry_frozen)
     assert matched == (PlanPoint(5, 5), PlanPoint(0, 4))
     assessment = area(); blast = event("BE-C", 610, multipoint, "contour")
     link = AssessmentEventLinkService(AssessmentDomainState(blast_events=[blast])).refresh_suggestions(assessment)
@@ -152,3 +152,23 @@ def test_multiple_auto_suggested_event_elevations_link_to_same_area(tmp_path):
                                     elevation=preview.suggested_elevation, csv_path=source)
     assessment = area(); AssessmentEventLinkService(state).refresh_suggestions(assessment)
     assert len(assessment.links_for_revision()) == 3
+
+@pytest.mark.parametrize("minimum,maximum,elevation,expected",[
+    (600,630,599,False),(600,630,600,False),(600,630,610,True),(600,630,630,True),(600,630,631,False),
+    (610,610,610,True),(610,610,610.1,False),(None,None,610,False),
+])
+def test_elevation_matching_policy(minimum,maximum,elevation,expected):
+    selection=polygon((0,0),(10,0),(10,10),(0,10))
+    if minimum is None:
+        from domain.assessment.geometry import AssessmentBoundary, SpatialPoint, StraightConnector, derive_plan_polygon
+        points=[SpatialPoint(0,0),SpatialPoint(10,0),SpatialPoint(10,10),SpatialPoint(0,10)]
+        boundary=AssessmentBoundary(tuple(StraightConnector(a,b) for a,b in zip(points,points[1:]+points[:1])))
+        revision=AssessmentAreaGeometryRevision("R","A",1,datetime.now(timezone.utc),boundary,derive_plan_polygon(boundary),None,None)
+        assessment=AssessmentArea("A","A",date.today(),[revision],revision.id)
+    else:
+        assessment=area(selection)
+        revision=assessment.active_geometry_revision()
+        object.__setattr__(revision,"min_elevation",minimum); object.__setattr__(revision,"max_elevation",maximum)
+    blast=event("E",elevation,polygon((2,2),(4,2),(4,4),(2,4)))
+    from domain.assessment.event_links import evaluate_event
+    assert evaluate_event(assessment,blast).elevation_matches is expected

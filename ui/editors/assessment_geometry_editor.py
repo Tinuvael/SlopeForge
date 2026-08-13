@@ -1,6 +1,5 @@
 """Continuous CAD-style Assessment boundary editor."""
 from collections.abc import Callable
-from datetime import date
 
 from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QColor, QPainterPath, QPen
@@ -27,8 +26,8 @@ class AssessmentGeometryEditorWidget(QWidget):
     def __init__(self, state, commit_geometry: Callable[..., object], parent=None, *, read_only=False):
         super().__init__(parent); self.state=state; self._commit_geometry=commit_geometry; self.read_only=read_only
         self.area_service=AssessmentAreaService(state); self.workflow_state="IDLE"; self.selected_area=None; self._editing_area=None
-        self._segments=[]; self._first_point=None; self._last_point=None; self._last_anchor=None; self._candidate=None; self._cursor=None
-        self._show_project_lines=True; self._show_grid=True
+        self._segments=[]; self._first_point=None; self._first_anchor=None; self._last_point=None; self._last_anchor=None; self._candidate=None; self._cursor=None
+        self._show_project_lines=True
         self.scene=QGraphicsScene(self); self.plan_view=PrototypePlanView(self.scene)
         self.plan_view.scene_clicked.connect(self._drawing_click); self.plan_view.cursor_moved.connect(self._drawing_move)
         self.plan_view.escape_requested.connect(self.cancel_workflow); self.plan_view.workflow_key_requested.connect(self._workflow_key)
@@ -47,6 +46,7 @@ class AssessmentGeometryEditorWidget(QWidget):
         if not area or area.is_archived: raise ValueError("Assessment Area is unavailable for editing")
         self.selected_area=None; self._editing_area=area; self._segments=list(area.boundary.segments)
         first=self._segment_points(self._segments[0])[0]
+        self._first_anchor=getattr(self._segments[0],"start_anchor",None)
         if (self._segments and isinstance(self._segments[-1],StraightConnector)
                 and self._segment_points(self._segments[-1])[-1] == first):
             self._segments.pop()
@@ -59,7 +59,9 @@ class AssessmentGeometryEditorWidget(QWidget):
         if not area: raise ValueError("Assessment Area is unavailable")
         self.selected_area=area; self._editing_area=None; self._reset()
         self._set_workflow_state("IDLE"); self.plan_view.set_polygon_drawing_mode(False); self.draw_geometry()
-    def _reset(self): self._segments=[]; self._first_point=self._last_point=self._last_anchor=self._candidate=self._cursor=None
+    def _reset(self):
+        self._segments=[]
+        self._first_point=self._first_anchor=self._last_point=self._last_anchor=self._candidate=self._cursor=None
     def _world_tolerance(self): return SNAP_PIXELS/max(abs(self.plan_view.transform().m11()),1e-9)
     def _snap(self,x,y):
         dataset=self.state.active_dataset()
@@ -71,7 +73,9 @@ class AssessmentGeometryEditorWidget(QWidget):
         if self.read_only or self.workflow_state!="DRAWING": return
         candidate=self._snap(x,y); point=candidate.anchor.frozen_point_xyz if candidate else SpatialPoint(x,y)
         anchor=candidate.anchor if candidate else None
-        if self._first_point is None: self._first_point=self._last_point=point; self._last_anchor=anchor; self.draw_geometry(); return
+        if self._first_point is None:
+            self._first_point=self._last_point=point; self._first_anchor=self._last_anchor=anchor
+            self.draw_geometry(); return
         segment=None
         if self._last_anchor and anchor and (self._last_anchor.source_dataset_id,self._last_anchor.source_line_id)==(anchor.source_dataset_id,anchor.source_line_id):
             dataset=self.state.active_dataset(); line=next(l for l in dataset.lines if l.source_id==anchor.source_line_id)
@@ -84,22 +88,26 @@ class AssessmentGeometryEditorWidget(QWidget):
         elif self._segments: self._segments.pop()
         if self._segments:
             self._last_point=self._segment_points(self._segments[-1])[-1]; self._last_anchor=getattr(self._segments[-1],"end_anchor",None)
-        else: self._first_point=self._last_point=self._last_anchor=None
+        else: self._first_point=self._first_anchor=self._last_point=self._last_anchor=None
         self.draw_geometry()
     def finish_polygon(self):
         self._ensure_can_edit()
         if self.workflow_state!="DRAWING" or self._first_point is None or self._last_point is None: return
-        closing=StraightConnector(self._last_point,self._first_point,self._last_anchor,None)
+        closing=StraightConnector(self._last_point,self._first_point,self._last_anchor,self._first_anchor)
         try: derive_plan_polygon(AssessmentBoundary(tuple(self._segments+[closing])))
         except ValueError as exc: QMessageBox.warning(self,tr("Invalid assessment area"),domain_message(str(exc))); return
         self._segments.append(closing); self._last_point=self._first_point; self._last_anchor=None; self._set_workflow_state("CLOSED"); self.draw_geometry()
     close_boundary=finish_polygon
-    def confirm_boundaries(self):
+    def confirm_boundaries(self, *, name=None, assessment_date=None):
         self._ensure_can_edit()
         if self.workflow_state!="CLOSED": return
         boundary=AssessmentBoundary(tuple(self._segments)); editing_id=self._editing_area.id if self._editing_area else None
-        result=self._commit_geometry(assessment_area_id=editing_id,name=self._editing_area.name if self._editing_area else "Assessment Area",
-                                     assessment_date=self._editing_area.assessment_date if self._editing_area else date.today(),boundary=boundary)
+        if editing_id:
+            name, assessment_date = self._editing_area.name, self._editing_area.assessment_date
+        elif not name or not name.strip() or assessment_date is None:
+            raise ValueError("Name and Assessment date are required")
+        result=self._commit_geometry(assessment_area_id=editing_id,name=name.strip(),
+                                     assessment_date=assessment_date,boundary=boundary)
         self.selected_area=next(a for a in self.state.assessment_areas if a.id==result.area_id); area_id=result.area_id
         self._finish_workflow(); self.state_changed.emit(); self.state_saved.emit(); (self.area_revised if editing_id else self.area_created).emit(area_id)
     def cancel_workflow(self):
@@ -111,7 +119,6 @@ class AssessmentGeometryEditorWidget(QWidget):
         self._show_project_lines=v
         if not v: self._candidate=None
         self.draw_geometry()
-    def set_grid_visible(self,v): self._show_grid=v; self.draw_geometry()
     def fit_to_extent(self): self.plan_view.fit_to_extent()
     def _workflow_key(self,key):
         if key=="back": self.undo_vertex()

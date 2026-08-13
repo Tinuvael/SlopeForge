@@ -290,9 +290,8 @@ def test_area_geometry_write_does_not_leak_historical_link_mutation(session_fact
     historical_before = historical.status
     historical.status = "excluded" if historical.status != "excluded" else "confirmed"
     old = area.geometry_revisions[-1]
-    revision = type(old)("AA-R3", area.id, 3, old.created_at, old.source_dataset_id,
-        old.selection_polygon_frozen, old.final_geometry_frozen, old.lower_elevation,
-        old.upper_elevation, old.horizon_slices, "focused revision")
+    revision = type(old)("AA-R3", area.id, 3, old.created_at, old.boundary,
+        old.final_geometry_frozen, old.min_elevation, old.max_elevation, "focused revision")
     area.geometry_revisions.append(revision); area.active_geometry_revision_id = revision.id
     SqlAlchemyAssessmentWrites(session_factory).persist_assessment_area_geometry(
         assessment_context.domain_id, 0, area)

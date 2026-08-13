@@ -1,5 +1,6 @@
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QDate, Signal
+from PySide6.QtWidgets import (QCheckBox, QDateEdit, QFormLayout, QHBoxLayout, QLabel,
+                              QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
 from app.localization import tr
 from ui.editors.assessment_geometry_editor import AssessmentGeometryEditorWidget
@@ -24,19 +25,29 @@ class AssessmentAreaCreationPage(QWidget):
         layout = QVBoxLayout(self)
         title = "Edit Assessment Area boundaries" if edit_area_id else "Create Assessment Area"
         layout.addWidget(QLabel(f"{title}\nDraw one continuous boundary by tracing Project Lines and adding straight connectors."))
+        metadata = QFormLayout()
+        self.area_name = QLineEdit()
+        self.assessment_date = QDateEdit(QDate.currentDate()); self.assessment_date.setCalendarPopup(True)
+        if edit_area_id:
+            area = self.controller.area(edit_area_id)
+            if area is None: raise ValueError("Assessment Area is unavailable")
+            self.area_name.setText(area.name); self.area_name.setReadOnly(True)
+            self.assessment_date.setDate(QDate(area.assessment_date.year, area.assessment_date.month, area.assessment_date.day))
+            self.assessment_date.setReadOnly(True)
+        metadata.addRow(tr("Name"), self.area_name)
+        metadata.addRow(tr("Assessment date"), self.assessment_date)
+        layout.addLayout(metadata)
         bar = QHBoxLayout()
         fit = QPushButton(tr("Fit")); fit.clicked.connect(self.editor.fit_to_extent)
         self.lines = QCheckBox(tr("Project Lines")); self.lines.setChecked(True)
         self.lines.toggled.connect(self.editor.set_project_lines_visible)
-        self.grid = QCheckBox(tr("Grid")); self.grid.setChecked(True)
-        self.grid.toggled.connect(self.editor.set_grid_visible)
         self.start = QPushButton(tr("Edit boundary") if edit_area_id else tr("Draw boundary")); self.start.clicked.connect(self._start_drawing)
         self.back_vertex = QPushButton(tr("Undo")); self.back_vertex.clicked.connect(self.editor.undo_vertex)
         self.finish = QPushButton(tr("Close boundary")); self.finish.clicked.connect(self.editor.finish_polygon)
         self.confirm = QPushButton(tr("Save Assessment")); self.confirm.clicked.connect(self._confirm)
         self.cancel_drawing = QPushButton(tr("Cancel drawing")); self.cancel_drawing.clicked.connect(self.editor.cancel_workflow)
         close = QPushButton(tr("Back / Close")); close.clicked.connect(self._close_page)
-        for widget in (fit, self.lines, self.grid, self.start, self.back_vertex, self.finish,
+        for widget in (fit, self.lines, self.start, self.back_vertex, self.finish,
                        self.confirm, self.cancel_drawing, close):
             bar.addWidget(widget)
         layout.addLayout(bar)
@@ -62,7 +73,8 @@ class AssessmentAreaCreationPage(QWidget):
 
     def _confirm(self):
         try:
-            self.editor.confirm_boundaries()
+            self.editor.confirm_boundaries(name=self.area_name.text(),
+                                           assessment_date=self.assessment_date.date().toPython())
         except Exception as exc:
             QMessageBox.critical(self, tr("Assessment Area"),
                                  f"Could not save the new boundaries.\n\n{domain_message(str(exc))}")
