@@ -1,15 +1,111 @@
 from __future__ import annotations
 
 import os
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from datetime import date, datetime, timezone
-from decimal import Decimal
 
 from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import make_url
+
+from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
+from domain.assessment.geometry import (
+    AssessmentBoundary, ProjectLineAnchor, ProjectLineSpan, SpatialPoint,
+    StraightConnector, derive_elevation_summary, derive_plan_polygon,
+)
+from domain.geometry.types import DatamineLine, DataminePoint
+from domain.project.project_lines import ProjectLinesDataset
+
+
+def _build_mvp_assessment_fixture() -> tuple[ProjectLinesDataset, AssessmentArea]:
+    """Build the real post-#89 domain fixture independently of PostgreSQL."""
+    source_line = DatamineLine(
+        source_id="crest-1",
+        points=[
+            DataminePoint(
+                x=0.0, y=0.0, z=101.12349, source_row_number=1,
+            ),
+            DataminePoint(
+                x=10.0, y=0.0, z=109.98751, source_row_number=2,
+            ),
+        ],
+        import_order=0,
+    )
+    dataset = ProjectLinesDataset(
+        id="LINES-1",
+        name="Survey",
+        imported_at=datetime(2026, 8, 13, tzinfo=timezone.utc),
+        source_file_name="survey.csv",
+        is_active=True,
+        lines=[source_line],
+    )
+    start_point = SpatialPoint(x=0.0, y=0.0, z=101.12349)
+    end_point = SpatialPoint(x=10.0, y=0.0, z=109.98751)
+    start_anchor = ProjectLineAnchor(
+        source_dataset_id="LINES-1", source_line_id="crest-1",
+        source_segment_index=0, interpolation_fraction=0.0,
+        frozen_point_xyz=start_point,
+    )
+    end_anchor = ProjectLineAnchor(
+        source_dataset_id="LINES-1", source_line_id="crest-1",
+        source_segment_index=0, interpolation_fraction=1.0,
+        frozen_point_xyz=end_point,
+    )
+    corner = SpatialPoint(x=4.0, y=8.0, z=None)
+    boundary = AssessmentBoundary(segments=(
+        ProjectLineSpan(
+            start_anchor=start_anchor, end_anchor=end_anchor,
+            frozen_trace_xyz=(start_point, end_point),
+        ),
+        StraightConnector(
+            start_point=end_point, end_point=corner, start_anchor=end_anchor,
+        ),
+        StraightConnector(
+            start_point=corner, end_point=start_point, end_anchor=start_anchor,
+        ),
+    ))
+    minimum, maximum = derive_elevation_summary(boundary)
+    area = AssessmentArea(
+        id="AREA-1",
+        name="North wall",
+        assessment_date=date(2026, 8, 13),
+        geometry_revisions=[AssessmentAreaGeometryRevision(
+            id="GEOM-1",
+            assessment_area_id="AREA-1",
+            revision_number=1,
+            created_at=datetime(2026, 8, 13, tzinfo=timezone.utc),
+            boundary=boundary,
+            final_geometry_frozen=derive_plan_polygon(boundary),
+            min_elevation=minimum,
+            max_elevation=maximum,
+            change_reason="Initial traced boundary",
+        )],
+        active_geometry_revision_id="GEOM-1",
+    )
+    return dataset, area
+
+
+def test_mvp_assessment_fixture_uses_canonical_domain_serialization() -> None:
+    dataset, area = _build_mvp_assessment_fixture()
+    source_line = dataset.lines[0]
+    assert source_line.source_id == "crest-1"
+    assert source_line.import_order == 0
+    assert [(point.x, point.y, point.z, point.source_row_number)
+            for point in source_line.points] == [
+        (0.0, 0.0, 101.12349, 1),
+        (10.0, 0.0, 109.98751, 2),
+    ]
+    revision = area.active_geometry_revision()
+    assert derive_plan_polygon(revision.boundary) == revision.final_geometry_frozen
+    assert derive_elevation_summary(revision.boundary) == (101.12349, 109.98751)
+    assert (revision.min_elevation, revision.max_elevation) == (101.12349, 109.98751)
+    assert ProjectLinesDataset.from_dict(dataset.to_dict()).to_dict() == dataset.to_dict()
+    restored = AssessmentArea.from_dict(area.to_dict())
+    assert restored.to_dict() == area.to_dict()
+    assert restored.active_geometry_revision().boundary == revision.boundary
 
 
 def _require_destructive_test_database(url: str) -> None:
@@ -53,13 +149,6 @@ def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
     from alembic import command
     from database import assessment_models as orm
     from database.models import BlastBlock, Domain, Mine, Site
-    from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
-    from domain.assessment.geometry import (
-        AssessmentBoundary, ProjectLineAnchor, ProjectLineSpan, SpatialPoint,
-        StraightConnector, derive_elevation_summary, derive_plan_polygon,
-    )
-    from domain.geometry.types import DatamineLine, DataminePoint
-    from domain.project.project_lines import ProjectLinesDataset
     from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
     from repositories.assessment_state_repository import AssessmentStateRepository
     from repositories.project_lines_repository import ProjectLinesRepository
@@ -101,38 +190,13 @@ def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
         command.upgrade(config, "head")
         site_id, domain_id = create_core_graph()
 
-        # Real Project Lines serialization, including sloping high-precision XYZ.
-        source_line = DatamineLine("crest-1", 0, (
-            DataminePoint(0.0, 0.0, 101.12349),
-            DataminePoint(10.0, 0.0, 109.98751),
-        ))
-        dataset = ProjectLinesDataset(
-            "LINES-1", "Survey", datetime(2026, 8, 13, tzinfo=timezone.utc),
-            "survey.csv", True, [source_line],
+        # Reuse the domain fixture covered by a normal, non-DB regression test.
+        dataset, area = _build_mvp_assessment_fixture()
+        ProjectLinesRepository(sessions).import_dataset(
+            site_id, dataset, make_active=True
         )
-        ProjectLinesRepository(sessions).import_dataset(site_id, dataset, make_active=True)
-
-        start_point = SpatialPoint(0.0, 0.0, 101.12349)
-        end_point = SpatialPoint(10.0, 0.0, 109.98751)
-        start_anchor = ProjectLineAnchor("LINES-1", "crest-1", 0, 0.0, start_point)
-        end_anchor = ProjectLineAnchor("LINES-1", "crest-1", 0, 1.0, end_point)
-        corner = SpatialPoint(4.0, 8.0, None)
-        boundary = AssessmentBoundary((
-            ProjectLineSpan(start_anchor, end_anchor, (start_point, end_point)),
-            StraightConnector(end_point, corner, start_anchor=end_anchor),
-            StraightConnector(corner, start_point, end_anchor=start_anchor),
-        ))
+        boundary = area.active_geometry_revision().boundary
         minimum, maximum = derive_elevation_summary(boundary)
-        area = AssessmentArea(
-            "AREA-1", "North wall", date(2026, 8, 13),
-            [AssessmentAreaGeometryRevision(
-                "GEOM-1", "AREA-1", 1,
-                datetime(2026, 8, 13, tzinfo=timezone.utc), boundary,
-                derive_plan_polygon(boundary), minimum, maximum,
-                "Initial traced boundary",
-            )],
-            "GEOM-1",
-        )
         result = SqlAlchemyAssessmentWrites(sessions).persist_assessment_area_geometry(
             domain_id, 0, area
         )
