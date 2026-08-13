@@ -7,9 +7,12 @@ from application.services.blast_events import BlastEventService
 from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent
 from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
+from tests.assessment_boundary_fixtures import geometry_revision
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.operations import (points_from_multipoint_inside_polygon,
     polygon_intersects_polygon)
+from domain.assessment.event_links import (CONTOUR_LINK_BOUNDARY_TOLERANCE_M,
+    contour_collars_matching_area, evaluate_event)
 
 
 def polygon(*coordinates):
@@ -19,9 +22,8 @@ def polygon(*coordinates):
 
 def area(selection=None):
     selection = selection or polygon((0, 0), (10, 0), (10, 10), (0, 10))
-    revision = AssessmentAreaGeometryRevision("AA-1-R001", "AA-1", 1,
-        datetime(2026, 1, 1, tzinfo=timezone.utc), "D-1", selection, selection,
-        600, 630, ())
+    revision = geometry_revision("AA-1-R001", "AA-1", 1,
+        datetime(2026, 1, 1, tzinfo=timezone.utc), selection, minimum=600, maximum=630)
     return AssessmentArea("AA-1", "Area", date(2026, 1, 1), [revision], revision.id)
 
 
@@ -49,13 +51,47 @@ def test_polygon_intersection_crossing_containment_touch_and_disjoint():
 
 def test_contour_freezes_only_copied_matching_collars_including_boundary():
     multipoint = PlanMultiPoint((PlanPoint(5, 5), PlanPoint(0, 4), PlanPoint(20, 20)))
-    matched = points_from_multipoint_inside_polygon(multipoint, area().selection_polygon_frozen)
+    matched = points_from_multipoint_inside_polygon(multipoint, area().final_geometry_frozen)
     assert matched == (PlanPoint(5, 5), PlanPoint(0, 4))
     assessment = area(); blast = event("BE-C", 610, multipoint, "contour")
     link = AssessmentEventLinkService(AssessmentDomainState(blast_events=[blast])).refresh_suggestions(assessment)
     assert link.contour_candidates == 1
     assert assessment.event_links[0].frozen_intersection_geometry.points == matched
     assert assessment.event_links[0].frozen_intersection_geometry.points[0] is not multipoint.points[0]
+
+
+@pytest.mark.parametrize("point,expected",[
+    (PlanPoint(5,5),True),
+    (PlanPoint(10,5),True),
+    (PlanPoint(10.02,5),True),
+    (PlanPoint(10+CONTOUR_LINK_BOUNDARY_TOLERANCE_M-1e-6,5),True),
+    (PlanPoint(10+CONTOUR_LINK_BOUNDARY_TOLERANCE_M+0.01,5),False),
+])
+def test_contour_boundary_proximity_manual_reproduction(point,expected):
+    assessment=area(); blast=event("C",630,PlanMultiPoint((point,)),"contour")
+    candidate=evaluate_event(assessment,blast)
+    assert candidate.elevation_matches is True
+    assert candidate.spatial_matches is expected
+    assert candidate.reason == ("matched" if expected else "spatial_outside")
+    if expected:
+        assert candidate.frozen_intersection_geometry.points==(point,)
+        assert candidate.frozen_intersection_geometry.points[0] is not point
+
+
+def test_contour_near_boundary_still_rejects_exclusive_lower_elevation():
+    assessment=area(); blast=event("C",600,PlanMultiPoint((PlanPoint(10.02,5),)),"contour")
+    candidate=evaluate_event(assessment,blast)
+    assert candidate.spatial_matches is True and candidate.elevation_matches is False
+    assert candidate.reason=="elevation_outside"
+
+
+def test_contour_multi_collar_evidence_keeps_only_actual_accepted_points():
+    collars=PlanMultiPoint((PlanPoint(5,5),PlanPoint(10,4),PlanPoint(10.02,3),PlanPoint(10.5,2)))
+    accepted=contour_collars_matching_area(collars,area().final_geometry_frozen)
+    assert accepted==collars.points[:3]
+    assessment=area(); blast=event("C",630,collars,"contour")
+    candidate=evaluate_event(assessment,blast)
+    assert candidate.spatial_matches and candidate.frozen_intersection_geometry.points==accepted
 
 
 def test_refresh_is_revision_safe_preserves_decisions_and_replaces_suggestion():
@@ -152,3 +188,32 @@ def test_multiple_auto_suggested_event_elevations_link_to_same_area(tmp_path):
                                     elevation=preview.suggested_elevation, csv_path=source)
     assessment = area(); AssessmentEventLinkService(state).refresh_suggestions(assessment)
     assert len(assessment.links_for_revision()) == 3
+
+@pytest.mark.parametrize("minimum,maximum,elevation,expected",[
+    (600,630,599,False),(600,630,600,False),(600,630,610,True),(600,630,630,True),(600,630,631,False),
+    (610,610,610,True),(610,610,610.1,False),(None,None,610,False),
+])
+def test_elevation_matching_policy(minimum,maximum,elevation,expected):
+    selection=polygon((0,0),(10,0),(10,10),(0,10))
+    if minimum is None:
+        from domain.assessment.geometry import AssessmentBoundary, SpatialPoint, StraightConnector, derive_plan_polygon
+        points=[SpatialPoint(0,0),SpatialPoint(10,0),SpatialPoint(10,10),SpatialPoint(0,10)]
+        boundary=AssessmentBoundary(tuple(StraightConnector(a,b) for a,b in zip(points,points[1:]+points[:1])))
+        revision=AssessmentAreaGeometryRevision("R","A",1,datetime.now(timezone.utc),boundary,derive_plan_polygon(boundary),None,None)
+        assessment=AssessmentArea("A","A",date.today(),[revision],revision.id)
+    else:
+        assessment=area(selection)
+        revision=assessment.active_geometry_revision()
+        object.__setattr__(revision,"min_elevation",minimum); object.__setattr__(revision,"max_elevation",maximum)
+    blast=event("E",elevation,polygon((2,2),(4,2),(4,4),(2,4)))
+    assert evaluate_event(assessment,blast).elevation_matches is expected
+
+
+def test_upper_elevation_inclusive_with_storage_quantization_noise():
+    assessment=area(); revision=assessment.active_geometry_revision()
+    object.__setattr__(revision,"max_elevation",629.9999999)
+    upper=evaluate_event(assessment,event("E",630.0,polygon((2,2),(4,2),(4,4),(2,4))))
+    assert upper.elevation_matches is True
+    object.__setattr__(revision,"min_elevation",600.0000001)
+    lower=evaluate_event(assessment,event("L",600.0,polygon((2,2),(4,2),(4,4),(2,4))))
+    assert lower.elevation_matches is False

@@ -94,18 +94,16 @@ def _state_from_domain(events_rows: list[orm.BlastEvent], areas_rows: list[orm.A
         for item in sorted(row.attachments, key=lambda x: (x.created_at, x.id)):
             attachments.append(_attachment_dict(item, row.logical_id))
     datasets = _dataset_dicts(dataset_rows)
-    dataset_domains = {x.id: x.logical_id for x in dataset_rows}
     for row in sorted(areas_rows, key=lambda x: x.id):
         revisions, links = [], []
         revision_domains = {x.id: x.logical_id for x in row.geometry_revisions}
         for revision in sorted(row.geometry_revisions, key=lambda x: x.revision_number):
             revisions.append({"id": revision.logical_id, "assessment_area_id": row.logical_id,
                 "revision_number": revision.revision_number, "created_at": revision.created_at.isoformat(),
-                "source_dataset_id": dataset_domains[revision.source_dataset_id],
-                "selection_polygon_frozen": revision.selection_polygon_json,
-                "final_geometry_frozen": revision.final_geometry_json,
-                "lower_elevation": float(revision.lower_elevation_m), "upper_elevation": float(revision.upper_elevation_m),
-                "horizon_slices": revision.horizon_slices_json, "change_reason": revision.change_reason})
+                "boundary": revision.boundary_json, "final_geometry_frozen": revision.final_geometry_json,
+                "min_elevation": float(revision.min_elevation_m) if revision.min_elevation_m is not None else None,
+                "max_elevation": float(revision.max_elevation_m) if revision.max_elevation_m is not None else None,
+                "change_reason": revision.change_reason})
             for link in sorted(revision.event_links, key=lambda x: (x.created_at, x.id)):
                 target = link.blast_event_geometry_revision
                 _assert_link_same_domain(row, target)

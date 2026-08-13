@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 import os
 from pathlib import Path
 
@@ -31,6 +32,12 @@ from tests.assessment_graph_seeder import AssessmentGraphSeeder
 from repositories.project_lines_repository import ProjectLinesRepository
 from tests.test_assessment_state_mapper import build_rich_state
 from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
+from application.services.assessment_areas import AssessmentAreaService
+from application.state.assessment_domain_state import AssessmentDomainState
+from domain.assessment.geometry import (AssessmentBoundary, ProjectLineAnchor, ProjectLineSpan,
+    SpatialPoint, StraightConnector, derive_elevation_summary)
+from domain.geometry.types import DatamineLine, DataminePoint
+from domain.project.project_lines import ProjectLinesDataset
 
 
 @pytest.fixture(scope="session")
@@ -238,6 +245,34 @@ def _persist_rich_for_focused_write(session_factory, context):
     AssessmentGraphSeeder(session_factory).seed_for_domain(context.domain_id, state)
     return state
 
+
+def test_high_precision_sloping_boundary_focused_write_round_trip(session_factory, assessment_context):
+    points=[SpatialPoint(0,0,700.1234567),SpatialPoint(5,1,704.8765432),
+            SpatialPoint(10,0,711.3337777),SpatialPoint(10,10,718.9991111)]
+    source=DatamineLine("SLOPE",[DataminePoint(p.x,p.y,p.z,index+1) for index,p in enumerate(points)])
+    dataset=ProjectLinesDataset("HP-DATASET","High precision",datetime.now(timezone.utc),"hp.csv",True,[source])
+    state=AssessmentDomainState(datasets=[dataset]); persist_project_lines(session_factory,assessment_context.site_id,state)
+    start=ProjectLineAnchor(dataset.id,source.source_id,0,0,points[0]); end=ProjectLineAnchor(dataset.id,source.source_id,2,1,points[3])
+    span=ProjectLineSpan(start,end,tuple(points))
+    free=SpatialPoint(0,10)
+    boundary=AssessmentBoundary((span,StraightConnector(points[3],free,end,None),
+        StraightConnector(free,points[0],None,start)))
+    area=AssessmentAreaService(state).create_area(name="Sloping",assessment_date=date.today(),boundary=boundary)
+    SqlAlchemyAssessmentWrites(session_factory).persist_assessment_area_geometry(
+        assessment_context.domain_id,0,area)
+
+    with session_factory() as session:
+        row=session.scalar(select(orm.AssessmentAreaGeometryRevision).where(
+            orm.AssessmentAreaGeometryRevision.logical_id==area.active_geometry_revision_id))
+        assert row.min_elevation_m==Decimal("700.123") and row.max_elevation_m==Decimal("718.999")
+
+    loaded=AssessmentStateRepository(session_factory).load_for_domain(assessment_context.domain_id).state
+    restored=loaded.assessment_areas[0].active_geometry_revision()
+    assert restored.boundary.to_dict()==boundary.to_dict()
+    assert (restored.min_elevation,restored.max_elevation)==derive_elevation_summary(boundary)
+    second_boundary=deepcopy(boundary)
+    AssessmentAreaService(loaded).create_area(name="Another",assessment_date=date.today(),boundary=second_boundary)
+
 def test_focused_attachment_batch_rolls_back_every_row_on_second_insert(session_factory, assessment_context):
     state = _persist_rich_for_focused_write(session_factory, assessment_context)
     first = deepcopy(state.attachments[0]); first.id = "ATT-BATCH-DUP"
@@ -290,9 +325,8 @@ def test_area_geometry_write_does_not_leak_historical_link_mutation(session_fact
     historical_before = historical.status
     historical.status = "excluded" if historical.status != "excluded" else "confirmed"
     old = area.geometry_revisions[-1]
-    revision = type(old)("AA-R3", area.id, 3, old.created_at, old.source_dataset_id,
-        old.selection_polygon_frozen, old.final_geometry_frozen, old.lower_elevation,
-        old.upper_elevation, old.horizon_slices, "focused revision")
+    revision = type(old)("AA-R3", area.id, 3, old.created_at, old.boundary,
+        old.final_geometry_frozen, old.min_elevation, old.max_elevation, "focused revision")
     area.geometry_revisions.append(revision); area.active_geometry_revision_id = revision.id
     SqlAlchemyAssessmentWrites(session_factory).persist_assessment_area_geometry(
         assessment_context.domain_id, 0, area)

@@ -4,14 +4,15 @@ import json
 import pytest
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent
-from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentEventLink
+from domain.assessment.entities import AssessmentArea, AssessmentEventLink
+from tests.assessment_boundary_fixtures import geometry_revision
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.assessment.evaluation import *
 
 @pytest.fixture
 def area():
     p=PlanPolygon((PlanPoint(0,0),PlanPoint(1,0),PlanPoint(1,1),PlanPoint(0,0)))
-    r=AssessmentAreaGeometryRevision("AA-1-R001","AA-1",1,datetime.now(timezone.utc),"D",p,p,100,110,())
+    r=geometry_revision("AA-1-R001","AA-1",1,datetime.now(timezone.utc),p,dataset_id="D",minimum=100,maximum=110)
     return AssessmentArea("AA-1","A",date.today(),[r],r.id)
 
 def test_template_maxima_and_threshold_ownership():

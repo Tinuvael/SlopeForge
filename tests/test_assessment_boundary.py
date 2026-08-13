@@ -1,0 +1,175 @@
+from datetime import datetime, timezone
+
+import pytest
+
+from domain.assessment.entities import AssessmentAreaGeometryRevision
+from domain.assessment.geometry import (AssessmentBoundary, ProjectLineSpan, SpatialPoint, StraightConnector,
+    derive_elevation_summary, derive_plan_polygon, extract_project_line_span, interpolate_anchor,
+    project_line_is_closed, snap_to_project_lines)
+from domain.geometry.types import DatamineLine, DataminePoint, PlanPoint
+
+
+def line(identity, points, order=0):
+    return DatamineLine(identity,[DataminePoint(x,y,z,i+1) for i,(x,y,z) in enumerate(points)],import_order=order)
+
+def anchor(dataset, source, segment, fraction): return interpolate_anchor(dataset,source,segment,fraction)
+
+def rectangle():
+    upper=line("upper",[(0,10,110),(5,10,112),(10,10,115)])
+    lower=line("lower",[(0,0,100),(5,0,101),(10,0,102)])
+    u0,u1=anchor("A",upper,0,0),anchor("A",upper,1,1)
+    l0,l1=anchor("A",lower,1,1),anchor("A",lower,0,0)
+    return AssessmentBoundary((extract_project_line_span(upper,u0,u1),StraightConnector(u1.frozen_point_xyz,l0.frozen_point_xyz,u1,l0),
+       extract_project_line_span(lower,l0,l1),StraightConnector(l1.frozen_point_xyz,u0.frozen_point_xyz,l1,u0)))
+
+def test_parallel_sloping_curved_and_round_trip_fixture():
+    boundary=rectangle(); polygon=derive_plan_polygon(boundary)
+    assert len(boundary.segments[0].frozen_trace_xyz)==3
+    assert boundary.segments[0].frozen_trace_xyz[1]==SpatialPoint(5,10,112)
+    assert derive_elevation_summary(boundary)==(100,115)
+    assert AssessmentBoundary.from_dict(boundary.to_dict())==boundary
+    revision=AssessmentAreaGeometryRevision("R1","A",1,datetime.now(timezone.utc),boundary,polygon,100,115)
+    assert AssessmentAreaGeometryRevision.from_dict(revision.to_dict())==revision
+
+def test_interpolation_forward_reverse_and_same_segment():
+    source=line("curve",[(0,0,0),(2,2,10),(4,0,20),(6,2,30)])
+    a,b=anchor("D",source,0,.5),anchor("D",source,2,.5)
+    assert a.frozen_point_xyz==SpatialPoint(1,1,5)
+    assert extract_project_line_span(source,a,b).frozen_trace_xyz==(SpatialPoint(1,1,5),SpatialPoint(2,2,10),SpatialPoint(4,0,20),SpatialPoint(5,1,25))
+    assert extract_project_line_span(source,b,a).frozen_trace_xyz==tuple(reversed(extract_project_line_span(source,a,b).frozen_trace_xyz))
+    c=anchor("D",source,0,.75)
+    assert extract_project_line_span(source,a,c).frozen_trace_xyz==(SpatialPoint(1,1,5),SpatialPoint(1.5,1.5,7.5))
+
+def test_deterministic_nearest_snap_and_tie_break():
+    later=line("z",[(0,1,1),(10,1,1)],2); first=line("a",[(0,-1,2),(10,-1,2)],1)
+    result=snap_to_project_lines(PlanPoint(5,0),"D",[later,first],2)
+    assert result.anchor.source_line_id=="a" and result.anchor.source_segment_index==0
+
+def test_interrupted_triangle_mixed_and_no_z():
+    a,b,c=SpatialPoint(0,0),SpatialPoint(5,0),SpatialPoint(2,4)
+    boundary=AssessmentBoundary((StraightConnector(a,b),StraightConnector(b,c),StraightConnector(c,a)))
+    assert len(derive_plan_polygon(boundary).ring)==4
+    assert derive_elevation_summary(boundary)==(None,None)
+
+def test_continuity_and_self_intersection_rejected():
+    a,b,c,d=map(lambda p: SpatialPoint(*p),[(0,0),(2,2),(0,2),(2,0)])
+    with pytest.raises(ValueError,match="continuous"):
+        AssessmentBoundary((StraightConnector(a,b),StraightConnector(c,d),StraightConnector(d,a)))
+    with pytest.raises(ValueError):
+        AssessmentBoundary((StraightConnector(a,b),StraightConnector(b,c),StraightConnector(c,d),StraightConnector(d,a)))
+
+def test_frozen_dataset_a_is_unchanged_when_b_appears():
+    boundary=rectangle(); frozen=boundary.to_dict(); _dataset_b=line("replacement",[(0,0,999),(1,1,999)])
+    assert boundary.to_dict()==frozen and boundary.segments[0].start_anchor.source_dataset_id=="A"
+
+def test_boundary_schema_and_frozen_provenance_invariants():
+    source=line("L",[(0,0,100),(10,0,110)])
+    start,end=anchor("D",source,0,0),anchor("D",source,0,1)
+    with pytest.raises(ValueError,match="source IDs"):
+        type(start)("", "L", 0, 0, start.frozen_point_xyz)
+    with pytest.raises(ValueError,match="start"):
+        ProjectLineSpan(start,end,(SpatialPoint(1,0,100),end.frozen_point_xyz))
+    with pytest.raises(ValueError,match="non-zero"):
+        StraightConnector(start.frozen_point_xyz,start.frozen_point_xyz,start,start)
+    with pytest.raises(ValueError,match="does not match"):
+        StraightConnector(start.frozen_point_xyz,SpatialPoint(1,1),None,end)
+    with pytest.raises(ValueError,match="schema version"):
+        AssessmentBoundary.from_dict({"version":2,"segments":[]})
+
+
+@pytest.mark.parametrize("first_snapped,last_snapped",[(True,True),(True,False),(False,True),(False,False)])
+def test_closing_connector_preserves_optional_endpoint_anchors(first_snapped,last_snapped):
+    source=line("L",[(0,0,100),(10,0,110)])
+    first_anchor=anchor("D",source,0,0) if first_snapped else None
+    last_anchor=anchor("D",source,0,1) if last_snapped else None
+    first=first_anchor.frozen_point_xyz if first_anchor else SpatialPoint(0,0)
+    last=last_anchor.frozen_point_xyz if last_anchor else SpatialPoint(10,0)
+    connector=StraightConnector(last,first,last_anchor,first_anchor)
+    restored=StraightConnector(**{
+        "start_point": SpatialPoint.from_dict(connector.to_dict()["start_point"]),
+        "end_point": SpatialPoint.from_dict(connector.to_dict()["end_point"]),
+        "start_anchor": type(last_anchor).from_dict(connector.to_dict()["start_anchor"]) if last_anchor else None,
+        "end_anchor": type(first_anchor).from_dict(connector.to_dict()["end_anchor"]) if first_anchor else None})
+    assert restored==connector
+
+
+def test_high_precision_summary_recovers_from_numeric_12_3_projection():
+    boundary=rectangle(); data=AssessmentAreaGeometryRevision(
+        "R","A",1,datetime.now(timezone.utc),boundary,derive_plan_polygon(boundary),100,115).to_dict()
+    # Replace the simple fixture Z with values that reproduce PostgreSQL quantization.
+    span=data["boundary"]["segments"][0]
+    values=(700.1234567,704.8765432,711.3337777)
+    for point,z in zip(span["frozen_trace_xyz"],values): point["z"]=z
+    span["start_anchor"]["frozen_point_xyz"]["z"]=values[0]
+    span["end_anchor"]["frozen_point_xyz"]["z"]=values[-1]
+    # Other snapped endpoints also contribute; keep their source evidence high precision.
+    for segment in data["boundary"]["segments"][1:]:
+        if segment["type"] != "straight_connector": continue
+        for key in ("start_point","end_point"):
+            if segment[key]["z"] is not None: segment[key]["z"]+=600.1234567
+        for key in ("start_anchor","end_anchor"):
+            if segment[key] is not None:
+                segment[key]["frozen_point_xyz"]["z"]=(segment["start_point"] if key=="start_anchor" else segment["end_point"])["z"]
+    boundary=AssessmentBoundary.from_dict(data["boundary"])
+    minimum,maximum=derive_elevation_summary(boundary)
+    data["final_geometry_frozen"]=derive_plan_polygon(boundary).to_dict()
+    data["min_elevation"],data["max_elevation"]=round(minimum,3),round(maximum,3)
+    restored=AssessmentAreaGeometryRevision.from_dict(data)
+    assert (restored.min_elevation,restored.max_elevation)==(minimum,maximum)
+    assert restored.boundary==boundary
+
+
+def test_high_precision_summary_rejects_material_corruption_and_none_mismatch():
+    revision=AssessmentAreaGeometryRevision("R","A",1,datetime.now(timezone.utc),rectangle(),derive_plan_polygon(rectangle()),100,115)
+    data=revision.to_dict(); data["min_elevation"]=100.001
+    with pytest.raises(ValueError,match="minimum elevation disagrees"):
+        AssessmentAreaGeometryRevision.from_dict(data)
+    data=revision.to_dict(); data["min_elevation"]=None
+    with pytest.raises(ValueError,match="presence disagrees"):
+        AssessmentAreaGeometryRevision.from_dict(data)
+
+
+def test_closed_contour_seam_uses_shorter_source_arc_in_both_directions():
+    contour=line("C",[(0,0,100),(10,0,101),(10,10,102),(0,10,103),(0,0,100)])
+    assert project_line_is_closed(contour)
+    start=anchor("D",contour,3,.5); end=anchor("D",contour,0,.5)
+    expected=(SpatialPoint(0,5,101.5),SpatialPoint(0,0,100),SpatialPoint(5,0,100.5))
+    assert extract_project_line_span(contour,start,end).frozen_trace_xyz==expected
+    assert extract_project_line_span(contour,end,start).frozen_trace_xyz==tuple(reversed(expected))
+
+
+def test_closed_contour_snap_includes_explicit_closing_segment_and_open_line_does_not_wrap():
+    contour=line("C",[(0,0,100),(10,0,101),(10,10,102),(0,10,103),(0,0,100)])
+    snapped=snap_to_project_lines(PlanPoint(0,6),"D",[contour],.1)
+    assert snapped.anchor.source_segment_index==3
+    open_line=line("O",[(0,0,100),(10,0,101),(10,10,102),(0,10,103)])
+    assert not project_line_is_closed(open_line)
+    start=anchor("D",open_line,2,.5); end=anchor("D",open_line,0,.5)
+    assert extract_project_line_span(open_line,start,end).frozen_trace_xyz[1:3]==(
+        SpatialPoint(10,10,102),SpatialPoint(10,0,101))
+
+
+def test_many_vertex_closed_contour_chooses_local_arc_not_opposite_side():
+    contour=line("ROUND",[(0,0,10),(4,-1,11),(8,0,12),(9,4,13),(8,8,14),
+                          (4,9,15),(0,8,16),(-1,4,17),(0,0,10)])
+    start=anchor("D",contour,7,.6); end=anchor("D",contour,0,.4)
+    trace=extract_project_line_span(contour,start,end).frozen_trace_xyz
+    assert trace[1]==SpatialPoint(0,0,10) and len(trace)==3
+
+
+def test_closed_same_segment_and_exact_closure_vertex_anchors_terminate():
+    contour=line("C",[(0,0,100),(10,0,101),(10,10,102),(0,10,103),(0,0,100)])
+    same_start=anchor("D",contour,1,.2); same_end=anchor("D",contour,1,.8)
+    assert extract_project_line_span(contour,same_start,same_end).frozen_trace_xyz==(
+        same_start.frozen_point_xyz,same_end.frozen_point_xyz)
+    # The repeated closure vertex can be represented at either side of the seam.
+    closure=anchor("D",contour,3,1); first_span=anchor("D",contour,0,.5)
+    trace=extract_project_line_span(contour,closure,first_span).frozen_trace_xyz
+    assert trace==(SpatialPoint(0,0,100),first_span.frozen_point_xyz)
+
+
+def test_closed_equal_arcs_deterministically_choose_stored_forward():
+    contour=line("C",[(0,0,100),(10,0,101),(10,10,102),(0,10,103),(0,0,100)])
+    start=anchor("D",contour,0,0); end=anchor("D",contour,2,0)
+    trace=extract_project_line_span(contour,start,end).frozen_trace_xyz
+    assert trace==(SpatialPoint(0,0,100),SpatialPoint(10,0,101),SpatialPoint(10,10,102))

@@ -80,12 +80,14 @@ def test_area_links_and_focused_creation_are_reused():
     for action in ("confirm_event_link","exclude_event_link","restore_event_link","refresh_event_link_suggestions"):
         assert action in area
     creation=source("ui/pages/assessment_area_creation_page.py")
+    main=source("ui/main_window.py")
     assert "AssessmentAreaCreationPage" in creation and "AssessmentGeometryEditorWidget" in creation
     assert "Blast Events" not in creation and "TechnicalCard" not in creation
     main=source("ui/main_window.py")
     assert "AssessmentAreaCreationPage" in main and "_area_created" in main
 
 def test_entity_page_integration_corrections_are_visible():
+    main=source("ui/main_window.py")
     block=source("ui/pages/block_page.py")
     assert 'QPushButton(tr("Save draft"))' in block and 'QPushButton(tr("Complete"))' in block
     assert "save_draft()" in block and "complete()" in block
@@ -97,8 +99,10 @@ def test_entity_page_integration_corrections_are_visible():
     assert "Save an assessment draft first" not in area
     assert "prepare_evaluation_attachment_owner" in area
     creation=source("ui/pages/assessment_area_creation_page.py")
-    for label in ("Fit","Project Lines","Grid","Undo vertex","Finish polygon / Continue","Confirm boundaries","Cancel"):
+    for label in ("Fit","Project Lines","Undo","Close boundary","Save Assessment","Cancel"):
         assert label in creation
+    assert "self._start_drawing()" not in creation[creation.index("def __init__"):creation.index("def _start_drawing")]
+    assert "page.area_created.connect" in main and "open_area_from_tree" in main
 
 def test_refresh_reloads_filters_and_area_construction_is_guarded():
     main=source("ui/main_window.py")

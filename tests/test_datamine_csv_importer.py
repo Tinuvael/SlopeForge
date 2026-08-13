@@ -31,6 +31,35 @@ def test_import_clean_pid_xyz_sid_without_type_pvalue_ptn(tmp_path):
     assert all(p.pvalue is None for p in line.points)
 
 
+def test_csv_closure_requires_explicit_repeated_endpoint(tmp_path):
+    from domain.assessment.geometry import project_line_is_closed
+    closed=import_datamine_csv(write_csv(tmp_path,
+        "PID,X,Y,Z,SID\n1,0,0,100,C\n2,10,0,101,C\n3,10,10,102,C\n4,0,0,100,C\n")).lines[0]
+    opened=import_datamine_csv(write_csv(tmp_path,
+        "PID,X,Y,Z,SID\n1,0,0,100,O\n2,10,0,101,O\n3,10,10,102,O\n","open.csv")).lines[0]
+    assert project_line_is_closed(closed) and not project_line_is_closed(opened)
+
+
+def test_datamine_closed_string_full_assessment_trace_round_trip(tmp_path):
+    from domain.assessment.geometry import (AssessmentBoundary, ProjectLineSpan, SpatialPoint,
+        StraightConnector, extract_project_line_span, project_line_is_closed,
+        snap_to_project_lines)
+    from domain.geometry.types import PlanPoint
+    line=import_datamine_csv(write_csv(tmp_path,
+        "XP,YP,ZP,SID,PTN\n0,0,700.1,C,1\n10,0,701.2,C,2\n10,10,702.3,C,3\n"
+        "0,10,703.4,C,4\n0,0,700.1,C,5\n","datamine-closed.csv")).lines[0]
+    assert project_line_is_closed(line)
+    start=snap_to_project_lines(PlanPoint(0,5),"D",[line],.01).anchor
+    end=snap_to_project_lines(PlanPoint(5,0),"D",[line],.01).anchor
+    span=extract_project_line_span(line,start,end)
+    assert span.frozen_trace_xyz==(start.frozen_point_xyz,SpatialPoint(0,0,700.1),end.frozen_point_xyz)
+    free=SpatialPoint(5,5)
+    boundary=AssessmentBoundary((span,StraightConnector(end.frozen_point_xyz,free,end,None),
+        StraightConnector(free,start.frozen_point_xyz,None,start)))
+    assert AssessmentBoundary.from_dict(boundary.to_dict())==boundary
+    assert isinstance(boundary.segments[0],ProjectLineSpan)
+
+
 def test_import_legacy_xp_yp_zp_ptn_fallback_line_id(tmp_path):
     path = write_csv(tmp_path, "XP,YP,ZP,PTN\n0,0,700,OLD-A\n1,0,700,OLD-A\n")
     result = import_datamine_csv(path)

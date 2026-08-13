@@ -111,7 +111,8 @@ class DashboardRepository:
                 .where(a.AssessmentArea.domain_id==domain_id,a.AssessmentArea.is_archived.is_(False),a.AssessmentAreaGeometryRevision.is_active.is_(True))).all()
             areas=[]; intervals={}; quadrants={}
             for area,geo,ev in rows:
-                interval=f"{_number(geo.lower_elevation_m)}–{_number(geo.upper_elevation_m)}"
+                interval=(f"{_number(geo.min_elevation_m)}–{_number(geo.max_elevation_m)}"
+                          if geo.min_elevation_m is not None and geo.max_elevation_m is not None else "—")
                 intervals[interval]=intervals.get(interval,0)+1
                 status=ev.status if ev else None; q=ev.result_quadrant if ev and status=="completed" else None
                 if q: quadrants[q]=quadrants.get(q,0)+1

@@ -4,9 +4,10 @@ import json
 import pytest
 
 from domain.geometry.blast import BlastGeometryError, build_contour_geometry, build_production_geometry
-from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
+from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent
-from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentEventLink, AssessmentHorizonSlice
+from domain.assessment.entities import AssessmentArea, AssessmentEventLink
+from tests.assessment_boundary_fixtures import geometry_revision
 from domain.project.project_lines import ProjectLinesDataset
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.types import DatamineLine, DataminePoint
@@ -123,23 +124,13 @@ def test_archive_filters_active_blast_events_without_deleting_revisions():
     assert state.active_blast_events() == [event]
 
 
-def test_domain_state_round_trip_includes_assessment_area_stub():
+def test_domain_state_round_trip_includes_assessment_area_boundary():
     ring = PlanPolygon((PlanPoint(0, 0), PlanPoint(10, 0), PlanPoint(10, 10), PlanPoint(0, 0)))
-    slice_geometry = PlanLineString((PlanPoint(0, 0), PlanPoint(10, 0)))
-    revision = AssessmentAreaGeometryRevision(
-        id="AA-001-R001", assessment_area_id="AA-001", revision_number=1,
-        created_at=datetime(2026, 7, 21, tzinfo=timezone.utc), source_dataset_id="D-001",
-        selection_polygon_frozen=ring, final_geometry_frozen=ring,
-        lower_elevation=600, upper_elevation=620,
-        horizon_slices=(AssessmentHorizonSlice("HS-001", "L-600", 600, "lower_boundary", slice_geometry),),
-    )
-    area = AssessmentArea(
-        id="AA-001",
-        name="Area 600-620",
-        assessment_date=date(2026, 7, 21),
-        geometry_revisions=[revision], active_geometry_revision_id=revision.id,
-        event_links=[AssessmentEventLink("BE-001", "BE-001-R001", "confirmed", "automatic")],
-    )
+    revision = geometry_revision("AA-001-R001", "AA-001", 1,
+        datetime(2026, 7, 21, tzinfo=timezone.utc), ring, dataset_id="D-001",
+        minimum=600, maximum=620)
+    area = AssessmentArea("AA-001", "Area 600-620", date(2026, 7, 21), [revision], revision.id,
+        [AssessmentEventLink("BE-001", "BE-001-R001", "confirmed", "automatic")])
     state = AssessmentDomainState(assessment_areas=[area])
     restored = AssessmentDomainState.from_dict(json.loads(json.dumps(state.to_dict())))
     assert restored.to_dict() == state.to_dict()

@@ -21,6 +21,13 @@ def _date(value: Any) -> date | None:
     return None
 
 
+def _elevation_interval(minimum, maximum) -> str:
+    """Format stored evidence without inventing an elevation for free boundaries."""
+    if minimum is None or maximum is None:
+        return "—"
+    return f"{float(minimum):g}–{float(maximum):g}"
+
+
 class SqlAlchemyProjectReportQuery:
     def __init__(self, session_factory): self.session_factory=session_factory
 
@@ -67,8 +74,11 @@ class SqlAlchemyProjectReportQuery:
                         event=link.blast_event_geometry_revision.blast_event
                         if event.event_type=="production" and event.blast_block_id in blocks: prod.add(blocks[event.blast_block_id])
                         elif event.event_type=="contour": contour.add(event.name)
+                interval = ""
+                if geometry:
+                    interval = _elevation_interval(geometry.min_elevation_m, geometry.max_elevation_m)
                 assessments.append(AssessmentReportRow(area.name,domain_name,area.assessment_date,
-                    f"{float(geometry.lower_elevation_m):g}–{float(geometry.upper_elevation_m):g}" if geometry else "",
+                    interval,
                     geometry.revision_number if geometry else 0,active_eval.status if active_eval else None,
                     float(result.design_achievement_index) if result and result.design_achievement_index is not None else None,
                     float(result.face_condition_index) if result and result.face_condition_index is not None else None,

@@ -252,3 +252,26 @@ def test_0011_removes_and_restores_legacy_schema(monkeypatch: pytest.MonkeyPatch
         command.upgrade(config, "head")
     finally:
         engine.dispose()
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
+def test_0012_physical_schema_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The incompatible disposable schemas still support a real 0011/0012 round trip."""
+    url=os.environ["TEST_DATABASE_URL"]
+    if "test" not in (make_url(url).database or "").lower():
+        pytest.fail("Refusing migration test outside a test database",pytrace=False)
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import inspect
+    monkeypatch.setenv("DATABASE_URL",url); monkeypatch.setenv("STORAGE_ROOT",str(tmp_path/"storage-0012"))
+    config=Config("alembic.ini"); engine=create_engine(url)
+    def columns(): return {c["name"] for c in inspect(engine).get_columns("assessment_area_geometry_revisions")}
+    try:
+        command.downgrade(config,"base"); command.upgrade(config,"20260812_0011")
+        assert {"source_dataset_id","selection_polygon_json","lower_elevation_m","upper_elevation_m","horizon_slices_json"} <= columns()
+        command.upgrade(config,"20260813_0012")
+        assert {"boundary_json","min_elevation_m","max_elevation_m"} <= columns()
+        command.downgrade(config,"20260812_0011")
+        assert {"source_dataset_id","selection_polygon_json","lower_elevation_m","upper_elevation_m","horizon_slices_json"} <= columns()
+        command.upgrade(config,"20260813_0012")
+    finally:
+        engine.dispose()

@@ -208,7 +208,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         revision = next(r for r in self.area.geometry_revisions if r.id == self.draft.assessment_area_geometry_revision_id)
         form.addRow(tr("Assessment date"), self.date); form.addRow(tr("Inspector"), self.inspector)
         form.addRow(tr("Assessment Area ID"), QLabel(self.area.id)); form.addRow(tr("Geometry revision"), QLabel(revision.id))
-        form.addRow(tr("Elevations"), QLabel(f"{revision.lower_elevation:g} — {revision.upper_elevation:g}"))
+        form.addRow(tr("Elevations"), QLabel(f"{revision.min_elevation if revision.min_elevation is not None else '—'} — {revision.max_elevation if revision.max_elevation is not None else '—'}"))
         form.addRow(tr("Matrix"), QLabel(matrix_label(self.template.id, self.template.name))); form.addRow(tr("Detection"), self.detected)
         form.addRow(tr("Manual matrix selection reason"), self.override_reason); form.addRow(tr("Comments"), self.comments); form.addRow(tr("Recommendations"), self.recommendations)
         self.tabs.addTab(page, tr("General"))

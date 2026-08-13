@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QCursor, QPainter
 from PySide6.QtWidgets import QGraphicsView
 from domain.geometry.types import PlanPoint
 
@@ -15,11 +15,16 @@ class PrototypePlanView(QGraphicsView):
         super().__init__(scene)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setMouseTracking(True)
         self._drawing_mode = False
+        self._middle_panning = False
+        self._pan_view_position = None
 
     def set_polygon_drawing_mode(self, enabled: bool):
         self._drawing_mode = enabled
+        # Left click belongs to the boundary while drawing.  Middle-drag is
+        # always available for navigation and is handled explicitly below.
         self.setDragMode(QGraphicsView.DragMode.NoDrag if enabled else QGraphicsView.DragMode.ScrollHandDrag)
         if enabled:
             self.setFocus()
@@ -49,17 +54,40 @@ class PrototypePlanView(QGraphicsView):
         super().keyPressEvent(event)
 
     def mouseMoveEvent(self, event):
+        if self._middle_panning and self._pan_view_position is not None:
+            current = event.position().toPoint()
+            delta = current - self._pan_view_position
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            self._pan_view_position = current
+            event.accept()
+            return
         pos = self.mapToScene(event.position().toPoint())
         self.cursor_moved.emit(pos.x(), -pos.y())
         super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._middle_panning = True
+            self._pan_view_position = event.position().toPoint()
+            self.viewport().setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
+            event.accept()
+            return
         if self._drawing_mode and event.button() == Qt.MouseButton.LeftButton:
             point = self.scene_to_domain(self.mapToScene(event.position().toPoint()))
             self.scene_clicked.emit(point.x, point.y)
             event.accept()
             return
         super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.MiddleButton and self._middle_panning:
+            self._middle_panning = False
+            self._pan_view_position = None
+            self.viewport().unsetCursor()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         if self._drawing_mode and event.button() == Qt.MouseButton.LeftButton:

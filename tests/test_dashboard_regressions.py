@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from repositories.dashboard_repository import _geometry_points
+from repositories.dashboard_repository import _geometry_points, _number
 
 
 def source(path):
@@ -51,3 +51,7 @@ def test_real_quadrant_values_drive_attention_mapping():
         assert value in widgets
     assert '"good_results": QuadrantPresentation' in widgets
     assert '0, False' in widgets
+
+
+def test_dashboard_nullable_elevation_formatting_does_not_invent_values():
+    assert _number(None) == "—"

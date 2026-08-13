@@ -81,18 +81,16 @@ def _state_from_domain(events_rows, areas_rows,
         for item in sorted(row.attachments, key=lambda x: (x.created_at, x.id)):
             attachments.append(_attachment_dict(item, row.logical_id))
     datasets = _dataset_dicts(dataset_rows)
-    dataset_domains = {x.id: x.logical_id for x in dataset_rows}
     for row in sorted(areas_rows, key=lambda x: x.id):
         revisions, links = [], []
         revision_domains = {x.id: x.logical_id for x in row.geometry_revisions}
         for revision in sorted(row.geometry_revisions, key=lambda x: x.revision_number):
             revisions.append({"id": revision.logical_id, "assessment_area_id": row.logical_id,
                 "revision_number": revision.revision_number, "created_at": revision.created_at.isoformat(),
-                "source_dataset_id": dataset_domains[revision.source_dataset_id],
-                "selection_polygon_frozen": revision.selection_polygon_json,
-                "final_geometry_frozen": revision.final_geometry_json,
-                "lower_elevation": float(revision.lower_elevation_m), "upper_elevation": float(revision.upper_elevation_m),
-                "horizon_slices": revision.horizon_slices_json, "change_reason": revision.change_reason})
+                "boundary": revision.boundary_json, "final_geometry_frozen": revision.final_geometry_json,
+                "min_elevation": float(revision.min_elevation_m) if revision.min_elevation_m is not None else None,
+                "max_elevation": float(revision.max_elevation_m) if revision.max_elevation_m is not None else None,
+                "change_reason": revision.change_reason})
             for link in sorted(revision.event_links, key=lambda x: (x.created_at, x.id)):
                 target = link.blast_event_geometry_revision
                 if target.blast_event.domain_id != row.domain_id:
@@ -203,11 +201,7 @@ class AssessmentGraphSeeder:
     def _synchronize(session, domain_id, events_rows, areas_rows, state, dataset_rows):
         """Explicitly match Domain-owned rows by stable logical IDs."""
         datasets = {row.logical_id: row for row in dataset_rows}
-        missing = {revision.source_dataset_id for area in state.assessment_areas
-                   for revision in area.geometry_revisions} - datasets.keys()
-        if missing:
-            raise AssessmentStateValidationError(
-                "Assessment Area references a Project Lines dataset outside its Site")
+
 
         events = {row.logical_id: row for row in events_rows}
         areas = {row.logical_id: row for row in areas_rows}
@@ -266,12 +260,10 @@ class AssessmentGraphSeeder:
                     child = orm.AssessmentAreaGeometryRevision(assessment_area=row, logical_id=revision.id)
                     session.add(child)
                 child.revision_number = revision.revision_number; child.created_at = revision.created_at
-                child.source_dataset = datasets[revision.source_dataset_id]
-                child.selection_polygon_json = revision.selection_polygon_frozen.to_dict()
+                child.boundary_json = revision.boundary.to_dict()
                 child.final_geometry_json = revision.final_geometry_frozen.to_dict()
-                child.lower_elevation_m = revision.lower_elevation
-                child.upper_elevation_m = revision.upper_elevation
-                child.horizon_slices_json = [x.to_dict() for x in revision.horizon_slices]
+                child.min_elevation_m = revision.min_elevation
+                child.max_elevation_m = revision.max_elevation
                 child.change_reason = revision.change_reason
                 child.is_active = revision.id == item.active_geometry_revision_id
                 area_geometries[revision.id] = child

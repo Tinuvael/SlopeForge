@@ -7,7 +7,8 @@ QtWidgets = pytest.importorskip("PySide6.QtWidgets", reason="Qt unavailable", ex
 from PySide6.QtWidgets import QApplication
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent
-from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision, AssessmentEventLink
+from domain.assessment.entities import AssessmentArea, AssessmentEventLink
+from tests.assessment_boundary_fixtures import geometry_revision
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.assessment.evaluation import (AssessmentAreaEvaluationService, AssessmentCriterionResult,
  CONDITION, DESIGN, calculate_revision)
@@ -18,7 +19,7 @@ def app(): return QApplication.instance() or QApplication([])
 
 def make_state():
     polygon=PlanPolygon((PlanPoint(0,0),PlanPoint(2,0),PlanPoint(2,2),PlanPoint(0,0)))
-    geometry=AssessmentAreaGeometryRevision("AA-1-R001","AA-1",1,datetime.now(timezone.utc),"D",polygon,polygon,100,110,())
+    geometry=geometry_revision("AA-1-R001","AA-1",1,datetime.now(timezone.utc),polygon,dataset_id="D",minimum=100,maximum=110)
     link=AssessmentEventLink("BE-1","BE-1-R001","confirmed","manual",id="L-1",assessment_area_geometry_revision_id=geometry.id)
     area=AssessmentArea("AA-1","Wall",date.today(),[geometry],geometry.id,[link])
     return AssessmentDomainState(blast_events=[BlastEvent("BE-1","Контур","contour",date.today(),105)],assessment_areas=[area]),area

@@ -124,8 +124,7 @@ class AssessmentEditingSession:
         return self._mutate_links(area, self.links.refresh_suggestions)
 
     def save_assessment_area_geometry(self, *, assessment_area_id=None, name=None,
-                                      assessment_date=None, selection_polygon,
-                                      selected_fragments, change_reason=None):
+                                      assessment_date=None, boundary=None, change_reason=None):
         """Create/revise geometry, refresh links, and persist with in-place rollback."""
         self._require_edit()
         created = assessment_area_id is None
@@ -146,12 +145,10 @@ class AssessmentEditingSession:
             if created:
                 area = self.areas.create_area(
                     name=name or "", assessment_date=assessment_date,
-                    selection_polygon=selection_polygon, selected_fragments=selected_fragments)
+                    boundary=boundary)
                 old_links = []
             else:
-                self.areas.revise_area(area, selection_polygon=selection_polygon,
-                                       selected_fragments=selected_fragments,
-                                       change_reason=change_reason)
+                self.areas.revise_area(area, boundary=boundary, change_reason=change_reason)
             links_before_refresh = list(area.event_links)
             statuses_before_refresh = [(link, link.status) for link in links_before_refresh]
             try:

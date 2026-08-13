@@ -1,6 +1,7 @@
 from datetime import date
 from openpyxl import load_workbook
 from infrastructure.reports.excel_project_report import write_project_report
+from infrastructure.db.project_report import _elevation_interval
 from application.dto.project_report import BlastReportRow,ProjectReport
 
 
@@ -24,3 +25,8 @@ def test_contour_volume_alone_does_not_become_production_volume(tmp_path):
     assert summary["B7"].value is None
     assert summary["A20"].value=="No actual production volume data"
     assert len(summary._charts)==1
+
+
+def test_project_report_elevation_interval_is_nullable_safe():
+    assert _elevation_interval(None, None) == "—"
+    assert _elevation_interval("100.500", "120.750") == "100.5–120.75"

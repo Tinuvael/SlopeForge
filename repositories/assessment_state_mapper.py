@@ -8,6 +8,7 @@ import math
 from pathlib import PurePath
 
 from application.state.assessment_domain_state import AssessmentDomainState
+from domain.assessment.geometry import ProjectLineSpan, StraightConnector
 
 
 class AssessmentPersistenceError(Exception):
@@ -60,6 +61,7 @@ def validate_assessment_state(state: AssessmentDomainState) -> None:
     if not isinstance(state, AssessmentDomainState):
         _fail("state must be AssessmentDomainState")
     dataset_ids = _ids(state.datasets, "dataset")
+    datasets_by_id = {item.id: item for item in state.datasets}
     if sum(bool(x.is_active) for x in state.datasets) > 1:
         _fail("at most one dataset may be active")
     event_ids = _ids(state.blast_events, "blast event")
@@ -93,15 +95,22 @@ def validate_assessment_state(state: AssessmentDomainState) -> None:
             if revision.id in area_revisions:
                 _fail(f"duplicate area geometry revision ID {revision.id!r}")
             area_revisions[revision.id] = area.id
-            if revision.source_dataset_id not in dataset_ids:
-                _fail(f"source dataset {revision.source_dataset_id!r} does not exist")
-            if not all(math.isfinite(x) for x in (revision.lower_elevation, revision.upper_elevation)):
-                _fail("area elevations must be finite")
-            if revision.lower_elevation >= revision.upper_elevation:
-                _fail("lower elevation must be below upper elevation")
-            for item in revision.horizon_slices:
-                if not item.id.strip() or not math.isfinite(item.elevation):
-                    _fail("horizon slice IDs and elevations must be persistable")
+            for elevation in (revision.min_elevation, revision.max_elevation):
+                if elevation is not None and not math.isfinite(elevation):
+                    _fail("area elevation summary must be finite")
+            for segment in revision.boundary.segments:
+                anchors = ((segment.start_anchor, segment.end_anchor) if isinstance(segment, ProjectLineSpan)
+                           else (segment.start_anchor, segment.end_anchor) if isinstance(segment, StraightConnector)
+                           else ())
+                for anchor in (item for item in anchors if item is not None):
+                    dataset = datasets_by_id.get(anchor.source_dataset_id)
+                    if dataset is None:
+                        _fail(f"boundary anchor references missing dataset {anchor.source_dataset_id!r}")
+                    line = next((item for item in dataset.lines if item.source_id == anchor.source_line_id), None)
+                    if line is None:
+                        _fail(f"boundary anchor references missing Project Line {anchor.source_line_id!r}")
+                    if anchor.source_segment_index >= len(line.points)-1:
+                        _fail("boundary anchor source segment index is outside the historical Project Line")
         _ids(area.event_links, "assessment event link")
         link_identities: set[tuple[str, str, str]] = set()
         for link in area.event_links:

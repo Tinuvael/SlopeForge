@@ -34,6 +34,8 @@ def test_lwpolyline_wcs_metadata_elevation_and_closed_normalization(tmp_path):
     assert line.is_horizontal and line.elevation == 620
     assert line.points[0].extra_values["dxf_entity_type"] == "LWPOLYLINE"
     assert result.summary.lwpolyline_count == 1 and result.summary.total_vertices == 4
+    from domain.assessment.geometry import project_line_is_closed
+    assert project_line_is_closed(line)
 
 
 def test_2d_and_3d_polyline_wcs_order_and_varying_z(tmp_path):
