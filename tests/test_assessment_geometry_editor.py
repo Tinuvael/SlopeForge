@@ -10,6 +10,8 @@ from application.services.assessment_areas import AssessmentAreaService
 from application.services.project_lines import ProjectLinesDatasetService
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.assessment.geometry import ProjectLineSpan, StraightConnector, extract_project_line_span
+from domain.geometry.types import PlanPoint, PlanPolygon
+from tests.assessment_boundary_fixtures import boundary_from_polygon
 from ui.editors.assessment_geometry_editor import (PROJECT_LINE_ROLE, SNAP_MARKER_ROLE,
                                                     AssessmentGeometryEditorWidget)
 
@@ -104,6 +106,29 @@ def test_undo_closed_reopens_and_cancel_clears_draft(state, app):
     assert editor.workflow_state == "DRAWING"
     editor.cancel_workflow()
     assert editor.workflow_state == "IDLE" and editor._segments == []
+
+
+def test_edit_existing_boundary_creates_r2_without_changing_r1(state, app):
+    """Exercise the real editor lifecycle, not only the application service."""
+    service = AssessmentAreaService(state)
+    shape = PlanPolygon((PlanPoint(0, 10), PlanPoint(10, 10), PlanPoint(10, 0),
+                         PlanPoint(0, 0), PlanPoint(0, 10)))
+    boundary = boundary_from_polygon(
+        shape, dataset_id=state.active_dataset().id, line_id="A", minimum=110, maximum=120)
+    area = service.create_area(name="West wall", assessment_date=date(2026, 8, 13), boundary=boundary)
+    frozen_r1 = area.geometry_revisions[0].to_dict()
+
+    editor = AssessmentGeometryEditorWidget(state, committer(state))
+    editor.start_edit(area.id)
+    assert editor.workflow_state == "DRAWING"
+    editor.undo_vertex()
+    editor._drawing_click(0, 1)  # replace the removed side with a changed free connector
+    editor.finish_polygon()
+    editor.confirm_boundaries(name="ignored", assessment_date=date(2000, 1, 1))
+
+    assert area.active_geometry_revision().revision_number == 2
+    assert area.geometry_revisions[0].to_dict() == frozen_r1
+    assert area.name == "West wall" and area.assessment_date == date(2026, 8, 13)
 
 def test_close_preserves_first_snapped_anchor(state, app):
     editor=AssessmentGeometryEditorWidget(state,committer(state)); editor.start_new_area()
