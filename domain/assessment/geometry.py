@@ -9,6 +9,7 @@ from domain.geometry.operations import validate_simple_polygon
 from domain.geometry.types import DatamineLine, PlanPoint, PlanPolygon
 
 EPSILON = 1e-8
+SOURCE_CLOSURE_TOLERANCE = 1e-8
 
 
 @dataclass(frozen=True)
@@ -167,15 +168,61 @@ def snap_to_project_line(point: PlanPoint, dataset_id: str, line: DatamineLine,
     return snap_to_project_lines(point, dataset_id, [line], tolerance)
 
 
+def project_line_is_closed(line: DatamineLine,
+                           tolerance: float = SOURCE_CLOSURE_TOLERANCE) -> bool:
+    """True only for an explicitly closed imported XYZ point sequence."""
+    if len(line.points) < 4:
+        return False
+    first, last = line.points[0], line.points[-1]
+    if max(abs(first.x-last.x), abs(first.y-last.y), abs(first.z-last.z)) > tolerance:
+        return False
+    distinct = {(point.x, point.y, point.z) for point in line.points[:-1]}
+    return len(distinct) >= 3
+
+
+def _without_adjacent_duplicates(points: list[SpatialPoint]) -> tuple[SpatialPoint, ...]:
+    return tuple(point for index, point in enumerate(points)
+                 if index == 0 or point != points[index-1])
+
+
+def _closed_forward_trace(line: DatamineLine, start: ProjectLineAnchor,
+                          end: ProjectLineAnchor) -> tuple[SpatialPoint, ...]:
+    """Follow stored source order, wrapping across the explicit closing seam."""
+    segment_count = len(line.points)-1
+    points = [start.frozen_point_xyz]
+    segment = start.source_segment_index
+    same_segment_direct = (segment == end.source_segment_index and
+                           start.interpolation_fraction <= end.interpolation_fraction)
+    if not same_segment_direct:
+        while True:
+            vertex = line.points[segment+1]
+            points.append(SpatialPoint(vertex.x, vertex.y, vertex.z))
+            segment = (segment+1) % segment_count
+            if segment == end.source_segment_index:
+                break
+    points.append(end.frozen_point_xyz)
+    return _without_adjacent_duplicates(points)
+
+
+def _plan_length(points: tuple[SpatialPoint, ...]) -> float:
+    return sum(hypot(b.x-a.x, b.y-a.y) for a,b in zip(points,points[1:]))
+
+
 def extract_project_line_span(line: DatamineLine, start: ProjectLineAnchor, end: ProjectLineAnchor) -> ProjectLineSpan:
     if start.source_line_id != line.source_id or end.source_line_id != line.source_id or start.source_dataset_id != end.source_dataset_id:
         raise ValueError("Anchors do not belong to this Project Line")
+    if project_line_is_closed(line):
+        forward_trace = _closed_forward_trace(line,start,end)
+        reverse_trace = tuple(reversed(_closed_forward_trace(line,end,start)))
+        # Equal source arclength deterministically keeps stored-forward order.
+        chosen = forward_trace if _plan_length(forward_trace) <= _plan_length(reverse_trace) else reverse_trace
+        return ProjectLineSpan(start,end,chosen)
     forward = (start.source_segment_index, start.interpolation_fraction) <= (end.source_segment_index, end.interpolation_fraction)
     first, last = (start, end) if forward else (end, start)
     points = [first.frozen_point_xyz]
     points.extend(SpatialPoint(p.x, p.y, p.z) for p in line.points[first.source_segment_index + 1:last.source_segment_index + 1])
     points.append(last.frozen_point_xyz)
-    normalized = [p for i, p in enumerate(points) if i == 0 or p != points[i-1]]
+    normalized = list(_without_adjacent_duplicates(points))
     if not forward: normalized.reverse()
     return ProjectLineSpan(start, end, tuple(normalized))
 

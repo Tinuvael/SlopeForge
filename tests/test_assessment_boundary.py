@@ -5,7 +5,7 @@ import pytest
 from domain.assessment.entities import AssessmentAreaGeometryRevision
 from domain.assessment.geometry import (AssessmentBoundary, ProjectLineSpan, SpatialPoint, StraightConnector,
     derive_elevation_summary, derive_plan_polygon, extract_project_line_span, interpolate_anchor,
-    snap_to_project_lines)
+    project_line_is_closed, snap_to_project_lines)
 from domain.geometry.types import DatamineLine, DataminePoint, PlanPoint
 
 
@@ -127,3 +127,31 @@ def test_high_precision_summary_rejects_material_corruption_and_none_mismatch():
     data=revision.to_dict(); data["min_elevation"]=None
     with pytest.raises(ValueError,match="presence disagrees"):
         AssessmentAreaGeometryRevision.from_dict(data)
+
+
+def test_closed_contour_seam_uses_shorter_source_arc_in_both_directions():
+    contour=line("C",[(0,0,100),(10,0,101),(10,10,102),(0,10,103),(0,0,100)])
+    assert project_line_is_closed(contour)
+    start=anchor("D",contour,3,.5); end=anchor("D",contour,0,.5)
+    expected=(SpatialPoint(0,5,101.5),SpatialPoint(0,0,100),SpatialPoint(5,0,100.5))
+    assert extract_project_line_span(contour,start,end).frozen_trace_xyz==expected
+    assert extract_project_line_span(contour,end,start).frozen_trace_xyz==tuple(reversed(expected))
+
+
+def test_closed_contour_snap_includes_explicit_closing_segment_and_open_line_does_not_wrap():
+    contour=line("C",[(0,0,100),(10,0,101),(10,10,102),(0,10,103),(0,0,100)])
+    snapped=snap_to_project_lines(PlanPoint(0,6),"D",[contour],.1)
+    assert snapped.anchor.source_segment_index==3
+    open_line=line("O",[(0,0,100),(10,0,101),(10,10,102),(0,10,103)])
+    assert not project_line_is_closed(open_line)
+    start=anchor("D",open_line,2,.5); end=anchor("D",open_line,0,.5)
+    assert extract_project_line_span(open_line,start,end).frozen_trace_xyz[1:3]==(
+        SpatialPoint(10,10,102),SpatialPoint(10,0,101))
+
+
+def test_many_vertex_closed_contour_chooses_local_arc_not_opposite_side():
+    contour=line("ROUND",[(0,0,10),(4,-1,11),(8,0,12),(9,4,13),(8,8,14),
+                          (4,9,15),(0,8,16),(-1,4,17),(0,0,10)])
+    start=anchor("D",contour,7,.6); end=anchor("D",contour,0,.4)
+    trace=extract_project_line_span(contour,start,end).frozen_trace_xyz
+    assert trace[1]==SpatialPoint(0,0,10) and len(trace)==3

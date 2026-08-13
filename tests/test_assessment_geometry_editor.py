@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QApplication
 from application.services.assessment_areas import AssessmentAreaService
 from application.services.project_lines import ProjectLinesDatasetService
 from application.state.assessment_domain_state import AssessmentDomainState
-from domain.assessment.geometry import ProjectLineSpan, StraightConnector, extract_project_line_span
+from domain.assessment.geometry import ProjectLineSpan, SpatialPoint, StraightConnector, extract_project_line_span
 from domain.geometry.types import PlanPoint, PlanPolygon
 from tests.assessment_boundary_fixtures import boundary_from_polygon
 from ui.editors.assessment_geometry_editor import (PROJECT_LINE_ROLE, SNAP_MARKER_ROLE,
@@ -204,3 +204,23 @@ def test_dense_parallel_lines_use_active_line_hysteresis(tmp_path, app):
     editor._drawing_click(5,2); assert isinstance(editor._segments[-1],StraightConnector)
     assert editor._last_anchor.source_line_id=="B"
     editor._drawing_click(10,1); assert isinstance(editor._segments[-1],ProjectLineSpan)
+
+
+def test_closed_contour_active_trace_crosses_source_seam(tmp_path, app):
+    source=tmp_path/"closed.csv"
+    source.write_text(
+        "XP,YP,ZP,SID,PTN\n0,0,100,C,1\n10,0,101,C,2\n10,10,102,C,3\n"
+        "0,10,103,C,4\n0,0,100,C,5\n",encoding="utf-8")
+    state=AssessmentDomainState(); ProjectLinesDatasetService(state).import_dataset(source)
+    editor=AssessmentGeometryEditorWidget(state,committer(state)); editor.plan_view.scale(10,10); editor.start_new_area()
+    editor._drawing_click(0,5)
+    assert editor._last_anchor.source_segment_index==3
+    editor._drawing_move(5,0)
+    assert editor._candidate.anchor.source_line_id=="C" and editor._candidate.anchor.source_segment_index==0
+    contour=state.active_dataset().lines[0]
+    preview=extract_project_line_span(contour,editor._last_anchor,editor._candidate.anchor)
+    assert preview.frozen_trace_xyz==(editor._last_anchor.frozen_point_xyz,
+        SpatialPoint(0,0,100),editor._candidate.anchor.frozen_point_xyz)
+    editor._drawing_click(5,0)
+    assert isinstance(editor._segments[-1],ProjectLineSpan)
+    assert editor._segments[-1].frozen_trace_xyz==preview.frozen_trace_xyz

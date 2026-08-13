@@ -31,6 +31,15 @@ def test_import_clean_pid_xyz_sid_without_type_pvalue_ptn(tmp_path):
     assert all(p.pvalue is None for p in line.points)
 
 
+def test_csv_closure_requires_explicit_repeated_endpoint(tmp_path):
+    from domain.assessment.geometry import project_line_is_closed
+    closed=import_datamine_csv(write_csv(tmp_path,
+        "PID,X,Y,Z,SID\n1,0,0,100,C\n2,10,0,101,C\n3,10,10,102,C\n4,0,0,100,C\n")).lines[0]
+    opened=import_datamine_csv(write_csv(tmp_path,
+        "PID,X,Y,Z,SID\n1,0,0,100,O\n2,10,0,101,O\n3,10,10,102,O\n","open.csv")).lines[0]
+    assert project_line_is_closed(closed) and not project_line_is_closed(opened)
+
+
 def test_import_legacy_xp_yp_zp_ptn_fallback_line_id(tmp_path):
     path = write_csv(tmp_path, "XP,YP,ZP,PTN\n0,0,700,OLD-A\n1,0,700,OLD-A\n")
     result = import_datamine_csv(path)
