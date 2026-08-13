@@ -254,7 +254,7 @@ def test_fresh_baseline_matches_application_metadata(
         assert set(inspector.get_table_names()) >= set(Base.metadata.tables)
         for name, model_table in Base.metadata.tables.items():
             actual_columns = {column["name"]: column for column in inspector.get_columns(name)}
-            assert set(actual_columns) == set(model_table.columns), name
+            assert set(actual_columns) == set(model_table.columns.keys()), name
             for column in model_table.columns:
                 assert actual_columns[column.name]["nullable"] == column.nullable, f"{name}.{column.name}"
             assert set(inspector.get_pk_constraint(name)["constrained_columns"]) == set(model_table.primary_key.columns.keys())
