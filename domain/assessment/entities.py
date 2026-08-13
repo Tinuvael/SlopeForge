@@ -6,6 +6,20 @@ from uuid import NAMESPACE_URL, uuid5
 from domain.geometry.types import PlanGeometry, PlanPolygon, plan_geometry_from_dict
 from domain.assessment.geometry import AssessmentBoundary, derive_elevation_summary, derive_plan_polygon
 
+ELEVATION_STORAGE_TOLERANCE_M = 0.0005 + 1e-12
+
+
+def _canonical_elevation_summary(boundary, stored_minimum, stored_maximum):
+    """Accept NUMERIC(12,3) quantization but keep frozen XYZ as canonical truth."""
+    derived = derive_elevation_summary(boundary)
+    stored = (stored_minimum, stored_maximum)
+    for label, canonical, persisted in zip(("minimum", "maximum"), derived, stored):
+        if (canonical is None) != (persisted is None):
+            raise ValueError(f"Stored {label} elevation presence disagrees with frozen boundary geometry")
+        if canonical is not None and abs(canonical-persisted) > ELEVATION_STORAGE_TOLERANCE_M:
+            raise ValueError(f"Stored {label} elevation disagrees with frozen boundary geometry")
+    return derived
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -112,10 +126,12 @@ class AssessmentAreaGeometryRevision:
         boundary = AssessmentBoundary.from_dict(data["boundary"])
         final = plan_geometry_from_dict(data["final_geometry_frozen"])
         if not isinstance(final, PlanPolygon): raise ValueError("Assessment Area footprint must be a Polygon")
+        stored_minimum = None if data.get("min_elevation") is None else float(data["min_elevation"])
+        stored_maximum = None if data.get("max_elevation") is None else float(data["max_elevation"])
+        minimum, maximum = _canonical_elevation_summary(boundary, stored_minimum, stored_maximum)
         return cls(data["id"], data["assessment_area_id"], int(data["revision_number"]),
                    datetime.fromisoformat(data["created_at"]), boundary, final,
-                   None if data.get("min_elevation") is None else float(data["min_elevation"]),
-                   None if data.get("max_elevation") is None else float(data["max_elevation"]), data.get("change_reason"))
+                   minimum, maximum, data.get("change_reason"))
 
 
 @dataclass

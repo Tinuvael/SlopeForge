@@ -91,3 +91,39 @@ def test_closing_connector_preserves_optional_endpoint_anchors(first_snapped,las
         "start_anchor": type(last_anchor).from_dict(connector.to_dict()["start_anchor"]) if last_anchor else None,
         "end_anchor": type(first_anchor).from_dict(connector.to_dict()["end_anchor"]) if first_anchor else None})
     assert restored==connector
+
+
+def test_high_precision_summary_recovers_from_numeric_12_3_projection():
+    boundary=rectangle(); data=AssessmentAreaGeometryRevision(
+        "R","A",1,datetime.now(timezone.utc),boundary,derive_plan_polygon(boundary),100,115).to_dict()
+    # Replace the simple fixture Z with values that reproduce PostgreSQL quantization.
+    span=data["boundary"]["segments"][0]
+    values=(700.1234567,704.8765432,711.3337777)
+    for point,z in zip(span["frozen_trace_xyz"],values): point["z"]=z
+    span["start_anchor"]["frozen_point_xyz"]["z"]=values[0]
+    span["end_anchor"]["frozen_point_xyz"]["z"]=values[-1]
+    # Other snapped endpoints also contribute; keep their source evidence high precision.
+    for segment in data["boundary"]["segments"][1:]:
+        if segment["type"] != "straight_connector": continue
+        for key in ("start_point","end_point"):
+            if segment[key]["z"] is not None: segment[key]["z"]+=600.1234567
+        for key in ("start_anchor","end_anchor"):
+            if segment[key] is not None:
+                segment[key]["frozen_point_xyz"]["z"]=(segment["start_point"] if key=="start_anchor" else segment["end_point"])["z"]
+    boundary=AssessmentBoundary.from_dict(data["boundary"])
+    minimum,maximum=derive_elevation_summary(boundary)
+    data["final_geometry_frozen"]=derive_plan_polygon(boundary).to_dict()
+    data["min_elevation"],data["max_elevation"]=round(minimum,3),round(maximum,3)
+    restored=AssessmentAreaGeometryRevision.from_dict(data)
+    assert (restored.min_elevation,restored.max_elevation)==(minimum,maximum)
+    assert restored.boundary==boundary
+
+
+def test_high_precision_summary_rejects_material_corruption_and_none_mismatch():
+    revision=AssessmentAreaGeometryRevision("R","A",1,datetime.now(timezone.utc),rectangle(),derive_plan_polygon(rectangle()),100,115)
+    data=revision.to_dict(); data["min_elevation"]=100.001
+    with pytest.raises(ValueError,match="minimum elevation disagrees"):
+        AssessmentAreaGeometryRevision.from_dict(data)
+    data=revision.to_dict(); data["min_elevation"]=None
+    with pytest.raises(ValueError,match="presence disagrees"):
+        AssessmentAreaGeometryRevision.from_dict(data)

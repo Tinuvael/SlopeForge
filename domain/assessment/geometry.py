@@ -161,6 +161,12 @@ def snap_to_project_lines(point: PlanPoint, dataset_id: str, lines: list[Datamin
     return min(candidates, key=lambda item: item[:4])[-1] if candidates else None
 
 
+def snap_to_project_line(point: PlanPoint, dataset_id: str, line: DatamineLine,
+                         tolerance: float) -> SnapResult | None:
+    """Project onto one source line using the same deterministic segment policy."""
+    return snap_to_project_lines(point, dataset_id, [line], tolerance)
+
+
 def extract_project_line_span(line: DatamineLine, start: ProjectLineAnchor, end: ProjectLineAnchor) -> ProjectLineSpan:
     if start.source_line_id != line.source_id or end.source_line_id != line.source_id or start.source_dataset_id != end.source_dataset_id:
         raise ValueError("Anchors do not belong to this Project Line")

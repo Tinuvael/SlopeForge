@@ -183,3 +183,24 @@ def test_page_owns_name_and_date_fields_and_grid_is_not_exposed():
     assert "self.area_name" in source and "self.assessment_date" in source
     assert "name=self.area_name.text()" in source
     assert "Grid" not in source
+
+
+def test_dense_parallel_lines_use_active_line_hysteresis(tmp_path, app):
+    source=tmp_path/"dense.csv"
+    source.write_text(
+        "XP,YP,ZP,SID,PTN\n0,0,700.1234567,A,1\n5,1,704.8765432,A,2\n10,0,711.3337777,A,3\n"
+        "0,1,701.1234567,B,1\n5,2,705.8765432,B,2\n10,1,712.3337777,B,3\n"
+        "0,2,702.1234567,C,1\n5,3,706.8765432,C,2\n10,2,713.3337777,C,3\n",encoding="utf-8")
+    state=AssessmentDomainState(); ProjectLinesDatasetService(state).import_dataset(source)
+    editor=AssessmentGeometryEditorWidget(state,committer(state)); editor.plan_view.scale(10,10); editor.start_new_area()
+    editor._drawing_click(0,0); assert editor._last_anchor.source_line_id=="A"
+    # B is microscopically nearer, but not by the 3 px screen-space hysteresis.
+    editor._drawing_move(5,1.51); assert editor._candidate.anchor.source_line_id=="A"
+    active=state.active_dataset().lines[0]
+    preview=extract_project_line_span(active,editor._last_anchor,editor._candidate.anchor)
+    assert preview.frozen_trace_xyz[1].y==1
+    # Clearly on B: preview is a connector until the explicit click activates B.
+    editor._drawing_move(5,2); assert editor._candidate.anchor.source_line_id=="B"
+    editor._drawing_click(5,2); assert isinstance(editor._segments[-1],StraightConnector)
+    assert editor._last_anchor.source_line_id=="B"
+    editor._drawing_click(10,1); assert isinstance(editor._segments[-1],ProjectLineSpan)

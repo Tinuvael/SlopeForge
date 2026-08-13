@@ -10,7 +10,8 @@ from PySide6.QtWidgets import (QGraphicsEllipseItem, QGraphicsItem, QGraphicsPat
 from app.localization import tr
 from application.services.assessment_areas import AssessmentAreaService
 from domain.assessment.geometry import (AssessmentBoundary, EPSILON, ProjectLineSpan,
-    SpatialPoint, StraightConnector, extract_project_line_span, snap_to_project_lines)
+    SpatialPoint, StraightConnector, extract_project_line_span, snap_to_project_line,
+    snap_to_project_lines)
 from domain.geometry.types import PlanPoint
 from ui.presentation_labels import domain_message
 from ui.widgets.plan_view import PrototypePlanView
@@ -18,6 +19,7 @@ from ui.widgets.plan_view import PrototypePlanView
 PROJECT_LINE_ROLE = 1001
 SNAP_MARKER_ROLE = 1002
 SNAP_PIXELS = 10.0
+ACTIVE_LINE_HYSTERESIS_PIXELS = 3.0
 
 
 class AssessmentGeometryEditorWidget(QWidget):
@@ -64,9 +66,21 @@ class AssessmentGeometryEditorWidget(QWidget):
         self._segments=[]
         self._first_point=self._first_anchor=self._last_point=self._last_anchor=self._candidate=self._cursor=None
     def _world_tolerance(self): return SNAP_PIXELS/max(abs(self.plan_view.transform().m11()),1e-9)
+    def _world_hysteresis(self): return ACTIVE_LINE_HYSTERESIS_PIXELS/max(abs(self.plan_view.transform().m11()),1e-9)
     def _snap(self,x,y):
         dataset=self.state.active_dataset()
-        return snap_to_project_lines(PlanPoint(x,y),dataset.id,dataset.lines,self._world_tolerance()) if dataset and self._show_project_lines else None
+        if not dataset or not self._show_project_lines: return None
+        point=PlanPoint(x,y); tolerance=self._world_tolerance()
+        global_candidate=snap_to_project_lines(point,dataset.id,dataset.lines,tolerance)
+        if not self._last_anchor: return global_candidate
+        active_line=next((line for line in dataset.lines if line.source_id==self._last_anchor.source_line_id),None)
+        active_candidate=(snap_to_project_line(point,dataset.id,active_line,tolerance)
+                          if active_line is not None else None)
+        if (active_candidate is not None and
+                (global_candidate is None or active_candidate.distance <=
+                 global_candidate.distance+self._world_hysteresis())):
+            return active_candidate
+        return global_candidate
     def _drawing_move(self,x,y):
         if self.workflow_state!="DRAWING": return
         self._cursor=SpatialPoint(x,y); self._candidate=self._snap(x,y); self.draw_geometry()
