@@ -12,6 +12,7 @@ from database import assessment_models as orm
 from application.state.assessment_domain_state import AssessmentDomainState
 from repositories.assessment_state_mapper import (
     AssessmentPersistenceCorruptionError, AssessmentSiteNotFoundError,
+    AssessmentStateValidationError, validate_assessment_state,
 )
 
 
