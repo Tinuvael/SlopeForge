@@ -120,6 +120,44 @@ def test_project_tree_search_filters_real_displayed_rows(monkeypatch):
     tree.close()
 
 
+@pytest.mark.parametrize("minimum,maximum,expected_interval", [
+    ("100.5", "120.75", "Interval 100.5–120.75"),
+    (None, None, "Interval —–—"),
+])
+def test_project_tree_renders_nullable_area_navigation_rows(
+        monkeypatch, minimum, maximum, expected_interval):
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from decimal import Decimal
+    from types import SimpleNamespace
+    from repositories.navigation_repository import AreaNavigationRow
+    from ui.widgets import project_tree as module
+
+    app = _app()
+    minimum = Decimal(minimum) if minimum is not None else None
+    maximum = Decimal(maximum) if maximum is not None else None
+    area = AreaNavigationRow("AA-1", 2, "West wall", minimum, maximum, False)
+    assert area.min_elevation == minimum and area.max_elevation == maximum
+    assert not hasattr(area, "lower_elevation") and not hasattr(area, "upper_elevation")
+
+    site = SimpleNamespace(id=1, name="Project")
+    domain = SimpleNamespace(id=2, name="Domain")
+    monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: [site]))
+    monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda _id: [domain]))
+    monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(list_blocks=lambda **_kwargs: []))
+    monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
+        list_areas=lambda _archived: [area], list_contour_events=lambda _archived: []))
+
+    tree = module.ProjectTree(SimpleNamespace(session_factory=object()))
+    tree.load_data()
+    labels=[]
+    def collect(item):
+        labels.append(item.text(0))
+        for index in range(item.childCount()): collect(item.child(index))
+    for index in range(tree.tree.topLevelItemCount()): collect(tree.tree.topLevelItem(index))
+    assert expected_interval in labels and "West wall" in labels
+    tree.close(); app.processEvents()
+
+
 def _block_page(monkeypatch, *, can_edit, archived):
     from types import SimpleNamespace
     from ui.pages import block_page as module

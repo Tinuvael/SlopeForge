@@ -9,8 +9,8 @@ class AreaNavigationRow:
     id: str
     domain_id: int
     name: str
-    lower_elevation: Decimal
-    upper_elevation: Decimal
+    min_elevation: Decimal | None
+    max_elevation: Decimal | None
     is_archived: bool
 
 @dataclass(frozen=True)
