@@ -16,18 +16,18 @@ class FakeInspector:
 def test_expected_alembic_head_resolves_real_repository_graph():
     """Exercise the production path/config rather than a mocked head helper."""
     repository_heads = ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
-    assert repository_heads == ["20260813_0012"]
+    assert repository_heads == ["0001_mvp_baseline"]
     assert startup._expected_alembic_head() == repository_heads[0]
 
 
-def arrange_startup(monkeypatch, *, revision="20260812_0011", tables=None):
+def arrange_startup(monkeypatch, *, revision="0001_mvp_baseline", tables=None):
     settings = Settings("postgresql+psycopg://u:secret@db.example:5432/slopeforge", Path("/tmp/storage"))
     engine = object()
     monkeypatch.setattr(startup.Settings, "from_env", lambda: settings)
     monkeypatch.setattr(startup, "create_database_engine", lambda value: engine)
     monkeypatch.setattr(startup, "create_session_factory", lambda value: "sessions")
     monkeypatch.setattr(startup, "check_connection", lambda value: None)
-    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "20260812_0011")
+    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "0001_mvp_baseline")
     monkeypatch.setattr(startup, "_database_alembic_heads", lambda value: (() if revision is None else (revision,)))
     monkeypatch.setattr(startup, "configure_mappers", lambda: None)
     monkeypatch.setattr(startup, "inspect", lambda value: FakeInspector(
@@ -54,12 +54,12 @@ def test_startup_accepts_database_at_the_single_current_head(monkeypatch):
 
 
 def test_startup_rejects_stale_revision_even_when_all_tables_exist(monkeypatch):
-    arrange_startup(monkeypatch, revision="20260812_0009")
+    arrange_startup(monkeypatch, revision="obsolete_development_head")
     with pytest.raises(startup.StartupError) as caught:
         startup.initialize_database_runtime()
     message = str(caught.value)
-    assert "20260812_0009" in message
-    assert "20260812_0011" in message
+    assert "obsolete_development_head" in message
+    assert "0001_mvp_baseline" in message
     assert "python -m database.cli migrate" in message
 
 
@@ -69,7 +69,7 @@ def test_startup_rejects_missing_alembic_version_with_clear_guidance(monkeypatch
         startup.initialize_database_runtime()
     message = str(caught.value)
     assert "Database revision: missing" in message
-    assert "Required revision: 20260812_0011" in message
+    assert "Required revision: 0001_mvp_baseline" in message
     assert "python -m database.cli migrate" in message
 
 

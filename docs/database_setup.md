@@ -58,7 +58,26 @@ python -m database.cli migrate
 python -m database.cli migration-status
 ```
 
-Do not use `alembic stamp` to hide a physical schema mismatch. During MVP development the current development data is disposable, so it is acceptable to recreate the development database when a clean schema migration/rebuild is simpler than preserving test records.
+Do not use `alembic stamp` to hide a physical schema mismatch.
+
+### MVP baseline reset
+
+The pre-production migration history was consolidated into the single canonical
+`0001_mvp_baseline` revision. Existing development databases must be dropped and
+recreated; revisions from the former development chain are not supported upgrade
+origins. Initialize an empty database with:
+
+```bash
+python -m alembic upgrade head
+```
+
+After this baseline is accepted and databases may contain real data, **never
+rewrite the baseline again**. Every later schema change must use a normal appended
+migration (`0002_...`, `0003_...`, and so on).
+
+Issue #90 is stacked on #89. After #89 is merged—especially by squash merge—the
+#90 branch must be rebased or cherry-picked onto the new `main`, its PR base changed
+to `main`, its diff checked to contain only #90, and all tests rerun before review.
 
 ## First administrator
 

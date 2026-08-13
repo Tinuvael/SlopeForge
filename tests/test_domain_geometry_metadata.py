@@ -19,18 +19,16 @@ def test_domain_geometry_metadata_contract():
     assert "jsonb_typeof" in checks["ck_domain_geometries_polygons_array"]
 
 
-def test_domain_geometry_migration_parent_and_single_head():
-    path=Path("alembic/versions/20260809_0008_add_domain_geometry.py")
-    spec=spec_from_file_location("domain_geometry_migration",path); module=module_from_spec(spec); spec.loader.exec_module(module)
-    assert module.revision=="20260809_0008" and module.down_revision=="20260807_0007"
-    revisions={}
-    for migration in Path("alembic/versions").glob("*.py"):
-        text=migration.read_text()
-        import re
-        revision=re.search(r'^revision\s*=\s*["\']([^"\']+)',text,re.M)
-        down=re.search(r'^down_revision\s*=\s*["\']([^"\']+)',text,re.M)
-        if revision: revisions[revision.group(1)]=down.group(1) if down else None
-    assert set(revisions)-{parent for parent in revisions.values() if parent}=={"20260813_0012"}
+def test_domain_geometry_is_part_of_single_mvp_baseline():
+    path = Path("alembic/versions/0001_mvp_baseline.py")
+    spec = spec_from_file_location("mvp_baseline", path)
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.revision == "0001_mvp_baseline"
+    assert module.down_revision is None
+    assert [item.name for item in Path("alembic/versions").glob("*.py")] == [
+        "0001_mvp_baseline.py"
+    ]
 
 
 def test_project_lines_are_project_owned_and_independent_of_domains():

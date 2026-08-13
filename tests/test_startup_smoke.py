@@ -144,8 +144,8 @@ def test_startup_mapper_errors_are_reported_as_startup_error(monkeypatch):
     monkeypatch.setattr(startup.Settings, "from_env", lambda: settings)
     monkeypatch.setattr(startup, "create_database_engine", lambda value: object())
     monkeypatch.setattr(startup, "check_connection", lambda engine: None)
-    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "20260812_0011")
-    monkeypatch.setattr(startup, "_database_alembic_heads", lambda engine: ("20260812_0011",))
+    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "0001_mvp_baseline")
+    monkeypatch.setattr(startup, "_database_alembic_heads", lambda engine: ("0001_mvp_baseline",))
     monkeypatch.setattr(startup, "configure_mappers", lambda: (_ for _ in ()).throw(SQLAlchemyError("mapper boom")))
 
     with pytest.raises(startup.StartupError) as caught:
