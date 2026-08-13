@@ -138,6 +138,20 @@ def test_enter_in_closed_state_does_not_persist(state, app):
     assert commits == [] and editor.workflow_state == "CLOSED"
 
 
+def test_closed_boundary_exposes_exact_draft_without_persisting(state, app):
+    commits = []
+    editor = AssessmentGeometryEditorWidget(state, lambda **values: commits.append(values))
+    assert editor.closed_boundary() is None
+    editor.start_new_area()
+    for point in ((20, 20), (30, 20), (30, 30), (20, 30)):
+        editor._drawing_click(*point)
+    editor.finish_polygon()
+    first = editor.closed_boundary()
+    assert first is not None and commits == []
+    assert editor.closed_boundary().to_dict() == first.to_dict()
+    assert editor.workflow_state == "CLOSED"
+
+
 def test_undo_closed_reopens_and_cancel_clears_draft(state, app):
     editor = AssessmentGeometryEditorWidget(state, committer(state)); editor.start_new_area()
     for point in ((0,10),(10,10),(10,0),(0,0)): editor._drawing_click(*point)
