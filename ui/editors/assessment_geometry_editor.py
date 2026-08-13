@@ -1,5 +1,6 @@
 """Continuous CAD-style Assessment boundary editor."""
 from collections.abc import Callable
+from math import hypot
 
 from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QColor, QPainterPath, QPen
@@ -8,8 +9,8 @@ from PySide6.QtWidgets import (QGraphicsEllipseItem, QGraphicsItem, QGraphicsPat
 
 from app.localization import tr
 from application.services.assessment_areas import AssessmentAreaService
-from domain.assessment.geometry import (AssessmentBoundary, ProjectLineSpan, SpatialPoint,
-    StraightConnector, derive_plan_polygon, extract_project_line_span, snap_to_project_lines)
+from domain.assessment.geometry import (AssessmentBoundary, EPSILON, ProjectLineSpan,
+    SpatialPoint, StraightConnector, extract_project_line_span, snap_to_project_lines)
 from domain.geometry.types import PlanPoint
 from ui.presentation_labels import domain_message
 from ui.widgets.plan_view import PrototypePlanView
@@ -93,10 +94,23 @@ class AssessmentGeometryEditorWidget(QWidget):
     def finish_polygon(self):
         self._ensure_can_edit()
         if self.workflow_state!="DRAWING" or self._first_point is None or self._last_point is None: return
-        closing=StraightConnector(self._last_point,self._first_point,self._last_anchor,self._first_anchor)
-        try: derive_plan_polygon(AssessmentBoundary(tuple(self._segments+[closing])))
-        except ValueError as exc: QMessageBox.warning(self,tr("Invalid assessment area"),domain_message(str(exc))); return
-        self._segments.append(closing); self._last_point=self._first_point; self._last_anchor=None; self._set_workflow_state("CLOSED"); self.draw_geometry()
+        already_closed = hypot(self._last_point.x-self._first_point.x,
+                               self._last_point.y-self._first_point.y) <= EPSILON
+        try:
+            if already_closed:
+                candidate_segments = tuple(self._segments)
+            else:
+                closing = StraightConnector(
+                    self._last_point, self._first_point, self._last_anchor, self._first_anchor)
+                candidate_segments = tuple(self._segments + [closing])
+            AssessmentBoundary(candidate_segments)
+        except ValueError as exc:
+            QMessageBox.warning(self,tr("Invalid assessment area"),domain_message(str(exc)))
+            return
+        if not already_closed:
+            self._segments.append(closing)
+        self._last_point=self._first_point; self._last_anchor=self._first_anchor
+        self._set_workflow_state("CLOSED"); self.draw_geometry()
     close_boundary=finish_polygon
     def confirm_boundaries(self, *, name=None, assessment_date=None):
         self._ensure_can_edit()
@@ -123,7 +137,6 @@ class AssessmentGeometryEditorWidget(QWidget):
     def _workflow_key(self,key):
         if key=="back": self.undo_vertex()
         elif key=="enter" and self.workflow_state=="DRAWING": self.finish_polygon()
-        elif key=="enter" and self.workflow_state=="CLOSED": self.confirm_boundaries()
     @staticmethod
     def _segment_points(s): return s.frozen_trace_xyz if isinstance(s,ProjectLineSpan) else (s.start_point,s.end_point)
     def draw_geometry(self):

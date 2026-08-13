@@ -90,13 +90,52 @@ def test_draw_close_save_emits_and_does_not_restart(state, app):
     editor.area_created.connect(emitted.append); editor.start_new_area()
     editor._drawing_click(0,10); editor._drawing_click(10,10)
     editor._drawing_click(10,0); editor._drawing_click(0,0)
+    before_close = len(editor._segments)
     editor.finish_polygon()
     assert editor.workflow_state == "CLOSED"
+    assert len(editor._segments) == before_close + 1
+    assert isinstance(editor._segments[-1], StraightConnector)
     saved_date=date(2026,8,13)
     editor.confirm_boundaries(name="West wall",assessment_date=saved_date)
     assert len(state.assessment_areas) == 1 and emitted == [state.assessment_areas[0].id]
     assert state.assessment_areas[0].name=="West wall" and state.assessment_areas[0].assessment_date==saved_date
     assert editor.workflow_state == "IDLE" and not editor.has_active_workflow()
+
+
+def test_already_closed_boundary_adds_no_duplicate_connector(state, app):
+    editor = AssessmentGeometryEditorWidget(state, committer(state)); editor.start_new_area()
+    for point in ((20,20),(30,20),(30,30),(20,30),(20,20)):
+        editor._drawing_click(*point)
+    segment_count = len(editor._segments)
+    editor.finish_polygon()
+    assert editor.workflow_state == "CLOSED"
+    assert len(editor._segments) == segment_count
+
+
+def test_already_closed_invalid_boundary_stays_drawing(monkeypatch, state, app):
+    warnings=[]
+    monkeypatch.setattr("ui.editors.assessment_geometry_editor.QMessageBox.warning",
+                        lambda *args: warnings.append(args))
+    editor = AssessmentGeometryEditorWidget(state, committer(state)); editor.start_new_area()
+    for point in ((20,20),(30,30),(20,30),(30,20),(20,20)):
+        editor._drawing_click(*point)
+    segment_count = len(editor._segments)
+    editor.finish_polygon()
+    assert editor.workflow_state == "DRAWING"
+    assert len(editor._segments) == segment_count
+    assert warnings
+
+
+def test_enter_in_closed_state_does_not_persist(state, app):
+    commits=[]
+    editor=AssessmentGeometryEditorWidget(state,lambda **values: commits.append(values))
+    editor.start_new_area()
+    for point in ((20,20),(30,20),(30,30),(20,30)):
+        editor._drawing_click(*point)
+    editor.finish_polygon()
+    assert editor.workflow_state == "CLOSED"
+    editor._workflow_key("enter")
+    assert commits == [] and editor.workflow_state == "CLOSED"
 
 
 def test_undo_closed_reopens_and_cancel_clears_draft(state, app):
