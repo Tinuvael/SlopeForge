@@ -30,10 +30,10 @@ class AssessmentAreaCreationPage(QWidget):
         self.lines.toggled.connect(self.editor.set_project_lines_visible)
         self.grid = QCheckBox(tr("Grid")); self.grid.setChecked(True)
         self.grid.toggled.connect(self.editor.set_grid_visible)
-        self.start = QPushButton(tr("Draw boundary")); self.start.clicked.connect(self._start_drawing)
+        self.start = QPushButton(tr("Edit boundary") if edit_area_id else tr("Draw boundary")); self.start.clicked.connect(self._start_drawing)
         self.back_vertex = QPushButton(tr("Undo")); self.back_vertex.clicked.connect(self.editor.undo_vertex)
         self.finish = QPushButton(tr("Close boundary")); self.finish.clicked.connect(self.editor.finish_polygon)
-        self.confirm = QPushButton(tr("Save boundary")); self.confirm.clicked.connect(self._confirm)
+        self.confirm = QPushButton(tr("Save Assessment")); self.confirm.clicked.connect(self._confirm)
         self.cancel_drawing = QPushButton(tr("Cancel drawing")); self.cancel_drawing.clicked.connect(self.editor.cancel_workflow)
         close = QPushButton(tr("Back / Close")); close.clicked.connect(self._close_page)
         for widget in (fit, self.lines, self.grid, self.start, self.back_vertex, self.finish,
@@ -45,7 +45,9 @@ class AssessmentAreaCreationPage(QWidget):
         self.editor.workflow_state_changed.connect(self._sync_status)
         self.editor.area_created.connect(self.area_created)
         self.editor.area_revised.connect(self.area_created)
-        self._start_drawing()
+        if edit_area_id:
+            self.editor.inspect_area(edit_area_id)
+        self._sync_status()
 
     def _start_drawing(self):
         try:
@@ -71,16 +73,15 @@ class AssessmentAreaCreationPage(QWidget):
 
     def _sync_status(self, *_args):
         state = self.editor.workflow_state
-        active = state != "IDLE"
-        self.start.setEnabled(not active)
-        self.back_vertex.setEnabled(state == "DRAWING")
+        self.start.setEnabled(state == "IDLE")
+        self.back_vertex.setEnabled(state in {"DRAWING", "CLOSED"})
         self.finish.setEnabled(state == "DRAWING")
         self.confirm.setEnabled(state == "CLOSED")
-        self.cancel_drawing.setEnabled(active)
+        self.cancel_drawing.setEnabled(state != "IDLE")
         instructions = {
-            "DRAWING": "Click to trace a Project Line or add a straight connector. Close boundary when finished.",
-            "CLOSED": "Boundary is valid and ready to save. Undo reopens it.",
-            "IDLE": "Pan or zoom the plan, then click Draw boundary.",
+            "DRAWING": "Wheel: zoom · Middle drag: pan · Click: draw. Close boundary when finished.",
+            "CLOSED": "Boundary closed and valid. Save Assessment or use Undo to edit it.",
+            "IDLE": "Wheel: zoom · Middle drag: pan. Inspect the plan, then start boundary drawing.",
         }
         self.step_status.setText(instructions.get(state, state))
 

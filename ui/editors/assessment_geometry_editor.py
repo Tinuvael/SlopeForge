@@ -4,7 +4,8 @@ from datetime import date
 
 from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QColor, QPainterPath, QPen
-from PySide6.QtWidgets import QGraphicsPathItem, QGraphicsScene, QMessageBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QGraphicsEllipseItem, QGraphicsItem, QGraphicsPathItem, QGraphicsScene,
+                              QMessageBox, QVBoxLayout, QWidget)
 
 from app.localization import tr
 from application.services.assessment_areas import AssessmentAreaService
@@ -15,6 +16,7 @@ from ui.presentation_labels import domain_message
 from ui.widgets.plan_view import PrototypePlanView
 
 PROJECT_LINE_ROLE = 1001
+SNAP_MARKER_ROLE = 1002
 SNAP_PIXELS = 10.0
 
 
@@ -43,10 +45,20 @@ class AssessmentGeometryEditorWidget(QWidget):
     def start_edit(self, area_id):
         self._ensure_can_edit(); area=next((a for a in self.state.assessment_areas if a.id==area_id),None)
         if not area or area.is_archived: raise ValueError("Assessment Area is unavailable for editing")
-        self.selected_area=self._editing_area=area; self._segments=list(area.boundary.segments)
-        first=self._segment_points(self._segments[0])[0]; last=self._segment_points(self._segments[-1])[-1]
+        self.selected_area=None; self._editing_area=area; self._segments=list(area.boundary.segments)
+        first=self._segment_points(self._segments[0])[0]
+        if (self._segments and isinstance(self._segments[-1],StraightConnector)
+                and self._segment_points(self._segments[-1])[-1] == first):
+            self._segments.pop()
+        last=self._segment_points(self._segments[-1])[-1]
         self._first_point=first; self._last_point=last; self._last_anchor=getattr(self._segments[-1],"end_anchor",None)
-        self._set_workflow_state("CLOSED"); self.draw_geometry()
+        self._set_workflow_state("DRAWING"); self.plan_view.set_polygon_drawing_mode(True); self.draw_geometry()
+    def inspect_area(self, area_id):
+        """Show a frozen boundary without consuming navigation clicks."""
+        area=next((a for a in self.state.assessment_areas if a.id==area_id),None)
+        if not area: raise ValueError("Assessment Area is unavailable")
+        self.selected_area=area; self._editing_area=None; self._reset()
+        self._set_workflow_state("IDLE"); self.plan_view.set_polygon_drawing_mode(False); self.draw_geometry()
     def _reset(self): self._segments=[]; self._first_point=self._last_point=self._last_anchor=self._candidate=self._cursor=None
     def _world_tolerance(self): return SNAP_PIXELS/max(abs(self.plan_view.transform().m11()),1e-9)
     def _snap(self,x,y):
@@ -95,7 +107,10 @@ class AssessmentGeometryEditorWidget(QWidget):
         self._finish_workflow(); return True
     def _finish_workflow(self): self.plan_view.set_polygon_drawing_mode(False); self._reset(); self._editing_area=None; self._set_workflow_state("IDLE"); self.draw_geometry()
     def has_active_workflow(self): return self.workflow_state!="IDLE"
-    def set_project_lines_visible(self,v): self._show_project_lines=v; self.draw_geometry()
+    def set_project_lines_visible(self,v):
+        self._show_project_lines=v
+        if not v: self._candidate=None
+        self.draw_geometry()
     def set_grid_visible(self,v): self._show_grid=v; self.draw_geometry()
     def fit_to_extent(self): self.plan_view.fit_to_extent()
     def _workflow_key(self,key):
@@ -112,14 +127,18 @@ class AssessmentGeometryEditorWidget(QWidget):
         for segment in self._segments:
             self._draw_points(self._segment_points(segment),QPen(QColor(20,125,205) if isinstance(segment,ProjectLineSpan) else QColor(225,125,25),3),50)
         if self._candidate:
-            line=next((l for l in dataset.lines if l.source_id==self._candidate.anchor.source_line_id),None)
-            if line: self._draw_points(line.points,QPen(QColor(30,175,90),4),70)
+            self._draw_snap_marker(self._candidate.anchor.frozen_point_xyz)
         if self._last_point and self._cursor and self.workflow_state=="DRAWING":
             target=self._candidate.anchor.frozen_point_xyz if self._candidate else self._cursor
             if self._last_anchor and self._candidate and self._last_anchor.source_line_id==self._candidate.anchor.source_line_id:
                 line=next(l for l in dataset.lines if l.source_id==self._candidate.anchor.source_line_id); preview=extract_project_line_span(line,self._last_anchor,self._candidate.anchor).frozen_trace_xyz; color=QColor(30,175,90)
             else: preview=(self._last_point,target); color=QColor(225,125,25)
             self._draw_points(preview,QPen(color,2,Qt.PenStyle.DashLine),80)
+    def _draw_snap_marker(self,point):
+        item=QGraphicsEllipseItem(-4,-4,8,8); item.setPos(point.x,-point.y)
+        item.setPen(QPen(QColor(20,135,215),1.5)); item.setBrush(QColor(255,255,255,220))
+        item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        item.setZValue(90); item.setData(SNAP_MARKER_ROLE,True); self.scene.addItem(item)
     def _draw_points(self,points,pen,z):
         if len(points)<2:return
         path=QPainterPath(QPointF(points[0].x,-points[0].y))

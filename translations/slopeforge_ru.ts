@@ -2894,5 +2894,13 @@
             <source>Save boundary</source>
             <translation>Сохранить границу</translation>
         </message>
+        <message>
+            <source>Edit boundary</source>
+            <translation>Редактировать границу</translation>
+        </message>
+        <message>
+            <source>Save Assessment</source>
+            <translation>Сохранить оценку</translation>
+        </message>
     </context>
 </TS>

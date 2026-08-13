@@ -3,16 +3,15 @@ from types import SimpleNamespace
 
 import pytest
 
-QtWidgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-from PySide6.QtWidgets import QApplication, QDialog
+pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+from PySide6.QtWidgets import QApplication
 
 from application.services.assessment_areas import AssessmentAreaService
-from domain.geometry.types import PlanPoint, PlanPolygon
-from application.state.assessment_domain_state import AssessmentDomainState
 from application.services.project_lines import ProjectLinesDatasetService
-from ui.editors.assessment_geometry_editor import (
-    ASSESSMENT_HANDLE_ROLE, PROJECT_LINE_ROLE, AssessmentGeometryEditorWidget,
-)
+from application.state.assessment_domain_state import AssessmentDomainState
+from domain.assessment.geometry import ProjectLineSpan, StraightConnector, extract_project_line_span
+from ui.editors.assessment_geometry_editor import (PROJECT_LINE_ROLE, SNAP_MARKER_ROLE,
+                                                    AssessmentGeometryEditorWidget)
 
 
 @pytest.fixture
@@ -24,112 +23,82 @@ def app():
 def state(tmp_path):
     source = tmp_path / "project.csv"
     source.write_text(
-        "XP,YP,ZP,SID,PTN\n0,2,600,lo,1\n10,2,600,lo,2\n"
-        "0,8,620,hi,1\n10,8,620,hi,2\n", encoding="utf-8")
+        "XP,YP,ZP,SID,PTN\n0,10,110,A,1\n5,12,115,A,2\n10,10,120,A,3\n"
+        "0,0,90,B,1\n5,-2,95,B,2\n10,0,100,B,3\n", encoding="utf-8")
     result = AssessmentDomainState()
     ProjectLinesDatasetService(result).import_dataset(source)
     return result
 
 
-def polygon():
-    return PlanPolygon((PlanPoint(0, 0), PlanPoint(10, 0), PlanPoint(10, 10),
-                        PlanPoint(0, 10), PlanPoint(0, 0)))
-
-
-class AcceptedCandidateDialog:
-    def __init__(self, candidates, parent=None):
-        self.candidates = candidates
-        self.area_name = QtWidgets.QLineEdit("Area")
-        self.area_date = QtWidgets.QDateEdit()
-
-    def exec(self):
-        return QDialog.DialogCode.Accepted
-
-    def selected_candidates(self):
-        return self.candidates
-
-
-
-def committer(state, save=lambda: None):
+def committer(state):
     def commit(**values):
         service = AssessmentAreaService(state)
         area_id = values.pop("assessment_area_id")
         if area_id:
             area = next(item for item in state.assessment_areas if item.id == area_id)
-            service.revise_area(area, selection_polygon=values["selection_polygon"], selected_fragments=values["selected_fragments"])
+            service.revise_area(area, boundary=values["boundary"])
         else:
-            area = service.create_area(**values)
-        save()
-        return SimpleNamespace(area_id=area.id, link_refresh_result=SimpleNamespace(production_candidates=0, contour_candidates=0, suggestions_added=0), link_refresh_warning=None)
+            area = service.create_area(name=values["name"], assessment_date=values["assessment_date"],
+                                       boundary=values["boundary"])
+        return SimpleNamespace(area_id=area.id)
     return commit
 
-def prepare(editor):
-    editor.start_new_area()
-    for point in polygon().ring[:-1]:
-        editor._drawing_click(point.x, point.y)
+
+def test_editor_starts_idle_and_navigation_does_not_commit(state, app):
+    editor = AssessmentGeometryEditorWidget(state, committer(state))
+    assert editor.workflow_state == "IDLE"
+    assert editor._segments == [] and editor._first_point is None
+    assert editor.plan_view.dragMode() == editor.plan_view.DragMode.ScrollHandDrag
+
+
+def test_creation_page_does_not_auto_start_drawing():
+    from pathlib import Path
+    source = Path("ui/pages/assessment_area_creation_page.py").read_text(encoding="utf-8")
+    constructor = source[source.index("    def __init__"):source.index("    def _start_drawing")]
+    assert "self._start_drawing()" not in constructor
+    assert '"Wheel: zoom · Middle drag: pan' in source
+
+
+def test_trace_preview_commit_jump_and_new_active_source(state, app):
+    editor = AssessmentGeometryEditorWidget(state, committer(state)); editor.start_new_area()
+    editor._drawing_click(1, 10.4)  # snaps to curved A
+    editor._drawing_move(9, 10.4)
+    candidate = editor._candidate.anchor
+    line_a = state.active_dataset().lines[0]
+    preview = editor._segment_points(extract_project_line_span(line_a, editor._last_anchor, candidate))
+    assert len(preview) == 3 and preview[1].y == 12  # no endpoint chord
+    assert [item for item in editor.scene.items() if item.data(SNAP_MARKER_ROLE)]
+    assert len([item for item in editor.scene.items() if item.data(PROJECT_LINE_ROLE)]) == 2
+    editor._drawing_click(9, 10.4)
+    assert isinstance(editor._segments[-1], ProjectLineSpan)
+    assert editor._segments[-1].frozen_trace_xyz[1].y == 12
+
+    editor._drawing_move(9, .4)  # hover B: active source remains A
+    assert editor._last_anchor.source_line_id == "A"
+    editor._drawing_click(9, .4)
+    assert isinstance(editor._segments[-1], StraightConnector)
+    assert editor._last_anchor.source_line_id == "B"
+    editor._drawing_click(1, .4)
+    assert isinstance(editor._segments[-1], ProjectLineSpan)
+    assert editor._segments[-1].frozen_trace_xyz[1].y == -2
+
+
+def test_draw_close_save_emits_and_does_not_restart(state, app):
+    editor = AssessmentGeometryEditorWidget(state, committer(state)); emitted=[]
+    editor.area_created.connect(emitted.append); editor.start_new_area()
+    editor._drawing_click(0,10); editor._drawing_click(10,10)
+    editor._drawing_click(10,0); editor._drawing_click(0,0)
     editor.finish_polygon()
-
-
-def test_drawing_undo_refinement_cancel_and_project_lines(state, app):
-    editor = AssessmentGeometryEditorWidget(state, committer(state))
-    assert [item for item in editor.scene.items() if item.data(PROJECT_LINE_ROLE)]
-    editor.set_project_lines_visible(False)
-    assert not [item for item in editor.scene.items() if item.data(PROJECT_LINE_ROLE)]
-    editor.start_new_area(); editor._drawing_click(0, 0); editor._drawing_click(10, 0)
-    editor.undo_vertex(); assert editor._drawing_vertices == [PlanPoint(0, 0)]
-    editor.cancel_workflow()
-    assert not editor.has_active_workflow() and state.assessment_areas == []
-    editor.deleteLater(); assert app
-
-
-def test_create_emits_id_saves_and_preserves_selected_fragments(monkeypatch, state, app):
-    import ui.editors.assessment_geometry_editor as module
-    monkeypatch.setattr(module, "AssessmentCandidateDialog", AcceptedCandidateDialog)
-    saves = []; created = []
-    editor = AssessmentGeometryEditorWidget(state, committer(state, lambda: saves.append(True)))
-    editor.area_created.connect(created.append)
-    prepare(editor)
-    assert len([item for item in editor.scene.items() if item.data(ASSESSMENT_HANDLE_ROLE)]) == 4
+    assert editor.workflow_state == "CLOSED"
     editor.confirm_boundaries()
-    assert saves == [True] and created == [state.assessment_areas[0].id]
-    assert len(state.assessment_areas[0].horizon_slices) == 2
-    assert not editor.has_active_workflow()
-    editor.deleteLater(); assert app
+    assert len(state.assessment_areas) == 1 and emitted == [state.assessment_areas[0].id]
+    assert editor.workflow_state == "IDLE" and not editor.has_active_workflow()
 
 
-def test_candidate_cancellation_keeps_refinement_without_persisting(monkeypatch, state, app):
-    import ui.editors.assessment_geometry_editor as module
-    class Cancelled(AcceptedCandidateDialog):
-        def exec(self): return QDialog.DialogCode.Rejected
-    monkeypatch.setattr(module, "AssessmentCandidateDialog", Cancelled)
-    saves = []; editor = AssessmentGeometryEditorWidget(state, committer(state, lambda: saves.append(True)))
-    prepare(editor); editor.confirm_boundaries()
-    assert editor.workflow_state == "REFINING" and saves == [] and state.assessment_areas == []
-    editor.deleteLater(); assert app
-
-
-def test_edit_creates_revision_and_emits_existing_id(monkeypatch, state, app):
-    import ui.editors.assessment_geometry_editor as module
-    monkeypatch.setattr(module, "AssessmentCandidateDialog", AcceptedCandidateDialog)
-    service = AssessmentAreaService(state)
-    area = service.create_area(name="Original", assessment_date=date.today(), selection_polygon=polygon(),
-                               selected_fragments=service.generate_candidates(polygon()))
-    first_revision = area.active_geometry_revision_id; revised = []
-    editor = AssessmentGeometryEditorWidget(state, committer(state))
-    editor.area_revised.connect(revised.append); editor.start_edit(area.id)
-    editor._handle_moved(1, 9, 0); editor._handle_released(1); editor.confirm_boundaries()
-    assert revised == [area.id] and len(area.geometry_revisions) == 2
-    assert area.geometry_revisions[0].id == first_revision and area.active_geometry_revision_id != first_revision
-    editor.deleteLater(); assert app
-
-
-def test_persistence_failure_rolls_back_and_reports_no_completion(monkeypatch, state, app):
-    import ui.editors.assessment_geometry_editor as module
-    monkeypatch.setattr(module, "AssessmentCandidateDialog", AcceptedCandidateDialog)
-    def fail(): raise RuntimeError("database unavailable")
-    editor = AssessmentGeometryEditorWidget(state, committer(state, fail)); emitted = []
-    editor.area_created.connect(emitted.append); prepare(editor)
-    with pytest.raises(RuntimeError, match="database unavailable"):
-        editor.confirm_boundaries()
-    assert state.assessment_areas == [] and emitted == [] and editor.workflow_state == "REFINING"
-    editor.deleteLater(); assert app
+def test_undo_closed_reopens_and_cancel_clears_draft(state, app):
+    editor = AssessmentGeometryEditorWidget(state, committer(state)); editor.start_new_area()
+    for point in ((0,10),(10,10),(10,0),(0,0)): editor._drawing_click(*point)
+    editor.finish_polygon(); editor.undo_vertex()
+    assert editor.workflow_state == "DRAWING"
+    editor.cancel_workflow()
+    assert editor.workflow_state == "IDLE" and editor._segments == []

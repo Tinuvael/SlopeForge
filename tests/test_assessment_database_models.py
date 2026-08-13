@@ -153,7 +153,9 @@ def test_revision_identity_numbers_and_active_partial_indexes():
 
 
 def test_geometry_elevation_json_and_exact_revision_links():
-    assert "lower_elevation_m < upper_elevation_m" in checks("assessment_area_geometry_revisions")
+    geometry = table("assessment_area_geometry_revisions")
+    assert "boundary_json" in geometry.c and "selection_polygon_json" not in geometry.c
+    assert geometry.c.min_elevation_m.nullable and geometry.c.max_elevation_m.nullable
     assert fk("blast_event_technical_card_revisions", "blast_event_geometry_revision_id").target_fullname == "blast_event_geometry_revisions.id"
     assert fk("assessment_area_evaluation_revisions", "assessment_area_geometry_revision_id").target_fullname == "assessment_area_geometry_revisions.id"
     links = table("assessment_event_links")
@@ -200,7 +202,6 @@ def test_all_foreign_key_delete_actions():
         ("blast_event_technical_card_revisions", "blast_event_geometry_revision_id"): "RESTRICT",
         ("assessment_areas", "domain_id"): "RESTRICT",
         ("assessment_area_geometry_revisions", "assessment_area_id"): "CASCADE",
-        ("assessment_area_geometry_revisions", "source_dataset_id"): "RESTRICT",
         ("assessment_event_links", "assessment_area_geometry_revision_id"): "CASCADE",
         ("assessment_event_links", "blast_event_geometry_revision_id"): "RESTRICT",
         ("assessment_area_evaluations", "assessment_area_id"): "CASCADE",
