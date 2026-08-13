@@ -155,3 +155,21 @@ def test_many_vertex_closed_contour_chooses_local_arc_not_opposite_side():
     start=anchor("D",contour,7,.6); end=anchor("D",contour,0,.4)
     trace=extract_project_line_span(contour,start,end).frozen_trace_xyz
     assert trace[1]==SpatialPoint(0,0,10) and len(trace)==3
+
+
+def test_closed_same_segment_and_exact_closure_vertex_anchors_terminate():
+    contour=line("C",[(0,0,100),(10,0,101),(10,10,102),(0,10,103),(0,0,100)])
+    same_start=anchor("D",contour,1,.2); same_end=anchor("D",contour,1,.8)
+    assert extract_project_line_span(contour,same_start,same_end).frozen_trace_xyz==(
+        same_start.frozen_point_xyz,same_end.frozen_point_xyz)
+    # The repeated closure vertex can be represented at either side of the seam.
+    closure=anchor("D",contour,3,1); first_span=anchor("D",contour,0,.5)
+    trace=extract_project_line_span(contour,closure,first_span).frozen_trace_xyz
+    assert trace==(SpatialPoint(0,0,100),first_span.frozen_point_xyz)
+
+
+def test_closed_equal_arcs_deterministically_choose_stored_forward():
+    contour=line("C",[(0,0,100),(10,0,101),(10,10,102),(0,10,103),(0,0,100)])
+    start=anchor("D",contour,0,0); end=anchor("D",contour,2,0)
+    trace=extract_project_line_span(contour,start,end).frozen_trace_xyz
+    assert trace==(SpatialPoint(0,0,100),SpatialPoint(10,0,101),SpatialPoint(10,10,102))
