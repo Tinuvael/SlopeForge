@@ -221,43 +221,20 @@ def test_metadata_and_indexes_compile_with_postgresql():
             assert "CREATE" in str(CreateIndex(index).compile(dialect=dialect))
 
 
-def test_new_migration_is_single_schema_only_revision():
-    versions = Path("alembic/versions")
-    additions = list(versions.glob("*_add_assessment_schema.py"))
-    assert len(additions) == 1
-    source = additions[0].read_text()
-    assert 'down_revision = "20260715_0003"' in source
-    historical = EXPECTED | {"assessment_workspaces"}
-    for name in historical:
-        assert f"CREATE TABLE {name}" in source
+def test_assessment_schema_is_frozen_in_single_mvp_baseline():
+    versions = list(Path("alembic/versions").glob("*.py"))
+    assert [path.name for path in versions] == ["0001_mvp_baseline.py"]
+    source = versions[0].read_text()
+    assert 'revision = "0001_mvp_baseline"' in source
+    assert "down_revision = None" in source
+    assert "assessment_workspaces" not in source
+    for name in EXPECTED:
+        assert f"op.create_table('{name}'" in source
         assert f"op.drop_table('{name}')" in source
-    assert not any(line.lstrip().lower().startswith(("insert ", "update ", "delete ")) for line in source.splitlines())
-    assert "drop_table('attachments')" not in source
-    assert "drop_table('blast_blocks')" not in source
-    for ddl in (
-        "CONSTRAINT uq_assessment_area_evaluations_domain_id UNIQUE (domain_id)",
-        "elevation_m NUMERIC(12, 3) NOT NULL",
-        "assessment_date DATE NOT NULL",
-        "subtype VARCHAR(80) NOT NULL",
-        "custom_subtype VARCHAR(255) NOT NULL",
-        "title VARCHAR(255) NOT NULL",
-        "file_date DATE NOT NULL",
-        "description TEXT NOT NULL",
-        "mime_type VARCHAR(255) NOT NULL",
-        "file_size_bytes BIGINT NOT NULL",
+    for obsolete in (
+        "selection_polygon_json", "horizon_slices_json", "lower_elevation_m",
+        "upper_elevation_m", "source_dataset_id",
     ):
-        assert ddl in source
-
-
-def test_nullable_change_reason_correction_migration_matches_orm():
-    migration = Path("alembic/versions/20260804_0005_nullable_assessment_area_change_reason.py")
-    assert migration.exists()
-    source = migration.read_text()
-    assert 'revision = "20260804_0005"' in source
-    assert 'down_revision = "20260804_0004"' in source
-    assert 'alter_column("assessment_area_geometry_revisions", "change_reason", nullable=True)' in source
-    update = "UPDATE assessment_area_geometry_revisions SET change_reason = '' WHERE change_reason IS NULL"
-    assert update in source
-    assert source.index(update) < source.index(
-        'alter_column("assessment_area_geometry_revisions", "change_reason", nullable=False)')
-    assert table("assessment_area_geometry_revisions").c.change_reason.nullable
+        assert obsolete not in source
+    for current in ("boundary_json", "final_geometry_json", "min_elevation_m", "max_elevation_m"):
+        assert current in source

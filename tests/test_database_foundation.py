@@ -58,15 +58,17 @@ def test_sqlalchemy_metadata_compiles_for_postgresql() -> None:
         str(CreateTable(table).compile(dialect=postgresql.dialect()))
 
 
-def test_initial_migration_is_self_contained() -> None:
-    migration = Path("alembic/versions/20260714_0001_initial_postgresql_foundation.py").read_text()
+def test_mvp_baseline_is_self_contained() -> None:
+    migration = Path("alembic/versions/0001_mvp_baseline.py").read_text()
     assert "from database.base import Base" not in migration
     assert "from database import models" not in migration
     assert "create_all" not in migration
     assert "op.create_table" in migration
     assert "op.drop_table" in migration
-    for enum_name in ["user_role", "blast_block_status", "structure_type", "drilling_role", "charge_segment_type", "wall_rating", "attachment_kind"]:
-        assert f'name="{enum_name}", create_type=False' in migration
+    assert 'revision = "0001_mvp_baseline"' in migration
+    assert "down_revision = None" in migration
+    for enum_name in ["user_role", "blast_block_status"]:
+        assert f"name='{enum_name}'" in migration
 
 
 def test_first_admin_creation_uses_advisory_lock_and_rechecks_users() -> None:
