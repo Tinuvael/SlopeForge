@@ -155,13 +155,21 @@ class MainWindow(QMainWindow):
                 geometry_file_path=values["csv_path"], actor_id=user.id,
                 can_edit=user.can_edit,
             ))
-            self.refresh_project_data()
-            if result.event_type=="contour":
-                self.open_contour_from_tree(result.event_id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
-            else:
-                self.open_block_from_tree(result.blast_block_id,self.selected_domain_id,self.selected_site_id)
         except Exception as exc:
             QMessageBox.warning(self,tr("Could not create blast event"),domain_message(str(exc)))
+            return
+        try:
+            self.refresh_project_data()
+            if result.event_type=="contour":
+                opened=self.open_contour_from_tree(result.event_id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
+            else:
+                opened=self.open_block_from_tree(result.blast_block_id,self.selected_domain_id,self.selected_site_id)
+            if not opened:
+                raise RuntimeError("The created Blast Event page could not be opened")
+        except Exception as exc:
+            QMessageBox.warning(self,tr("Blast event created"),
+                tr("The Blast Event was created successfully, but its page could not be opened. Refresh the project tree and open it again.")
+                + f"\n\n{domain_message(str(exc))}")
     def _add_area(self):
         if self.selected_domain_id is None:return
         if not self.navigation_queries.project_has_active_lines(self.selected_site_id):

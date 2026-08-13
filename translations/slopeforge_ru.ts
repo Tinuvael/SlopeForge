@@ -2862,5 +2862,21 @@
             <source>Moving a Block between Domains is not available yet</source>
             <translation>Перемещение блока между доменами пока недоступно</translation>
         </message>
+        <message>
+            <source>Data integrity error</source>
+            <translation>Ошибка целостности данных</translation>
+        </message>
+        <message>
+            <source>The exact BlastEvent geometry revision referenced by this Assessment link is missing. The current geometry was not substituted.</source>
+            <translation>Точная ревизия геометрии взрывного события, указанная в этой связи оценки, отсутствует. Текущая геометрия не была подставлена вместо неё.</translation>
+        </message>
+        <message>
+            <source>Blast event created</source>
+            <translation>Взрывное событие создано</translation>
+        </message>
+        <message>
+            <source>The Blast Event was created successfully, but its page could not be opened. Refresh the project tree and open it again.</source>
+            <translation>Взрывное событие успешно создано, но его страницу открыть не удалось. Обновите дерево проекта и откройте событие снова.</translation>
+        </message>
     </context>
 </TS>

@@ -144,6 +144,8 @@ def test_startup_mapper_errors_are_reported_as_startup_error(monkeypatch):
     monkeypatch.setattr(startup.Settings, "from_env", lambda: settings)
     monkeypatch.setattr(startup, "create_database_engine", lambda value: object())
     monkeypatch.setattr(startup, "check_connection", lambda engine: None)
+    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "20260812_0011")
+    monkeypatch.setattr(startup, "_database_alembic_heads", lambda engine: ("20260812_0011",))
     monkeypatch.setattr(startup, "configure_mappers", lambda: (_ for _ in ()).throw(SQLAlchemyError("mapper boom")))
 
     with pytest.raises(startup.StartupError) as caught:
@@ -151,3 +153,49 @@ def test_startup_mapper_errors_are_reported_as_startup_error(monkeypatch):
 
     assert "Could not connect to the database or verify tables." in str(caught.value)
     assert caught.value.__cause__.args == ("mapper boom",)
+
+
+def test_connection_error_becomes_startup_error_with_safe_context(monkeypatch):
+    import database.startup as startup
+    from database.connection import DatabaseConnectionError
+    from database.settings import Settings
+
+    settings = Settings(
+        "postgresql+psycopg://slopeforge:top-secret@db.example:5432/slopeforge_test",
+        Path("/tmp/storage"),
+    )
+    guidance = ("Cannot connect to PostgreSQL. Check DATABASE_URL, network access, "
+                "credentials, and that the target database exists. Run prepare-db.")
+    monkeypatch.setattr(startup.Settings, "from_env", lambda: settings)
+    monkeypatch.setattr(startup, "create_database_engine", lambda value: object())
+    monkeypatch.setattr(startup, "check_connection", lambda engine: (_ for _ in ()).throw(
+        DatabaseConnectionError(guidance)))
+
+    with pytest.raises(startup.StartupError) as caught:
+        startup.initialize_database_runtime()
+
+    assert str(caught.value) == guidance
+    assert caught.value.server == "slopeforge@db.example:5432/slopeforge_test"
+    assert "top-secret" not in caught.value.server
+
+
+def test_main_uses_postgresql_dialog_for_startup_error(monkeypatch):
+    module = load_main_with_fakes(monkeypatch)
+
+    class SpecializedStartupError(RuntimeError):
+        def __init__(self, message, server=None):
+            super().__init__(message); self.server = server
+
+    FakeMessageBox.critical_calls = []
+    module.StartupError = SpecializedStartupError
+    module.initialize_database_runtime = lambda: (_ for _ in ()).throw(
+        SpecializedStartupError("Cannot connect to PostgreSQL. Check DATABASE_URL.",
+                                "db.example:5432/slopeforge_test"))
+
+    assert module.main() == 1
+    assert len(FakeMessageBox.critical_calls) == 1
+    _parent, title, message = FakeMessageBox.critical_calls[0]
+    assert title == "PostgreSQL unavailable"
+    assert "Cannot connect to PostgreSQL" in message
+    assert "db.example:5432/slopeforge_test" in message
+    assert "Unexpected startup error" not in message
