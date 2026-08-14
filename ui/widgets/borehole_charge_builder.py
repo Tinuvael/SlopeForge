@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
+from html import escape
 import math
 from uuid import uuid4
 
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QBrush, QPen
 from PySide6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFormLayout, QGraphicsScene, QGraphicsView,
-    QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton, QSizePolicy,
+    QHBoxLayout, QInputDialog, QLabel, QMenu, QPushButton, QSizePolicy,
     QVBoxLayout, QWidget,
 )
 
@@ -34,6 +35,20 @@ def snap_depth(value: float) -> float:
                                                               rounding=ROUND_HALF_UP) * DEPTH_STEP)
 
 
+def find_snapped_insertion_interval(gap, length=0.1):
+    """Find the first grid-aligned interval fully contained in ``gap``."""
+    gap_start, gap_end = (Decimal(str(value)) for value in gap)
+    interval_length = Decimal(str(length))
+    if interval_length <= 0 or interval_length % DEPTH_STEP:
+        raise ValueError("Insertion length must be a positive multiple of 0.1 m")
+    start = ((gap_start / DEPTH_STEP).to_integral_value(rounding=ROUND_CEILING)
+             * DEPTH_STEP)
+    end = start + interval_length
+    if start < gap_start or end > gap_end:
+        return None
+    return float(start), float(end)
+
+
 def depth_to_scene_y(depth: float, hole_depth: float, top: float, height: float) -> float:
     return top + (depth / hole_depth) * height
 
@@ -53,7 +68,6 @@ class BoreholeView(QGraphicsView):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setStyleSheet("QGraphicsView { background: #FAFBFC; border: 1px solid #CCD3DB; }")
         self._drag = None
-        self._drag_origin_depth = 0.0
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -68,18 +82,23 @@ class BoreholeView(QGraphicsView):
         if role in {"component", "start", "end"}:
             self.builder.select_component(str(payload))
             if not self.builder.read_only:
-                self._drag = (role, str(payload))
-                self._drag_origin_depth = self.builder._depth_at_view_y(event.position().y())
+                component = self.builder._selected()
+                self._drag = (
+                    role, str(payload),
+                    self.builder._depth_at_view_y(event.position().y()),
+                    component.start_depth_m, component.end_depth_m,
+                )
             event.accept(); return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self._drag:
-            role, component_id = self._drag
+            role, component_id, origin_depth, original_start, original_end = self._drag
             depth = self.builder._depth_at_view_y(event.position().y())
-            self.builder._drag_component(component_id, role, depth, self._drag_origin_depth)
-            if role == "component":
-                self._drag_origin_depth = depth
+            self.builder._drag_component(
+                component_id, role, depth, origin_depth,
+                original_bounds=(original_start, original_end),
+            )
             event.accept(); return
         super().mouseMoveEvent(event)
 
@@ -178,21 +197,42 @@ class BoreholeChargeBuilder(QWidget):
 
     def _insertion_interval(self):
         gaps = self.air_intervals()
-        if self._selected_air in gaps and self._selected_air[1] - self._selected_air[0] >= .1 - 1e-9:
-            return self._selected_air
-        return next((gap for gap in gaps if gap[1] - gap[0] >= .1 - 1e-9), None)
+        if self._selected_air in gaps:
+            slot = find_snapped_insertion_interval(self._selected_air)
+            if slot is not None:
+                return slot
+        return next((slot for gap in gaps
+                     if (slot := find_snapped_insertion_interval(gap)) is not None), None)
 
-    def add_component(self, kind, product=None):
+    def _request_cartridge_pitch(self):
+        value, accepted = QInputDialog.getDouble(
+            self, tr("Cartridge pitch"), tr("Pitch, m"),
+            value=0.5, minValue=0.001, maxValue=10000, decimals=3,
+        )
+        return value if accepted and math.isfinite(value) and value > 0 else None
+
+    def add_component(self, kind, product=None, *, cartridge_pitch_m=None):
         if self.read_only: return False
-        gap = self._insertion_interval()
-        if gap is None:
+        slot = self._insertion_interval()
+        if slot is None:
             self._feedback(tr("No air interval has 0.1 m available.")); return False
-        start, end = snap_depth(gap[0]), snap_depth(gap[0] + .1)
+        start, end = slot
         snapshot = product.snapshot() if product is not None else None
-        pitch = product.default_pitch_m if kind is ChargeComponentKind.CARTRIDGE_EXPLOSIVE else None
-        if kind is ChargeComponentKind.CARTRIDGE_EXPLOSIVE and pitch is None: pitch = .1
-        component = ChargeComponent(f"charge-{uuid4()}", kind, start, end, snapshot, pitch)
-        self._components.append(component); self._components.sort(key=lambda c: c.start_depth_m)
+        pitch = None
+        if kind is ChargeComponentKind.CARTRIDGE_EXPLOSIVE:
+            pitch = (cartridge_pitch_m if cartridge_pitch_m is not None
+                     else product.default_pitch_m if product is not None else None)
+            if pitch is None:
+                pitch = self._request_cartridge_pitch()
+                if pitch is None:
+                    return False
+        try:
+            component = ChargeComponent(f"charge-{uuid4()}", kind, start, end, snapshot, pitch)
+            trial = sorted([*self._components, component], key=lambda c: c.start_depth_m)
+            validate_components(trial, self._hole_depth_m)
+        except (ChargeDesignValidationError, ValueError) as exc:
+            self._feedback(str(exc)); return False
+        self._components = trial
         self._selected_component_id = component.id; self._selected_air = None
         self._changed(); return True
 
@@ -249,7 +289,7 @@ class BoreholeChargeBuilder(QWidget):
         if component and isinstance(product, ExplosiveProduct):
             self._replace_selected(replace(component, product_snapshot=product.snapshot()))
 
-    def _drag_component(self, component_id, role, depth, origin_depth):
+    def _drag_component(self, component_id, role, depth, origin_depth, *, original_bounds=None):
         component = next((c for c in self._components if c.id == component_id), None)
         if not component: return
         target = snap_depth(depth)
@@ -258,7 +298,10 @@ class BoreholeChargeBuilder(QWidget):
         else:
             delta = snap_depth(depth - origin_depth)
             if delta == 0: return
-            start, end = snap_depth(component.start_depth_m + delta), snap_depth(component.end_depth_m + delta)
+            original_start, original_end = original_bounds or (
+                component.start_depth_m, component.end_depth_m)
+            start = snap_depth(original_start + delta)
+            end = snap_depth(original_end + delta)
         try: replacement = replace(component, start_depth_m=start, end_depth_m=end)
         except ChargeDesignValidationError: return
         self._replace_selected(replacement)
@@ -278,6 +321,8 @@ class BoreholeChargeBuilder(QWidget):
         self.add_button.setEnabled(not self.read_only and self._insertion_interval() is not None)
         self.delete_button.setEnabled(editable)
         for spin in (self.start_spin, self.end_spin, self.length_spin): spin.setEnabled(editable)
+        self.product_combo.setEnabled(False)
+        self.pitch_spin.setEnabled(False)
         if selected:
             names = {ChargeComponentKind.STEMMING: tr("Stemming"), ChargeComponentKind.BULK_EXPLOSIVE: tr("Bulk explosive"), ChargeComponentKind.CARTRIDGE_EXPLOSIVE: tr("Cartridge explosive")}
             self.type_label.setText(names[selected.kind]); self.start_spin.setValue(selected.start_depth_m)
@@ -321,9 +366,16 @@ class BoreholeChargeBuilder(QWidget):
             pen = QPen(QColor("#2F6FA5"), 2 if gap == self._selected_air else 1)
             item = scene.addRect(bore_x, y1, bore_w, y2-y1, pen, QBrush(QColor(AIR_COLOR)))
             item.setData(0, "air"); item.setData(1, list(gap)); item.setToolTip(f"{tr('Air')}: {gap[0]:.1f}–{gap[1]:.1f} m")
-            if y2-y1 >= 18: text = scene.addText(tr("Air")); text.setDefaultTextColor(QColor("#163A58")); text.setPos(bore_x+5, (y1+y2)/2-10)
+            if y2-y1 >= 18:
+                text = scene.addText(tr("Air")); text.setDefaultTextColor(QColor("#163A58")); text.setPos(bore_x+5, (y1+y2)/2-10)
+                text.setData(0, "air"); text.setData(1, list(gap))
         for component in self._components: self._draw_component(scene, component, bore_x, bore_w)
-        scene.addRect(bore_x, self._scene_top, bore_w, self._scene_height, QPen(QColor("#222A33"), 2), QBrush(Qt.BrushStyle.NoBrush))
+        outline = scene.addRect(
+            bore_x, self._scene_top, bore_w, self._scene_height,
+            QPen(QColor("#222A33"), 2), QBrush(Qt.BrushStyle.NoBrush))
+        # Keep the outline behind all selectable content.  A QGraphicsRectItem's
+        # shape covers its interior even when its brush is NoBrush.
+        outline.setZValue(-1)
 
     def _draw_component(self, scene, component, x, width):
         y1 = depth_to_scene_y(component.start_depth_m, self._hole_depth_m, self._scene_top, self._scene_height)
@@ -338,11 +390,13 @@ class BoreholeChargeBuilder(QWidget):
             marker_w = width * max(.25, min(.85, ratio)); marker_h = max(4.0, min(12.0, self._scene_height / self._hole_depth_m * .08))
             for depth in cartridge_depths(component):
                 cy = depth_to_scene_y(depth, self._hole_depth_m, self._scene_top, self._scene_height)
-                scene.addEllipse(x+(width-marker_w)/2, cy-marker_h/2, marker_w, marker_h, QPen(QColor(color)), QBrush(QColor(color)))
+                marker = scene.addEllipse(x+(width-marker_w)/2, cy-marker_h/2, marker_w, marker_h, QPen(QColor(color)), QBrush(QColor(color)))
+                marker.setData(0, "component"); marker.setData(1, component.id); marker.setToolTip(name)
         else: body = scene.addRect(x, y1, width, y2-y1, pen, QBrush(QColor(color)))
         body.setData(0, "component"); body.setData(1, component.id); body.setToolTip(f"{name}: {component.start_depth_m:.1f}–{component.end_depth_m:.1f} m")
         if y2-y1 >= 18:
             label = scene.addText(name); label.setDefaultTextColor(QColor("white") if component.kind is ChargeComponentKind.STEMMING else QColor("#16202A")); label.setPos(x+4, (y1+y2)/2-10)
+            label.setData(0, "component"); label.setData(1, component.id); label.setToolTip(name)
         if selected:
             for role, y in (("start", y1), ("end", y2)):
                 handle = scene.addRect(x-6, y-4, width+12, 8, QPen(QColor("#1267A5")), QBrush(QColor("#D8EAF7")))
@@ -354,4 +408,6 @@ class BoreholeChargeBuilder(QWidget):
         for component in self._components:
             if component.product_snapshot and (component.product_snapshot.name, component.product_snapshot.display_color) not in seen:
                 pair = (component.product_snapshot.name, component.product_snapshot.display_color); entries.append(pair); seen.add(pair)
-        self.legend.setText(" &nbsp; ".join(f'<span style="color:{color}">■</span> {name}' for name, color in entries))
+        self.legend.setText(" &nbsp; ".join(
+            f'<span style="color:{color}">■</span> {escape(name)}'
+            for name, color in entries))

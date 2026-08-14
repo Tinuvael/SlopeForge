@@ -4,6 +4,7 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
 from PySide6.QtCore import QPointF, Qt
+from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsTextItem
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -12,7 +13,8 @@ from domain.blasting.charge_design import (
     validate_components,
 )
 from ui.widgets.borehole_charge_builder import (
-    BoreholeChargeBuilder, depth_to_scene_y, scene_y_to_depth, snap_depth,
+    BoreholeChargeBuilder, depth_to_scene_y, find_snapped_insertion_interval,
+    scene_y_to_depth, snap_depth,
 )
 
 
@@ -34,6 +36,8 @@ def test_conversion_and_snap_helpers_are_stable():
     assert snap_depth(2.04) == 2.0 and snap_depth(2.06) == 2.1
     for depth in (0, 2.5, 10):
         assert scene_y_to_depth(depth_to_scene_y(depth, 10, 28, 400), 10, 28, 400) == pytest.approx(depth)
+    assert find_snapped_insertion_interval((1.05, 1.15)) is None
+    assert find_snapped_insertion_interval((1.04, 1.25)) == (1.1, 1.2)
 
 
 def test_empty_hole_add_and_delete_stemming():
@@ -99,3 +103,99 @@ def test_historical_missing_product_remains_visible():
     widget = BoreholeChargeBuilder(10, 100, [], [component]); widget.select_component("old")
     assert widget.product_combo.itemText(0).startswith("Old Cartridge")
     assert widget.components()[0].product_snapshot.display_color == "#123456"
+
+
+def test_legend_escapes_product_name_markup():
+    app(); product = replace(cartridge(), name="A < B & C")
+    component = ChargeComponent("safe", ChargeComponentKind.CARTRIDGE_EXPLOSIVE,
+                                2, 4, product.snapshot(), .5)
+    widget = BoreholeChargeBuilder(10, 100, [product], [component])
+    assert "A &lt; B &amp; C" in widget.legend.text()
+
+
+def test_off_grid_air_gap_never_creates_an_out_of_gap_component():
+    app()
+    occupied = [
+        ChargeComponent("before", ChargeComponentKind.STEMMING, 0, 1.05),
+        ChargeComponent("after", ChargeComponentKind.STEMMING, 1.15, 2),
+    ]
+    widget = BoreholeChargeBuilder(2, None, [], occupied)
+    changes = []; widget.components_changed.connect(changes.append)
+    widget.select_air((1.05, 1.15)); before = widget.components()
+    assert not widget.add_stemming()
+    assert widget.components() == before and changes == []
+    validate_components(widget.components(), 2)
+
+    occupied[0] = replace(occupied[0], end_depth_m=1.04)
+    occupied[1] = replace(occupied[1], start_depth_m=1.25)
+    widget.set_components(occupied); widget.select_air((1.04, 1.25))
+    assert widget.add_stemming()
+    inserted = next(component for component in widget.components() if component.id not in {"before", "after"})
+    assert (inserted.start_depth_m, inserted.end_depth_m) == (1.1, 1.2)
+    assert len(changes) == 1
+    validate_components(widget.components(), 2)
+
+
+def test_cartridge_without_default_pitch_requires_explicit_value(monkeypatch):
+    app(); product = replace(cartridge(), default_pitch_m=None)
+    widget = BoreholeChargeBuilder(2, 100, [product], [])
+    changes = []; widget.components_changed.connect(changes.append)
+    monkeypatch.setattr(widget, "_request_cartridge_pitch", lambda: None)
+    assert not widget.add_component(ChargeComponentKind.CARTRIDGE_EXPLOSIVE, product)
+    assert widget.components() == [] and changes == []
+    monkeypatch.setattr(widget, "_request_cartridge_pitch", lambda: .35)
+    assert widget.add_component(ChargeComponentKind.CARTRIDGE_EXPLOSIVE, product)
+    assert widget.components()[0].cartridge_pitch_m == .35
+    assert len(changes) == 1
+
+
+def _click_item(widget, item):
+    point = widget.view.mapFromScene(item.sceneBoundingRect().center())
+    QTest.mouseClick(widget.view.viewport(), Qt.MouseButton.LeftButton, pos=point)
+    QApplication.processEvents()
+
+
+def test_cartridge_marker_component_label_and_air_label_are_click_targets():
+    app(); product = cartridge()
+    cartridge_deck = ChargeComponent(
+        "deck", ChargeComponentKind.CARTRIDGE_EXPLOSIVE, 2, 5,
+        product.snapshot(), .5)
+    stemming = ChargeComponent("stemming", ChargeComponentKind.STEMMING, 6, 9)
+    widget = BoreholeChargeBuilder(10, 100, [product], [cartridge_deck, stemming])
+    widget.resize(620, 520); widget.show(); QApplication.processEvents()
+
+    marker = next(item for item in widget.view.scene().items()
+                  if isinstance(item, QGraphicsEllipseItem) and item.data(1) == "deck")
+    _click_item(widget, marker)
+    assert widget._selected_component_id == "deck"
+
+    component_label = next(item for item in widget.view.scene().items()
+                           if isinstance(item, QGraphicsTextItem)
+                           and item.data(1) == "stemming")
+    _click_item(widget, component_label)
+    assert widget._selected_component_id == "stemming"
+
+    air_label = next(item for item in widget.view.scene().items()
+                     if isinstance(item, QGraphicsTextItem) and item.data(0) == "air")
+    expected_gap = tuple(air_label.data(1)); _click_item(widget, air_label)
+    assert widget._selected_air == expected_gap and widget._selected_component_id is None
+    widget.close()
+
+
+def test_real_body_drag_accumulates_small_pointer_moves():
+    app(); component = ChargeComponent("body", ChargeComponentKind.STEMMING, 2, 4)
+    widget = BoreholeChargeBuilder(10, None, [], [component]); widget.resize(620, 520); widget.show()
+    QApplication.processEvents()
+    x = widget.view.sceneRect().width() * .46 + 40
+    origin_y = depth_to_scene_y(3, 10, widget._scene_top, widget._scene_height)
+    origin = widget.view.mapFromScene(QPointF(x, origin_y))
+    QTest.mousePress(widget.view.viewport(), Qt.MouseButton.LeftButton, pos=origin)
+    for delta in (.04, .08, .12, .16, .20, .24, .28, .32, .36, .40):
+        y = depth_to_scene_y(3 + delta, 10, widget._scene_top, widget._scene_height)
+        QTest.mouseMove(widget.view.viewport(), widget.view.mapFromScene(QPointF(x, y)))
+    target = widget.view.mapFromScene(QPointF(
+        x, depth_to_scene_y(3.4, 10, widget._scene_top, widget._scene_height)))
+    QTest.mouseRelease(widget.view.viewport(), Qt.MouseButton.LeftButton, pos=target)
+    assert (widget.components()[0].start_depth_m,
+            widget.components()[0].end_depth_m) == pytest.approx((2.4, 4.4))
+    widget.close()
