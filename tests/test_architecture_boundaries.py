@@ -129,6 +129,21 @@ def test_domain_is_framework_and_outer_layer_free() -> None:
     assert offenders == set()
 
 
+def test_explosive_catalogue_has_one_canonical_orm_and_no_local_settings_storage() -> None:
+    models = ast.parse((ROOT / "database/models.py").read_text(encoding="utf-8"))
+    class_names = {node.name for node in models.body if isinstance(node, ast.ClassDef)}
+    assert not class_names.intersection({"BlastDesign", "DrillingPattern", "ChargeSegment", "ExplosiveType"})
+    assert "ExplosiveProduct" in class_names
+    catalogue_sources = [
+        ROOT / "domain/blasting/charge_design.py",
+        ROOT / "application/use_cases/explosive_catalogue.py",
+        ROOT / "infrastructure/db/explosive_catalogue.py",
+        ROOT / "ui/engineering_catalogues_page.py",
+    ]
+    assert not {relative(path) for path in catalogue_sources
+                if "QSettings" in path.read_text(encoding="utf-8")}
+
+
 def test_application_is_qt_and_concrete_persistence_free() -> None:
     forbidden = ("PySide6", "sqlalchemy", "app", "database", "repositories", "infrastructure", "ui")
     offenders = {

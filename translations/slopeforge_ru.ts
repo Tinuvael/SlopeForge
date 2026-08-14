@@ -31,6 +31,10 @@
             <translation>О программе</translation>
         </message>
         <message>
+            <source>Engineering catalogues</source>
+            <translation>Инженерные каталоги</translation>
+        </message>
+        <message>
             <source>Activate / block</source>
             <translation>Активировать / заблокировать</translation>
         </message>
@@ -2955,5 +2959,85 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Dip, °</source><translation>Угол падения, °</translation></message>
         <message><source>Dip direction, °</source><translation>Азимут падения, °</translation></message>
         <message><source>Jw</source><translation>Jw</translation></message>
+        <message>
+            <source>Edit explosive product</source>
+            <translation>Редактировать взрывчатый материал</translation>
+        </message>
+        <message>
+            <source>Add explosive product</source>
+            <translation>Добавить взрывчатый материал</translation>
+        </message>
+        <message>
+            <source>Bulk</source>
+            <translation>Насыпной</translation>
+        </message>
+        <message>
+            <source>Cartridge</source>
+            <translation>Патронированный</translation>
+        </message>
+        <message>
+            <source>Choose color</source>
+            <translation>Выбрать цвет</translation>
+        </message>
+        <message>
+            <source>Display color</source>
+            <translation>Цвет отображения</translation>
+        </message>
+        <message>
+            <source>Density, kg/m³</source>
+            <translation>Плотность, кг/м³</translation>
+        </message>
+        <message>
+            <source>Cartridge diameter, mm</source>
+            <translation>Диаметр патрона, мм</translation>
+        </message>
+        <message>
+            <source>Cartridge mass, kg</source>
+            <translation>Масса патрона, кг</translation>
+        </message>
+        <message>
+            <source>Default pitch, m (optional)</source>
+            <translation>Шаг по умолчанию, м (необязательно)</translation>
+        </message>
+        <message>
+            <source>Not set</source>
+            <translation>Не задано</translation>
+        </message>
+        <message>
+            <source>Invalid product</source>
+            <translation>Некорректный материал</translation>
+        </message>
+        <message>
+            <source>Explosives / charge materials</source>
+            <translation>Взрывчатые и зарядные материалы</translation>
+        </message>
+        <message>
+            <source>No explosive products configured.</source>
+            <translation>Взрывчатые материалы не настроены.</translation>
+        </message>
+        <message>
+            <source>Add product</source>
+            <translation>Добавить материал</translation>
+        </message>
+        <message>
+            <source>Enable / Disable</source>
+            <translation>Включить / отключить</translation>
+        </message>
+        <message>
+            <source>Catalogue update failed</source>
+            <translation>Не удалось обновить каталог</translation>
+        </message>
+        <message>
+            <source>Default pitch, m</source>
+            <translation>Шаг по умолчанию, м</translation>
+        </message>
+        <message>
+            <source>Enabled</source>
+            <translation>Включён</translation>
+        </message>
+        <message>
+            <source>Disabled</source>
+            <translation>Отключён</translation>
+        </message>
     </context>
 </TS>

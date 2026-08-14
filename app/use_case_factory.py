@@ -20,6 +20,8 @@ from application.use_cases.rename_domain import RenameDomain
 from infrastructure.db.entity_renaming import (
     SqlAlchemyDomainRenaming, SqlAlchemyProjectRenaming,
 )
+from application.use_cases.explosive_catalogue import ExplosiveCatalogue
+from infrastructure.db.explosive_catalogue import SqlAlchemyExplosiveCatalogue
 
 
 def create_blast_event_use_case(context):
@@ -67,3 +69,8 @@ def create_project_navigation_queries(context):
 def create_generate_project_report_use_case(context):
     return GenerateProjectReport(SqlAlchemyProjectReportQuery(context.session_factory),
                                  OpenPyxlProjectReportWriter())
+
+
+def create_explosive_catalogue(context):
+    adapter = SqlAlchemyExplosiveCatalogue(context.session_factory)
+    return ExplosiveCatalogue(adapter, adapter, can_edit=context.current_user.can_edit)

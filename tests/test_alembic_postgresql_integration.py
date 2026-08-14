@@ -130,13 +130,14 @@ def test_destructive_migration_guard_rejects_non_test_database() -> None:
         )
 
 
-def test_phase_75a_migration_is_the_only_alembic_head() -> None:
+def test_phase_78a_migration_is_the_only_alembic_head() -> None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0002_workflow_status"]
+    assert script.get_heads() == ["0003_explosive_catalog"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0003_explosive_catalog",
         "0002_workflow_status",
         "0001_mvp_baseline"
     ]
@@ -153,6 +154,43 @@ def test_every_alembic_revision_fits_standard_version_column() -> None:
         "Alembic stores revision identifiers in alembic_version.version_num VARCHAR(32): "
         + ", ".join(overlong)
     )
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
+def test_explosive_catalogue_migration_and_postgresql_round_trip(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from alembic import command
+    from domain.blasting.charge_design import ExplosiveProduct, ExplosiveProductKind
+    from infrastructure.db.explosive_catalogue import SqlAlchemyExplosiveCatalogue
+
+    url = os.environ["TEST_DATABASE_URL"]
+    config = _alembic_config(monkeypatch, tmp_path, url)
+    engine = create_engine(url)
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    adapter = SqlAlchemyExplosiveCatalogue(sessions)
+    try:
+        command.downgrade(config, "base")
+        command.upgrade(config, "0002_workflow_status")
+        assert "explosive_products" not in inspect(engine).get_table_names()
+        command.upgrade(config, "0003_explosive_catalog")
+        assert "explosive_products" in inspect(engine).get_table_names()
+        bulk = adapter.create_product(ExplosiveProduct(
+            0, "Bulk PG", ExplosiveProductKind.BULK, "#AA0000", density_kg_m3=1000))
+        cartridge = adapter.create_product(ExplosiveProduct(
+            0, "Cartridge PG", ExplosiveProductKind.CARTRIDGE, "#00AA00",
+            cartridge_diameter_mm=40, cartridge_mass_kg=.5, default_pitch_m=.25))
+        assert [item.name for item in adapter.list_products()] == ["Bulk PG", "Cartridge PG"]
+        bulk.name = "Bulk PG edited"; bulk.density_kg_m3 = 1200
+        assert adapter.update_product(bulk).density_kg_m3 == 1200
+        assert adapter.set_product_enabled(cartridge.id, False).enabled is False
+        assert [item.id for item in adapter.list_products(enabled_only=True)] == [bulk.id]
+        assert adapter.set_product_enabled(cartridge.id, True).enabled is True
+        command.downgrade(config, "0002_workflow_status")
+        assert "explosive_products" not in inspect(engine).get_table_names()
+        command.upgrade(config, "0003_explosive_catalog")
+        assert adapter.list_products() == []
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")

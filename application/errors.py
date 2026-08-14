@@ -15,3 +15,7 @@ class DomainNameConflict(ValueError):
 
     def __init__(self) -> None:
         super().__init__("A Domain with this name already exists in this Project.")
+
+
+class CatalogueConflictError(ValueError):
+    """A catalogue write conflicts with existing shared data."""
