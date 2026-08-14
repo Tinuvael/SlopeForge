@@ -64,7 +64,7 @@ def test_single_and_multi_domain_cas_and_failure_rollback(factory, domains):
     with pytest.raises(RuntimeError):
         with factory.begin() as session:
             guard_domain_versions(session, {a: 1})
-            session.add(BlastBlock(domain_id=a, block_number="ROLLBACK", status="planned"))
+            session.add(BlastBlock(domain_id=a, block_number="ROLLBACK"))
             session.flush()
             raise RuntimeError("after guard")
     assert versions(factory, a, b) == (1, 0)

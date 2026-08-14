@@ -16,7 +16,7 @@ class FakeInspector:
 def test_expected_alembic_head_resolves_real_repository_graph():
     """Exercise the production path/config rather than a mocked head helper."""
     repository_heads = ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
-    assert repository_heads == ["0001_mvp_baseline"]
+    assert repository_heads == ["0002_derive_blast_workflow_status"]
     assert startup._expected_alembic_head() == repository_heads[0]
 
 

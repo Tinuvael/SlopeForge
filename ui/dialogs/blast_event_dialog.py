@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
-    QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QPushButton, QVBoxLayout,
 )
@@ -30,7 +30,9 @@ class BlastEventDialog(QDialog):
         form = QFormLayout()
         self.name = QLineEdit(); self.name.textEdited.connect(self._name_edited)
         self.kind = QComboBox(); self.kind.addItems(["production", "contour"])
-        self.date = QDateEdit(QDate.currentDate()); self.date.setCalendarPopup(True)
+        self.has_date = QCheckBox(tr("Set planned date"))
+        self.date = QDateEdit(QDate.currentDate()); self.date.setCalendarPopup(True); self.date.setEnabled(False)
+        self.has_date.toggled.connect(self.date.setEnabled)
         self.elevation = QDoubleSpinBox(); self.elevation.setRange(-10000, 10000)
         self.elevation.setDecimals(0); self.elevation.setSingleStep(1)
         self.elevation.valueChanged.connect(self._elevation_changed)
@@ -42,7 +44,8 @@ class BlastEventDialog(QDialog):
         self.auto_status = QLabel(tr("Select a geometry file to detect the horizon automatically"))
         self.auto_status.setWordWrap(True)
         form.addRow(tr("Title *"), self.name); form.addRow(tr("Type *"), self.kind)
-        form.addRow(tr("Date"), self.date); form.addRow(tr("Horizon *"), elevation_row)
+        date_row = QHBoxLayout(); date_row.addWidget(self.has_date); date_row.addWidget(self.date)
+        form.addRow(tr("Planned blast date"), date_row); form.addRow(tr("Horizon *"), elevation_row)
         form.addRow(tr("Geometry file *"), file_row); form.addRow("", self.auto_status)
         layout.addLayout(form)
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
@@ -118,5 +121,5 @@ class BlastEventDialog(QDialog):
 
     def values(self):
         return {"name": self.name.text(), "event_type": self.kind.currentText(),
-                "event_date": self.date.date().toPython(), "elevation": self.elevation.value(),
+                "event_date": self.date.date().toPython() if self.has_date.isChecked() else None, "elevation": self.elevation.value(),
                 "csv_path": self.csv.text()}

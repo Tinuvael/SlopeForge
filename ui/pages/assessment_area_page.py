@@ -1,4 +1,5 @@
 from app.localization import tr
+from domain.blasting.workflow import ASSESSMENT_PROGRESS_LABELS, assessment_progress_for
 """Normal, revision-safe page for one Assessment Area."""
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QGridLayout,QHBoxLayout,QInputDialog,QLabel,QMessageBox,QPushButton,QTableWidget,QTableWidgetItem,
@@ -53,11 +54,11 @@ class AssessmentAreaPage(QWidget):
         self.edit_boundaries_button=QPushButton(tr("Edit boundaries")); self.edit_boundaries_button.setEnabled(not self.read_only); self.edit_boundaries_button.clicked.connect(self._request_edit_boundaries); layout.addWidget(self.edit_boundaries_button); self.tabs.addTab(page,tr("Overview"))
 
     def _refresh_overview_and_sidebar(self):
-        rev=self.area.active_geometry_revision(); active=self.evaluation.active_revision(); confirmed=[x for x in self.area.links_for_revision() if x.status=="confirmed"]; prod=sum(self.controller.links.event(x.blast_event_id).event_type=="production" for x in confirmed); contour=len(confirmed)-prod; status=tr("Archived") if self.area.is_archived else tr("Active"); self.header_status.setText(status)
+        rev=self.area.active_geometry_revision(); active=self.evaluation.active_revision(); confirmed=[x for x in self.area.links_for_revision() if x.status=="confirmed"]; prod=sum(self.controller.links.event(x.blast_event_id).event_type=="production" for x in confirmed); contour=len(confirmed)-prod; status=tr(ASSESSMENT_PROGRESS_LABELS[assessment_progress_for(self.area,self.evaluation)]); self.header_status.setText(status + ((" · " + tr("Archived")) if self.area.is_archived else ""))
         while self.info_grid.count():
             item=self.info_grid.takeAt(0)
             if item.widget():item.widget().deleteLater()
-        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation); rows=(("Name",self.area.name),("ID",self.area.id),("Domain",self.domain_name),("Assessment date",self.area.assessment_date),("Status",status),("Elevation interval",interval),("Active geometry revision",rev.revision_number),("Project Lines Dataset",', '.join(rev.source_dataset_ids) or 'Free boundary'))
+        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation); rows=(("Name",self.area.name),("ID",self.area.id),("Domain",self.domain_name),("Assessment date",self.area.assessment_date),("Status",status),("Archive",tr("Archived") if self.area.is_archived else "—"),("Elevation interval",interval),("Active geometry revision",rev.revision_number),("Project Lines Dataset",', '.join(rev.source_dataset_ids) or 'Free boundary'))
         self.general_information={}
         for row,(name,value) in enumerate(rows):left=QLabel(tr(name)); left.setObjectName("MutedText"); right=QLabel(_value(value)); self.general_information[name]=right; self.info_grid.addWidget(left,row,0); self.info_grid.addWidget(right,row,1)
         evaluation_status=active.status if active else "—"; dai=f"{active.design_achievement_index:.3f}" if active and active.design_achievement_index is not None else "—"; fci=f"{active.face_condition_index:.3f}" if active and active.face_condition_index is not None else "—"; quadrant=result_label(active.result_label) if active else "—"

@@ -34,25 +34,23 @@ class FakeBlockRepo:
     def get_block(self, block_id): return None
 
 def valid_input(**overrides):
-    data={"domain_id":7,"block_number":"24-017","horizon_text":"135.5","planned_blast_date":None,"status":"planned","comment":""}; data.update(overrides); return BlastBlockInput(**data)
+    data={"domain_id":7,"block_number":"24-017","horizon_text":"135.5","comment":""}; data.update(overrides); return BlastBlockInput(**data)
 
 def test_roles_can_edit(): assert admin.can_edit and editor.can_edit and not viewer.can_edit
 def test_create_block_by_domain():
     repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo()); assert service.create_block(valid_input(),admin)==100; assert repo.created[0]["domain_id"]==7; assert repo.created[0]["horizon_m"]==Decimal("135.5")
 def test_viewer_cannot_edit():
     with pytest.raises(PermissionDenied): BlastBlockService(FakeBlockRepo(),FakeDomainRepo()).create_block(valid_input(),viewer)
-def test_block_validation_rejects_missing_domain_and_bad_status():
+def test_block_validation_rejects_missing_domain():
     service=BlastBlockService(FakeBlockRepo(),FakeDomainRepo())
     with pytest.raises(ValidationError): service.create_block(valid_input(domain_id=99),admin)
-    with pytest.raises(ValidationError): service.create_block(valid_input(status="bad"),admin)
 def test_repository_filters_are_forwarded():
     repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo()); assert service.list_blocks(domain_id=7,status="planned")==[]
 
-def test_block_update_preserves_zero_horizon_and_empty_planned_date():
+def test_block_update_preserves_zero_horizon():
     repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo())
-    service.update_block(5,valid_input(horizon_text="0",planned_blast_date=None),editor,expected_version=0)
+    service.update_block(5,valid_input(horizon_text="0"),editor,expected_version=0)
     assert repo.updated[0]["horizon_m"] == Decimal("0")
-    assert repo.updated[0]["planned_blast_date"] is None
 
 def test_linked_production_block_domain_is_immutable():
     class Session:
@@ -109,16 +107,13 @@ def test_repository_rolls_back_when_save_fails() -> None:
 
 
 def test_audit_value_formatting_and_changed_fields() -> None:
-    from datetime import date
     from decimal import Decimal
     from infrastructure.services.blast_block_service import build_audit_changes, format_audit_value
 
-    assert format_audit_value("status", "planned") == "Запланирован"
-    assert format_audit_value("planned_blast_date", date(2026, 7, 15)) == "15.07.2026"
     assert format_audit_value("horizon_m", Decimal("760.5000")) == "760.5"
     changes = build_audit_changes(
-        {"block_number": "A", "domain_id": 1, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "planned", "comment": None},
-        {"block_number": "A", "domain_id": 2, "horizon_m": Decimal("1.0"), "planned_blast_date": None, "status": "blasted", "comment": None},
+        {"block_number": "A", "domain_id": 1, "horizon_m": Decimal("1.0"), "comment": None},
+        {"block_number": "A", "domain_id": 2, "horizon_m": Decimal("1.0"), "comment": None},
         {1: "Old site", 2: "New site"},
     )
-    assert changes == [("domain_id", "Old site", "New site"), ("status", "Запланирован", "Взорван")]
+    assert changes == [("domain_id", "Old site", "New site")]

@@ -45,8 +45,6 @@ class SqlAlchemyBlastEventCreationPersistence:
                 domain_id=domain_id,
                 block_number=event.name.strip(),
                 horizon_m=Decimal(str(event.elevation)),
-                planned_blast_date=event.event_date,
-                status="planned",
                 comment=None,
                 created_by_user_id=actor_id,
             )

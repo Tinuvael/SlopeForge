@@ -112,10 +112,10 @@ def test_refresh_reloads_filters_and_area_construction_is_guarded():
     assert "Could not start assessment area creation" in main
     assert "Could not open boundary editing" in main
 
-def test_existing_block_dialog_preserves_zero_and_none_and_locks_linked_domain():
+def test_existing_block_dialog_preserves_zero_and_locks_linked_domain():
     dialog=source("ui/block_dialog.py")
     assert '"" if block.horizon_m is None else str(block.horizon_m)' in dialog
-    assert "self.planned_date.setDate(self.planned_date.minimumDate())" in dialog
+    assert "planned_date" not in dialog and "self.status" not in dialog
     assert "Moving a Block between Domains is not available yet" in dialog and "self.domain.setEnabled(False)" in dialog
 
 def test_contour_event_ui_and_tree_architecture():

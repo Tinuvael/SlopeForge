@@ -157,7 +157,7 @@ def test_concrete_report_query_preserves_actual_date_stored_scores_and_links(fac
     block_id = None
     try:
         with factory.begin() as session:
-            block = BlastBlock(domain_id=domain_id, block_number="PB-7", status="planned")
+            block = BlastBlock(domain_id=domain_id, block_number="PB-7")
             session.add(block); session.flush(); block_id = block.id
         production.blast_block_id = block_id
         production.event_date = date(2026, 7, 1)

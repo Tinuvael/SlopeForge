@@ -180,17 +180,22 @@ class AssessmentEditingSession:
     def technical_card_draft(self, event):
         return self.technical_cards.edit_or_create(event)
 
-    def save_technical_card(self, card, revision, status):
+    def save_technical_card(self, card, revision, status, planned_date=...):
         self._require_edit()
         count = len(card.revisions)
         active = card.active_revision_id
+        event = next(item for item in self.state.blast_events if item.id == card.blast_event_id)
+        previous_date = event.event_date
+        if planned_date is not ...:
+            event.event_date = planned_date
         try:
             card.save_revision(revision, status=status)
             saved = card.revisions[-1]
-            self._write("persist_technical_card_revision", card, saved)
+            self._write("persist_technical_card_revision", card, saved, event.event_date)
         except Exception:
             del card.revisions[count:]
             card.active_revision_id = active
+            event.event_date = previous_date
             raise
 
     def evaluation_draft(self, area):

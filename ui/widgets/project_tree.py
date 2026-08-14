@@ -46,7 +46,7 @@ class ProjectTree(QWidget):
         for site in self.site_repo.list_sites(): self.project_filter.addItem(site.name, site.id)
         self.project_filter.setCurrentIndex(max(0, self.project_filter.findData(selected))); self.project_filter.blockSignals(False)
         self.status_filter.clear(); self.status_filter.addItem(tr("All statuses"), None)
-        for value, label in (("planned","Planned"),("blasted","Blasted"),("assessed","Assessed")): self.status_filter.addItem(tr(label),value)
+        for value, label in (("in_preparation","In preparation"),("planned","Planned"),("blasted","Blasted"),("assessed","Assessed")): self.status_filter.addItem(tr(label),value)
         self._reload_domains()
     def _reload_domains(self, *_args):
         selected = self.domain_filter.currentData() if self.domain_filter.count() else None

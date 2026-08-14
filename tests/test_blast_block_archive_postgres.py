@@ -57,8 +57,7 @@ def linked_block(session_factory):
         session.add(domain); session.flush()
         block = BlastBlock(
             domain_id=domain.id, block_number=f"B-{suffix[:8]}", horizon_m=Decimal("100"),
-            planned_blast_date=date(2026, 8, 10), status="blasted", comment="unchanged",
-            is_archived=False,
+            comment="unchanged", is_archived=False,
         )
         session.add(block); session.flush()
         blast_event = BlastEvent(
@@ -91,7 +90,7 @@ def test_concrete_archive_restore_changes_only_block_archive_fields(session_fact
         assert block.is_archived is True
         assert block.archived_at is not None and block.archived_at.tzinfo is not None
         assert block.archived_at.utcoffset() == timezone.utc.utcoffset(block.archived_at)
-        assert block.status == "blasted" and block.comment == "unchanged"
+        assert block.comment == "unchanged"
         assert production.is_archived is False and production.archived_at is None
         assert session.scalar(select(func.count()).select_from(AuditLogEntry).where(
             AuditLogEntry.blast_block_id == block_id)) == audit_before
@@ -101,7 +100,6 @@ def test_concrete_archive_restore_changes_only_block_archive_fields(session_fact
         block = session.get(BlastBlock, block_id)
         production = session.get(BlastEvent, event_id)
         assert block.is_archived is False and block.archived_at is None
-        assert block.status == "blasted"
         assert production.is_archived is False
 
 

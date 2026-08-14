@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from app.localization import tr
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QGroupBox,
+from PySide6.QtCore import QDate, Qt
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout, QGroupBox,
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QTabWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QInputDialog)
 
@@ -86,7 +86,17 @@ class TechnicalCardDialog(QDialog):
         form.addRow(tr("Representative RQD"), self.rqd); form.addRow(tr("Minimum RQD"),self.rqd_min); form.addRow(tr("Maximum RQD"),self.rqd_max); form.addRow(tr("Rock mass description"), self.rock_properties); form.addRow(tr("Fracturing"),self.fracturing); form.addRow(tr("Water conditions"),self.water); form.addRow(tr("Geomechanical notes"),self.geo_notes); layout.addWidget(quality)
 
     def _drilling_tab(self, title):
-        self.drilling_layout = self._scroll_tab(tr(title)); self.group_cards = QWidget(); self.group_cards_layout = QVBoxLayout(self.group_cards)
+        self.drilling_layout = self._scroll_tab(tr(title))
+        planned = QGroupBox(tr("Blast design")); planned_form = QFormLayout(planned)
+        self.has_planned_date = QCheckBox(tr("Set planned date")); self.planned_date = QDateEdit(); self.planned_date.setCalendarPopup(True)
+        if self.blast_event.event_date:
+            value = self.blast_event.event_date; self.planned_date.setDate(QDate(value.year, value.month, value.day)); self.has_planned_date.setChecked(True)
+        else:
+            self.planned_date.setDate(QDate.currentDate()); self.planned_date.setEnabled(False)
+        self.has_planned_date.toggled.connect(self.planned_date.setEnabled)
+        date_row = QHBoxLayout(); date_row.addWidget(self.has_planned_date); date_row.addWidget(self.planned_date)
+        planned_form.addRow(tr("Planned blast date"), date_row); self.drilling_layout.addWidget(planned)
+        self.group_cards = QWidget(); self.group_cards_layout = QVBoxLayout(self.group_cards)
         self.drilling_layout.addWidget(self.group_cards); self._render_groups()
         self.add_group_combo = QComboBox(); catalogue = PRODUCTION_GROUP_TYPES if self.blast_event.event_type == "production" else CONTOUR_GROUP_TYPES
         self.add_group_combo.addItem(tr("+ Add drilling type"), "")
@@ -285,7 +295,8 @@ class TechnicalCardDialog(QDialog):
         actual=self.revision.actual_execution; actual.completion_status=self.completion_status.currentData(); actual.actual_blast_date=self.actual_date.text().strip() or None; actual.execution_notes=self.execution_notes.toPlainText(); actual.recalculate()
         warnings=actual.completion_warnings()
         if warnings: QMessageBox.warning(self,tr("Actual execution"),"The card will be saved. Warnings:\n• " + "\n• ".join(domain_message(item) for item in warnings))
-        try: self.save_callback(self.card, self.revision, status)
+        planned_date = self.planned_date.date().toPython() if self.has_planned_date.isChecked() else None
+        try: self.save_callback(self.card, self.revision, status, planned_date)
         except ValueError as exc: QMessageBox.warning(self, tr("Technical Card validation"), domain_message(str(exc))); return False
         except Exception as exc:
             QMessageBox.critical(self, tr("Technical Card"), f"Could not save changes. The data remains in the form.\n\n{exc}")

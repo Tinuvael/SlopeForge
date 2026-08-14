@@ -18,7 +18,8 @@ from PySide6.QtWidgets import (
 
 from repositories.audit_log_repository import AuditLogEntryRow
 from repositories.blast_block_repository import BlastBlockRow
-from infrastructure.services.blast_block_service import AUDIT_FIELD_LABELS, STATUS_LABELS
+from infrastructure.services.blast_block_service import AUDIT_FIELD_LABELS
+from domain.blasting.workflow import WORKFLOW_LABELS, BlastWorkflowState
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 
 ACTION_LABELS = {"create": "Create", "update": "Update", "delete": "Delete", "attach": "Attach", "detach": "Detach"}
@@ -96,7 +97,9 @@ class BlockHeaderWidget(CardFrame):
             self.status.setText(tr("—"))
             return
         self.title.setText(f"{tr('Block')} {block.block_number}")
-        self.status.setText(tr(STATUS_LABELS.get(block.status, block.status).title()))
+        self.status.setText(tr(WORKFLOW_LABELS[BlastWorkflowState(block.status)]))
+        if block.is_archived:
+            self.status.setText(self.status.text() + " · " + tr("Archived"))
         values = [
             f"{tr('ID')}: {block.id}",
             f"{tr('Horizon')}: {format_decimal(block.horizon_m)}",
@@ -139,7 +142,8 @@ class BlockOverviewWidget(QWidget):
                 ("Horizon", format_decimal(block.horizon_m)),
                 ("Project / Quarry", block.site_name),
                 ("Domain", block.domain_name),
-                ("Status", tr(STATUS_LABELS.get(block.status, block.status).title())),
+                ("Status", tr(WORKFLOW_LABELS[BlastWorkflowState(block.status)])),
+                ("Planned blast date", format_date(block.planned_blast_date)),
                 ("Comment", block.comment),
             ]
         else:
@@ -200,7 +204,7 @@ class BlockSummaryWidget(CardFrame):
             if item.widget():
                 item.widget().deleteLater()
         rows = [
-            ("Status", STATUS_LABELS.get(block.status, block.status) if block else "—"),
+            ("Status", WORKFLOW_LABELS[BlastWorkflowState(block.status)] if block else "—"),
             ("Planned blast date", format_date(block.planned_blast_date) if block else "—"),
             ("Photos", photo_count),
             ("Documents", document_count),
