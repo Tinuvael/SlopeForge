@@ -135,9 +135,9 @@ def test_phase_78c_migration_is_the_only_alembic_head() -> None:
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0004_charge_presets"]
+    assert script.get_heads() == ["0005_explosive_classification"]
     assert [revision.revision for revision in script.walk_revisions()] == [
-        "0004_charge_presets",
+        "0005_explosive_classification", "0004_charge_presets",
         "0003_explosive_catalog",
         "0002_workflow_status",
         "0001_mvp_baseline"

@@ -11,7 +11,7 @@ from uuid import uuid4
 from domain.blasting.entities import BlastEvent, utc_now
 from domain.geometry.types import PlanPolygon
 from domain.blasting.charge_design import (ChargeComponent, ChargeComponentKind,
-    ExplosiveProductKind, ExplosiveProductSnapshot, charge_explosive_mass_kg,
+    ChargeForm, ExplosiveClass, ExplosiveProductKind, ExplosiveProductSnapshot, charge_explosive_mass_kg,
     validate_components)
 
 PRODUCTION_GROUP_TYPES = {
@@ -478,6 +478,9 @@ def _card_from_dict(d):
                 snapshot = item.get("product_snapshot")
                 if snapshot:
                     snapshot = dict(snapshot); snapshot["kind"] = ExplosiveProductKind(snapshot["kind"])
+                    if snapshot.get("charge_form") is not None:
+                        snapshot["charge_form"] = ChargeForm(snapshot["charge_form"])
+                    snapshot["explosive_class"] = ExplosiveClass(snapshot.get("explosive_class", "other"))
                     snapshot = _construct(ExplosiveProductSnapshot, snapshot)
                 components.append(ChargeComponent(id=item["id"], kind=ChargeComponentKind(item["kind"]),
                     start_depth_m=item["start_depth_m"], end_depth_m=item["end_depth_m"],

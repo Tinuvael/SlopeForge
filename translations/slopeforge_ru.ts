@@ -3064,5 +3064,24 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Pitch is required</source><translation>Укажите шаг патронов</translation></message>
         <message><source>Mass per hole</source><translation>Масса на скважину</translation></message>
         <message><source>Enter average hole depth to configure the charge construction.</source><translation>Укажите среднюю глубину скважины, чтобы настроить конструкцию заряда.</translation></message>
+        <message><source>Charge form</source><translation>Форма заряжания</translation></message>
+        <message><source>Explosive class</source><translation>Класс ВВ</translation></message>
+        <message><source>Bulk</source><translation>Насыпной</translation></message>
+        <message><source>Pumpable</source><translation>Наливной / перекачиваемый</translation></message>
+        <message><source>Cartridged</source><translation>Патронированный</translation></message>
+        <message><source>ANFO / Igdanite</source><translation>ANFO / Игданит</translation></message>
+        <message><source>Emulsion explosive</source><translation>Эмульсионное ВВ</translation></message>
+        <message><source>Heavy ANFO</source><translation>Heavy ANFO</translation></message>
+        <message><source>Water gel / Slurry</source><translation>Водогелевое / Slurry</translation></message>
+        <message><source>Dynamite / gelatinous</source><translation>Динамитное / желатинизированное</translation></message>
+        <message><source>Other</source><translation>Другое</translation></message>
+        <message><source>Density, g/cm³</source><translation>Плотность, г/см³</translation></message>
+        <message><source>Cartridge length, mm (optional)</source><translation>Длина патрона, мм (необязательно)</translation></message>
+        <message><source>Cartridge length, mm</source><translation>Длина патрона, мм</translation></message>
+        <message><source>Density must be greater than 0</source><translation>Плотность должна быть больше 0</translation></message>
+        <message><source>Cartridge diameter must be greater than 0</source><translation>Диаметр патрона должен быть больше 0</translation></message>
+        <message><source>Cartridge mass must be greater than 0</source><translation>Масса патрона должна быть больше 0</translation></message>
+        <message><source>Cartridge length must be greater than 0</source><translation>Длина патрона должна быть больше 0</translation></message>
+        <message><source>Pitch must be greater than 0</source><translation>Шаг должен быть больше 0</translation></message>
     </context>
 </TS>

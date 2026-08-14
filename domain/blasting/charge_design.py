@@ -19,8 +19,24 @@ class ChargeDesignValidationError(ValueError):
 
 
 class ExplosiveProductKind(str, Enum):
+    """Compatibility discriminator used by charge components and old payloads."""
     BULK = "bulk"
     CARTRIDGE = "cartridge"
+
+
+class ChargeForm(str, Enum):
+    BULK = "bulk"
+    PUMPABLE = "pumpable"
+    CARTRIDGED = "cartridged"
+
+
+class ExplosiveClass(str, Enum):
+    ANFO = "anfo"
+    EMULSION = "emulsion"
+    HEAVY_ANFO = "heavy_anfo"
+    SLURRY = "slurry"
+    DYNAMITE = "dynamite"
+    OTHER = "other"
 
 
 class ChargeComponentKind(str, Enum):
@@ -46,6 +62,9 @@ class ExplosiveProductSnapshot:
     cartridge_diameter_mm: float | None = None
     cartridge_mass_kg: float | None = None
     default_pitch_m: float | None = None
+    charge_form: ChargeForm | None = None
+    explosive_class: ExplosiveClass = ExplosiveClass.OTHER
+    cartridge_length_mm: float | None = None
 
 
 @dataclass
@@ -59,6 +78,9 @@ class ExplosiveProduct:
     cartridge_diameter_mm: float | None = None
     cartridge_mass_kg: float | None = None
     default_pitch_m: float | None = None
+    charge_form: ChargeForm | None = None
+    explosive_class: ExplosiveClass = ExplosiveClass.OTHER
+    cartridge_length_mm: float | None = None
 
     def __post_init__(self) -> None:
         self.name = self.name.strip()
@@ -66,22 +88,30 @@ class ExplosiveProduct:
             raise ChargeDesignValidationError("Product name is required")
         try:
             self.kind = ExplosiveProductKind(self.kind)
+            self.charge_form = (ChargeForm(self.charge_form) if self.charge_form is not None
+                                else (ChargeForm.BULK if self.kind == ExplosiveProductKind.BULK
+                                      else ChargeForm.CARTRIDGED))
+            self.explosive_class = ExplosiveClass(self.explosive_class)
         except ValueError as exc:
-            raise ChargeDesignValidationError("Product kind must be bulk or cartridge") from exc
+            raise ChargeDesignValidationError("Invalid charge form, explosive class, or legacy kind") from exc
+        expected_kind = (ExplosiveProductKind.CARTRIDGE
+                         if self.charge_form == ChargeForm.CARTRIDGED else ExplosiveProductKind.BULK)
+        self.kind = expected_kind  # derived compatibility value; never a second source of truth
         if not re.fullmatch(r"#[0-9A-Fa-f]{6}", self.display_color):
             raise ChargeDesignValidationError("Display color must use #RRGGBB")
         self.display_color = self.display_color.upper()
-        if self.kind is ExplosiveProductKind.BULK:
+        if self.charge_form in {ChargeForm.BULK, ChargeForm.PUMPABLE}:
             _positive(self.density_kg_m3, "Density")
             if any(value is not None for value in (
-                    self.cartridge_diameter_mm, self.cartridge_mass_kg, self.default_pitch_m)):
+                    self.cartridge_diameter_mm, self.cartridge_mass_kg, self.cartridge_length_mm)):
                 raise ChargeDesignValidationError("Bulk products cannot have cartridge properties")
         else:
             _positive(self.cartridge_diameter_mm, "Cartridge diameter")
             _positive(self.cartridge_mass_kg, "Cartridge mass")
-            _positive(self.default_pitch_m, "Default pitch", optional=True)
+            _positive(self.cartridge_length_mm, "Cartridge length", optional=True)
             if self.density_kg_m3 is not None:
                 raise ChargeDesignValidationError("Cartridge products cannot have bulk density")
+        _positive(self.default_pitch_m, "Default pitch", optional=True)
 
     def snapshot(self) -> ExplosiveProductSnapshot:
         return ExplosiveProductSnapshot(
@@ -90,6 +120,8 @@ class ExplosiveProduct:
             cartridge_diameter_mm=self.cartridge_diameter_mm,
             cartridge_mass_kg=self.cartridge_mass_kg,
             default_pitch_m=self.default_pitch_m,
+            charge_form=self.charge_form, explosive_class=self.explosive_class,
+            cartridge_length_mm=self.cartridge_length_mm,
         )
 
 

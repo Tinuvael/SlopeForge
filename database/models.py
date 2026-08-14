@@ -55,6 +55,9 @@ class ExplosiveProduct(TimestampMixin, Base):
     cartridge_mass_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
     display_color: Mapped[str] = mapped_column(String(7), nullable=False)
     default_pitch_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
+    charge_form: Mapped[str] = mapped_column(String(20), nullable=False, default="bulk")
+    explosive_class: Mapped[str] = mapped_column(String(20), nullable=False, default="other")
+    cartridge_length_mm: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True,
                                              server_default="true", index=True)
 

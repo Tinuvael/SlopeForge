@@ -4,7 +4,8 @@ import pytest
 
 from application.errors import CatalogueConflictError
 from application.use_cases.explosive_catalogue import ExplosiveCatalogue
-from domain.blasting.charge_design import ExplosiveProduct, ExplosiveProductKind
+from domain.blasting.charge_design import (ChargeForm, ExplosiveClass, ExplosiveProduct,
+                                           ExplosiveProductKind)
 
 
 class MemoryCatalogue:
@@ -94,7 +95,7 @@ def test_real_settings_dialog_catalogue_page_permissions_and_rows(monkeypatch):
     assert dialog.catalogues_page.findChild(type(dialog.catalogues_page.empty_label)).text() != ""
     assert dialog.catalogues_page.add_button.isEnabled()
     assert dialog.catalogues_page.table.item(0, 0).text() == "Bulk"
-    assert dialog.catalogues_page.table.item(0, 7).text() == "Disabled"
+    assert dialog.catalogues_page.table.item(0, 9).text() == "Disabled"
     dialog.close()
     viewer = ExplosiveCatalogue(adapter, adapter, can_edit=False)
     monkeypatch.setattr(module, "create_explosive_catalogue", lambda _context: viewer)
@@ -117,10 +118,10 @@ def test_product_dialog_required_numeric_fields_have_real_unset_state():
     assert dialog.density.text() == "Not set"
     with pytest.raises(ValueError, match="Density"):
         dialog.value()
-    dialog.density.setValue(1000)
+    dialog.density.setValue(1.0)
     assert dialog.value().density_kg_m3 == 1000
 
-    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ExplosiveProductKind.CARTRIDGE))
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ChargeForm.CARTRIDGED))
     assert dialog.diameter.text() == "Not set"
     assert dialog.mass.text() == "Not set"
     assert dialog.pitch.text() == "Not set"
@@ -139,11 +140,41 @@ def test_product_dialog_required_numeric_fields_have_real_unset_state():
     assert result.cartridge_mass_kg == .5
     assert result.default_pitch_m is None
 
-    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ExplosiveProductKind.BULK))
-    assert dialog.density.value() == 1000
-    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ExplosiveProductKind.CARTRIDGE))
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ChargeForm.BULK))
+    assert dialog.density.value() == 1.0
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ChargeForm.CARTRIDGED))
     assert dialog.pitch.text() == "Not set"
     dialog.close(); app.processEvents()
+
+
+def test_dialog_charge_forms_classes_bind_numeric_values_and_edit_roundtrip():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QApplication
+    from ui.engineering_catalogues_page import ExplosiveProductDialog
+    app = QApplication.instance() or QApplication([])
+    dialog=ExplosiveProductDialog(); dialog.name_edit.setText("Эмульсия")
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ChargeForm.PUMPABLE))
+    dialog.class_combo.setCurrentIndex(dialog.class_combo.findData(ExplosiveClass.EMULSION))
+    dialog.density.setValue(1.2); dialog.pitch.setValue(.5)
+    pumpable=dialog.value()
+    assert pumpable.charge_form == ChargeForm.PUMPABLE and pumpable.density_kg_m3 == 1200
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ChargeForm.CARTRIDGED))
+    dialog.diameter.setValue(65); dialog.mass.setValue(1); dialog.length.setValue(400)
+    cartridge=dialog.value()
+    assert (cartridge.cartridge_diameter_mm,cartridge.cartridge_mass_kg,cartridge.cartridge_length_mm)==(65,1,400)
+    assert cartridge.density_kg_m3 is None and cartridge.explosive_class == ExplosiveClass.EMULSION
+    reopened=ExplosiveProductDialog(cartridge)
+    assert reopened.kind_combo.currentData() == ChargeForm.CARTRIDGED
+    assert reopened.diameter.value() == 65 and reopened.mass.value() == 1 and reopened.length.value() == 400
+    dialog.close(); reopened.close(); app.processEvents()
+
+
+def test_legacy_kind_gets_safe_new_classification_defaults():
+    old_bulk=product(); old_cartridge=product("Old cartridge",kind=ExplosiveProductKind.CARTRIDGE,
+        density_kg_m3=None,cartridge_diameter_mm=32,cartridge_mass_kg=.2)
+    assert old_bulk.charge_form == ChargeForm.BULK
+    assert old_cartridge.charge_form == ChargeForm.CARTRIDGED
+    assert old_bulk.explosive_class == old_cartridge.explosive_class == ExplosiveClass.OTHER
 
 
 def test_white_product_uses_separate_color_cell_without_recoloring_name():
@@ -156,7 +187,7 @@ def test_white_product_uses_separate_color_cell_without_recoloring_name():
     adapter = MemoryCatalogue(); service = ExplosiveCatalogue(adapter, adapter, can_edit=True)
     service.create_product(product(display_color="#FFFFFF"))
     page = EngineeringCataloguesPage(service, can_edit=True)
-    name_item, color_item = page.table.item(0, 0), page.table.item(0, 2)
+    name_item, color_item = page.table.item(0, 0), page.table.item(0, 3)
     assert name_item.foreground().style() == Qt.BrushStyle.NoBrush
     assert color_item.text() == "#FFFFFF"
     assert color_item.background().color() == QColor("#FFFFFF")
