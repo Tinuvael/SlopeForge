@@ -1,8 +1,8 @@
 """Guided Assessment Area creation and focused boundary revision page."""
-from PySide6.QtCore import QDate, Signal
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (QCheckBox, QDateEdit, QFrame, QGridLayout, QHBoxLayout,
-                              QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
-                              QWidget)
+                              QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
+                              QSizePolicy, QVBoxLayout, QWidget)
 
 from app.localization import tr
 from domain.assessment.geometry import ProjectLineSpan, StraightConnector, derive_elevation_summary
@@ -28,6 +28,8 @@ class AssessmentAreaCreationPage(QWidget):
         self._saving = False
         self._link_preview = None
         self._link_preview_error = False
+        self.link_events_scroll = None
+        self.link_event_rows = []
         self.editor = AssessmentGeometryEditorWidget(
             self.controller.state, self.controller.save_assessment_area_geometry, self,
             read_only=not context.current_user.can_edit,
@@ -255,9 +257,7 @@ class AssessmentAreaCreationPage(QWidget):
                 self._context_row("Total", self._link_preview.total)
                 self._context_row("Production", self._link_preview.production_count)
                 self._context_row("Contour blast", self._link_preview.contour_count)
-                for item in self._link_preview.items:
-                    kind = "Production" if item.event_type == "production" else "Contour blast"
-                    self._context_label(f"{kind}   {item.name}")
+                self._build_link_event_list(self._link_preview.items)
         else:
             self.context_title.setText("Review")
             preview_status = ("Linked-event preview unavailable" if self._link_preview_error else
@@ -270,6 +270,34 @@ class AssessmentAreaCreationPage(QWidget):
             self._context_row("Boundary segments", len(boundary.segments) if boundary else "—")
             self._context_row("Potential linked events", self.links_total_value.text())
             self._context_row("Project Lines source", self.source_value.text())
+
+    def _build_link_event_list(self, items):
+        """Keep an arbitrarily long preview inside the fixed right-hand card."""
+        self.link_events_scroll = QScrollArea()
+        self.link_events_scroll.setObjectName("assessmentLinkEventsScroll")
+        self.link_events_scroll.setWidgetResizable(True)
+        self.link_events_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.link_events_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.link_events_scroll.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                              QSizePolicy.Policy.Expanding)
+        event_list = QWidget(); event_list.setObjectName("assessmentLinkEventsList")
+        event_layout = QVBoxLayout(event_list)
+        event_layout.setContentsMargins(0, 4, 0, 4); event_layout.setSpacing(4)
+        self.link_event_rows = []
+        for item in items:
+            row = QWidget(); row.setObjectName("assessmentLinkEventRow")
+            layout = QGridLayout(row); layout.setContentsMargins(2, 3, 2, 3)
+            kind = "Production" if item.event_type == "production" else "Contour blast"
+            type_label = QLabel(kind); type_label.setObjectName("assessmentFieldLabel")
+            name_label = QLabel(item.name); name_label.setObjectName("assessmentFieldValue")
+            name_label.setWordWrap(True)
+            elevation = QLabel(f"{item.elevation:g} m"); elevation.setObjectName("assessmentFieldLabel")
+            layout.addWidget(type_label, 0, 0); layout.addWidget(name_label, 0, 1)
+            layout.addWidget(elevation, 1, 1)
+            event_layout.addWidget(row); self.link_event_rows.append(row)
+        event_layout.addStretch(1)
+        self.link_events_scroll.setWidget(event_list)
+        self.context_body.addWidget(self.link_events_scroll, 1)
 
     def _context_label(self, text):
         label = QLabel(text); label.setWordWrap(True); self.context_body.addWidget(label)
