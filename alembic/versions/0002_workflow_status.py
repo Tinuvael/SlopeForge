@@ -6,7 +6,7 @@ recreated legacy status is deterministically set to ``planned``.
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0002_derive_blast_workflow_status"
+revision = "0002_workflow_status"
 down_revision = "0001_mvp_baseline"
 branch_labels = None
 depends_on = None

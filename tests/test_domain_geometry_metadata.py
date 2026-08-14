@@ -27,7 +27,7 @@ def test_domain_geometry_is_part_of_immutable_mvp_baseline():
     assert module.revision == "0001_mvp_baseline"
     assert module.down_revision is None
     assert sorted(item.name for item in Path("alembic/versions").glob("*.py")) == [
-        "0001_mvp_baseline.py", "0002_derive_blast_workflow_status.py"]
+        "0001_mvp_baseline.py", "0002_workflow_status.py"]
 
 
 def test_project_lines_are_project_owned_and_independent_of_domains():
