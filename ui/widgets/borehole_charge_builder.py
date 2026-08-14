@@ -10,8 +10,8 @@ from uuid import uuid4
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QBrush, QPen
 from PySide6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QFormLayout, QGraphicsScene, QGraphicsView,
-    QHBoxLayout, QInputDialog, QLabel, QMenu, QPushButton, QSizePolicy,
+    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
+    QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel, QMenu, QPushButton, QSizePolicy,
     QVBoxLayout, QWidget,
 )
 
@@ -105,6 +105,43 @@ class BoreholeView(QGraphicsView):
     def mouseReleaseEvent(self, event):
         self._drag = None
         super().mouseReleaseEvent(event)
+
+
+class CartridgePitchDialog(QDialog):
+    """Require an explicit deck pitch without suggesting engineering data."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(tr("Cartridge pitch"))
+        form = QFormLayout(self)
+        self.pitch_spin = QDoubleSpinBox()
+        self.pitch_spin.setObjectName("newCartridgePitchSpin")
+        self.pitch_spin.setDecimals(3)
+        self.pitch_spin.setRange(-1, 10000)
+        self.pitch_spin.setSingleStep(0.05)
+        self.pitch_spin.setSpecialValueText(tr("Not set"))
+        self.pitch_spin.setValue(self.pitch_spin.minimum())
+        form.addRow(tr("Pitch, m"), self.pitch_spin)
+        self.feedback = QLabel()
+        self.feedback.setObjectName("newCartridgePitchFeedback")
+        self.feedback.setStyleSheet("color: #A33;")
+        form.addRow(self.feedback)
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
+        self.buttons.rejected.connect(self.reject)
+        self.buttons.accepted.connect(self._accept_if_valid)
+        form.addRow(self.buttons)
+
+    def pitch(self):
+        value = self.pitch_spin.value()
+        return None if value == self.pitch_spin.minimum() else value
+
+    def _accept_if_valid(self):
+        value = self.pitch()
+        if value is None or not math.isfinite(value) or value <= 0:
+            self.feedback.setText(tr("Pitch is required"))
+            self.pitch_spin.setFocus()
+            return
+        self.accept()
 
 
 class BoreholeChargeBuilder(QWidget):
@@ -205,11 +242,10 @@ class BoreholeChargeBuilder(QWidget):
                      if (slot := find_snapped_insertion_interval(gap)) is not None), None)
 
     def _request_cartridge_pitch(self):
-        value, accepted = QInputDialog.getDouble(
-            self, tr("Cartridge pitch"), tr("Pitch, m"),
-            value=0.5, minValue=0.001, maxValue=10000, decimals=3,
-        )
-        return value if accepted and math.isfinite(value) and value > 0 else None
+        dialog = CartridgePitchDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dialog.pitch()
 
     def add_component(self, kind, product=None, *, cartridge_pitch_m=None):
         if self.read_only: return False

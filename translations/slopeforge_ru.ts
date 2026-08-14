@@ -3061,5 +3061,6 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Drag bound (0.1 m snap)</source><translation>Перетащите границу (шаг 0,1 м)</translation></message>
         <message><source>No air interval has 0.1 m available.</source><translation>Нет воздушного интервала длиной 0,1 м.</translation></message>
         <message><source>Cartridge pitch</source><translation>Шаг патронов</translation></message>
+        <message><source>Pitch is required</source><translation>Укажите шаг патронов</translation></message>
     </context>
 </TS>

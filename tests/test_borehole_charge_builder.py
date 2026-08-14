@@ -3,8 +3,8 @@ from dataclasses import replace
 import pytest
 
 pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-from PySide6.QtCore import QPointF, Qt
-from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsTextItem
+from PySide6.QtCore import QPointF, QTimer, Qt
+from PySide6.QtWidgets import QDialogButtonBox, QGraphicsEllipseItem, QGraphicsTextItem
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -136,14 +136,35 @@ def test_off_grid_air_gap_never_creates_an_out_of_gap_component():
     validate_components(widget.components(), 2)
 
 
-def test_cartridge_without_default_pitch_requires_explicit_value(monkeypatch):
+def test_cartridge_without_default_pitch_requires_explicit_value():
     app(); product = replace(cartridge(), default_pitch_m=None)
     widget = BoreholeChargeBuilder(2, 100, [product], [])
     changes = []; widget.components_changed.connect(changes.append)
-    monkeypatch.setattr(widget, "_request_cartridge_pitch", lambda: None)
+
+    def cancel_dialog():
+        dialog = QApplication.activeModalWidget()
+        assert dialog.pitch_spin.text() == "Not set"
+        QTest.mouseClick(
+            dialog.buttons.button(QDialogButtonBox.StandardButton.Cancel),
+            Qt.MouseButton.LeftButton)
+
+    QTimer.singleShot(0, cancel_dialog)
     assert not widget.add_component(ChargeComponentKind.CARTRIDGE_EXPLOSIVE, product)
     assert widget.components() == [] and changes == []
-    monkeypatch.setattr(widget, "_request_cartridge_pitch", lambda: .35)
+
+    def enter_explicit_pitch():
+        dialog = QApplication.activeModalWidget()
+        assert dialog.pitch_spin.text() == "Not set"
+        ok = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        QTest.mouseClick(ok, Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
+        assert dialog.isVisible()
+        assert dialog.feedback.text() == "Pitch is required"
+        assert widget.components() == [] and changes == []
+        dialog.pitch_spin.setValue(.35)
+        QTest.mouseClick(ok, Qt.MouseButton.LeftButton)
+
+    QTimer.singleShot(0, enter_explicit_pitch)
     assert widget.add_component(ChargeComponentKind.CARTRIDGE_EXPLOSIVE, product)
     assert widget.components()[0].cartridge_pitch_m == .35
     assert len(changes) == 1
