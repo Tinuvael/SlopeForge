@@ -122,8 +122,6 @@ def test_footer_hierarchy_and_ui_only_elevation_rounding(monkeypatch, state, app
     assert page.cancel.objectName() == "assessmentQuietAction"
     assert all(button.minimumHeight() == 32
                for button in (page.next, page.confirm, page.back, page.cancel))
-    assert page._format_elevation_interval(595.0, 625.0) == "595–625 m"
-    assert page._format_elevation_interval(595.4, 624.6) == "595–625 m"
     page.close()
 
 

@@ -8,7 +8,7 @@ from app.localization import tr
 from domain.assessment.geometry import ProjectLineSpan, StraightConnector, derive_elevation_summary
 from ui.editors.assessment_geometry_editor import AssessmentGeometryEditorWidget
 from ui.pages.entity_page_controller import EntityPageController
-from ui.presentation_labels import domain_message
+from ui.presentation_labels import domain_message, format_assessment_elevation_interval
 from ui.widgets.assessment_wizard_stepper import AssessmentWizardStepper
 
 
@@ -226,16 +226,10 @@ class AssessmentAreaCreationPage(QWidget):
             for label in (self.elevation_value, self.spans_value, self.connectors_value): label.setText("—")
             return
         minimum, maximum = derive_elevation_summary(boundary)
-        elevation = self._format_elevation_interval(minimum, maximum)
+        elevation = format_assessment_elevation_interval(minimum, maximum)
         self.elevation_value.setText(elevation)
         self.spans_value.setText(str(sum(isinstance(item, ProjectLineSpan) for item in boundary.segments)))
         self.connectors_value.setText(str(sum(isinstance(item, StraightConnector) for item in boundary.segments)))
-
-    @staticmethod
-    def _format_elevation_interval(minimum, maximum):
-        """Round for presentation only; frozen XYZ and matching keep full precision."""
-        if minimum is None or maximum is None: return "—"
-        return f"{minimum:.0f}–{maximum:.0f} m"
 
     def _run_link_preview(self):
         self._link_preview = None; self._link_preview_error = False
