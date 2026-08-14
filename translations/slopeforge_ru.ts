@@ -2922,5 +2922,13 @@
             <source>Assessment Area saved</source>
             <translation>Область оценки сохранена</translation>
         </message>
+        <message>
+            <source>ASSESSMENT AREA</source>
+            <translation>ОБЛАСТЬ ОЦЕНКИ</translation>
+        </message>
+        <message>
+            <source>Area name</source>
+            <translation>Название области</translation>
+        </message>
     </context>
 </TS>

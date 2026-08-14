@@ -1,105 +1,172 @@
 """Guided Assessment Area creation and focused boundary revision page."""
 from PySide6.QtCore import QDate, Signal
-from PySide6.QtWidgets import (QCheckBox, QDateEdit, QFormLayout, QHBoxLayout, QLabel,
-                              QLineEdit, QMessageBox, QPushButton, QStackedWidget,
-                              QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QDateEdit, QFrame, QGridLayout, QHBoxLayout,
+                              QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
+                              QWidget)
 
 from app.localization import tr
-from domain.assessment.geometry import (ProjectLineSpan, StraightConnector,
-                                        derive_elevation_summary)
+from domain.assessment.geometry import ProjectLineSpan, StraightConnector, derive_elevation_summary
 from ui.editors.assessment_geometry_editor import AssessmentGeometryEditorWidget
 from ui.pages.entity_page_controller import EntityPageController
 from ui.presentation_labels import domain_message
+from ui.widgets.assessment_wizard_stepper import AssessmentWizardStepper
 
 
 class AssessmentAreaCreationPage(QWidget):
-    """A local three-step flow; persistence happens only on Review -> Save."""
+    """Persistent three-column workspace; only Review -> Save writes state."""
 
     area_created = Signal(str)
     cancelled = Signal()
-    GENERAL, BOUNDARY, REVIEW = range(3)
+    GENERAL, BOUNDARY, LINKS, REVIEW, SAVE = range(5)
 
     def __init__(self, context, domain_id, domain_name, site_id, parent=None, edit_area_id=None):
         super().__init__(parent)
         self.controller = EntityPageController(context, domain_id)
         self.domain_name = domain_name
         self.edit_area_id = edit_area_id
+        self.current_step = self.BOUNDARY if edit_area_id else self.GENERAL
         self._saving = False
+        self._link_preview = None
+        self._link_preview_error = False
         self.editor = AssessmentGeometryEditorWidget(
             self.controller.state, self.controller.save_assessment_area_geometry, self,
             read_only=not context.current_user.can_edit,
         )
-        root = QVBoxLayout(self)
-        root.addWidget(QLabel("Edit Assessment Area boundary" if edit_area_id else "Create Assessment Area"))
-        self.stepper = QLabel()
-        root.addWidget(self.stepper)
-        self.pages = QStackedWidget()
-        root.addWidget(self.pages, 1)
+        if edit_area_id:
+            area = self.controller.area(edit_area_id)
+            if area is None:
+                raise ValueError("Assessment Area is unavailable")
+            self.editor.inspect_area(edit_area_id)
 
-        self.area_name = QLineEdit()
-        self.assessment_date = QDateEdit(QDate.currentDate())
-        self.assessment_date.setCalendarPopup(True)
-        self.general_message = QLabel()
-        self.general_message.setStyleSheet("color: #a33;")
-        self.general_page = QWidget(); form = QFormLayout(self.general_page)
-        form.addRow(tr("Name"), self.area_name)
-        form.addRow(tr("Assessment date"), self.assessment_date)
-        self.domain_value = QLabel(domain_name or "—")
-        self.dataset_value = QLabel(); self.source_value = QLabel()
-        form.addRow(tr("Domain"), self.domain_value)
-        form.addRow(tr("Project Lines dataset"), self.dataset_value)
-        form.addRow(tr("Project Lines source file"), self.source_value)
-        form.addRow(self.general_message)
-        self.pages.addWidget(self.general_page)
+        self.setObjectName("assessmentWorkflowPage")
+        root = QVBoxLayout(self); root.setContentsMargins(14, 12, 14, 12); root.setSpacing(9)
+        title = QLabel("Edit Assessment Area boundary" if edit_area_id else "Create Assessment Area")
+        title.setObjectName("assessmentPageTitle"); root.addWidget(title)
+        self.stepper = AssessmentWizardStepper(); root.addWidget(self.stepper)
 
-        self.boundary_page = QWidget(); self.boundary_layout = QVBoxLayout(self.boundary_page)
-        controls = QHBoxLayout()
-        fit = QPushButton(tr("Fit")); fit.clicked.connect(self.editor.fit_to_extent)
+        workspace = QHBoxLayout(); workspace.setSpacing(10)
+        self.info_card = self._card("assessmentInfoCard")
+        self.info_card.setMinimumWidth(230); self.info_card.setMaximumWidth(300)
+        self._build_info_card(self.info_card.layout())
+        workspace.addWidget(self.info_card, 0)
+
+        self.plan_card = self._card("assessmentPlanCard")
+        self.plan_card.setMinimumWidth(390)
+        plan_layout = self.plan_card.layout()
+        self.plan_title = QLabel(); self.plan_title.setObjectName("assessmentCardTitle")
+        plan_layout.addWidget(self.plan_title)
+        toolbar = QHBoxLayout(); toolbar.setSpacing(6)
         self.lines = QCheckBox(tr("Project Lines")); self.lines.setChecked(True)
         self.lines.toggled.connect(self.editor.set_project_lines_visible)
+        self.fit = QPushButton(tr("Fit")); self.fit.clicked.connect(self.editor.fit_to_extent)
         self.start = QPushButton(tr("Edit boundary") if edit_area_id else tr("Draw boundary"))
         self.start.clicked.connect(self._start_drawing)
         self.back_vertex = QPushButton(tr("Undo")); self.back_vertex.clicked.connect(self.editor.undo_vertex)
         self.finish = QPushButton(tr("Close boundary")); self.finish.clicked.connect(self.editor.finish_polygon)
         self.cancel_drawing = QPushButton(tr("Cancel drawing")); self.cancel_drawing.clicked.connect(self.editor.cancel_workflow)
-        for widget in (fit, self.lines, self.start, self.back_vertex, self.finish, self.cancel_drawing):
-            controls.addWidget(widget)
-        self.boundary_layout.addLayout(controls)
-        self.step_status = QLabel(); self.boundary_layout.addWidget(self.step_status)
-        self.boundary_layout.addWidget(self.editor, 1)
-        self.pages.addWidget(self.boundary_page)
+        for control in (self.lines, self.fit, self.start, self.back_vertex, self.finish, self.cancel_drawing):
+            toolbar.addWidget(control)
+        toolbar.addStretch(1); plan_layout.addLayout(toolbar)
+        self.step_status = QLabel(); self.step_status.setObjectName("assessmentPlanStatus")
+        plan_layout.addWidget(self.step_status); plan_layout.addWidget(self.editor, 1)
+        workspace.addWidget(self.plan_card, 1)
 
-        self.review_page = QWidget(); self.review_layout = QVBoxLayout(self.review_page)
-        self.review_summary = QLabel(); self.review_summary.setWordWrap(True)
-        self.review_layout.addWidget(self.review_summary)
-        self.pages.addWidget(self.review_page)
+        self.context_card = self._card("assessmentContextCard")
+        self.context_card.setMinimumWidth(220); self.context_card.setMaximumWidth(290)
+        self.context_title = QLabel(); self.context_title.setObjectName("assessmentCardTitle")
+        self.context_body = QVBoxLayout(); self.context_body.setSpacing(7)
+        self.context_card.layout().addWidget(self.context_title)
+        self.context_card.layout().addLayout(self.context_body)
+        self.context_card.layout().addStretch(1)
+        workspace.addWidget(self.context_card, 0)
+        root.addLayout(workspace, 1)
 
-        actions = QHBoxLayout(); actions.addStretch(1)
+        self.footer = QFrame(); self.footer.setObjectName("assessmentFooter")
+        footer_layout = QHBoxLayout(self.footer); footer_layout.setContentsMargins(10, 7, 10, 7)
+        self.cancel = QPushButton(tr("Cancel")); self.cancel.clicked.connect(self._close_page)
+        self.footer_status = QLabel(); footer_layout.addWidget(self.cancel); footer_layout.addWidget(self.footer_status)
+        footer_layout.addStretch(1)
         self.back = QPushButton(tr("Back")); self.back.clicked.connect(self._back)
         self.next = QPushButton(tr("Next")); self.next.clicked.connect(self._next)
         self.confirm = QPushButton(tr("Save revision") if edit_area_id else tr("Save Assessment")); self.confirm.clicked.connect(self._confirm)
-        close = QPushButton(tr("Back / Close")); close.clicked.connect(self._close_page)
-        for widget in (self.back, self.next, self.confirm, close): actions.addWidget(widget)
-        root.addLayout(actions)
+        footer_layout.addWidget(self.back); footer_layout.addWidget(self.next); footer_layout.addWidget(self.confirm)
+        root.addWidget(self.footer)
 
-        self.editor.workflow_state_changed.connect(self._sync_status)
-        # Retained for legitimate lower-level callers of confirm_boundaries().
+        self.setStyleSheet("""
+            #assessmentWorkflowPage { background: #F5F7F9; }
+            #assessmentPageTitle { color:#23313F; font-size:17px; font-weight:700; }
+            QFrame#assessmentInfoCard, QFrame#assessmentPlanCard, QFrame#assessmentContextCard,
+            QFrame#assessmentFooter { background:#FFFFFF; border:1px solid #D9E0E7; border-radius:6px; }
+            QLabel#assessmentCardTitle { color:#23313F; font-size:13px; font-weight:700; }
+            QLabel#assessmentSectionTitle { color:#687481; font-size:10px; font-weight:700; }
+            QLabel#assessmentFieldLabel { color:#687481; }
+            QLabel#assessmentFieldValue { color:#23313F; }
+            QLabel#assessmentPlanStatus { color:#687481; }
+            QLabel#assessmentValidation { color:#B0443E; }
+        """)
+        self.editor.workflow_state_changed.connect(self._sync_ui)
+        # Compatibility for legitimate lower-level confirm_boundaries() callers.
         self.editor.area_created.connect(self.area_created)
         self.editor.area_revised.connect(self.area_created)
+        self._refresh_context()
         if edit_area_id:
-            area = self.controller.area(edit_area_id)
-            if area is None: raise ValueError("Assessment Area is unavailable")
-            self.area_name.setText(area.name); self.area_name.setReadOnly(True)
+            self.area_name.setText(area.name)
             self.assessment_date.setDate(QDate(area.assessment_date.year, area.assessment_date.month, area.assessment_date.day))
-            self.assessment_date.setReadOnly(True)
-            self.editor.inspect_area(edit_area_id)
-            self.pages.setCurrentIndex(self.BOUNDARY)
-        else:
-            self.pages.setCurrentIndex(self.GENERAL)
-        self._refresh_context(); self._sync_status()
+        self._set_step(self.current_step)
+
+    @staticmethod
+    def _card(name):
+        card = QFrame(); card.setObjectName(name)
+        layout = QVBoxLayout(card); layout.setContentsMargins(12, 12, 12, 12); layout.setSpacing(7)
+        return card
+
+    def _build_info_card(self, layout):
+        heading = QLabel(tr("ASSESSMENT AREA")); heading.setObjectName("assessmentCardTitle"); layout.addWidget(heading)
+        self.area_name = QLineEdit(); self.area_name.setPlaceholderText(tr("Area name"))
+        self.assessment_date = QDateEdit(QDate.currentDate()); self.assessment_date.setCalendarPopup(True)
+        self.general_message = QLabel(); self.general_message.setObjectName("assessmentValidation"); self.general_message.setWordWrap(True)
+        grid = QGridLayout(); grid.setHorizontalSpacing(8); grid.setVerticalSpacing(7)
+        self._add_row(grid, 0, "Name", self.area_name)
+        self._add_row(grid, 1, "Assessment date", self.assessment_date)
+        layout.addLayout(grid); layout.addWidget(self.general_message)
+        layout.addWidget(self._section("CONTEXT"))
+        context = QGridLayout(); context.setHorizontalSpacing(8); context.setVerticalSpacing(7)
+        self.domain_value = self._value(); self.dataset_value = self._value(); self.source_value = self._value()
+        self._add_row(context, 0, "Domain", self.domain_value)
+        self._add_row(context, 1, "Project Lines", self.dataset_value)
+        self._add_row(context, 2, "Source", self.source_value)
+        layout.addLayout(context)
+        layout.addWidget(self._section("GEOMETRY"))
+        geometry = QGridLayout(); geometry.setHorizontalSpacing(8); geometry.setVerticalSpacing(7)
+        self.elevation_value = self._value(); self.spans_value = self._value(); self.connectors_value = self._value()
+        self._add_row(geometry, 0, "Elevation interval", self.elevation_value)
+        self._add_row(geometry, 1, "Traced spans", self.spans_value)
+        self._add_row(geometry, 2, "Connectors", self.connectors_value)
+        layout.addLayout(geometry)
+        layout.addWidget(self._section("LINKS"))
+        links = QGridLayout(); links.setHorizontalSpacing(8); links.setVerticalSpacing(7)
+        self.links_total_value = self._value(); self.production_value = self._value(); self.contour_value = self._value()
+        self._add_row(links, 0, "Potential events", self.links_total_value)
+        self._add_row(links, 1, "Production", self.production_value)
+        self._add_row(links, 2, "Contour blast", self.contour_value)
+        layout.addLayout(links); layout.addStretch(1)
+
+    @staticmethod
+    def _section(text):
+        label = QLabel(text); label.setObjectName("assessmentSectionTitle"); return label
+
+    @staticmethod
+    def _value(text="—"):
+        label = QLabel(text); label.setObjectName("assessmentFieldValue"); label.setWordWrap(True); return label
+
+    @staticmethod
+    def _add_row(grid, row, text, widget):
+        label = QLabel(text); label.setObjectName("assessmentFieldLabel")
+        grid.addWidget(label, row, 0); grid.addWidget(widget, row, 1)
 
     def _refresh_context(self):
         dataset = self.controller.state.active_dataset()
+        self.domain_value.setText(self.domain_name or "—")
         self.dataset_value.setText(dataset.name if dataset else "—")
         self.source_value.setText(dataset.source_file_name if dataset else "—")
 
@@ -107,65 +174,128 @@ class AssessmentAreaCreationPage(QWidget):
         try:
             self.editor.start_edit(self.edit_area_id) if self.edit_area_id else self.editor.start_new_area()
         except Exception as exc:
-            QMessageBox.critical(self, tr("Assessment Area"), f"Could not start boundary editing.\n\n{domain_message(str(exc))}")
-        self._sync_status()
+            QMessageBox.critical(self, tr("Assessment Area"),
+                                 f"Could not start boundary editing.\n\n{domain_message(str(exc))}")
+        self._sync_ui()
+
+    def _validate_general(self):
+        self._refresh_context()
+        if not self.area_name.text().strip():
+            self.general_message.setText("Name is required."); return False
+        if not self.assessment_date.date().isValid():
+            self.general_message.setText("Assessment date is required."); return False
+        if self.controller.state.active_dataset() is None:
+            self.general_message.setText("An active Project Lines dataset is required."); return False
+        self.general_message.clear(); return True
 
     def _next(self):
-        if self.pages.currentIndex() == self.GENERAL:
-            self._refresh_context()
-            if not self.area_name.text().strip():
-                self.general_message.setText("Enter an Assessment Area name."); return
-            if not self.assessment_date.date().isValid():
-                self.general_message.setText("Select an Assessment date."); return
-            if self.controller.state.active_dataset() is None:
-                self.general_message.setText("An active Project Lines dataset is required."); return
-            self.general_message.clear(); self._show_boundary()
-        elif self.pages.currentIndex() == self.BOUNDARY and self.editor.closed_boundary() is not None:
-            self._populate_review(); self.review_layout.addWidget(self.editor, 1); self.pages.setCurrentIndex(self.REVIEW)
-        self._sync_status()
+        if self.current_step == self.GENERAL:
+            if self._validate_general(): self._set_step(self.BOUNDARY)
+        elif self.current_step == self.BOUNDARY and self.editor.closed_boundary() is not None:
+            self._update_geometry_summary(); self._run_link_preview(); self._set_step(self.LINKS)
+        elif self.current_step == self.LINKS:
+            self._set_step(self.REVIEW)
 
     def _back(self):
-        current = self.pages.currentIndex()
-        if current == self.REVIEW: self._show_boundary()
-        elif current == self.BOUNDARY and not self.edit_area_id: self.pages.setCurrentIndex(self.GENERAL)
-        self._sync_status()
+        if self.current_step == self.REVIEW: self._set_step(self.LINKS)
+        elif self.current_step == self.LINKS: self._set_step(self.BOUNDARY)
+        elif self.current_step == self.BOUNDARY and not self.edit_area_id: self._set_step(self.GENERAL)
 
-    def _show_boundary(self):
-        """Reuse the same renderer so Review never owns a duplicate geometry model."""
-        self.boundary_layout.addWidget(self.editor, 1)
-        self.pages.setCurrentIndex(self.BOUNDARY)
+    def _set_step(self, step):
+        self.current_step = step; self.stepper.set_step(step)
+        metadata_editable = step == self.GENERAL and not self.edit_area_id
+        self.area_name.setReadOnly(not metadata_editable); self.assessment_date.setReadOnly(not metadata_editable)
+        self._render_context(); self._sync_ui()
 
-    @staticmethod
-    def _elevation_text(value):
-        return "—" if value is None else f"{value:g}"
-
-    def _populate_review(self):
+    def _update_geometry_summary(self):
         boundary = self.editor.closed_boundary()
+        if boundary is None:
+            for label in (self.elevation_value, self.spans_value, self.connectors_value): label.setText("—")
+            return
         minimum, maximum = derive_elevation_summary(boundary)
-        dataset = self.controller.state.active_dataset()
-        spans = sum(isinstance(segment, ProjectLineSpan) for segment in boundary.segments)
-        connectors = sum(isinstance(segment, StraightConnector) for segment in boundary.segments)
-        self.review_summary.setText(
-            f"Name: {self.area_name.text().strip()}\nAssessment date: {self.assessment_date.date().toString('yyyy-MM-dd')}\n"
-            f"Domain: {self.domain_name or '—'}\nProject Lines dataset: {dataset.name if dataset else '—'}\n"
-            f"Project Lines source file: {dataset.source_file_name if dataset else '—'}\n"
-            f"Elevation Interval: {self._elevation_text(minimum)} – {self._elevation_text(maximum)}\n"
-            f"Project-Line spans: {spans}\nStraight connectors: {connectors}")
+        elevation = "—" if minimum is None or maximum is None else f"{minimum:g}–{maximum:g} m"
+        self.elevation_value.setText(elevation)
+        self.spans_value.setText(str(sum(isinstance(item, ProjectLineSpan) for item in boundary.segments)))
+        self.connectors_value.setText(str(sum(isinstance(item, StraightConnector) for item in boundary.segments)))
+
+    def _run_link_preview(self):
+        self._link_preview = None; self._link_preview_error = False
+        try:
+            self._link_preview = self.controller.preview_assessment_event_links(self.editor.closed_boundary())
+        except Exception:
+            self._link_preview_error = True
+        preview = self._link_preview
+        self.links_total_value.setText(str(preview.total) if preview else "—")
+        self.production_value.setText(str(preview.production_count) if preview else "—")
+        self.contour_value.setText(str(preview.contour_count) if preview else "—")
+
+    def _render_context(self):
+        while self.context_body.count():
+            item = self.context_body.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+        if self.current_step == self.GENERAL:
+            self.context_title.setText("Getting started")
+            lines = ("1. Enter an Area name and assessment date.",
+                     "2. Check the Domain and active Project Lines.", "3. Continue to Boundary.")
+            for text in lines: self._context_label(text)
+        elif self.current_step == self.BOUNDARY:
+            self.context_title.setText("Boundary")
+            for text in ("Click near a Project Line to snap.", "Follow the source line to trace it.",
+                         "Move away to create a straight connector.", "Click another Project Line to switch source.",
+                         "Close boundary when finished."):
+                self._context_label(text)
+            self._context_label("●  Blue — traced Project Line")
+            self._context_label("●  Orange — straight connector")
+            self._context_label("○  Marker — snap point")
+        elif self.current_step == self.LINKS:
+            self.context_title.setText("Potential linked events")
+            if self._link_preview_error:
+                self._context_label("Linked-event preview unavailable")
+            elif self._link_preview:
+                self._context_row("Total", self._link_preview.total)
+                self._context_row("Production", self._link_preview.production_count)
+                self._context_row("Contour blast", self._link_preview.contour_count)
+                for item in self._link_preview.items:
+                    kind = "Production" if item.event_type == "production" else "Contour blast"
+                    self._context_label(f"{kind}   {item.name}")
+        else:
+            self.context_title.setText("Review")
+            preview_status = ("Linked-event preview unavailable" if self._link_preview_error else
+                              "✓  Linked-event preview completed")
+            for text in ("✓  General information", "✓  Boundary valid",
+                         "✓  Elevation summary derived", preview_status):
+                self._context_label(text)
+            boundary = self.editor.closed_boundary()
+            self._context_row("Elevation interval", self.elevation_value.text())
+            self._context_row("Boundary segments", len(boundary.segments) if boundary else "—")
+            self._context_row("Potential linked events", self.links_total_value.text())
+            self._context_row("Project Lines source", self.source_value.text())
+
+    def _context_label(self, text):
+        label = QLabel(text); label.setWordWrap(True); self.context_body.addWidget(label)
+
+    def _context_row(self, name, value):
+        row = QWidget(); layout = QHBoxLayout(row); layout.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(str(name)); label.setObjectName("assessmentFieldLabel")
+        result = QLabel(str(value)); result.setObjectName("assessmentFieldValue")
+        layout.addWidget(label); layout.addStretch(1); layout.addWidget(result)
+        self.context_body.addWidget(row)
 
     def _confirm(self):
-        if self._saving: return
+        if self._saving or self.current_step != self.REVIEW: return
         boundary = self.editor.closed_boundary()
-        if self.pages.currentIndex() != self.REVIEW or boundary is None: return
-        self._saving = True; self._sync_status()
+        if boundary is None: return
+        self._saving = True; self.stepper.set_step(self.SAVE); self.footer_status.setText("Saving…"); self._sync_ui()
         try:
             result = self.controller.save_assessment_area_geometry(
                 assessment_area_id=self.edit_area_id, name=self.area_name.text().strip(),
                 assessment_date=self.assessment_date.date().toPython(), boundary=boundary)
         except Exception as exc:
-            QMessageBox.critical(self, tr("Assessment Area"), f"Could not save the new boundaries.\n\n{domain_message(str(exc))}")
+            self._saving = False; self.footer_status.clear(); self.stepper.set_step(self.REVIEW); self._sync_ui()
+            QMessageBox.critical(self, tr("Assessment Area"),
+                                 f"Could not save the new boundaries.\n\n{domain_message(str(exc))}")
             return
-        finally:
-            self._saving = False; self._sync_status()
+        self._saving = False
         if result.link_refresh_warning:
             QMessageBox.warning(self, tr("Assessment Area saved"),
                                 "The Assessment Area was saved, but linked-event suggestions could not be refreshed.\n\n"
@@ -174,23 +304,29 @@ class AssessmentAreaCreationPage(QWidget):
 
     def _close_page(self): self.cancelled.emit()
 
-    def _sync_status(self, *_args):
-        state = self.editor.workflow_state; current = self.pages.currentIndex()
-        can_edit = not self.editor.read_only
-        self.start.setEnabled(can_edit and state == "IDLE")
-        self.back_vertex.setEnabled(can_edit and state in {"DRAWING", "CLOSED"})
-        self.finish.setEnabled(can_edit and state == "DRAWING")
-        self.cancel_drawing.setEnabled(can_edit and state != "IDLE")
-        self.back.setEnabled(current == self.REVIEW or (current == self.BOUNDARY and not self.edit_area_id))
-        self.next.setVisible(current != self.REVIEW)
-        self.next.setEnabled(current == self.GENERAL or (current == self.BOUNDARY and self.editor.closed_boundary() is not None))
-        self.confirm.setVisible(current == self.REVIEW and can_edit)
-        self.confirm.setEnabled(current == self.REVIEW and not self._saving)
-        names = ("General information", "Boundary", "Review")
-        self.stepper.setText("  →  ".join(f"[{name}]" if i == current else name for i, name in enumerate(names)))
-        self.step_status.setText({"DRAWING":"Wheel: zoom · Middle drag: pan · Click: draw. Close boundary when finished.",
-                                  "CLOSED":"Boundary closed and valid. Continue to Review or use Undo to edit it.",
-                                  "IDLE":"Wheel: zoom · Middle drag: pan. Inspect the plan, then start boundary drawing."}.get(state, state))
+    def _sync_ui(self, *_args):
+        state = self.editor.workflow_state; boundary_step = self.current_step == self.BOUNDARY
+        can_edit = not self.editor.read_only and not self._saving
+        self.plan_title.setText(("Project plan", "Define Assessment boundary", "Potential linked events",
+                                 "Assessment footprint", "Assessment footprint")[self.current_step])
+        self.start.setEnabled(can_edit and boundary_step and state == "IDLE")
+        self.back_vertex.setEnabled(can_edit and boundary_step and state in {"DRAWING", "CLOSED"})
+        self.finish.setEnabled(can_edit and boundary_step and state == "DRAWING")
+        self.cancel_drawing.setEnabled(can_edit and boundary_step and state != "IDLE")
+        self.editor.plan_view.set_polygon_drawing_mode(boundary_step and state == "DRAWING")
+        self.back.setVisible(self.current_step != self.GENERAL)
+        self.back.setEnabled(not self._saving and not (self.edit_area_id and self.current_step == self.BOUNDARY))
+        self.next.setVisible(self.current_step != self.REVIEW)
+        self.next.setEnabled(not self._saving and (self.current_step == self.GENERAL or
+                             self.current_step == self.LINKS or
+                             (boundary_step and self.editor.closed_boundary() is not None)))
+        self.confirm.setVisible(self.current_step == self.REVIEW)
+        self.confirm.setEnabled(can_edit and self.current_step == self.REVIEW)
+        self.cancel.setEnabled(not self._saving)
+        self.step_status.setText({"DRAWING":"Click to draw · Wheel to zoom · Middle drag to pan",
+                                  "CLOSED":"Boundary closed and valid.",
+                                  "IDLE":"Inspect the plan, then use Draw boundary."}.get(state, state))
+        self._update_geometry_summary()
 
     def has_active_workflow(self): return self.editor.has_active_workflow()
     def cancel_active_workflow(self): return self.editor.cancel_workflow()
