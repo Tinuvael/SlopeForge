@@ -228,9 +228,13 @@ class BlockPage(QWidget):
             self._reimport_callback = None
 
     def _save_technical_card_draft(self):
-        if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:self.technical_card_editor.save_draft()
+        if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:
+            if self.technical_card_editor.save_draft():
+                self.refresh()
     def _complete_technical_card(self):
-        if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:self.technical_card_editor.complete()
+        if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:
+            if self.technical_card_editor.complete():
+                self.refresh()
 
     def _reimport_geometry(self,event):
         if not self.context.current_user.can_edit or not self.current_block or self.current_block.is_archived:

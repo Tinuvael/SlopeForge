@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (QGridLayout,QHBoxLayout,QInputDialog,QLabel,QMess
                                QTabWidget,QVBoxLayout,QWidget)
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
-from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame
+from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame,apply_workflow_badge_style
 from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog
 from ui.presentation_labels import format_assessment_elevation_interval, result_label
 
@@ -20,10 +20,10 @@ class AssessmentAreaPage(QWidget):
         self._build_editor()
         root=QVBoxLayout(self); self._header(root); body=QHBoxLayout(); left=QVBoxLayout(); self.tabs=QTabWidget(); left.addWidget(self.tabs); body.addLayout(left,4); self._sidebar(body); root.addLayout(body)
         self._overview(); self.tabs.addTab(self.assessment_tab,tr("Assessment")); self.tabs.addTab(self.result,tr("Result")); self._linked_events(); self._attachment_tab("Photos"); self._attachment_tab("Documents"); self.tabs.addTab(self.history,tr("History")); self._refresh_overview_and_sidebar()
-        self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#eef5ff;color:#174f8a;border:1px solid #b8d3ef;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
+        self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
 
     def _header(self,root):
-        card=CardFrame(); top=QHBoxLayout(); title=QLabel(self.area.name); title.setObjectName("EntityTitle"); self.header_status=QLabel(); self.header_status.setObjectName("StatusBadge"); top.addWidget(title); top.addStretch(); top.addWidget(self.header_status); card.layout.addLayout(top); rev=self.area.active_geometry_revision(); meta=QHBoxLayout()
+        card=CardFrame(); top=QHBoxLayout(); title=QLabel(self.area.name); title.setObjectName("EntityTitle"); self.header_status=QLabel(); apply_workflow_badge_style(self.header_status); top.addWidget(title); top.addStretch(); top.addWidget(self.header_status); card.layout.addLayout(top); rev=self.area.active_geometry_revision(); meta=QHBoxLayout()
         interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation)
         for text in (f"{tr('ID')}: {self.area.id}",f"{tr('Domain')}: {self.domain_name}",f"{tr('Assessment date')}: {self.area.assessment_date}",f"{tr('Elevation interval')}: {interval}",f"{tr('Revision')}: {rev.revision_number}"):
             badge=QLabel(text); badge.setObjectName("MetaBadge"); meta.addWidget(badge)

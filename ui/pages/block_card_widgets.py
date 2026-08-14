@@ -23,6 +23,16 @@ from domain.blasting.workflow import WORKFLOW_LABELS, BlastWorkflowState
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 
 ACTION_LABELS = {"create": "Create", "update": "Update", "delete": "Delete", "attach": "Attach", "detach": "Detach"}
+WORKFLOW_BADGE_STYLE = (
+    "background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;"
+    "border-radius:5px;padding:4px 8px"
+)
+
+
+def apply_workflow_badge_style(label: QLabel) -> None:
+    """Keep the primary workflow/progress badge identical on every entity page."""
+    label.setObjectName("StatusBadge")
+    label.setStyleSheet(WORKFLOW_BADGE_STYLE)
 
 
 def _dash(value) -> str:
@@ -76,7 +86,7 @@ class BlockHeaderWidget(CardFrame):
         self.title = QLabel(tr("Select a block"))
         self.title.setObjectName("BlockTitle")
         self.status = QLabel(tr("—"))
-        self.status.setObjectName("StatusBadge")
+        apply_workflow_badge_style(self.status)
         self.edit_button = QPushButton(tr("Edit"))
         top.addWidget(self.title)
         top.addWidget(self.status)
