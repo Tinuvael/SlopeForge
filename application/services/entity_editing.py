@@ -73,6 +73,34 @@ class AssessmentEditingSession:
             raise ValueError("Only contour BlastEvents can use contour archive")
         self._save_archive_change(event, archived, "persist_contour_archive")
 
+    def update_contour_metadata(self, event, *, name, elevation,
+                                target_domain_id, target_expected_version):
+        self._require_edit()
+        if event not in self.state.blast_events or event.event_type != "contour":
+            raise ValueError("Contour BlastEvent not found in this Domain")
+        name = name.strip()
+        if not name: raise ValueError("Name is required")
+        result = self._writes.update_contour_metadata(
+            self.domain_id, self.expected_version, target_domain_id,
+            target_expected_version, event.id, name, float(elevation))
+        event.name, event.elevation = name, float(elevation)
+        self.expected_version = result.new_version
+        return result
+
+    def update_assessment_area_metadata(self, area, *, name, target_domain_id,
+                                        target_expected_version):
+        self._require_edit()
+        if area not in self.state.assessment_areas:
+            raise ValueError("Assessment Area not found in this Domain")
+        name = name.strip()
+        if not name: raise ValueError("Name is required")
+        result = self._writes.update_assessment_area_metadata(
+            self.domain_id, self.expected_version, target_domain_id,
+            target_expected_version, area.id, name)
+        area.name = name
+        self.expected_version = result.new_version
+        return result
+
     def reimport_blast_event_geometry(self, event, path):
         self._require_edit()
         if event not in self.state.blast_events:

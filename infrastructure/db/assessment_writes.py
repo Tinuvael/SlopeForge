@@ -10,6 +10,8 @@ from database import assessment_models as orm
 from database.models import Domain
 from application.ports.domain_version import DomainWriteResult
 from infrastructure.db.domain_version import guard_domain_versions
+from application.services.assessment_event_links import AssessmentEventLinkService
+from repositories.assessment_state_repository import _domain_graph_queries, _state_from_domain
 
 
 class SqlAlchemyAssessmentWrites:
@@ -43,6 +45,86 @@ class SqlAlchemyAssessmentWrites:
             row.is_archived, row.archived_at, row.archive_reason = (
                 event.is_archived, event.archived_at, event.archive_reason)
             return DomainWriteResult(new_version)
+
+    @staticmethod
+    def _same_project(s, source_id, target_id):
+        domains = {row.id: row for row in s.scalars(
+            select(Domain).where(Domain.id.in_({source_id, target_id})))}
+        if len(domains) != (1 if source_id == target_id else 2):
+            raise ValueError("Select an existing Domain")
+        if domains[source_id].site_id != domains[target_id].site_id:
+            raise ValueError("Entities can only move between Domains of the same Project")
+        return domains[source_id].site_id
+
+    @classmethod
+    def _rebuild_current_suggestions(cls, s, domain_id, *, area_logical_id=None):
+        events_query, areas_query = _domain_graph_queries(domain_id)
+        events = list(s.scalars(events_query).unique())
+        areas = list(s.scalars(areas_query).unique())
+        site_id = s.get(Domain, domain_id).site_id
+        datasets = list(s.scalars(select(orm.ProjectLinesDataset).where(
+            orm.ProjectLinesDataset.site_id == site_id)))
+        state = _state_from_domain(events, areas, datasets)
+        service = AssessmentEventLinkService(state)
+        for area in state.assessment_areas:
+            if area_logical_id is not None and area.id != area_logical_id:
+                continue
+            service.refresh_suggestions(area)
+            row = cls._logical(s, orm.AssessmentArea, domain_id, area.id)
+            cls._sync_links(s, row, area.active_geometry_revision_id,
+                            area.links_for_revision())
+
+    @staticmethod
+    def _remove_current_cross_domain_links(s, domain_id):
+        rows = list(s.scalars(select(orm.AssessmentEventLink).join(
+            orm.AssessmentAreaGeometryRevision).join(orm.AssessmentArea).join(
+            orm.BlastEventGeometryRevision,
+            orm.AssessmentEventLink.blast_event_geometry_revision_id == orm.BlastEventGeometryRevision.id
+        ).join(orm.BlastEvent).where(
+            orm.AssessmentAreaGeometryRevision.is_active.is_(True),
+            orm.AssessmentArea.domain_id == domain_id,
+            orm.BlastEvent.domain_id != domain_id)))
+        for row in rows: s.delete(row)
+        if rows: s.flush()
+
+    def update_contour_metadata(self, domain_id, expected_version,
+                                target_domain_id, target_expected_version,
+                                event_id, name, elevation):
+        if not name.strip(): raise ValueError("Name is required")
+        with self._session_factory.begin() as s:
+            self._same_project(s, domain_id, target_domain_id)
+            expected = {domain_id: expected_version}
+            if target_domain_id != domain_id:
+                expected[target_domain_id] = target_expected_version
+            versions = guard_domain_versions(s, expected)
+            row = self._logical(s, orm.BlastEvent, domain_id, event_id)
+            if row.event_type != "contour": raise ValueError("Stored BlastEvent is not contour")
+            row.name, row.elevation_m = name.strip(), elevation
+            if target_domain_id != domain_id:
+                row.domain_id = target_domain_id; s.flush()
+                self._remove_current_cross_domain_links(s, domain_id)
+                self._remove_current_cross_domain_links(s, target_domain_id)
+                self._rebuild_current_suggestions(s, target_domain_id)
+            return DomainWriteResult(versions[target_domain_id])
+
+    def update_assessment_area_metadata(self, domain_id, expected_version,
+                                        target_domain_id, target_expected_version,
+                                        area_id, name):
+        if not name.strip(): raise ValueError("Name is required")
+        with self._session_factory.begin() as s:
+            self._same_project(s, domain_id, target_domain_id)
+            expected = {domain_id: expected_version}
+            if target_domain_id != domain_id:
+                expected[target_domain_id] = target_expected_version
+            versions = guard_domain_versions(s, expected)
+            row = self._logical(s, orm.AssessmentArea, domain_id, area_id)
+            row.name = name.strip()
+            if target_domain_id != domain_id:
+                row.domain_id = target_domain_id; s.flush()
+                self._remove_current_cross_domain_links(s, target_domain_id)
+                self._rebuild_current_suggestions(s, target_domain_id,
+                                                  area_logical_id=area_id)
+            return DomainWriteResult(versions[target_domain_id])
 
     def append_blast_geometry_revision(self, domain_id, expected_version, event_id, revision):
         with self._session_factory.begin() as s:

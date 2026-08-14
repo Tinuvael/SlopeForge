@@ -2934,5 +2934,14 @@
             <source>Area name</source>
             <translation>Название области</translation>
         </message>
+        <message><source>Could not save</source><translation>Не удалось сохранить</translation></message>
+        <message><source>Edit block</source><translation>Изменить блок</translation></message>
+        <message><source>Frozen geometry</source><translation>Зафиксированная геометрия</translation></message>
+        <message><source>Name is required</source><translation>Укажите название</translation></message>
+        <message><source>The new Horizon differs from the active imported geometry elevation. Existing geometry revisions will remain unchanged.
+
+Continue?</source><translation>Новый горизонт отличается от отметки активной импортированной геометрии. Существующие ревизии геометрии останутся без изменений.
+
+Продолжить?</translation></message>
     </context>
 </TS>

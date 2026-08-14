@@ -1,5 +1,6 @@
 from app.localization import tr
 """Focused Block-style page for one contour BlastEvent (never a BlastBlock)."""
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFileDialog,QGridLayout,QHBoxLayout,QLabel,QMessageBox,QPushButton,QTabWidget,QVBoxLayout,QWidget
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
@@ -12,6 +13,7 @@ from domain.blasting.workflow import WORKFLOW_LABELS, blast_workflow_for
 def _show(value,unit=""):return "—" if value in (None,"") else f"{value:g}{unit}" if isinstance(value,(int,float)) else str(value)
 
 class ContourEventPage(QWidget):
+    metadata_saved=Signal(str,int)
     def __init__(self,context,domain_id,domain_name,event_id,parent=None):
         super().__init__(parent); self.context=context; self.domain_name=domain_name; self.controller=EntityPageController(context,domain_id); self.blast_event=next(e for e in self.controller.state.blast_events if e.id==event_id and e.event_type=="contour"); self.read_only=not context.current_user.can_edit or self.blast_event.is_archived; self.rev=self.blast_event.active_geometry_revision()
         card,draft=self.controller.technical_card_draft(self.blast_event); self.card,self.draft=card,draft; self.editor=TechnicalCardEditorWidget(self.blast_event,card,draft,self.controller.save_technical_card,self,self.read_only)
@@ -19,14 +21,30 @@ class ContourEventPage(QWidget):
         self._general(); self.tabs.addTab(BlastDesignEditorWidget(self.editor.take_tab(tr("Contour drilling"))),tr("Blast design")); self.tabs.addTab(ActualExecutionEditorWidget(self.editor.take_tab(tr("Execution fact"))),tr("Execution fact")); self.photos_tab=self._attachments("Photos"); self.documents_tab=self._attachments("Documents"); self.tabs.addTab(self.photos_tab,tr("Photos")); self.tabs.addTab(self.documents_tab,tr("Documents")); self.tabs.addTab(self.editor.take_tab(tr("Revision history")),tr("History")); self._refresh_sidebar()
         self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
     def _header(self,root):
-        card=CardFrame(); top=QHBoxLayout(); title=QLabel(f"{tr('Contour blast')} {self.blast_event.name}"); title.setObjectName("EntityTitle"); self.header_status=QLabel(); apply_workflow_badge_style(self.header_status); top.addWidget(title); top.addStretch(); top.addWidget(self.header_status)
+        card=CardFrame(); top=QHBoxLayout(); title=QLabel(f"{tr('Contour blast')} {self.blast_event.name}"); title.setObjectName("EntityTitle"); self.header_status=QLabel(); apply_workflow_badge_style(self.header_status); top.addWidget(title); top.addWidget(self.header_status)
         if self.blast_event.is_archived: top.addWidget(QLabel(tr("Archived")))
+        top.addStretch(); self.edit_button=QPushButton(tr("Edit")); self.edit_button.setEnabled(not self.read_only); self.edit_button.clicked.connect(self.edit_metadata); top.addWidget(self.edit_button)
         card.layout.addLayout(top); meta=QHBoxLayout()
         for index,text in enumerate((f"{tr('ID')}: {self.blast_event.id}",f"{tr('Horizon')}: {self.blast_event.elevation:g} m",f"{tr('Domain')}: {self.domain_name}",f"{tr('Planned blast date')}: {self.blast_event.event_date or '—'}",f"{tr('Revision')}: {self.rev.revision_number if self.rev else '—'}")):
             badge=QLabel(text); badge.setObjectName("MetaBadge"); meta.addWidget(badge)
             if index == 3: self.header_date = badge
         meta.addStretch(); card.layout.addLayout(meta); root.addWidget(card)
         self._refresh_workflow_presentation()
+
+    def edit_metadata(self):
+        from repositories.domain_repository import DomainRepository
+        from ui.dialogs.entity_metadata_dialogs import ContourMetadataDialog
+        repo=DomainRepository(self.context.session_factory); domains=repo.selectable_for_site(self.controller.site_id)
+        dialog=ContourMetadataDialog(domains,self.controller.domain_id,self.blast_event.name,self.blast_event.elevation,self)
+        if not dialog.exec(): return
+        name=dialog.name.text().strip(); target_id,target_version=dialog.selected_domain
+        if not name: QMessageBox.warning(self,tr("Could not save"),tr("Name is required")); return
+        if self.rev and abs(dialog.horizon.value()-float(self.rev.elevation))>0.01:
+            text=tr("The new Horizon differs from the active imported geometry elevation. Existing geometry revisions will remain unchanged.\n\nContinue?")
+            if QMessageBox.question(self,tr("Frozen geometry"),text)!=QMessageBox.Yes:return
+        try:self.controller.update_contour_metadata(self.blast_event,name=name,elevation=dialog.horizon.value(),target_domain_id=target_id,target_expected_version=target_version)
+        except Exception as exc:QMessageBox.warning(self,tr("Could not save"),domain_message(str(exc))); return
+        self.metadata_saved.emit(self.blast_event.id,target_id)
 
     def _refresh_workflow_presentation(self):
         workflow = tr(WORKFLOW_LABELS[blast_workflow_for(self.controller.state, self.blast_event)])

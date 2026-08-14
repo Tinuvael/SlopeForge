@@ -63,6 +63,12 @@ class EntityPageController:
     def set_contour_event_archived(self, event, archived):
         return self.editing.set_contour_event_archived(event, archived)
 
+    def update_contour_metadata(self, event, **values):
+        return self.editing.update_contour_metadata(event, **values)
+
+    def update_assessment_area_metadata(self, area, **values):
+        return self.editing.update_assessment_area_metadata(area, **values)
+
     def reimport_blast_event_geometry(self, event, path):
         return self.editing.reimport_blast_event_geometry(event, path)
 

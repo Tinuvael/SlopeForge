@@ -106,7 +106,13 @@ def _state_from_domain(events_rows: list[orm.BlastEvent], areas_rows: list[orm.A
                 "change_reason": revision.change_reason})
             for link in sorted(revision.event_links, key=lambda x: (x.created_at, x.id)):
                 target = link.blast_event_geometry_revision
-                _assert_link_same_domain(row, target)
+                # Current links are an ownership invariant.  Older revisions are
+                # frozen evidence and may legitimately reference an event which
+                # was subsequently moved to another Domain.
+                if revision.is_active:
+                    _assert_link_same_domain(row, target)
+                elif target.blast_event.domain_id != row.domain_id:
+                    continue
                 event_domain, geometry_domain = geometry_owner[link.blast_event_geometry_revision_id]
                 links.append({"id": link.logical_id, "assessment_area_geometry_revision_id": revision.logical_id,
                     "blast_event_id": event_domain, "geometry_revision_id": geometry_domain,

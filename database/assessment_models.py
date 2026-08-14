@@ -77,9 +77,15 @@ def _validate_blast_event_block_domain(session, _flush_context, _instances):
     for row in session.new.union(session.dirty):
         if not isinstance(row, BlastEvent) or row.blast_block_id is None:
             continue
-        block_domain_id = session.scalar(
-            select(BlastBlock.domain_id).where(BlastBlock.id == row.blast_block_id)
-        )
+        # A metadata command may atomically move both halves of the production
+        # unit.  Prefer the pending in-session Block value over the old database
+        # value while validating that single flush.
+        pending_block = next((item for item in session.new.union(session.dirty)
+                              if isinstance(item, BlastBlock)
+                              and item.id == row.blast_block_id), None)
+        block_domain_id = (pending_block.domain_id if pending_block is not None else
+            session.scalar(select(BlastBlock.domain_id).where(
+                BlastBlock.id == row.blast_block_id)))
         if block_domain_id is None:
             raise ValueError("Linked BlastBlock does not exist")
         if row.domain_id != block_domain_id:
