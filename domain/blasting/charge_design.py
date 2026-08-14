@@ -6,6 +6,7 @@ absence of a component and is therefore never stored as a component.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_FLOOR
 from enum import Enum
 import math
 import re
@@ -151,3 +152,21 @@ def available_air_intervals(
     if cursor < hole_depth_m:
         gaps.append((cursor, hole_depth_m))
     return gaps
+
+
+def cartridge_depths(component: ChargeComponent) -> tuple[float, ...]:
+    """Return cartridge centres using the inclusive start-plus-pitch convention.
+
+    Decimal arithmetic derives every position from the deck start (rather than
+    repeatedly adding a binary float), so the end-point decision is stable.
+    """
+    if component.kind is not ChargeComponentKind.CARTRIDGE_EXPLOSIVE:
+        raise ChargeDesignValidationError("Cartridge depths require a cartridge component")
+    pitch = component.cartridge_pitch_m
+    if pitch is None or not math.isfinite(pitch) or pitch <= 0:
+        raise ChargeDesignValidationError("Cartridge pitch must be a finite value greater than zero")
+    start = Decimal(str(component.start_depth_m))
+    end = Decimal(str(component.end_depth_m))
+    step = Decimal(str(pitch))
+    count = int(((end - start) / step).to_integral_value(rounding=ROUND_FLOOR)) + 1
+    return tuple(float(start + step * index) for index in range(count))

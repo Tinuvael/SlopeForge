@@ -3043,5 +3043,24 @@ Continue?</source><translation>Новый горизонт отличается 
             <source>Disabled</source>
             <translation>Отключён</translation>
         </message>
+        <message><source>Add component</source><translation>Добавить компонент</translation></message>
+        <message><source>Delete component</source><translation>Удалить компонент</translation></message>
+        <message><source>Air</source><translation>Воздух</translation></message>
+        <message><source>Bulk explosive</source><translation>Наливное ВВ</translation></message>
+        <message><source>Cartridge explosive</source><translation>Патронированное ВВ</translation></message>
+        <message><source>Start depth, m</source><translation>Начальная глубина, м</translation></message>
+        <message><source>End depth, m</source><translation>Конечная глубина, м</translation></message>
+        <message><source>Length, m</source><translation>Длина, м</translation></message>
+        <message><source>Product</source><translation>Материал</translation></message>
+        <message><source>Pitch, m</source><translation>Шаг, м</translation></message>
+        <message><source>Cartridge count</source><translation>Количество патронов</translation></message>
+        <message><source>No explosive products configured</source><translation>Взрывчатые материалы не настроены</translation></message>
+        <message><source>Collar</source><translation>Устье</translation></message>
+        <message><source>Toe</source><translation>Забой</translation></message>
+        <message><source>current snapshot</source><translation>текущий снимок</translation></message>
+        <message><source>Drag bound (0.1 m snap)</source><translation>Перетащите границу (шаг 0,1 м)</translation></message>
+        <message><source>No air interval has 0.1 m available.</source><translation>Нет воздушного интервала длиной 0,1 м.</translation></message>
+        <message><source>Cartridge pitch</source><translation>Шаг патронов</translation></message>
+        <message><source>Pitch is required</source><translation>Укажите шаг патронов</translation></message>
     </context>
 </TS>
