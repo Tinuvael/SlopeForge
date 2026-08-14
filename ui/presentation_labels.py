@@ -159,6 +159,14 @@ def result_label(value: str | None) -> str:
     return tr(RESULT_LABELS.get(value or "", value or ""))
 
 
+def format_assessment_elevation_interval(minimum: float | None,
+                                         maximum: float | None) -> str:
+    """Format an Assessment interval without changing its stored precision."""
+    if minimum is None or maximum is None:
+        return "—"
+    return f"{minimum:.0f}–{maximum:.0f} m"
+
+
 def domain_message(value: str) -> str:
     """Translate known domain validation text without altering domain values.
 

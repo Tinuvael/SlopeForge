@@ -2902,5 +2902,33 @@
             <source>Save Assessment</source>
             <translation>Сохранить оценку</translation>
         </message>
+        <message>
+            <source>Back</source>
+            <translation>Назад</translation>
+        </message>
+        <message>
+            <source>Project Lines dataset</source>
+            <translation>Набор линий проекта</translation>
+        </message>
+        <message>
+            <source>Project Lines source file</source>
+            <translation>Исходный файл линий проекта</translation>
+        </message>
+        <message>
+            <source>Save revision</source>
+            <translation>Сохранить ревизию</translation>
+        </message>
+        <message>
+            <source>Assessment Area saved</source>
+            <translation>Область оценки сохранена</translation>
+        </message>
+        <message>
+            <source>ASSESSMENT AREA</source>
+            <translation>ОБЛАСТЬ ОЦЕНКИ</translation>
+        </message>
+        <message>
+            <source>Area name</source>
+            <translation>Название области</translation>
+        </message>
     </context>
 </TS>

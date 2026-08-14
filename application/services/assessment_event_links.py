@@ -13,6 +13,8 @@ from domain.blasting.entities import BlastEvent, utc_now
 from domain.assessment.entities import AssessmentArea, AssessmentEventLink
 from domain.assessment.event_links import AssessmentEventLinkCandidate, evaluate_event
 from application.state.assessment_domain_state import AssessmentDomainState
+from domain.assessment.geometry import AssessmentBoundary, derive_elevation_summary, derive_plan_polygon
+from domain.assessment.entities import AssessmentAreaGeometryRevision
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,30 @@ class LinkRefreshResult:
         return self.production_matches + self.contour_matches
 
 
+@dataclass(frozen=True)
+class AssessmentLinkPreviewItem:
+    blast_event_id: str
+    name: str
+    event_type: str
+    elevation: float
+
+
+@dataclass(frozen=True)
+class AssessmentLinkPreview:
+    items: tuple[AssessmentLinkPreviewItem, ...]
+
+    @property
+    def total(self) -> int: return len(self.items)
+
+    @property
+    def production_count(self) -> int:
+        return sum(item.event_type == "production" for item in self.items)
+
+    @property
+    def contour_count(self) -> int:
+        return sum(item.event_type == "contour" for item in self.items)
+
+
 class AssessmentEventLinkService:
     def __init__(self, state: AssessmentDomainState):
         self.state = state
@@ -57,6 +83,21 @@ class AssessmentEventLinkService:
     def find_candidates(self, area: AssessmentArea) -> list[AssessmentEventLinkCandidate]:
         return [candidate for event in self.state.blast_events
                 if (candidate := self.evaluate_event(area, event)).reason == "matched"]
+
+    def preview(self, boundary: AssessmentBoundary) -> AssessmentLinkPreview:
+        """Evaluate an ephemeral Area without changing the live Domain graph."""
+        minimum, maximum = derive_elevation_summary(boundary)
+        revision = AssessmentAreaGeometryRevision(
+            "preview-R001", "preview", 1, utc_now(), boundary,
+            derive_plan_polygon(boundary), minimum, maximum)
+        area = AssessmentArea("preview", "Preview", utc_now().date(), [revision], revision.id, [])
+        events = {event.id: event for event in self.state.blast_events}
+        items = tuple(
+            AssessmentLinkPreviewItem(candidate.blast_event_id, events[candidate.blast_event_id].name,
+                                      candidate.event_type, events[candidate.blast_event_id].elevation)
+            for candidate in self.find_candidates(area)
+        )
+        return AssessmentLinkPreview(items)
 
     def refresh_suggestions(self, area: AssessmentArea) -> LinkRefreshResult:
         self._ensure_editable(area)

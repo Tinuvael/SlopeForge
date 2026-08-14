@@ -7,7 +7,7 @@ from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame
 from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog
-from ui.presentation_labels import result_label
+from ui.presentation_labels import format_assessment_elevation_interval, result_label
 
 
 def _value(value): return "—" if value in (None,"") else str(value)
@@ -23,7 +23,8 @@ class AssessmentAreaPage(QWidget):
 
     def _header(self,root):
         card=CardFrame(); top=QHBoxLayout(); title=QLabel(self.area.name); title.setObjectName("EntityTitle"); self.header_status=QLabel(); self.header_status.setObjectName("StatusBadge"); top.addWidget(title); top.addStretch(); top.addWidget(self.header_status); card.layout.addLayout(top); rev=self.area.active_geometry_revision(); meta=QHBoxLayout()
-        for text in (f"{tr('ID')}: {self.area.id}",f"{tr('Domain')}: {self.domain_name}",f"{tr('Assessment date')}: {self.area.assessment_date}",f"{tr('Elevation interval')}: {_value(rev.min_elevation)}–{_value(rev.max_elevation)} m",f"{tr('Revision')}: {rev.revision_number}"):
+        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation)
+        for text in (f"{tr('ID')}: {self.area.id}",f"{tr('Domain')}: {self.domain_name}",f"{tr('Assessment date')}: {self.area.assessment_date}",f"{tr('Elevation interval')}: {interval}",f"{tr('Revision')}: {rev.revision_number}"):
             badge=QLabel(text); badge.setObjectName("MetaBadge"); meta.addWidget(badge)
         meta.addStretch(); card.layout.addLayout(meta); root.addWidget(card)
 
@@ -45,7 +46,7 @@ class AssessmentAreaPage(QWidget):
 
     def _overview(self):
         page=QWidget(); layout=QVBoxLayout(page); rev=self.area.active_geometry_revision(); top=QHBoxLayout(); self.info_card=CardFrame("General information"); self.info_grid=QGridLayout(); self.info_card.layout.addLayout(self.info_grid); top.addWidget(self.info_card,3)
-        self.plan=PlanGeometryWidget(); dataset=next((d for d in self.controller.state.datasets if d.id==(rev.source_dataset_ids[0] if rev.source_dataset_ids else None)),None); self.plan.set_geometry(rev.final_geometry_frozen,dataset.lines if dataset else [],f"{tr('Elevation interval')}: {_value(rev.min_elevation)}–{_value(rev.max_elevation)}"); top.addWidget(self.plan,2); layout.addLayout(top)
+        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation); self.plan=PlanGeometryWidget(); dataset=next((d for d in self.controller.state.datasets if d.id==(rev.source_dataset_ids[0] if rev.source_dataset_ids else None)),None); self.plan.set_geometry(rev.final_geometry_frozen,dataset.lines if dataset else [],f"{tr('Elevation interval')}: {interval}"); top.addWidget(self.plan,2); layout.addLayout(top)
         cards=QHBoxLayout(); self.result_card,self.links_card,self.geometry_card=(CardFrame(x) for x in ("Assessment result","Linked events","Geometry")); self.result_text=QLabel(); self.links_text=QLabel(); self.geometry_text=QLabel();
         for card,label in ((self.result_card,self.result_text),(self.links_card,self.links_text),(self.geometry_card,self.geometry_text)):label.setWordWrap(True); card.layout.addWidget(label); cards.addWidget(card)
         layout.addLayout(cards); bottom=QHBoxLayout(); self.comments_card=CardFrame("Comments / recommendations"); self.comments_text=QLabel(); self.comments_text.setWordWrap(True); self.comments_card.layout.addWidget(self.comments_text); self.recent_card=CardFrame("Recent history"); self.recent_text=QLabel(); self.recent_text.setWordWrap(True); self.recent_card.layout.addWidget(self.recent_text); bottom.addWidget(self.comments_card,3); bottom.addWidget(self.recent_card,2); layout.addLayout(bottom)
@@ -56,11 +57,11 @@ class AssessmentAreaPage(QWidget):
         while self.info_grid.count():
             item=self.info_grid.takeAt(0)
             if item.widget():item.widget().deleteLater()
-        rows=(("Name",self.area.name),("ID",self.area.id),("Domain",self.domain_name),("Assessment date",self.area.assessment_date),("Status",status),("Elevation interval",f"{_value(rev.min_elevation)}–{_value(rev.max_elevation)} m"),("Active geometry revision",rev.revision_number),("Project Lines Dataset",', '.join(rev.source_dataset_ids) or 'Free boundary'))
+        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation); rows=(("Name",self.area.name),("ID",self.area.id),("Domain",self.domain_name),("Assessment date",self.area.assessment_date),("Status",status),("Elevation interval",interval),("Active geometry revision",rev.revision_number),("Project Lines Dataset",', '.join(rev.source_dataset_ids) or 'Free boundary'))
         self.general_information={}
         for row,(name,value) in enumerate(rows):left=QLabel(tr(name)); left.setObjectName("MutedText"); right=QLabel(_value(value)); self.general_information[name]=right; self.info_grid.addWidget(left,row,0); self.info_grid.addWidget(right,row,1)
         evaluation_status=active.status if active else "—"; dai=f"{active.design_achievement_index:.3f}" if active and active.design_achievement_index is not None else "—"; fci=f"{active.face_condition_index:.3f}" if active and active.face_condition_index is not None else "—"; quadrant=result_label(active.result_label) if active else "—"
-        self.result_text.setText(f"{tr('Evaluation status')}: {evaluation_status}\nDAI: {dai}\nFCI: {fci}\n{tr('Result')}: {_value(quadrant)}"); self.links_text.setText(f"{tr('Production blasts')}: {prod}\n{tr('Contour blasts')}: {contour}\n{tr('Total confirmed')}: {len(confirmed)}"); self.geometry_text.setText(f"{tr('Elevation interval')}: {_value(rev.min_elevation)}–{_value(rev.max_elevation)} m\n{tr('Revision')}: {rev.revision_number}\n{tr('Project Lines Dataset')}: {', '.join(rev.source_dataset_ids) or 'Free boundary'}")
+        self.result_text.setText(f"{tr('Evaluation status')}: {evaluation_status}\nDAI: {dai}\nFCI: {fci}\n{tr('Result')}: {_value(quadrant)}"); self.links_text.setText(f"{tr('Production blasts')}: {prod}\n{tr('Contour blasts')}: {contour}\n{tr('Total confirmed')}: {len(confirmed)}"); self.geometry_text.setText(f"{tr('Elevation interval')}: {interval}\n{tr('Revision')}: {rev.revision_number}\n{tr('Project Lines Dataset')}: {', '.join(rev.source_dataset_ids) or 'Free boundary'}")
         comments=((active.comments or "")+("\n" if active and active.comments and active.recommendations else "")+(active.recommendations or "")) if active else ""; self.comments_text.setText(comments or tr("No comments or recommendations")); geometry_history="\n".join(f"{tr('Geometry')} R{x.revision_number}: {x.created_at.date()}" for x in self.area.geometry_revisions[-3:]); evaluation_history="\n".join(f"{tr('Assessment')} R{x.revision_number}: {x.status}, {x.created_at.date()}" for x in self.evaluation.revisions[-3:]); self.recent_text.setText((geometry_history+"\n"+evaluation_history).strip())
         while self.summary_grid.count():
             item=self.summary_grid.takeAt(0)

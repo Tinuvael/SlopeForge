@@ -126,10 +126,16 @@ class AssessmentGeometryEditorWidget(QWidget):
         self._last_point=self._first_point; self._last_anchor=self._first_anchor
         self._set_workflow_state("CLOSED"); self.draw_geometry()
     close_boundary=finish_polygon
+    def closed_boundary(self):
+        """Return the frozen draft only when it has passed CLOSED validation."""
+        if self.workflow_state != "CLOSED":
+            return None
+        return AssessmentBoundary(tuple(self._segments))
+
     def confirm_boundaries(self, *, name=None, assessment_date=None):
         self._ensure_can_edit()
         if self.workflow_state!="CLOSED": return
-        boundary=AssessmentBoundary(tuple(self._segments)); editing_id=self._editing_area.id if self._editing_area else None
+        boundary=self.closed_boundary(); editing_id=self._editing_area.id if self._editing_area else None
         if editing_id:
             name, assessment_date = self._editing_area.name, self._editing_area.assessment_date
         elif not name or not name.strip() or assessment_date is None:

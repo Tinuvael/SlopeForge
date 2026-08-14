@@ -123,6 +123,10 @@ class AssessmentEditingSession:
     def refresh_event_link_suggestions(self, area):
         return self._mutate_links(area, self.links.refresh_suggestions)
 
+    def preview_assessment_event_links(self, boundary):
+        """Read-only advisory match using the same matcher as final refresh."""
+        return self.links.preview(boundary)
+
     def save_assessment_area_geometry(self, *, assessment_area_id=None, name=None,
                                       assessment_date=None, boundary=None, change_reason=None):
         """Create/revise geometry, refresh links, and persist with in-place rollback."""
