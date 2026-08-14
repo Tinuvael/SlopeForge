@@ -53,6 +53,20 @@ def test_viewer_cannot_mutate_catalogue():
     with pytest.raises(PermissionError): service.create_product(product())
 
 
+def test_update_revalidates_mutable_product_before_persistence():
+    class TrackingCatalogue(MemoryCatalogue):
+        update_called = False
+        def update_product(self, submitted):
+            self.update_called = True
+            return super().update_product(submitted)
+
+    adapter = TrackingCatalogue(); service = ExplosiveCatalogue(adapter, adapter, can_edit=True)
+    submitted = product(); submitted.density_kg_m3 = None
+    with pytest.raises(ValueError, match="Density"):
+        service.update_product(submitted)
+    assert adapter.update_called is False
+
+
 @pytest.mark.parametrize("changes", [
     {"density_kg_m3": 0}, {"display_color": "red"},
     {"kind": ExplosiveProductKind.CARTRIDGE, "density_kg_m3": None,
@@ -80,7 +94,7 @@ def test_real_settings_dialog_catalogue_page_permissions_and_rows(monkeypatch):
     assert dialog.catalogues_page.findChild(type(dialog.catalogues_page.empty_label)).text() != ""
     assert dialog.catalogues_page.add_button.isEnabled()
     assert dialog.catalogues_page.table.item(0, 0).text() == "Bulk"
-    assert dialog.catalogues_page.table.item(0, 6).text() == "Disabled"
+    assert dialog.catalogues_page.table.item(0, 7).text() == "Disabled"
     dialog.close()
     viewer = ExplosiveCatalogue(adapter, adapter, can_edit=False)
     monkeypatch.setattr(module, "create_explosive_catalogue", lambda _context: viewer)
@@ -91,3 +105,59 @@ def test_real_settings_dialog_catalogue_page_permissions_and_rows(monkeypatch):
     assert not dialog.catalogues_page.toggle_button.isEnabled()
     assert dialog.catalogues_page.table.rowCount() == 1
     dialog.close(); app.processEvents()
+
+
+def test_product_dialog_required_numeric_fields_have_real_unset_state():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QApplication
+    from ui.engineering_catalogues_page import ExplosiveProductDialog
+    app = QApplication.instance() or QApplication([])
+    dialog = ExplosiveProductDialog(); dialog.name_edit.setText("New product")
+
+    assert dialog.density.text() == "Not set"
+    with pytest.raises(ValueError, match="Density"):
+        dialog.value()
+    dialog.density.setValue(1000)
+    assert dialog.value().density_kg_m3 == 1000
+
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ExplosiveProductKind.CARTRIDGE))
+    assert dialog.diameter.text() == "Not set"
+    assert dialog.mass.text() == "Not set"
+    assert dialog.pitch.text() == "Not set"
+    with pytest.raises(ValueError, match="Cartridge diameter"):
+        dialog.value()
+    dialog.diameter.setValue(40)
+    with pytest.raises(ValueError, match="Cartridge mass"):
+        dialog.value()
+    dialog.diameter.setValue(dialog.diameter.minimum())
+    dialog.mass.setValue(.5)
+    with pytest.raises(ValueError, match="Cartridge diameter"):
+        dialog.value()
+    dialog.diameter.setValue(40)
+    result = dialog.value()
+    assert result.cartridge_diameter_mm == 40
+    assert result.cartridge_mass_kg == .5
+    assert result.default_pitch_m is None
+
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ExplosiveProductKind.BULK))
+    assert dialog.density.value() == 1000
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ExplosiveProductKind.CARTRIDGE))
+    assert dialog.pitch.text() == "Not set"
+    dialog.close(); app.processEvents()
+
+
+def test_white_product_uses_separate_color_cell_without_recoloring_name():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QApplication
+    from ui.engineering_catalogues_page import EngineeringCataloguesPage
+    app = QApplication.instance() or QApplication([])
+    adapter = MemoryCatalogue(); service = ExplosiveCatalogue(adapter, adapter, can_edit=True)
+    service.create_product(product(display_color="#FFFFFF"))
+    page = EngineeringCataloguesPage(service, can_edit=True)
+    name_item, color_item = page.table.item(0, 0), page.table.item(0, 2)
+    assert name_item.foreground().style() == Qt.BrushStyle.NoBrush
+    assert color_item.text() == "#FFFFFF"
+    assert color_item.background().color() == QColor("#FFFFFF")
+    page.close(); app.processEvents()

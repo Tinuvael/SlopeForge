@@ -29,7 +29,11 @@ class ExplosiveCatalogue:
 
     def update_product(self, product: ExplosiveProduct) -> ExplosiveProduct:
         self._require_edit()
-        return self._writes.update_product(product)
+        # ExplosiveProduct is intentionally editable in catalogue forms.  Rebuild
+        # it at the application boundary so direct mutations cannot bypass its
+        # domain validation before reaching persistence.
+        validated = replace(product)
+        return self._writes.update_product(validated)
 
     def set_product_enabled(self, product_id: int, enabled: bool) -> ExplosiveProduct:
         self._require_edit()

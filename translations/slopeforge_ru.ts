@@ -35,6 +35,10 @@
             <translation>Инженерные каталоги</translation>
         </message>
         <message>
+            <source>Color</source>
+            <translation>Цвет</translation>
+        </message>
+        <message>
             <source>Activate / block</source>
             <translation>Активировать / заблокировать</translation>
         </message>

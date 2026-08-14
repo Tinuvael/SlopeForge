@@ -32,7 +32,7 @@ class ExplosiveProductDialog(QDialog):
         self.density = self._number(product.density_kg_m3 if product else None)
         self.diameter = self._number(product.cartridge_diameter_mm if product else None)
         self.mass = self._number(product.cartridge_mass_kg if product else None, decimals=4)
-        self.pitch = self._number(product.default_pitch_m if product else None, decimals=4, optional=True)
+        self.pitch = self._number(product.default_pitch_m if product else None, decimals=4)
         form.addRow(tr("Name"), self.name_edit); form.addRow(tr("Type"), self.kind_combo)
         form.addRow(tr("Display color"), color_row)
         self.density_label = QLabel(tr("Density, kg/m³")); form.addRow(self.density_label, self.density)
@@ -46,12 +46,18 @@ class ExplosiveProductDialog(QDialog):
         self._update_fields()
 
     @staticmethod
-    def _number(value, *, decimals=3, optional=False):
+    def _number(value, *, decimals=3):
+        """Create a numeric input whose minimum is an explicit unset sentinel."""
         field = QDoubleSpinBox(); field.setDecimals(decimals); field.setMaximum(1_000_000_000)
-        field.setMinimum(0 if optional else 10 ** -decimals)
-        field.setSpecialValueText(tr("Not set") if optional else "")
+        field.setMinimum(-1)
+        field.setSpecialValueText(tr("Not set"))
         field.setValue(float(value) if value is not None else field.minimum())
         return field
+
+    @staticmethod
+    def _number_value(field: QDoubleSpinBox) -> float | None:
+        """Never allow the UI-only unset sentinel to cross into the domain."""
+        return None if field.value() == field.minimum() else field.value()
 
     def _update_fields(self):
         bulk = self.kind_combo.currentData() is ExplosiveProductKind.BULK
@@ -68,10 +74,10 @@ class ExplosiveProductDialog(QDialog):
         return ExplosiveProduct(
             id=self.product.id if self.product else 0, name=self.name_edit.text(), kind=kind,
             display_color=self.color_edit.text(), enabled=self.product.enabled if self.product else True,
-            density_kg_m3=self.density.value() if kind is ExplosiveProductKind.BULK else None,
-            cartridge_diameter_mm=self.diameter.value() if kind is ExplosiveProductKind.CARTRIDGE else None,
-            cartridge_mass_kg=self.mass.value() if kind is ExplosiveProductKind.CARTRIDGE else None,
-            default_pitch_m=(self.pitch.value() or None) if kind is ExplosiveProductKind.CARTRIDGE else None,
+            density_kg_m3=self._number_value(self.density) if kind is ExplosiveProductKind.BULK else None,
+            cartridge_diameter_mm=self._number_value(self.diameter) if kind is ExplosiveProductKind.CARTRIDGE else None,
+            cartridge_mass_kg=self._number_value(self.mass) if kind is ExplosiveProductKind.CARTRIDGE else None,
+            default_pitch_m=self._number_value(self.pitch) if kind is ExplosiveProductKind.CARTRIDGE else None,
         )
 
     def _validate_and_accept(self):
@@ -81,7 +87,7 @@ class ExplosiveProductDialog(QDialog):
 
 
 class EngineeringCataloguesPage(QWidget):
-    HEADERS = ("Name", "Type", "Density, kg/m³", "Cartridge diameter, mm",
+    HEADERS = ("Name", "Type", "Color", "Density, kg/m³", "Cartridge diameter, mm",
                "Cartridge mass, kg", "Default pitch, m", "Status")
 
     def __init__(self, catalogue, *, can_edit: bool, parent=None):
@@ -108,14 +114,16 @@ class EngineeringCataloguesPage(QWidget):
         self.products = self.catalogue.list_products()
         self.table.setRowCount(len(self.products))
         for row, product in enumerate(self.products):
-            values = (product.name, tr("Bulk") if product.kind is ExplosiveProductKind.BULK else tr("Cartridge"), product.density_kg_m3,
+            values = (product.name, tr("Bulk") if product.kind is ExplosiveProductKind.BULK else tr("Cartridge"),
+                      product.display_color, product.density_kg_m3,
                       product.cartridge_diameter_mm, product.cartridge_mass_kg,
                       product.default_pitch_m, tr("Enabled") if product.enabled else tr("Disabled"))
             for column, value in enumerate(values):
                 item = QTableWidgetItem("—" if value is None else str(value))
                 if column == 0:
                     item.setData(Qt.ItemDataRole.UserRole, product.id)
-                    item.setForeground(QColor(product.display_color))
+                elif column == 2:
+                    item.setBackground(QColor(product.display_color))
                 self.table.setItem(row, column, item)
         self.empty_label.setVisible(not self.products); self.table.setVisible(bool(self.products))
         self.table.resizeColumnsToContents(); self._selection_changed()
