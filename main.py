@@ -22,16 +22,8 @@ logging.basicConfig(filename=LOG_PATH, level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def show_startup_error(message: str, server: str | None) -> None:
-    details = [message]
-    if server:
-        details.append(f"Server/database: {server}")
-    details.extend([
-        "Check DATABASE_URL in environment variables or .env.",
-        "Run migrations: python -m database.cli migrate",
-        "If the database does not exist yet: python -m database.cli prepare-db",
-    ])
-    QMessageBox.critical(None, tr("PostgreSQL unavailable"), "\n\n".join(details))
+def show_startup_error(error: StartupError) -> None:
+    QMessageBox.critical(None, tr("PostgreSQL unavailable"), error.presentation())
 
 
 def main():
@@ -85,7 +77,7 @@ def main():
     except StartupError as exc:
         logging.exception("Startup failed during stage: %s", startup_stage)
         splash.close_with_fade()
-        show_startup_error(str(exc), exc.server)
+        show_startup_error(exc)
         return 1
     except Exception:
         logging.exception("Unexpected startup failure during stage: %s", startup_stage)
