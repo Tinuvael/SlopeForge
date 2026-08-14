@@ -80,9 +80,10 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self,tr("Could not open project dashboard"),domain_message(str(exc))); return False
         page.domain_requested.connect(lambda domain_id:self._open_domain_dashboard(domain_id,site_id,site_name))
+        page.project_renamed.connect(self._project_renamed)
         self._activate_page(page); self._set_context(site_id,site_name); return True
     def _open_domain_dashboard(self,domain_id,site_id,site_name):
-        domain=self.navigation_queries.get_domain_context(domain_id); self.select_domain(domain_id,domain.domain_name,site_id,site_name)
+        domain=self.navigation_queries.get_domain_context(domain_id); self.select_domain(domain_id,domain.domain_name,site_id,domain.site_name)
     def select_domain(self,domain_id,domain_name,site_id,site_name):
         if not self._guard_leave(): return False
         try:
@@ -91,9 +92,16 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self,tr("Could not open domain dashboard"),domain_message(str(exc))); return False
         page.block_requested.connect(lambda block_id:self.open_block_from_tree(block_id,domain_id,site_id))
-        page.contour_requested.connect(lambda event_id:self.open_contour_from_tree(event_id,domain_id,site_id,domain_name))
-        page.assessment_area_requested.connect(lambda area_id:self.open_area_from_tree(area_id,domain_id,site_id,domain_name))
+        page.contour_requested.connect(lambda event_id:self.open_contour_from_tree(event_id,domain_id,site_id,self.navigation_queries.get_domain_context(domain_id).domain_name))
+        page.assessment_area_requested.connect(lambda area_id:self.open_area_from_tree(area_id,domain_id,site_id,self.navigation_queries.get_domain_context(domain_id).domain_name))
+        page.domain_renamed.connect(self._domain_renamed)
         self._activate_page(page); self._set_context(site_id,site_name,domain_id,domain_name); return True
+    def _project_renamed(self,site_id,new_name):
+        if self.selected_site_id==site_id:self.selected_site_name=new_name
+        self.refresh_project_data()
+    def _domain_renamed(self,domain_id,new_name,_new_version):
+        if self.selected_domain_id==domain_id:self.selected_domain_name=new_name
+        self.refresh_project_data()
     def open_block_from_tree(self,block_id,domain_id=None,site_id=None):
         domain=self.navigation_queries.get_domain_context(domain_id) if domain_id else None
         if self._show(self.block_page):

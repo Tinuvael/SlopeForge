@@ -12,6 +12,7 @@ try:
     from repositories.dashboard_repository import AreaRow,BlastRow,DomainDashboardSnapshot,DomainSummary,MapGeometry,SiteDashboardSnapshot,_project_line_geometries
     from ui.pages.dashboards.charts import CompactChart
     from ui.pages.dashboards.domain_dashboard import DomainDashboardPage
+    from ui.pages.dashboards.site_dashboard import SiteDashboardPage
     from ui.pages.dashboards.plan_overview import DashboardPlanOverviewWidget
 except ImportError as exc:
     pytest.skip(f"Qt runtime unavailable: {exc}",allow_module_level=True)
@@ -36,6 +37,22 @@ def test_domain_rows_emit_real_entity_ids(app,monkeypatch):
     blasts=page.tabs.widget(1); blasts.cellDoubleClicked.emit(0,0); blasts.cellDoubleClicked.emit(1,0)
     areas=page.tabs.widget(2); areas.cellDoubleClicked.emit(0,0)
     assert received==[99,"EVENT-55","AREA-42"]
+
+
+@pytest.mark.parametrize("can_edit",[False,True])
+def test_dashboard_rename_headers_are_real_widgets_and_refresh(app,monkeypatch,can_edit):
+    snap=snapshot(); site_snap=SiteDashboardSnapshot(3,[snap],None,[])
+    monkeypatch.setattr("ui.pages.dashboards.domain_dashboard.DashboardRepository.domain_snapshot",lambda *_:snap)
+    monkeypatch.setattr("ui.pages.dashboards.site_dashboard.DashboardRepository.site_snapshot",lambda *_:site_snap)
+    context=SimpleNamespace(session_factory=lambda:None,current_user=SimpleNamespace(can_edit=can_edit,id=1))
+    site=SiteDashboardPage(context,3,"North Pit")
+    domain=DomainDashboardPage(context,7,"North")
+    assert site.title_label.text()=="North Pit" and site.edit_button.isEnabled() is can_edit
+    assert domain.title_label.text()=="North" and domain.edit_button.isEnabled() is can_edit
+    site.apply_rename_result(3,"Central Pit")
+    domain.apply_rename_result(7,"East Wall",domain.expected_version+1)
+    assert site.title_label.text()=="Central Pit"
+    assert domain.title_label.text()=="East Wall"
 
 def test_read_only_map_constructs_empty_and_populated(app):
     empty=DomainDashboardSnapshot(DomainSummary(7,"North")); empty_map=DashboardPlanOverviewWidget(empty); assert not empty_map.scene.items()

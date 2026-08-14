@@ -13,12 +13,26 @@ from ui.presentation_labels import domain_message
 from .charts import CompactChart
 from .plan_overview import DashboardPlanOverviewWidget
 from .widgets import EmptyStateWidget,MetricCard,metric,quadrant_presentation,section
+from app.use_case_factory import create_rename_domain_use_case
+from application.use_cases.rename_domain import RenameDomainCommand
+from ui.dialogs.rename_entity_dialog import RenameEntityDialog
 
 class DomainDashboardPage(QWidget):
     block_requested=Signal(int); contour_requested=Signal(str); assessment_area_requested=Signal(str)
+    domain_renamed=Signal(int,str,int)
     def __init__(self,context,domain_id,name=None):
-        super().__init__(); self.context=context; self.domain_id=domain_id; self.repo=DashboardRepository(context.session_factory); self.geometry_repo=DomainGeometryRepository(context.session_factory); self.expected_version=self.geometry_repo.get_domain_version(domain_id); self.snapshot=self.repo.domain_snapshot(domain_id); d=self.snapshot.domain
-        root=QVBoxLayout(self); h=QLabel(name or d.name); h.setStyleSheet("font-size:24px;font-weight:700"); root.addWidget(h); root.addWidget(QLabel(tr("Domain overview"))); self.tabs=QTabWidget(); root.addWidget(self.tabs); self.tabs.addTab(self._overview(),ui_icon("analytics"),tr("Overview")); self.tabs.addTab(self._blasts(),ui_icon("blast-blocks"),tr("Blast events")); self.tabs.addTab(self._areas(),ui_icon("assessment-area"),tr("Assessment areas")); self.tabs.addTab(self._analytics(),ui_icon("analytics"),tr("Analytics")); self.tabs.addTab(DashboardPlanOverviewWidget(self.snapshot),ui_icon("map"),tr("Map"))
+        super().__init__(); self.context=context; self.domain_id=domain_id; self.repo=DashboardRepository(context.session_factory); self.geometry_repo=DomainGeometryRepository(context.session_factory); self.rename_domain=create_rename_domain_use_case(context); self.expected_version=self.geometry_repo.get_domain_version(domain_id); self.snapshot=self.repo.domain_snapshot(domain_id); d=self.snapshot.domain
+        root=QVBoxLayout(self); header=QHBoxLayout(); self.title_label=QLabel(name or d.name); self.title_label.setStyleSheet("font-size:24px;font-weight:700"); self.edit_button=QPushButton(tr("Edit")); self.edit_button.setIcon(ui_icon("edit","blue")); self.edit_button.setEnabled(bool(getattr(getattr(context,"current_user",None),"can_edit",False))); self.edit_button.clicked.connect(self.edit_domain); header.addWidget(self.title_label); header.addStretch(); header.addWidget(self.edit_button); root.addLayout(header); root.addWidget(QLabel(tr("Domain overview"))); self.tabs=QTabWidget(); root.addWidget(self.tabs); self.tabs.addTab(self._overview(),ui_icon("analytics"),tr("Overview")); self.tabs.addTab(self._blasts(),ui_icon("blast-blocks"),tr("Blast events")); self.tabs.addTab(self._areas(),ui_icon("assessment-area"),tr("Assessment areas")); self.tabs.addTab(self._analytics(),ui_icon("analytics"),tr("Analytics")); self.tabs.addTab(DashboardPlanOverviewWidget(self.snapshot),ui_icon("map"),tr("Map"))
+    def edit_domain(self):
+        if not self.context.current_user.can_edit:return
+        dialog=RenameEntityDialog("Domain",self.title_label.text(),self)
+        while dialog.exec():
+            try:
+                user=self.context.current_user; result=self.rename_domain.execute(RenameDomainCommand(self.domain_id,dialog.name.text(),self.expected_version,user.id,user.can_edit))
+            except Exception as exc: dialog.show_error(domain_message(str(exc))); continue
+            self.snapshot=self.repo.domain_snapshot(self.domain_id); self.apply_rename_result(result.domain_id,result.domain_name,result.new_version); return
+    def apply_rename_result(self,domain_id,new_name,new_version):
+        self.expected_version=new_version; self.title_label.setText(new_name); self.domain_renamed.emit(domain_id,new_name,new_version)
     def _table(self,headers,rows):
         t=QTableWidget(len(rows),len(headers)); t.setHorizontalHeaderLabels(headers); t.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         for r,row in enumerate(rows):
