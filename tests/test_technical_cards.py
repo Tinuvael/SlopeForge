@@ -8,7 +8,8 @@ from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent, BlastEventGeometryRevision
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.blasting.technical_card import (BlastDrillingGroup, ContourParameters,
-    TechnicalCardService, new_technical_card, polygon_area_m2)
+    GeomechanicalParameters, JointSetOrientation, TechnicalCardService,
+    new_technical_card, polygon_area_m2)
 
 
 def event(kind="production"):
@@ -96,10 +97,61 @@ def test_production_and_contour_required_sections_differ():
     assert not c.validate_completion()
 
 
-def test_text_strength_is_not_converted_to_ucs():
-    _,draft=new_technical_card(event()); geo=draft.geomechanical_parameters
-    geo.rock_strength_class_text="СМ 10–14"; geo.rock_mass_properties_text="RQD 20–45"
-    assert geo.representative_ucs_mpa is None and geo.minimum_complete()
+@pytest.mark.parametrize("values,complete", [
+    ({}, False), ({"ucs_mpa": 100}, False), ({"ucs_mpa": 100, "q_value": 2}, True),
+    ({"ucs_mpa": 100, "rqd_percent": 50}, True), ({"ucs_mpa": 100, "gsi": 40}, True),
+    ({"q_value": 2, "rqd_percent": 50, "gsi": 40}, False),
+])
+def test_geomechanics_minimum_complete(values, complete):
+    assert GeomechanicalParameters(**values).minimum_complete() is complete
+
+
+def test_joint_set_count_and_orientation_validation():
+    five = [JointSetOrientation(index * 10, index * 50) for index in range(5)]
+    assert GeomechanicalParameters(joint_sets=five).joint_sets == five
+    with pytest.raises(ValueError, match="five joint sets"):
+        GeomechanicalParameters(joint_sets=five + [JointSetOrientation(1, 1)])
+    for dip in (0, 90):
+        assert JointSetOrientation(dip, 0).dip_deg == dip
+    for dip in (-0.001, 90.001):
+        with pytest.raises(ValueError, match="dip must"):
+            JointSetOrientation(dip, 0)
+    for direction in (0, 359.999):
+        assert JointSetOrientation(45, direction).dip_direction_deg == direction
+    with pytest.raises(ValueError, match="direction"):
+        JointSetOrientation(45, 360)
+
+
+def test_legacy_geomechanics_payload_uses_only_representative_fallbacks():
+    blast = event(); card, draft = new_technical_card(blast); card.save_revision(draft)
+    payload = card.to_dict(); payload["revisions"][0]["geomechanical_parameters"] = {
+        "lithology": "Granite", "geotechnical_domain": "Legacy zone",
+        "rock_strength_class_text": "Strong", "representative_ucs_mpa": 125,
+        "ucs_min_mpa": 80, "ucs_max_mpa": 160, "rqd_representative_percent": 72,
+        "rqd_min_percent": 40, "rqd_max_percent": 95,
+        "rock_mass_properties_text": "...", "fracturing_description": "...",
+        "water_condition": "Wet", "geomechanical_notes": "Legacy note",
+    }
+    geo = type(card).from_dict(payload).active_revision().geomechanical_parameters
+    assert (geo.lithology, geo.ucs_mpa, geo.rqd_percent, geo.notes) == ("Granite", 125, 72, "Legacy note")
+    assert geo.q_value is None and geo.gsi is None and geo.jw is None and geo.joint_sets == []
+    assert not hasattr(geo, "geotechnical_domain")
+
+
+def test_new_geomechanics_payload_round_trip_and_precedence():
+    blast = event(); card, draft = new_technical_card(blast)
+    draft.geomechanical_parameters = GeomechanicalParameters(
+        lithology="Granodiorite", ucs_mpa=145, q_value=6.5, rqd_percent=78,
+        gsi=62, joint_sets=[JointSetOrientation(70, 110), JointSetOrientation(45, 250)],
+        jw=0.66, notes="Moderately jointed")
+    card.save_revision(draft); payload = json.loads(json.dumps(card.to_dict()))
+    payload["revisions"][0]["geomechanical_parameters"].update(
+        representative_ucs_mpa=1, rqd_representative_percent=2, geomechanical_notes="old")
+    geo = type(card).from_dict(payload).active_revision().geomechanical_parameters
+    assert (geo.lithology, geo.ucs_mpa, geo.q_value, geo.rqd_percent, geo.gsi, geo.jw, geo.notes) == (
+        "Granodiorite", 145, 6.5, 78, 62, 0.66, "Moderately jointed")
+    assert geo.joint_sets == [JointSetOrientation(70, 110), JointSetOrientation(45, 250)]
+    assert all(isinstance(item, JointSetOrientation) for item in geo.joint_sets)
 
 
 def test_json_roundtrip_and_old_json_compatibility():
@@ -144,13 +196,53 @@ def test_real_embedded_production_editor_controls_and_ucs_persistence():
     state = AssessmentDomainState(blast_events=[blast]); service = TechnicalCardService(state)
     card, draft = service.edit_or_create(blast)
     embedded = TechnicalCardEditorWidget(blast, card, draft,
-        lambda saved_card, revision, status: saved_card.save_revision(revision, status=status))
+        lambda saved_card, revision, status, _date: saved_card.save_revision(revision, status=status),
+        domain_name="North")
     assert embedded.editor.lithology.isVisibleTo(embedded.editor) is False  # dialog is intentionally not shown
     assert embedded.editor.ucs is not None
     assert embedded.editor.group_cards_layout.count() >= 1
     assert embedded.editor.completion_status is not None
     embedded.editor.ucs.setValue(123.0)
+    embedded.editor.q_value.setValue(2.5)
     assert embedded.save_draft() is True
     restored = AssessmentDomainState.from_dict(json.loads(json.dumps(state.to_dict())))
-    assert restored.technical_cards[0].active_revision().geomechanical_parameters.representative_ucs_mpa == 123.0
+    assert restored.technical_cards[0].active_revision().geomechanical_parameters.ucs_mpa == 123.0
     embedded.deleteLater(); app.processEvents()
+
+
+def test_real_geomechanics_ui_is_compact_and_domain_is_read_only():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast)
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None, domain_name="North")
+    labels = {item.text() for item in dialog.findChildren(widgets.QLabel)}
+    required = {"Lithology", "Domain", "UCS, MPa", "Q", "RQD, %", "GSI", "Jw",
+                "Set", "Dip, °", "Dip direction, °", "North"}
+    assert required <= labels
+    assert len(dialog.joint_set_rows) == 5
+    assert isinstance(dialog.domain_value, widgets.QLabel)
+    removed = {"Geotechnical domain", "Local strength class", "Representative UCS",
+        "Minimum UCS", "Maximum UCS", "Representative RQD", "Minimum RQD", "Maximum RQD",
+        "Rock mass description", "Fracturing", "Water conditions"}
+    assert removed.isdisjoint(labels)
+    dialog.close(); app.processEvents()
+
+
+def test_geomechanics_ui_joint_validation_and_exact_360_normalization():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast)
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None)
+    dip, direction = dialog.joint_set_rows[0]
+    dip.setValue(45); direction.setValue(360)
+    geo = dialog._geomechanics_from_form()
+    assert geo.joint_sets == [JointSetOrientation(45, 0)] and direction.value() == 0
+    direction.setValue(360.001)
+    with pytest.raises(ValueError, match="direction"):
+        dialog._geomechanics_from_form()
+    direction.setValue(direction.minimum())
+    with pytest.raises(ValueError, match="requires both"):
+        dialog._geomechanics_from_form()
+    dialog.close(); app.processEvents()

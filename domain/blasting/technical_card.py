@@ -63,17 +63,42 @@ class CommonParameters:
     block_type: str = ""; source_geometry_revision_id: str = ""; source_csv: str = ""; comments: str = ""
 
 @dataclass
+class JointSetOrientation:
+    dip_deg: float
+    dip_direction_deg: float
+
+    def __post_init__(self) -> None:
+        if not isfinite(self.dip_deg) or not 0 <= self.dip_deg <= 90:
+            raise ValueError("Joint-set dip must be between 0 and 90 degrees")
+        if not isfinite(self.dip_direction_deg) or not 0 <= self.dip_direction_deg < 360:
+            raise ValueError("Joint-set dip direction must be at least 0 and less than 360 degrees")
+
+
+@dataclass
 class GeomechanicalParameters:
-    lithology: str = ""; geotechnical_domain: str = ""; rock_strength_class_text: str = ""
-    representative_ucs_mpa: float | None = None; ucs_min_mpa: float | None = None; ucs_max_mpa: float | None = None
-    rqd_min_percent: float | None = None; rqd_max_percent: float | None = None
-    rqd_representative_percent: float | None = None; rock_mass_properties_text: str = ""
-    fracturing_description: str = ""; water_condition: str = ""; geomechanical_notes: str = ""
+    lithology: str = ""
+    ucs_mpa: float | None = None
+    q_value: float | None = None
+    rqd_percent: float | None = None
+    gsi: float | None = None
+    joint_sets: list[JointSetOrientation] = field(default_factory=list)
+    jw: float | None = None
+    notes: str = ""
+
+    def __post_init__(self) -> None:
+        if len(self.joint_sets) > 5:
+            raise ValueError("Geomechanics may contain at most five joint sets")
+        for name in ("ucs_mpa", "q_value", "rqd_percent", "gsi", "jw"):
+            value = getattr(self, name)
+            if value is not None and not isfinite(value):
+                raise ValueError(f"{name} must be finite")
+        if self.rqd_percent is not None and not 0 <= self.rqd_percent <= 100:
+            raise ValueError("RQD must be between 0 and 100 percent")
 
     def minimum_complete(self) -> bool:
-        strength = bool(self.rock_strength_class_text.strip()) or self.representative_ucs_mpa is not None
-        rqd = any(x is not None for x in (self.rqd_min_percent, self.rqd_max_percent, self.rqd_representative_percent))
-        return strength and (rqd or bool(self.rock_mass_properties_text.strip()))
+        return self.ucs_mpa is not None and any(
+            value is not None for value in (self.q_value, self.rqd_percent, self.gsi)
+        )
 
 @dataclass
 class BlastDrillingGroup:
@@ -387,6 +412,21 @@ def _encode(value):
 def _construct(cls, data):
     return cls(**{f.name: data[f.name] for f in fields(cls) if f.name in data})
 
+def _geomechanics_from_dict(data):
+    """Read the canonical payload, conservatively falling back to representatives."""
+    migrated = dict(data)
+    if "ucs_mpa" not in migrated:
+        migrated["ucs_mpa"] = migrated.get("representative_ucs_mpa")
+    if "rqd_percent" not in migrated:
+        migrated["rqd_percent"] = migrated.get("rqd_representative_percent")
+    if "notes" not in migrated:
+        migrated["notes"] = migrated.get("geomechanical_notes", "")
+    migrated["joint_sets"] = [
+        item if isinstance(item, JointSetOrientation) else _construct(JointSetOrientation, item)
+        for item in migrated.get("joint_sets", [])
+    ]
+    return _construct(GeomechanicalParameters, migrated)
+
 def _card_from_dict(d):
     card = BlastEventTechnicalCard(d["id"], d["blast_event_id"], active_revision_id=d.get("active_revision_id"), is_archived=d.get("is_archived", False))
     for x in d.get("revisions", []):
@@ -425,6 +465,6 @@ def _card_from_dict(d):
             event_type=x["event_type"], status=x["status"], common_parameters=_construct(CommonParameters, x["common_parameters"]),
             drilling_groups=groups,
             production_parameters=prod, contour_parameters=_construct(ContourParameters, x["contour_parameters"]) if x.get("contour_parameters") else None,
-            geomechanical_parameters=_construct(GeomechanicalParameters, x["geomechanical_parameters"]) if x.get("geomechanical_parameters") else None,
+            geomechanical_parameters=_geomechanics_from_dict(x["geomechanical_parameters"]) if x.get("geomechanical_parameters") else None,
             actual_execution=actual, notes=x.get("notes", ""), author=x.get("author"), change_reason=x.get("change_reason", "")))
     return card

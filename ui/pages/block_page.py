@@ -219,7 +219,8 @@ class BlockPage(QWidget):
         self._reimport_callback = lambda: self._reimport_geometry(event)
         self.overview.scheme.reimport_requested.connect(self._reimport_callback)
         card,revision=self.entity_controller.technical_card_draft(event)
-        editor=TechnicalCardEditorWidget(event,card,revision,self.entity_controller.save_technical_card,self,not editable)
+        editor=TechnicalCardEditorWidget(event,card,revision,self.entity_controller.save_technical_card,
+            self,not editable,domain_name=block.domain_name)
         self.geomechanics_tab=self._replace_tab(self.geomechanics_tab,GeomechanicsEditorWidget(editor.take_tab(tr("Geomechanics"))),"Geomechanics")
         self.design_tab=self._replace_tab(self.design_tab,BlastDesignEditorWidget(editor.take_tab(tr("Drilling and charging"))),"Blast design")
         self.execution_tab=self._replace_tab(self.execution_tab,ActualExecutionEditorWidget(editor.take_tab(tr("Execution fact"))),"Execution fact")
