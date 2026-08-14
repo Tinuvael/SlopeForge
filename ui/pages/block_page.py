@@ -25,6 +25,7 @@ from ui.pages.block_card_widgets import (
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.technical_card_widgets import (ActualExecutionEditorWidget,
     BlastDesignEditorWidget, GeomechanicsEditorWidget, TechnicalCardEditorWidget)
+from app.use_case_factory import create_explosive_catalogue
 
 
 class _NullAttachmentService:
@@ -220,7 +221,8 @@ class BlockPage(QWidget):
         self.overview.scheme.reimport_requested.connect(self._reimport_callback)
         card,revision=self.entity_controller.technical_card_draft(event)
         editor=TechnicalCardEditorWidget(event,card,revision,self.entity_controller.save_technical_card,
-            self,not editable,domain_name=block.domain_name)
+            self,not editable,domain_name=block.domain_name,
+            products=create_explosive_catalogue(self.context).list_enabled_products())
         self.geomechanics_tab=self._replace_tab(self.geomechanics_tab,GeomechanicsEditorWidget(editor.take_tab(tr("Geomechanics"))),"Geomechanics")
         self.design_tab=self._replace_tab(self.design_tab,BlastDesignEditorWidget(editor.take_tab(tr("Drilling and charging"))),"Blast design")
         self.execution_tab=self._replace_tab(self.execution_tab,ActualExecutionEditorWidget(editor.take_tab(tr("Execution fact"))),"Execution fact")

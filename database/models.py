@@ -77,6 +77,22 @@ class Site(TimestampMixin, Base):
     mine: Mapped[Mine] = relationship(back_populates="sites")
     domains: Mapped[list["Domain"]] = relationship(back_populates="site", cascade="all, delete-orphan")
     project_lines_datasets: Mapped[list["ProjectLinesDataset"]] = relationship(back_populates="site")
+    charge_design_presets: Mapped[list["ChargeDesignPreset"]] = relationship(
+        back_populates="site", cascade="all, delete-orphan")
+
+
+class ChargeDesignPreset(TimestampMixin, Base):
+    __tablename__ = "charge_design_presets"
+    __table_args__ = (
+        CheckConstraint("length(btrim(name)) > 0", name="ck_charge_design_presets_name"),
+        CheckConstraint("jsonb_typeof(components_json) = 'array'", name="ck_charge_design_presets_components_array"),
+        UniqueConstraint("site_id", "name", name="uq_charge_design_presets_site_name"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    components_json: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    site: Mapped[Site] = relationship(back_populates="charge_design_presets")
 
 
 class Domain(TimestampMixin, Base):

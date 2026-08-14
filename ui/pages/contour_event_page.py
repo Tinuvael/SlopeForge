@@ -8,6 +8,7 @@ from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame,apply_
 from ui.pages.technical_card_widgets import ActualExecutionEditorWidget,BlastDesignEditorWidget,TechnicalCardEditorWidget
 from ui.presentation_labels import domain_message
 from domain.blasting.workflow import WORKFLOW_LABELS, blast_workflow_for
+from app.use_case_factory import create_explosive_catalogue
 
 
 def _show(value,unit=""):return "—" if value in (None,"") else f"{value:g}{unit}" if isinstance(value,(int,float)) else str(value)
@@ -16,7 +17,7 @@ class ContourEventPage(QWidget):
     metadata_saved=Signal(str,int)
     def __init__(self,context,domain_id,domain_name,event_id,parent=None):
         super().__init__(parent); self.context=context; self.domain_name=domain_name; self.controller=EntityPageController(context,domain_id); self.blast_event=next(e for e in self.controller.state.blast_events if e.id==event_id and e.event_type=="contour"); self.read_only=not context.current_user.can_edit or self.blast_event.is_archived; self.rev=self.blast_event.active_geometry_revision()
-        card,draft=self.controller.technical_card_draft(self.blast_event); self.card,self.draft=card,draft; self.editor=TechnicalCardEditorWidget(self.blast_event,card,draft,self.controller.save_technical_card,self,self.read_only)
+        card,draft=self.controller.technical_card_draft(self.blast_event); self.card,self.draft=card,draft; self.editor=TechnicalCardEditorWidget(self.blast_event,card,draft,self.controller.save_technical_card,self,self.read_only,products=create_explosive_catalogue(context).list_enabled_products())
         root=QVBoxLayout(self); self._header(root); body=QHBoxLayout(); left=QVBoxLayout(); self.tabs=QTabWidget(); left.addWidget(self.tabs); actions=QHBoxLayout(); actions.addStretch(); self.draft_button=QPushButton(tr("Save draft")); self.complete_button=QPushButton(tr("Complete")); self.draft_button.setEnabled(not self.read_only); self.complete_button.setEnabled(not self.read_only); self.draft_button.clicked.connect(self.save_draft); self.complete_button.clicked.connect(self.complete); actions.addWidget(self.draft_button); actions.addWidget(self.complete_button); left.addLayout(actions); body.addLayout(left,4); self._sidebar(body); root.addLayout(body)
         self._general(); self.tabs.addTab(BlastDesignEditorWidget(self.editor.take_tab(tr("Contour drilling"))),tr("Blast design")); self.tabs.addTab(ActualExecutionEditorWidget(self.editor.take_tab(tr("Execution fact"))),tr("Execution fact")); self.photos_tab=self._attachments("Photos"); self.documents_tab=self._attachments("Documents"); self.tabs.addTab(self.photos_tab,tr("Photos")); self.tabs.addTab(self.documents_tab,tr("Documents")); self.tabs.addTab(self.editor.take_tab(tr("Revision history")),tr("History")); self._refresh_sidebar()
         self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")

@@ -14,6 +14,7 @@ from domain.blasting.technical_card import (CONTOUR_GROUP_TYPES, CONTROLLED_BLAS
 from ui.presentation_labels import (
     CONTROLLED_BLASTING_LABELS, domain_message, technical_group_label, technical_text,
 )
+from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
 
 BURDEN_LABEL = "Burden / row spacing, m"
 BURDEN_TOOLTIP = "Burden. For row patterns, normally the row spacing or distance from the first row to the free face."
@@ -30,12 +31,13 @@ def _number(value, suffix=""):
 
 
 class TechnicalCardDialog(QDialog):
-    def __init__(self, event, card, revision, save_callback, parent=None, read_only=False, domain_name=""):
+    def __init__(self, event, card, revision, save_callback, parent=None, read_only=False, domain_name="", products=()):
         # QDialog already has an event() method used internally by Qt.  Do not
         # shadow it with the BlastEvent model, otherwise showing the dialog
         # fails with: "BlastEvent object is not callable".
         super().__init__(parent); self.blast_event, self.card, self.revision = event, card, revision
         self.save_callback, self.read_only, self.domain_name = save_callback, read_only, domain_name
+        self.products = list(products)
         self.setWindowTitle(f"{tr('Technical Card')} — {event.name}"); self.setMinimumSize(760, 560); self.resize(940, 720)
         root = QVBoxLayout(self); meta = QLabel(f"{tr('BlastEvent ID')}: {event.id}   |   {tr('Geometry revision')}: {revision.geometry_revision_id}")
         meta.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse); root.addWidget(meta)
@@ -65,8 +67,8 @@ class TechnicalCardDialog(QDialog):
         if self.revision.production_parameters:
             p = self.revision.production_parameters; calc = QGroupBox(tr("Calculated values")); f = QFormLayout(calc)
             f.addRow(tr("Drilling area"), QLabel(f"{p.drilling_area_m2.accepted_value:g} m²" if p.drilling_area_m2.accepted_value is not None else "— m²"))
-            self.bench_height = _number(p.design_bench_height_m, "m"); self.explosive = _number(p.total_explosive_mass_kg, "kg")
-            f.addRow(tr("Design bench height"), self.bench_height); f.addRow(tr("Explosive mass"), self.explosive); layout.addWidget(calc)
+            self.bench_height = _number(p.design_bench_height_m, "m")
+            f.addRow(tr("Design bench height"), self.bench_height); layout.addWidget(calc)
         else:
             contour = self.revision.contour_parameters; method = QGroupBox(tr("Controlled blasting method")); f = QFormLayout(method)
             self.method = QComboBox(); self.method.addItem(tr("— select —"), "")
@@ -152,29 +154,41 @@ class TechnicalCardDialog(QDialog):
             if item.widget(): item.widget().deleteLater()
         for group in self.revision.drilling_groups:
             display_name = technical_group_label(group.group_type, group.name)
-            box = QGroupBox(display_name); box.setCheckable(True); box.setChecked(True)
+            box = QGroupBox(display_name); box.setCheckable(True); box.setChecked(group.included)
+            box.toggled.connect(lambda checked, g=group: self._included_changed(g, checked))
             outer = QVBoxLayout(box); identity = QFormLayout(); outer.addLayout(identity)
             name = QLineEdit(display_name); identity.addRow(tr("Title"), name); name.textChanged.connect(lambda value, g=group: setattr(g, "name", value))
             pattern = QGroupBox(tr("Drilling pattern")); pattern.setCheckable(True); pattern.setChecked(True); form = QFormLayout(pattern)
-            fields = (("Holes, count", "hole_count", "", True), ("Diameter, mm", "diameter_mm", "", False),
+            common_fields = (("Holes, count", "hole_count", "", True), ("Diameter, mm", "diameter_mm", "", False),
                 ("Average depth, m", "average_depth_m", "", False), ("Subdrill, m", "subdrill_m", "", False),
-                (BURDEN_LABEL, "burden_m", "", False), (SPACING_LABEL, "spacing_m", "", False),
-                ("Rows", "row_count", "", True), ("Inclination, °", "inclination_deg", "", False),
-                ("Azimuth, °", "azimuth_deg", "", False), ("Line offset, m", "line_offset_m", "", False),
-                (TOE_LABEL, "toe_standoff_m", "", False), ("Design drilling length override, m", "planned_drilling_length_m", "", False))
-            for label, attr, suffix, integer in fields: self._add_number(form, label, group, attr, suffix, integer)
+                ("Inclination, °", "inclination_deg", "", False), ("Azimuth, °", "azimuth_deg", "", False))
+            production_fields = ((BURDEN_LABEL,"burden_m","",False),(SPACING_LABEL,"spacing_m","",False),
+                ("Rows","row_count","",True),(TOE_LABEL,"toe_standoff_m","",False))
+            contour_fields = (("Design line / collar offset, m","line_offset_m","",False),)
+            for label, attr, suffix, integer in common_fields + (production_fields if self.blast_event.event_type=="production" else contour_fields):
+                self._add_number(form, label, group, attr, suffix, integer)
             outer.addWidget(pattern)
-            charging = QGroupBox(tr("Charging")); charging.setCheckable(True); charging.setChecked(False); charge_form = QFormLayout(charging)
-            for label, attr, suffix, integer in (("Charge mass per hole, kg","charge_mass_per_hole_kg","",False),
-                ("Charge concentration, kg/m","charge_concentration_kg_per_m","",False),("Total charge mass, kg","total_charge_mass_kg","",False),
-                ("Stemming length, m","stemming_length_m","",False),("Delay, ms","delay_ms","",False),("Air decks","air_deck_count","",True)):
-                self._add_number(charge_form,label,group,attr,suffix,integer)
-            for label, attr in (("Explosive type","explosive_type"),("Charge construction","charge_construction_text"),("Initiation sequence","initiation_sequence"),("Deck notes","deck_notes")):
-                edit=QLineEdit(getattr(group,attr)); edit.textChanged.connect(lambda v,g=group,a=attr:setattr(g,a,v)); charge_form.addRow(tr(label),edit)
-            outer.addWidget(charging)
+            if group.average_depth_m is None:
+                hint=QLabel(tr("Enter average hole depth to configure the charge construction.")); hint.setObjectName("chargeDepthHint"); outer.addWidget(hint)
+            else:
+                builder=BoreholeChargeBuilder(group.average_depth_m,group.diameter_mm,self.products,
+                    group.charge_components,self.read_only); builder.setObjectName("boreholeChargeBuilder")
+                builder.components_changed.connect(lambda values,g=group:setattr(g,"charge_components",values))
+                outer.addWidget(builder)
+            derived=QLabel(self._group_summary(group)); derived.setObjectName("derivedChargeSummary"); outer.addWidget(derived)
             actions = QHBoxLayout(); duplicate = QPushButton(tr("Duplicate")); remove = QPushButton(tr("Delete"))
             duplicate.clicked.connect(lambda _=False, g=group: self._duplicate(g)); remove.clicked.connect(lambda _=False, g=group: self._remove(g))
             actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions); self.group_cards_layout.addWidget(box)
+
+    def _included_changed(self, group, checked):
+        group.included=checked
+        if self.revision.production_parameters: self.revision.production_parameters.recalculate(self.revision.drilling_groups)
+
+    def _group_summary(self, group):
+        def show(value): return "—" if value is None else f"{value:g}"
+        return (f"{tr('Drilling length')}: {show(group.drilling_length())} m  |  "
+                f"{tr('Mass per hole')}: {show(group.explosive_mass_per_hole())} kg  |  "
+                f"{tr('Total explosive mass')}: {show(group.explosive_mass_total())} kg")
 
     def _add_number(self, form, label, model, attr, suffix="", integer=False):
         widget = _number(getattr(model, attr), suffix); widget.setObjectName(attr)
@@ -334,7 +348,7 @@ class TechnicalCardDialog(QDialog):
         self.revision.common_parameters.block_name = self.block_name.text(); self.revision.common_parameters.comments = self.comments.text()
         try:
             if self.revision.production_parameters:
-                p=self.revision.production_parameters; p.design_bench_height_m=None if self.bench_height.value()==self.bench_height.minimum() else self.bench_height.value(); p.total_explosive_mass_kg=None if self.explosive.value()==self.explosive.minimum() else self.explosive.value()
+                p=self.revision.production_parameters; p.design_bench_height_m=None if self.bench_height.value()==self.bench_height.minimum() else self.bench_height.value()
                 self.revision.geomechanical_parameters = self._geomechanics_from_form()
         except ValueError as exc:
             QMessageBox.warning(self, tr("Technical Card validation"), domain_message(str(exc))); return False

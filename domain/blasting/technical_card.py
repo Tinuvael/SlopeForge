@@ -10,6 +10,9 @@ from uuid import uuid4
 
 from domain.blasting.entities import BlastEvent, utc_now
 from domain.geometry.types import PlanPolygon
+from domain.blasting.charge_design import (ChargeComponent, ChargeComponentKind,
+    ExplosiveProductKind, ExplosiveProductSnapshot, charge_explosive_mass_kg,
+    validate_components)
 
 PRODUCTION_GROUP_TYPES = {
     "main_pattern": "Основная сеть", "inner_buffer": "Внутренний буферный ряд",
@@ -113,14 +116,26 @@ class BlastDrillingGroup:
     initiation_sequence: str = ""; delay_ms: float | None = None; planned_drilling_length_m: float | None = None
     air_deck_count: int | None = None; deck_notes: str = ""; charge_decks: list[dict[str, Any]] = field(default_factory=list)
     notes: str = ""
+    charge_components: list[ChargeComponent] = field(default_factory=list)
     # Read-only migration buffer.  It is deliberately omitted from new JSON.
     legacy_actual_drilling_length_m: float | None = field(default=None, repr=False)
 
     def drilling_length(self) -> float | None:
         if not self.included: return 0.0
-        if self.planned_drilling_length_m is not None: return self.planned_drilling_length_m
         if self.hole_count is None or self.average_depth_m is None: return None
         return self.hole_count * self.average_depth_m
+
+    def explosive_mass_per_hole(self) -> float | None:
+        return charge_explosive_mass_kg(self.charge_components, self.diameter_mm)
+
+    def explosive_mass_total(self) -> float | None:
+        mass = self.explosive_mass_per_hole()
+        return None if mass is None or self.hole_count is None else mass * self.hole_count
+
+    def total_stemming_length(self) -> float:
+        per_hole = sum(c.end_depth_m - c.start_depth_m for c in self.charge_components
+                       if c.kind is ChargeComponentKind.STEMMING)
+        return per_hole * (self.hole_count or 0)
 
 @dataclass
 class ProductionParameters:
@@ -142,6 +157,8 @@ class ProductionParameters:
         self.total_hole_count = sum(g.hole_count or 0 for g in included)
         lengths = [g.drilling_length() for g in included]
         self.total_drilling_length_m.calculated_value = None if any(x is None for x in lengths) else sum(lengths)
+        masses = [g.explosive_mass_total() for g in included]
+        self.total_explosive_mass_kg = None if any(x is None for x in masses) else sum(masses)
         volume, length = self.block_volume_m3.accepted_value, self.total_drilling_length_m.accepted_value
         self.rock_yield_m3_per_drilling_m = _ratio(volume, length)
         self.specific_drilling_m_per_m3 = _ratio(length, volume)
@@ -200,6 +217,12 @@ class ActualDrillingGroup:
         for name in _DESIGN_COPY_FIELDS:
             setattr(target, name, deepcopy(getattr(group, name)))
         target.drilling_length_m = group.drilling_length()
+        target.charge_mass_per_hole_kg = group.explosive_mass_per_hole()
+        target.total_charge_mass_kg = group.explosive_mass_total()
+        target.stemming_length_m = sum(c.end_depth_m-c.start_depth_m for c in group.charge_components
+                                       if c.kind is ChargeComponentKind.STEMMING)
+        target.explosive_type = "; ".join(dict.fromkeys(
+            c.product_snapshot.name for c in group.charge_components if c.product_snapshot))
         return target
 
 _DESIGN_COPY_FIELDS = ("group_type", "custom_type_name", "name", "sequence_order", "included", "hole_count",
@@ -316,16 +339,18 @@ class BlastEventTechnicalCardRevision:
         for design in self.drilling_groups:
             actual = actual_by_design.get(design.id)
             for attr, label, unit in specs:
-                project = design.drilling_length() if attr == "drilling_length" else getattr(design, attr)
+                derived = {"drilling_length": design.drilling_length,
+                    "charge_mass_per_hole_kg": design.explosive_mass_per_hole,
+                    "total_charge_mass_kg": design.explosive_mass_total,
+                    "stemming_length_m": lambda: sum(c.end_depth_m-c.start_depth_m for c in design.charge_components if c.kind is ChargeComponentKind.STEMMING)}
+                project = derived[attr]() if attr in derived else getattr(design, attr)
                 fact = actual.effective_drilling_length() if actual and attr == "drilling_length" else (getattr(actual, attr) if actual else None)
                 rows.append(comparison_value(design.name, label, unit, project, fact))
         included = [g for g in self.drilling_groups if g.included]
         project_holes = sum(g.hole_count or 0 for g in included)
         lengths = [g.drilling_length() for g in included]
         project_length = None if any(v is None for v in lengths) else sum(lengths)
-        masses = [g.total_charge_mass_kg if g.total_charge_mass_kg is not None else
-                  (g.hole_count * g.charge_mass_per_hole_kg if g.hole_count is not None and g.charge_mass_per_hole_kg is not None else None)
-                  for g in included]
+        masses = [g.explosive_mass_total() for g in included]
         project_mass = None if any(v is None for v in masses) else sum(masses)
         production = self.production_parameters
         project_volume = production.block_volume_m3.accepted_value if production else None
@@ -355,6 +380,11 @@ class BlastEventTechnicalCard:
 
     def save_revision(self, draft: BlastEventTechnicalCardRevision, *, status="draft", change_reason=""):
         saved = deepcopy(draft); number = len(self.revisions) + 1
+        for group in saved.drilling_groups:
+            if group.average_depth_m is None and group.charge_components:
+                raise ValueError("Average hole depth is required for charge components")
+            if group.average_depth_m is not None:
+                validate_components(group.charge_components, group.average_depth_m)
         saved.id = f"{self.id}-R{number:03d}"; saved.technical_card_id = self.id
         saved.revision_number = number; saved.created_at = utc_now(); saved.status = status; saved.change_reason = change_reason
         if status == "completed" and saved.validate_completion(): raise ValueError("; ".join(saved.validate_completion()))
@@ -403,7 +433,10 @@ def _encode(value):
     if isinstance(value, datetime): return value.isoformat()
     if isinstance(value, float) and not isfinite(value): return None
     if isinstance(value, BlastDrillingGroup):
-        return {f.name: _encode(getattr(value, f.name)) for f in fields(value) if f.name != "legacy_actual_drilling_length_m"}
+        legacy = {"legacy_actual_drilling_length_m", "stemming_length_m", "charge_mass_per_hole_kg",
+            "charge_concentration_kg_per_m", "total_charge_mass_kg", "explosive_type",
+            "charge_construction_text", "planned_drilling_length_m", "air_deck_count", "deck_notes", "charge_decks"}
+        return {f.name: _encode(getattr(value, f.name)) for f in fields(value) if f.name not in legacy}
     if hasattr(value, "__dataclass_fields__"): return {f.name: _encode(getattr(value, f.name)) for f in fields(value)}
     if isinstance(value, dict): return {k: _encode(v) for k, v in value.items()}
     if isinstance(value, list): return [_encode(v) for v in value]
@@ -440,7 +473,17 @@ def _card_from_dict(d):
         for raw in raw_groups:
             migrated = dict(raw)
             legacy = migrated.pop("actual_drilling_length_m", None)
-            group = _construct(BlastDrillingGroup, migrated); group.legacy_actual_drilling_length_m = legacy; groups.append(group)
+            components = []
+            for item in migrated.pop("charge_components", []):
+                snapshot = item.get("product_snapshot")
+                if snapshot:
+                    snapshot = dict(snapshot); snapshot["kind"] = ExplosiveProductKind(snapshot["kind"])
+                    snapshot = _construct(ExplosiveProductSnapshot, snapshot)
+                components.append(ChargeComponent(id=item["id"], kind=ChargeComponentKind(item["kind"]),
+                    start_depth_m=item["start_depth_m"], end_depth_m=item["end_depth_m"],
+                    product_snapshot=snapshot, cartridge_pitch_m=item.get("cartridge_pitch_m")))
+            group = _construct(BlastDrillingGroup, migrated); group.charge_components = components
+            group.legacy_actual_drilling_length_m = legacy; groups.append(group)
         raw_actual = dict(x.get("actual_execution", {}))
         # PR #30 summary aliases.
         if "actual_hole_count" in raw_actual and "actual_total_hole_count" not in raw_actual:

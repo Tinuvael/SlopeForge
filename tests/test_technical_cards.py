@@ -42,7 +42,8 @@ def test_production_revision_calculations_and_immutability():
     assert first.production_parameters.total_drilling_length_m.calculated_value == 136
     assert first.production_parameters.rock_yield_m3_per_drilling_m == pytest.approx(500/136)
     assert first.production_parameters.specific_drilling_m_per_m3 == pytest.approx(136/500)
-    assert first.production_parameters.powder_factor_kg_per_m3 == 1
+    # An empty canonical construction is an all-Air hole and contains no explosive.
+    assert first.production_parameters.powder_factor_kg_per_m3 == 0
     edit=deepcopy(first); edit.drilling_groups[1].spacing_m=6; second=card.save_revision(edit)
     assert second.revision_number == 2 and first.drilling_groups[1].spacing_m == 4
 

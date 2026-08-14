@@ -10,6 +10,7 @@ from decimal import Decimal, ROUND_FLOOR
 from enum import Enum
 import math
 import re
+from math import pi
 from typing import Iterable
 
 
@@ -170,3 +171,25 @@ def cartridge_depths(component: ChargeComponent) -> tuple[float, ...]:
     step = Decimal(str(pitch))
     count = int(((end - start) / step).to_integral_value(rounding=ROUND_FLOOR)) + 1
     return tuple(float(start + step * index) for index in range(count))
+
+
+def component_explosive_mass_kg(component: ChargeComponent,
+                                hole_diameter_mm: float | None) -> float | None:
+    """Explosive mass for one component, using only its frozen product facts."""
+    if component.kind is ChargeComponentKind.STEMMING:
+        return 0.0
+    snapshot = component.product_snapshot
+    if component.kind is ChargeComponentKind.BULK_EXPLOSIVE:
+        if hole_diameter_mm is None or snapshot is None or snapshot.density_kg_m3 is None:
+            return None
+        diameter_m = hole_diameter_mm / 1000
+        return pi * diameter_m ** 2 / 4 * (component.end_depth_m - component.start_depth_m) * snapshot.density_kg_m3
+    if snapshot is None or snapshot.cartridge_mass_kg is None:
+        return None
+    return len(cartridge_depths(component)) * snapshot.cartridge_mass_kg
+
+
+def charge_explosive_mass_kg(components: Iterable[ChargeComponent],
+                             hole_diameter_mm: float | None) -> float | None:
+    masses = [component_explosive_mass_kg(item, hole_diameter_mm) for item in components]
+    return None if any(item is None for item in masses) else sum(masses)

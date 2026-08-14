@@ -130,13 +130,14 @@ def test_destructive_migration_guard_rejects_non_test_database() -> None:
         )
 
 
-def test_phase_78a_migration_is_the_only_alembic_head() -> None:
+def test_phase_78c_migration_is_the_only_alembic_head() -> None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0003_explosive_catalog"]
+    assert script.get_heads() == ["0004_charge_presets"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0004_charge_presets",
         "0003_explosive_catalog",
         "0002_workflow_status",
         "0001_mvp_baseline"

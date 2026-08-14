@@ -3062,5 +3062,7 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>No air interval has 0.1 m available.</source><translation>Нет воздушного интервала длиной 0,1 м.</translation></message>
         <message><source>Cartridge pitch</source><translation>Шаг патронов</translation></message>
         <message><source>Pitch is required</source><translation>Укажите шаг патронов</translation></message>
+        <message><source>Mass per hole</source><translation>Масса на скважину</translation></message>
+        <message><source>Enter average hole depth to configure the charge construction.</source><translation>Укажите среднюю глубину скважины, чтобы настроить конструкцию заряда.</translation></message>
     </context>
 </TS>

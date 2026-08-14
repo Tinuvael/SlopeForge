@@ -28,7 +28,7 @@ def test_lns_and_spacing_keep_existing_domain_fields_and_design_override():
     group.legacy_actual_drilling_length_m = 99
     assert group.drilling_length() == 30
     group.planned_drilling_length_m = 31
-    assert group.drilling_length() == 31
+    assert group.drilling_length() == 30  # legacy override is no longer design truth
 
 
 def test_copy_all_is_independent_and_links_stable_ids():
