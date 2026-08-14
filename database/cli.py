@@ -6,6 +6,8 @@ import re
 import sys
 
 from alembic import command
+from alembic.util.exc import CommandError
+from alembic.script.revision import ResolutionError
 from alembic.config import Config
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
@@ -14,6 +16,8 @@ from sqlalchemy.exc import OperationalError, ProgrammingError, SQLAlchemyError
 from .connection import check_connection, create_database_engine, create_session_factory, DatabaseConnectionError
 from .models import User
 from .settings import ConfigurationError, Settings
+
+PROTECTED_DATABASES = frozenset({"postgres", "template0", "template1"})
 
 
 def alembic_config() -> Config:
@@ -53,8 +57,71 @@ def prepare_db() -> int:
 
 
 def migrate() -> int:
-    command.upgrade(alembic_config(), "head")
-    return 0
+    try:
+        command.upgrade(alembic_config(), "head")
+        return 0
+    except (CommandError, ResolutionError) as exc:
+        print(
+            "The database references an Alembic revision that is not present in the "
+            "current application.\n\n"
+            "This database cannot be migrated from the current graph.\n\n"
+            "For the disposable MVP development database run:\n\n"
+            "    python -m database.cli reset-dev-db\n\n"
+            f"Details: {exc}", file=sys.stderr,
+        )
+        return 1
+
+
+def reset_dev_db(*, confirmation_reader=input) -> int:
+    """Destructively recreate only an explicitly confirmed development database."""
+    try:
+        settings = Settings.from_env()
+        url = make_url(settings.database_url)
+        db_name = url.database or ""
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", db_name):
+            print("Database name must contain only letters, digits, and underscores, and must not start with a digit.", file=sys.stderr)
+            return 1
+        if db_name.lower() in PROTECTED_DATABASES:
+            print(f"Refusing to reset protected PostgreSQL database '{db_name}'.", file=sys.stderr)
+            return 1
+        server = f"{url.host or 'localhost'}:{url.port or 5432}/{db_name}"
+        print(f"Target PostgreSQL server/database: {server}")
+        print(f"This permanently deletes PostgreSQL database '{db_name}'.")
+        typed = confirmation_reader(f"Type '{db_name}' to continue: ").strip()
+        if typed != db_name:
+            print("Confirmation did not match. Database reset aborted.", file=sys.stderr)
+            return 1
+
+        admin_url = url.set(database="postgres")
+        engine = create_engine(admin_url, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :name AND pid <> pg_backend_pid()"
+                ), {"name": db_name})
+                conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}"'))
+                conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+        finally:
+            engine.dispose()
+        command.upgrade(alembic_config(), "head")
+        print(f"Database '{db_name}' was recreated and migrated to the current revision.")
+        return 0
+    except (OperationalError, ProgrammingError, SQLAlchemyError) as exc:
+        print(
+            "Could not recreate the PostgreSQL database. The configured user may not "
+            "have permission to terminate connections, drop, or create databases.\n"
+            "Ask a PostgreSQL administrator to recreate the target database, then run:\n"
+            "    python -m database.cli migrate\n"
+            f"Details: {exc}", file=sys.stderr,
+        )
+        return 1
+    except (CommandError, ResolutionError) as exc:
+        print(f"The database was recreated, but Alembic migration failed: {exc}", file=sys.stderr)
+        return 1
+    except ConfigurationError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        return 1
 
 
 def migration_status() -> int:
@@ -98,10 +165,12 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("prepare-db", help="Create target PostgreSQL database if permitted")
     sub.add_parser("migrate", help="Apply Alembic migrations")
+    sub.add_parser("reset-dev-db", help="Permanently recreate the disposable development database")
     sub.add_parser("migration-status", help="Show current Alembic migration state")
     sub.add_parser("init", help="Initial setup and first administrator creation")
     args = parser.parse_args(argv)
-    return {"prepare-db": prepare_db, "migrate": migrate, "migration-status": migration_status, "init": init_app}[args.command]()
+    return {"prepare-db": prepare_db, "migrate": migrate, "reset-dev-db": reset_dev_db,
+            "migration-status": migration_status, "init": init_app}[args.command]()
 
 
 if __name__ == "__main__":

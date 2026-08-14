@@ -6,6 +6,8 @@ from decimal import Decimal
 from sqlalchemy import select
 from database.models import BlastBlock, Domain, DomainGeometry
 from database import assessment_models as a
+from domain.blasting.workflow import derive_assessment_progress_state
+from infrastructure.db.workflow_status_queries import blast_workflow_states
 
 @dataclass(frozen=True)
 class AreaRow:
@@ -114,14 +116,23 @@ class DashboardRepository:
                 interval=(f"{_number(geo.min_elevation_m)}–{_number(geo.max_elevation_m)}"
                           if geo.min_elevation_m is not None and geo.max_elevation_m is not None else "—")
                 intervals[interval]=intervals.get(interval,0)+1
-                status=ev.status if ev else None; q=ev.result_quadrant if ev and status=="completed" else None
+                status=str(derive_assessment_progress_state(
+                    geo.logical_id, ev.status if ev else None,
+                    ev.geometry_revision.logical_id if ev else None))
+                current_completed = status == "completed"
+                q=ev.result_quadrant if ev and current_completed else None
                 if q: quadrants[q]=quadrants.get(q,0)+1
-                areas.append(AreaRow(area.logical_id,area.name,interval,(ev.assessment_date if ev else area.assessment_date),status,float(ev.design_achievement_index) if ev and ev.design_achievement_index is not None else None,float(ev.face_condition_index) if ev and ev.face_condition_index is not None else None,q))
+                areas.append(AreaRow(area.logical_id,area.name,interval,(ev.assessment_date if ev else area.assessment_date),status,float(ev.design_achievement_index) if ev and current_completed and ev.design_achievement_index is not None else None,float(ev.face_condition_index) if ev and current_completed and ev.face_condition_index is not None else None,q))
             completed=[x for x in areas if x.status=="completed"]
             avg=lambda key: (sum(v)/len(v) if (v:=[getattr(x,key) for x in completed if getattr(x,key) is not None]) else None)
             summary=DomainSummary(domain.id,domain.name,len(blocks),len(contours),len(areas),len(completed),sum(x.status=="draft" for x in areas),avg("dai"),avg("fci"))
-            blasts=[BlastRow(x.id,"Production",x.block_number,_number(x.horizon_m),x.planned_blast_date,x.status) for x in blocks]
-            blasts += [BlastRow(x.logical_id,"Contour",x.name,_number(x.elevation_m),x.event_date,"—") for x in contours]
+            production_events=list(s.scalars(select(a.BlastEvent).where(
+                a.BlastEvent.blast_block_id.in_([x.id for x in blocks]),
+                a.BlastEvent.event_type=="production"))) if blocks else []
+            event_by_block={x.blast_block_id:x for x in production_events}
+            all_events=production_events+contours; states=blast_workflow_states(s,all_events)
+            blasts=[BlastRow(x.id,"Production",x.block_number,_number(x.horizon_m),event_by_block[x.id].event_date,str(states[event_by_block[x.id].id])) for x in blocks if x.id in event_by_block]
+            blasts += [BlastRow(x.logical_id,"Contour",x.name,_number(x.elevation_m),x.event_date,str(states[x.id])) for x in contours]
             activity=[(f"Assessment Area: {area.name}",area.updated_at) for area,_,_ in rows]
             activity += [(f"Evaluation: {area.name}",ev.created_at) for area,_,ev in rows if ev is not None]
             activity += [(f"Block {x.block_number}",x.updated_at) for x in blocks]+[(x.name,x.updated_at) for x in contours]

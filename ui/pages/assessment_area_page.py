@@ -1,11 +1,12 @@
 from app.localization import tr
+from domain.blasting.workflow import ASSESSMENT_PROGRESS_LABELS, assessment_progress_for
 """Normal, revision-safe page for one Assessment Area."""
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QGridLayout,QHBoxLayout,QInputDialog,QLabel,QMessageBox,QPushButton,QTableWidget,QTableWidgetItem,
                                QTabWidget,QVBoxLayout,QWidget)
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
-from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame
+from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame,apply_workflow_badge_style
 from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog
 from ui.presentation_labels import format_assessment_elevation_interval, result_label
 
@@ -19,10 +20,10 @@ class AssessmentAreaPage(QWidget):
         self._build_editor()
         root=QVBoxLayout(self); self._header(root); body=QHBoxLayout(); left=QVBoxLayout(); self.tabs=QTabWidget(); left.addWidget(self.tabs); body.addLayout(left,4); self._sidebar(body); root.addLayout(body)
         self._overview(); self.tabs.addTab(self.assessment_tab,tr("Assessment")); self.tabs.addTab(self.result,tr("Result")); self._linked_events(); self._attachment_tab("Photos"); self._attachment_tab("Documents"); self.tabs.addTab(self.history,tr("History")); self._refresh_overview_and_sidebar()
-        self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#eef5ff;color:#174f8a;border:1px solid #b8d3ef;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
+        self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
 
     def _header(self,root):
-        card=CardFrame(); top=QHBoxLayout(); title=QLabel(self.area.name); title.setObjectName("EntityTitle"); self.header_status=QLabel(); self.header_status.setObjectName("StatusBadge"); top.addWidget(title); top.addStretch(); top.addWidget(self.header_status); card.layout.addLayout(top); rev=self.area.active_geometry_revision(); meta=QHBoxLayout()
+        card=CardFrame(); top=QHBoxLayout(); title=QLabel(self.area.name); title.setObjectName("EntityTitle"); self.header_status=QLabel(); apply_workflow_badge_style(self.header_status); top.addWidget(title); top.addStretch(); top.addWidget(self.header_status); card.layout.addLayout(top); rev=self.area.active_geometry_revision(); meta=QHBoxLayout()
         interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation)
         for text in (f"{tr('ID')}: {self.area.id}",f"{tr('Domain')}: {self.domain_name}",f"{tr('Assessment date')}: {self.area.assessment_date}",f"{tr('Elevation interval')}: {interval}",f"{tr('Revision')}: {rev.revision_number}"):
             badge=QLabel(text); badge.setObjectName("MetaBadge"); meta.addWidget(badge)
@@ -53,11 +54,11 @@ class AssessmentAreaPage(QWidget):
         self.edit_boundaries_button=QPushButton(tr("Edit boundaries")); self.edit_boundaries_button.setEnabled(not self.read_only); self.edit_boundaries_button.clicked.connect(self._request_edit_boundaries); layout.addWidget(self.edit_boundaries_button); self.tabs.addTab(page,tr("Overview"))
 
     def _refresh_overview_and_sidebar(self):
-        rev=self.area.active_geometry_revision(); active=self.evaluation.active_revision(); confirmed=[x for x in self.area.links_for_revision() if x.status=="confirmed"]; prod=sum(self.controller.links.event(x.blast_event_id).event_type=="production" for x in confirmed); contour=len(confirmed)-prod; status=tr("Archived") if self.area.is_archived else tr("Active"); self.header_status.setText(status)
+        rev=self.area.active_geometry_revision(); active=self.evaluation.active_revision(); confirmed=[x for x in self.area.links_for_revision() if x.status=="confirmed"]; prod=sum(self.controller.links.event(x.blast_event_id).event_type=="production" for x in confirmed); contour=len(confirmed)-prod; status=tr(ASSESSMENT_PROGRESS_LABELS[assessment_progress_for(self.area,self.evaluation)]); self.header_status.setText(status + ((" · " + tr("Archived")) if self.area.is_archived else ""))
         while self.info_grid.count():
             item=self.info_grid.takeAt(0)
             if item.widget():item.widget().deleteLater()
-        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation); rows=(("Name",self.area.name),("ID",self.area.id),("Domain",self.domain_name),("Assessment date",self.area.assessment_date),("Status",status),("Elevation interval",interval),("Active geometry revision",rev.revision_number),("Project Lines Dataset",', '.join(rev.source_dataset_ids) or 'Free boundary'))
+        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation); rows=(("Name",self.area.name),("ID",self.area.id),("Domain",self.domain_name),("Assessment date",self.area.assessment_date),("Status",status),("Archive",tr("Archived") if self.area.is_archived else "—"),("Elevation interval",interval),("Active geometry revision",rev.revision_number),("Project Lines Dataset",', '.join(rev.source_dataset_ids) or 'Free boundary'))
         self.general_information={}
         for row,(name,value) in enumerate(rows):left=QLabel(tr(name)); left.setObjectName("MutedText"); right=QLabel(_value(value)); self.general_information[name]=right; self.info_grid.addWidget(left,row,0); self.info_grid.addWidget(right,row,1)
         evaluation_status=active.status if active else "—"; dai=f"{active.design_achievement_index:.3f}" if active and active.design_achievement_index is not None else "—"; fci=f"{active.face_condition_index:.3f}" if active and active.face_condition_index is not None else "—"; quadrant=result_label(active.result_label) if active else "—"

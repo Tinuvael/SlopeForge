@@ -96,6 +96,8 @@ def load_main_with_fakes(monkeypatch):
     monkeypatch.setitem(sys.modules, "PySide6.QtWidgets", qt)
 
     fake_modules = {
+        "app.localization": {"tr": lambda value: value,
+                             "install_selected_translator": lambda app: None},
         "app.platform": {"set_windows_app_user_model_id": lambda: None},
         "app.qt": {"apply_application_icon": lambda app: None},
         "app.splash": {"SlopeForgeSplash": FakeSplash},
@@ -185,6 +187,8 @@ def test_main_uses_postgresql_dialog_for_startup_error(monkeypatch):
     class SpecializedStartupError(RuntimeError):
         def __init__(self, message, server=None):
             super().__init__(message); self.server = server
+        def presentation(self):
+            return f"{self}\n\nServer/database: {self.server}"
 
     FakeMessageBox.critical_calls = []
     module.StartupError = SpecializedStartupError

@@ -3,9 +3,10 @@ from app.localization import tr
 from PySide6.QtWidgets import QFileDialog,QGridLayout,QHBoxLayout,QLabel,QMessageBox,QPushButton,QTabWidget,QVBoxLayout,QWidget
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
-from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame
+from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame,apply_workflow_badge_style
 from ui.pages.technical_card_widgets import ActualExecutionEditorWidget,BlastDesignEditorWidget,TechnicalCardEditorWidget
 from ui.presentation_labels import domain_message
+from domain.blasting.workflow import WORKFLOW_LABELS, blast_workflow_for
 
 
 def _show(value,unit=""):return "—" if value in (None,"") else f"{value:g}{unit}" if isinstance(value,(int,float)) else str(value)
@@ -16,16 +17,30 @@ class ContourEventPage(QWidget):
         card,draft=self.controller.technical_card_draft(self.blast_event); self.card,self.draft=card,draft; self.editor=TechnicalCardEditorWidget(self.blast_event,card,draft,self.controller.save_technical_card,self,self.read_only)
         root=QVBoxLayout(self); self._header(root); body=QHBoxLayout(); left=QVBoxLayout(); self.tabs=QTabWidget(); left.addWidget(self.tabs); actions=QHBoxLayout(); actions.addStretch(); self.draft_button=QPushButton(tr("Save draft")); self.complete_button=QPushButton(tr("Complete")); self.draft_button.setEnabled(not self.read_only); self.complete_button.setEnabled(not self.read_only); self.draft_button.clicked.connect(self.save_draft); self.complete_button.clicked.connect(self.complete); actions.addWidget(self.draft_button); actions.addWidget(self.complete_button); left.addLayout(actions); body.addLayout(left,4); self._sidebar(body); root.addLayout(body)
         self._general(); self.tabs.addTab(BlastDesignEditorWidget(self.editor.take_tab(tr("Contour drilling"))),tr("Blast design")); self.tabs.addTab(ActualExecutionEditorWidget(self.editor.take_tab(tr("Execution fact"))),tr("Execution fact")); self.photos_tab=self._attachments("Photos"); self.documents_tab=self._attachments("Documents"); self.tabs.addTab(self.photos_tab,tr("Photos")); self.tabs.addTab(self.documents_tab,tr("Documents")); self.tabs.addTab(self.editor.take_tab(tr("Revision history")),tr("History")); self._refresh_sidebar()
-        self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#eef5ff;color:#174f8a;border:1px solid #b8d3ef;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
+        self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
     def _header(self,root):
-        card=CardFrame(); top=QHBoxLayout(); title=QLabel(f"{tr('Contour blast')} {self.blast_event.name}"); title.setObjectName("EntityTitle"); status=QLabel(tr("Archived") if self.blast_event.is_archived else tr("Active")); status.setObjectName("StatusBadge"); top.addWidget(title); top.addStretch(); top.addWidget(status); card.layout.addLayout(top); meta=QHBoxLayout()
-        for text in (f"{tr('ID')}: {self.blast_event.id}",f"{tr('Horizon')}: {self.blast_event.elevation:g} m",f"{tr('Domain')}: {self.domain_name}",f"{tr('Date')}: {self.blast_event.event_date or '—'}",f"{tr('Revision')}: {self.rev.revision_number if self.rev else '—'}"):
+        card=CardFrame(); top=QHBoxLayout(); title=QLabel(f"{tr('Contour blast')} {self.blast_event.name}"); title.setObjectName("EntityTitle"); self.header_status=QLabel(); apply_workflow_badge_style(self.header_status); top.addWidget(title); top.addStretch(); top.addWidget(self.header_status)
+        if self.blast_event.is_archived: top.addWidget(QLabel(tr("Archived")))
+        card.layout.addLayout(top); meta=QHBoxLayout()
+        for index,text in enumerate((f"{tr('ID')}: {self.blast_event.id}",f"{tr('Horizon')}: {self.blast_event.elevation:g} m",f"{tr('Domain')}: {self.domain_name}",f"{tr('Planned blast date')}: {self.blast_event.event_date or '—'}",f"{tr('Revision')}: {self.rev.revision_number if self.rev else '—'}")):
             badge=QLabel(text); badge.setObjectName("MetaBadge"); meta.addWidget(badge)
+            if index == 3: self.header_date = badge
         meta.addStretch(); card.layout.addLayout(meta); root.addWidget(card)
+        self._refresh_workflow_presentation()
+
+    def _refresh_workflow_presentation(self):
+        workflow = tr(WORKFLOW_LABELS[blast_workflow_for(self.controller.state, self.blast_event)])
+        planned = self.blast_event.event_date or "—"
+        self.header_status.setText(workflow)
+        self.header_date.setText(f"{tr('Planned blast date')}: {planned}")
+        if hasattr(self, "general_information"):
+            self.general_information["Status"].setText(workflow)
+            self.general_information["Planned blast date"].setText(str(planned))
     def _sidebar(self,body):
         right=QVBoxLayout(); self.summary=CardFrame("Summary"); self.summary_grid=QGridLayout(); self.summary.layout.addLayout(self.summary_grid); right.addWidget(self.summary); self.photo_preview=AttachmentPreviewWidget("Photos"); self.document_preview=AttachmentPreviewWidget("Documents"); self.photo_preview.add_button.clicked.connect(lambda:self.tabs.setCurrentWidget(self.photos_tab)); self.document_preview.add_button.clicked.connect(lambda:self.tabs.setCurrentWidget(self.documents_tab)); right.addWidget(self.photo_preview); right.addWidget(self.document_preview); right.addStretch(); body.addLayout(right,1)
     def _general(self):
-        page=QWidget(); layout=QVBoxLayout(page); top=QHBoxLayout(); info=CardFrame("General information"); grid=QGridLayout(); info.layout.addLayout(grid); values=(("Name",self.blast_event.name),("ID",self.blast_event.id),("Type","Contour"),("Domain",self.domain_name),("Horizon",f"{self.blast_event.elevation:g} m"),("Event date",self.blast_event.event_date or "—"),("Status",tr("Archived") if self.blast_event.is_archived else tr("Active")),("Active geometry revision",self.rev.revision_number if self.rev else "—"),("Source geometry file",self.rev.source_file_name if self.rev else "—"),("Geometry import date",self.rev.imported_at.date() if self.rev else "—")); self.general_information={}
+        workflow=tr(WORKFLOW_LABELS[blast_workflow_for(self.controller.state,self.blast_event)])
+        page=QWidget(); layout=QVBoxLayout(page); top=QHBoxLayout(); info=CardFrame("General information"); grid=QGridLayout(); info.layout.addLayout(grid); values=(("Name",self.blast_event.name),("ID",self.blast_event.id),("Type","Contour"),("Domain",self.domain_name),("Horizon",f"{self.blast_event.elevation:g} m"),("Planned blast date",self.blast_event.event_date or "—"),("Status",workflow),("Archive",tr("Archived") if self.blast_event.is_archived else "—"),("Active geometry revision",self.rev.revision_number if self.rev else "—"),("Source geometry file",self.rev.source_file_name if self.rev else "—"),("Geometry import date",self.rev.imported_at.date() if self.rev else "—")); self.general_information={}
         for row,(name,value) in enumerate(values):left=QLabel(tr(name)); left.setObjectName("MutedText"); right=QLabel(str(value)); self.general_information[name]=right; grid.addWidget(left,row,0); grid.addWidget(right,row,1)
         top.addWidget(info,3); dataset=self.controller.state.active_dataset(); self.plan=PlanGeometryWidget(); self.plan.set_geometry(self.rev.plan_geometry if self.rev else None,dataset.lines if dataset else [],f"{tr('Horizon')}: {self.blast_event.elevation:g} | {tr('Source')}: {self.rev.source_file_name if self.rev else '—'}"); self.plan.set_reimport_enabled(not self.read_only); self.plan.reimport_requested.connect(self.reimport_geometry); top.addWidget(self.plan,2); layout.addLayout(top)
         contour=self.draft.contour_parameters; actual=self.draft.actual_execution; cards=QHBoxLayout(); design=CardFrame("Blast design parameters"); execution=CardFrame("Execution fact"); design_text=QLabel(); execution_text=QLabel(); design_text.setWordWrap(True); execution_text.setWordWrap(True)
@@ -37,7 +52,7 @@ class ContourEventPage(QWidget):
         from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget
         kind="photo" if title=="Photos" else "document"; page=QWidget(); layout=QVBoxLayout(page); manager=EntityAttachmentManagerWidget(self.controller.attachments,"blast_event",self.blast_event.id,kind,page,read_only=self.read_only); manager.changed.connect(self._refresh_sidebar); layout.addWidget(manager); return page
     def _refresh_sidebar(self):
-        photos=self.controller.attachments.list_for_owner("blast_event",self.blast_event.id,"photo"); documents=self.controller.attachments.list_for_owner("blast_event",self.blast_event.id,"document"); active=self.card.active_revision(); rows=(("Status",tr("Archived") if self.blast_event.is_archived else tr("Active")),("Date",self.blast_event.event_date or "—"),("Horizon",f"{self.blast_event.elevation:g} m"),("Geometry revision",self.rev.revision_number if self.rev else "—"),("Technical Card revision",active.revision_number if active else "—"),("Technical Card status",active.status if active else self.draft.status),("Photos",len(photos)),("Documents",len(documents)))
+        photos=self.controller.attachments.list_for_owner("blast_event",self.blast_event.id,"photo"); documents=self.controller.attachments.list_for_owner("blast_event",self.blast_event.id,"document"); active=self.card.active_revision(); rows=(("Status",tr(WORKFLOW_LABELS[blast_workflow_for(self.controller.state,self.blast_event)])),("Archive",tr("Archived") if self.blast_event.is_archived else "—"),("Planned blast date",self.blast_event.event_date or "—"),("Horizon",f"{self.blast_event.elevation:g} m"),("Geometry revision",self.rev.revision_number if self.rev else "—"),("Technical Card revision",active.revision_number if active else "—"),("Technical Card status",active.status if active else self.draft.status),("Photos",len(photos)),("Documents",len(documents)))
         while self.summary_grid.count():
             item=self.summary_grid.takeAt(0)
             if item.widget():item.widget().deleteLater()
@@ -51,7 +66,11 @@ class ContourEventPage(QWidget):
         except Exception as exc:QMessageBox.warning(self,tr("Contour geometry"),domain_message(str(exc)))
     def save_draft(self):
         if self.read_only:QMessageBox.warning(self,tr("Read only"),tr("This contour event is read-only.")); return False
-        return self.editor.save_draft()
+        saved=self.editor.save_draft()
+        if saved:self._refresh_workflow_presentation(); self._refresh_sidebar()
+        return saved
     def complete(self):
         if self.read_only:QMessageBox.warning(self,tr("Read only"),tr("This contour event is read-only.")); return False
-        return self.editor.complete()
+        saved=self.editor.complete()
+        if saved:self._refresh_workflow_presentation(); self._refresh_sidebar()
+        return saved

@@ -42,8 +42,8 @@ class EntityPageController:
     def technical_card_draft(self, event):
         return self.editing.technical_card_draft(event)
 
-    def save_technical_card(self, card, revision, status):
-        return self.editing.save_technical_card(card, revision, status)
+    def save_technical_card(self, card, revision, status, planned_date=...):
+        return self.editing.save_technical_card(card, revision, status, planned_date)
 
     def evaluation_draft(self, area):
         return self.editing.evaluation_draft(area)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 
@@ -15,10 +14,7 @@ from repositories.blast_block_repository import BlastBlockRepository, BlastBlock
 from repositories.domain_repository import DomainRepository
 from infrastructure.db.domain_version import guard_domain_versions
 
-VALID_STATUSES = {"planned", "blasted", "assessed"}
-STATUS_LABELS = {"planned": "Planned", "blasted": "Blasted", "assessed": "Assessed"}
-AUDIT_STATUS_LABELS = {"planned": "Запланирован", "blasted": "Взорван", "assessed": "Оценён"}
-AUDIT_FIELD_LABELS = {"block_number": "Номер блока", "domain_id": "Домен", "horizon_m": "Горизонт", "planned_blast_date": "Плановая дата взрыва", "status": "Статус", "comment": "Комментарий"}
+AUDIT_FIELD_LABELS = {"block_number": "Номер блока", "domain_id": "Домен", "horizon_m": "Горизонт", "comment": "Комментарий"}
 AUDITED_FIELDS = tuple(AUDIT_FIELD_LABELS)
 
 class PermissionDenied(ValueError): pass
@@ -29,8 +25,6 @@ class BlastBlockInput:
     domain_id: int | None
     block_number: str
     horizon_text: str
-    planned_blast_date: date | None
-    status: str
     comment: str | None
 
 class BlastBlockService:
@@ -59,10 +53,10 @@ class BlastBlockService:
     def create_block(self, data: BlastBlockInput, user: CurrentUser) -> int:
         self._check_can_edit(user); horizon = self._validate(data)
         if self.session_factory is None:
-            return self.block_repository.create_block(domain_id=data.domain_id, block_number=data.block_number, horizon_m=horizon, planned_blast_date=data.planned_blast_date, status=data.status, comment=data.comment, created_by_user_id=user.id).id
+            return self.block_repository.create_block(domain_id=data.domain_id, block_number=data.block_number, horizon_m=horizon, comment=data.comment, created_by_user_id=user.id).id
         try:
             with self.session_factory.begin() as session:
-                block = BlastBlock(domain_id=data.domain_id, block_number=data.block_number.strip(), horizon_m=horizon, planned_blast_date=data.planned_blast_date, status=data.status, comment=data.comment or None, created_by_user_id=user.id)
+                block = BlastBlock(domain_id=data.domain_id, block_number=data.block_number.strip(), horizon_m=horizon, comment=data.comment or None, created_by_user_id=user.id)
                 session.add(block); session.flush()
                 self.audit_repository.add_entry(session, blast_block_id=block.id, user_id=user.id, action="create", entity_type="blast_block", entity_id=block.id, description="Создан взрывной блок")
                 return block.id
@@ -72,7 +66,7 @@ class BlastBlockService:
                      *, expected_version: int) -> int:
         self._check_can_edit(user); horizon = self._validate(data)
         if self.session_factory is None:
-            self.block_repository.update_block(block_id=block_id,domain_id=data.domain_id,block_number=data.block_number,horizon_m=horizon,planned_blast_date=data.planned_blast_date,status=data.status,comment=data.comment)
+            self.block_repository.update_block(block_id=block_id,domain_id=data.domain_id,block_number=data.block_number,horizon_m=horizon,comment=data.comment)
             return block_id
         try:
             with self.session_factory.begin() as session:
@@ -83,7 +77,7 @@ class BlastBlockService:
                 old_domain = session.get(Domain, block.domain_id); new_domain = session.get(Domain, data.domain_id)
                 guard_domain_versions(session, {block.domain_id: expected_version})
                 if old_domain.site_id != new_domain.site_id: raise ValidationError("A block can only move between Domains of the same project")
-                new_values = {"block_number": data.block_number.strip(), "domain_id": data.domain_id, "horizon_m": horizon, "planned_blast_date": data.planned_blast_date, "status": data.status, "comment": data.comment or None}
+                new_values = {"block_number": data.block_number.strip(), "domain_id": data.domain_id, "horizon_m": horizon, "comment": data.comment or None}
                 old_values = {field: getattr(block, field) for field in AUDITED_FIELDS}
                 names = {d.id: d.name for d in session.query(Domain).filter(Domain.id.in_({block.domain_id, data.domain_id})).all()}
                 for field, old_text, new_text in build_audit_changes(old_values, new_values, names):
@@ -97,7 +91,6 @@ class BlastBlockService:
     def _validate(self, data):
         if not data.block_number.strip(): raise ValidationError("Block number is required")
         if data.domain_id is None or self.domain_repository.get(data.domain_id) is None: raise ValidationError("Select an existing Domain")
-        if data.status not in VALID_STATUSES: raise ValidationError("Invalid block status")
         if not data.horizon_text.strip(): return None
         try: return Decimal(data.horizon_text.replace(",", "."))
         except InvalidOperation as exc: raise ValidationError("Horizon must be a number") from exc
@@ -107,8 +100,6 @@ def build_audit_changes(old_values, new_values, domain_names=None):
 
 def format_audit_value(field_name, value, domain_names=None):
     if value is None: return None
-    if field_name == "status": return AUDIT_STATUS_LABELS.get(str(value), str(value))
-    if field_name == "planned_blast_date" and isinstance(value, date): return value.strftime("%d.%m.%Y")
     if field_name == "horizon_m" and isinstance(value, Decimal):
         text = format(value.normalize(), "f"); return text.rstrip("0").rstrip(".") if "." in text else text
     if field_name == "domain_id": return (domain_names or {}).get(int(value), str(value))

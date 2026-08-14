@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -14,7 +14,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 from .base import Base, TimestampMixin
 
 user_role_enum = Enum("admin", "editor", "viewer", name="user_role", native_enum=True)
-blast_block_status_enum = Enum("planned", "blasted", "assessed", name="blast_block_status", native_enum=True)
 
 
 class User(TimestampMixin, Base):
@@ -94,8 +93,6 @@ class BlastBlock(TimestampMixin, Base):
     domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="RESTRICT"), nullable=False, index=True)
     block_number: Mapped[str] = mapped_column(String(80), nullable=False)
     horizon_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
-    planned_blast_date: Mapped[Optional[date]] = mapped_column(Date)
-    status: Mapped[str] = mapped_column(blast_block_status_enum, nullable=False, default="planned", index=True)
     comment: Mapped[Optional[str]] = mapped_column(Text)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

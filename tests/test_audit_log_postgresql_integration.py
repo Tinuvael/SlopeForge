@@ -35,7 +35,7 @@ def context(factory):
         mine=Mine(name="Audit Project");session.add_all((user,mine));session.flush()
         site=Site(mine_id=mine.id,name="Audit Project");session.add(site);session.flush()
         domain=Domain(site_id=site.id,name="North");session.add(domain);session.flush()
-        block=BlastBlock(domain_id=domain.id,block_number="B-001",status="planned",created_by_user_id=user.id)
+        block=BlastBlock(domain_id=domain.id,block_number="B-001",created_by_user_id=user.id)
         session.add(block);session.flush(); ids=(user.id,mine.id,site.id,domain.id,block.id)
     yield ids
     with factory.begin() as session:
@@ -46,8 +46,8 @@ def context(factory):
 def service(factory,audit=None):
     return BlastBlockService(BlastBlockRepository(factory),DomainRepository(factory),audit)
 
-def data(domain_id,number="B-001",horizon="",status="planned",comment=""):
-    return BlastBlockInput(domain_id,number,horizon,date(2026,7,15),status,comment)
+def data(domain_id,number="B-001",horizon="",comment=""):
+    return BlastBlockInput(domain_id,number,horizon,comment)
 
 def user(ids,role="admin"): return CurrentUser(ids[0],role,"Admin User",role)
 
@@ -57,12 +57,11 @@ def test_create_audit_entry(factory,context):
     assert len(rows)==1 and rows[0].action=="create" and rows[0].description=="Создан взрывной блок"
 
 def test_update_audits_changed_fields_and_noop(factory,context):
-    current=service(factory); current.update_block(context[4],data(context[3],horizon="760.5",status="blasted",comment="Updated"),user(context),expected_version=0)
+    current=service(factory); current.update_block(context[4],data(context[3],horizon="760.5",comment="Updated"),user(context),expected_version=0)
     rows=AuditLogRepository(factory).list_for_block(context[4]); fields={row.field_name for row in rows}
-    assert fields=={"horizon_m","planned_blast_date","status","comment"}
-    assert any(row.old_value=="Запланирован" and row.new_value=="Взорван" for row in rows)
+    assert fields=={"horizon_m","comment"}
     count=len(rows)
-    current.update_block(context[4],data(context[3],horizon="760.5",status="blasted",comment="Updated"),user(context),expected_version=1)
+    current.update_block(context[4],data(context[3],horizon="760.5",comment="Updated"),user(context),expected_version=1)
     assert len(AuditLogRepository(factory).list_for_block(context[4]))==count
 
 def test_audit_failure_rolls_back_create(factory,context):

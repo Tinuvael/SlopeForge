@@ -1787,6 +1787,10 @@
             <translation>Плановая дата взрыва</translation>
         </message>
         <message>
+            <source>Set planned date</source>
+            <translation>Указать плановую дату</translation>
+        </message>
+        <message>
             <source>Points</source>
             <translation>Точки</translation>
         </message>

@@ -130,15 +130,29 @@ def test_destructive_migration_guard_rejects_non_test_database() -> None:
         )
 
 
-def test_mvp_baseline_is_the_only_alembic_head() -> None:
+def test_phase_75a_migration_is_the_only_alembic_head() -> None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0001_mvp_baseline"]
+    assert script.get_heads() == ["0002_workflow_status"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0002_workflow_status",
         "0001_mvp_baseline"
     ]
+
+
+def test_every_alembic_revision_fits_standard_version_column() -> None:
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    revisions = ScriptDirectory.from_config(Config("alembic.ini")).walk_revisions()
+    overlong = [revision.revision for revision in revisions
+                if len(revision.revision) > 32]
+    assert overlong == [], (
+        "Alembic stores revision identifiers in alembic_version.version_num VARCHAR(32): "
+        + ", ".join(overlong)
+    )
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
@@ -167,7 +181,7 @@ def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
             domain = Domain(site_id=site.id, name="North")
             session.add(domain); session.flush()
             block = BlastBlock(
-                domain_id=domain.id, block_number="B-1", status="planned",
+                domain_id=domain.id, block_number="B-1",
                 is_archived=False,
             )
             session.add(block); session.flush()

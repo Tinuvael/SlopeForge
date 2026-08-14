@@ -66,10 +66,12 @@ class SqlAlchemyAssessmentWrites:
                 elevation_m=revision.elevation, is_active=True))
             return DomainWriteResult(new_version)
 
-    def persist_technical_card_revision(self, domain_id, expected_version, card, revision):
+    def persist_technical_card_revision(self, domain_id, expected_version, card, revision, event_date=...):
         with self._session_factory.begin() as s:
             new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             event = self._logical(s, orm.BlastEvent, domain_id, card.blast_event_id)
+            if event_date is not ...:
+                event.event_date = event_date
             row = s.scalar(select(orm.BlastEventTechnicalCard).where(
                 orm.BlastEventTechnicalCard.blast_event_id == event.id))
             if row is None:
