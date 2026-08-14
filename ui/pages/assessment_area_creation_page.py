@@ -17,7 +17,7 @@ class AssessmentAreaCreationPage(QWidget):
 
     area_created = Signal(str)
     cancelled = Signal()
-    GENERAL, BOUNDARY, LINKS, REVIEW, SAVE = range(5)
+    GENERAL, BOUNDARY, REVIEW, SAVE = range(4)
 
     def __init__(self, context, domain_id, domain_name, site_id, parent=None, edit_area_id=None):
         super().__init__(parent)
@@ -86,11 +86,16 @@ class AssessmentAreaCreationPage(QWidget):
         self.footer = QFrame(); self.footer.setObjectName("assessmentFooter")
         footer_layout = QHBoxLayout(self.footer); footer_layout.setContentsMargins(10, 7, 10, 7)
         self.cancel = QPushButton(tr("Cancel")); self.cancel.clicked.connect(self._close_page)
+        self.cancel.setObjectName("assessmentQuietAction")
         self.footer_status = QLabel(); footer_layout.addWidget(self.cancel); footer_layout.addWidget(self.footer_status)
         footer_layout.addStretch(1)
         self.back = QPushButton(tr("Back")); self.back.clicked.connect(self._back)
+        self.back.setObjectName("assessmentSecondaryAction")
         self.next = QPushButton(tr("Next")); self.next.clicked.connect(self._next)
+        self.next.setObjectName("assessmentPrimaryAction")
         self.confirm = QPushButton(tr("Save revision") if edit_area_id else tr("Save Assessment")); self.confirm.clicked.connect(self._confirm)
+        self.confirm.setObjectName("assessmentPrimaryAction")
+        for action in (self.cancel, self.back, self.next, self.confirm): action.setMinimumHeight(32)
         footer_layout.addWidget(self.back); footer_layout.addWidget(self.next); footer_layout.addWidget(self.confirm)
         root.addWidget(self.footer)
 
@@ -105,6 +110,15 @@ class AssessmentAreaCreationPage(QWidget):
             QLabel#assessmentFieldValue { color:#23313F; }
             QLabel#assessmentPlanStatus { color:#687481; }
             QLabel#assessmentValidation { color:#B0443E; }
+            QPushButton#assessmentPrimaryAction { background:#1769AA; color:#FFFFFF; border:1px solid #1769AA;
+                border-radius:4px; padding:4px 14px; font-weight:600; }
+            QPushButton#assessmentPrimaryAction:hover { background:#135D97; }
+            QPushButton#assessmentPrimaryAction:disabled { background:#A8BDD0; border-color:#A8BDD0; }
+            QPushButton#assessmentSecondaryAction { background:#FFFFFF; color:#314252; border:1px solid #B8C4CE;
+                border-radius:4px; padding:4px 13px; }
+            QPushButton#assessmentQuietAction { background:transparent; color:#687481; border:1px solid transparent;
+                border-radius:4px; padding:4px 10px; }
+            QPushButton#assessmentQuietAction:hover { background:#EEF2F5; }
         """)
         self.editor.workflow_state_changed.connect(self._sync_ui)
         # Compatibility for legitimate lower-level confirm_boundaries() callers.
@@ -194,13 +208,10 @@ class AssessmentAreaCreationPage(QWidget):
         if self.current_step == self.GENERAL:
             if self._validate_general(): self._set_step(self.BOUNDARY)
         elif self.current_step == self.BOUNDARY and self.editor.closed_boundary() is not None:
-            self._update_geometry_summary(); self._run_link_preview(); self._set_step(self.LINKS)
-        elif self.current_step == self.LINKS:
-            self._set_step(self.REVIEW)
+            self._update_geometry_summary(); self._run_link_preview(); self._set_step(self.REVIEW)
 
     def _back(self):
-        if self.current_step == self.REVIEW: self._set_step(self.LINKS)
-        elif self.current_step == self.LINKS: self._set_step(self.BOUNDARY)
+        if self.current_step == self.REVIEW: self._set_step(self.BOUNDARY)
         elif self.current_step == self.BOUNDARY and not self.edit_area_id: self._set_step(self.GENERAL)
 
     def _set_step(self, step):
@@ -215,10 +226,16 @@ class AssessmentAreaCreationPage(QWidget):
             for label in (self.elevation_value, self.spans_value, self.connectors_value): label.setText("—")
             return
         minimum, maximum = derive_elevation_summary(boundary)
-        elevation = "—" if minimum is None or maximum is None else f"{minimum:g}–{maximum:g} m"
+        elevation = self._format_elevation_interval(minimum, maximum)
         self.elevation_value.setText(elevation)
         self.spans_value.setText(str(sum(isinstance(item, ProjectLineSpan) for item in boundary.segments)))
         self.connectors_value.setText(str(sum(isinstance(item, StraightConnector) for item in boundary.segments)))
+
+    @staticmethod
+    def _format_elevation_interval(minimum, maximum):
+        """Round for presentation only; frozen XYZ and matching keep full precision."""
+        if minimum is None or maximum is None: return "—"
+        return f"{minimum:.0f}–{maximum:.0f} m"
 
     def _run_link_preview(self):
         self._link_preview = None; self._link_preview_error = False
@@ -249,27 +266,23 @@ class AssessmentAreaCreationPage(QWidget):
             self._context_label("●  Blue — traced Project Line")
             self._context_label("●  Orange — straight connector")
             self._context_label("○  Marker — snap point")
-        elif self.current_step == self.LINKS:
-            self.context_title.setText("Potential linked events")
+        elif self.current_step == self.REVIEW:
+            self.context_title.setText("Review & linked events")
             if self._link_preview_error:
                 self._context_label("Linked-event preview unavailable")
-            elif self._link_preview:
+            else:
+                self._context_label("✓  General information")
+                self._context_label("✓  Boundary valid")
+                self._context_label("✓  Elevation summary derived")
+                self._context_label("✓  Linked-event preview completed")
+            self._context_row("Elevation interval", self.elevation_value.text())
+            self._context_row("Traced spans", self.spans_value.text())
+            self._context_row("Connectors", self.connectors_value.text())
+            if self._link_preview:
                 self._context_row("Total", self._link_preview.total)
                 self._context_row("Production", self._link_preview.production_count)
                 self._context_row("Contour blast", self._link_preview.contour_count)
                 self._build_link_event_list(self._link_preview.items)
-        else:
-            self.context_title.setText("Review")
-            preview_status = ("Linked-event preview unavailable" if self._link_preview_error else
-                              "✓  Linked-event preview completed")
-            for text in ("✓  General information", "✓  Boundary valid",
-                         "✓  Elevation summary derived", preview_status):
-                self._context_label(text)
-            boundary = self.editor.closed_boundary()
-            self._context_row("Elevation interval", self.elevation_value.text())
-            self._context_row("Boundary segments", len(boundary.segments) if boundary else "—")
-            self._context_row("Potential linked events", self.links_total_value.text())
-            self._context_row("Project Lines source", self.source_value.text())
 
     def _build_link_event_list(self, items):
         """Keep an arbitrarily long preview inside the fixed right-hand card."""
@@ -335,7 +348,7 @@ class AssessmentAreaCreationPage(QWidget):
     def _sync_ui(self, *_args):
         state = self.editor.workflow_state; boundary_step = self.current_step == self.BOUNDARY
         can_edit = not self.editor.read_only and not self._saving
-        self.plan_title.setText(("Project plan", "Define Assessment boundary", "Potential linked events",
+        self.plan_title.setText(("Project plan", "Define Assessment boundary",
                                  "Assessment footprint", "Assessment footprint")[self.current_step])
         self.start.setEnabled(can_edit and boundary_step and state == "IDLE")
         self.back_vertex.setEnabled(can_edit and boundary_step and state in {"DRAWING", "CLOSED"})
@@ -346,7 +359,6 @@ class AssessmentAreaCreationPage(QWidget):
         self.back.setEnabled(not self._saving and not (self.edit_area_id and self.current_step == self.BOUNDARY))
         self.next.setVisible(self.current_step != self.REVIEW)
         self.next.setEnabled(not self._saving and (self.current_step == self.GENERAL or
-                             self.current_step == self.LINKS or
                              (boundary_step and self.editor.closed_boundary() is not None)))
         self.confirm.setVisible(self.current_step == self.REVIEW)
         self.confirm.setEnabled(can_edit and self.current_step == self.REVIEW)

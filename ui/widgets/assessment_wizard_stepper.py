@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 
 class AssessmentWizardStepper(QWidget):
-    labels = ("General information", "Boundary", "Linked events", "Review", "Save")
+    labels = ("General information", "Boundary", "Review & linked events", "Save")
 
     def __init__(self, parent=None):
         super().__init__(parent)

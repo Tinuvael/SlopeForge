@@ -66,7 +66,7 @@ def build_page(monkeypatch, state, app, *, preview_count=0):
 
 def test_real_workspace_is_visible_and_has_one_navigation_path(monkeypatch, state, app):
     page = build_page(monkeypatch, state, app)
-    assert len(page.stepper.step_nodes) == 5
+    assert len(page.stepper.step_nodes) == 4
     assert all(circle.isVisible() and label.isVisible()
                for circle, label in page.stepper.step_nodes)
     assert page.info_card.isVisible() and page.plan_card.isVisible() and page.context_card.isVisible()
@@ -85,7 +85,7 @@ def test_map_keeps_same_parent_and_stays_visible_across_steps(monkeypatch, state
     page.area_name.setText("East wall")
     page._next()
     assert page.current_step == page.BOUNDARY
-    for step in (page.GENERAL, page.BOUNDARY, page.LINKS, page.REVIEW):
+    for step in (page.GENERAL, page.BOUNDARY, page.REVIEW):
         page._set_step(step); app.processEvents()
         assert page.editor is editor and editor.parentWidget() is parent
         assert editor.isVisible() and editor.plan_view.isVisible()
@@ -99,7 +99,7 @@ def test_large_link_preview_is_scrollable_without_expanding_page(monkeypatch, st
     page = build_page(monkeypatch, state, app, preview_count=80)
     initial_height = page.minimumSizeHint().height()
     page._link_preview = preview(80)
-    page._set_step(page.LINKS); app.processEvents()
+    page._set_step(page.REVIEW); app.processEvents()
 
     scroll = page.context_card.findChild(QScrollArea, "assessmentLinkEventsScroll")
     assert scroll is page.link_events_scroll and scroll.isVisible()
@@ -111,6 +111,19 @@ def test_large_link_preview_is_scrollable_without_expanding_page(monkeypatch, st
     assert page.plan_card.width() > page.info_card.width()
     assert page.plan_card.width() > page.context_card.width()
     assert page.editor.isVisible() and state.to_dict() == before
+    page.close()
+
+
+def test_footer_hierarchy_and_ui_only_elevation_rounding(monkeypatch, state, app):
+    page = build_page(monkeypatch, state, app)
+    assert page.next.objectName() == "assessmentPrimaryAction"
+    assert page.confirm.objectName() == "assessmentPrimaryAction"
+    assert page.back.objectName() == "assessmentSecondaryAction"
+    assert page.cancel.objectName() == "assessmentQuietAction"
+    assert all(button.minimumHeight() == 32
+               for button in (page.next, page.confirm, page.back, page.cancel))
+    assert page._format_elevation_interval(595.0, 625.0) == "595–625 m"
+    assert page._format_elevation_interval(595.4, 624.6) == "595–625 m"
     page.close()
 
 
