@@ -1,10 +1,11 @@
 import math
+from dataclasses import replace
 import pytest
 
 from domain.blasting.charge_design import (
     ChargeComponent, ChargeComponentKind, ChargeDesignValidationError,
     ExplosiveProduct, ExplosiveProductKind, available_air_intervals,
-    validate_components,
+    cartridge_depths, validate_components,
 )
 
 
@@ -77,3 +78,15 @@ def test_air_intervals_are_exact_and_do_not_mutate_input_order():
     assert available_air_intervals(10, items) == [(1, 3), (5, 8)]
     assert [item.id for item in items] == ["c", "a", "b"]
     assert available_air_intervals(10, [stemming("a", 0, 2), stemming("b", 2, 4)]) == [(4, 10)]
+
+
+def test_cartridge_depths_are_inclusive_stable_and_kind_checked():
+    deck = ChargeComponent("c", ChargeComponentKind.CARTRIDGE_EXPLOSIVE, 2, 4,
+                           cartridge().snapshot(), .5)
+    assert cartridge_depths(deck) == (2.0, 2.5, 3.0, 3.5, 4.0)
+    uneven = ChargeComponent("u", ChargeComponentKind.CARTRIDGE_EXPLOSIVE, .1, 1.0,
+                             cartridge().snapshot(), .3)
+    assert cartridge_depths(uneven) == (.1, .4, .7, 1.0)
+    assert cartridge_depths(replace(uneven, end_depth_m=.99)) == (.1, .4, .7)
+    with pytest.raises(ChargeDesignValidationError):
+        cartridge_depths(stemming("s", 0, 1))

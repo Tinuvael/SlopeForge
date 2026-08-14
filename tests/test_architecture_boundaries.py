@@ -144,6 +144,14 @@ def test_explosive_catalogue_has_one_canonical_orm_and_no_local_settings_storage
                 if "QSettings" in path.read_text(encoding="utf-8")}
 
 
+def test_borehole_charge_builder_has_no_persistence_dependencies() -> None:
+    path = ROOT / "ui/widgets/borehole_charge_builder.py"
+    forbidden = ("sqlalchemy", "database", "repositories", "infrastructure")
+    assert not {name for name in imports(path) if has_prefix(name, forbidden)}
+    text = path.read_text(encoding="utf-8")
+    assert "QSettings" not in text and "session_factory" not in text
+
+
 def test_application_is_qt_and_concrete_persistence_free() -> None:
     forbidden = ("PySide6", "sqlalchemy", "app", "database", "repositories", "infrastructure", "ui")
     offenders = {
