@@ -15,6 +15,11 @@ from infrastructure.db.domain_creation import SqlAlchemyDomainCreation
 from infrastructure.db.project_navigation import SqlAlchemyProjectNavigationQueries
 from infrastructure.db.project_report import SqlAlchemyProjectReportQuery
 from infrastructure.reports.excel_project_report import OpenPyxlProjectReportWriter
+from application.use_cases.rename_project import RenameProject
+from application.use_cases.rename_domain import RenameDomain
+from infrastructure.db.entity_renaming import (
+    SqlAlchemyDomainRenaming, SqlAlchemyProjectRenaming,
+)
 
 
 def create_blast_event_use_case(context):
@@ -45,6 +50,14 @@ def create_project_use_case(context):
 
 def create_domain_use_case(context):
     return CreateDomain(SqlAlchemyDomainCreation(context.session_factory))
+
+
+def create_rename_project_use_case(context):
+    return RenameProject(SqlAlchemyProjectRenaming(context.session_factory))
+
+
+def create_rename_domain_use_case(context):
+    return RenameDomain(SqlAlchemyDomainRenaming(context.session_factory))
 
 
 def create_project_navigation_queries(context):

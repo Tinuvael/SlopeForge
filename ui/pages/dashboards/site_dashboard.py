@@ -2,7 +2,10 @@
 from app.localization import tr
 from ui.presentation_labels import domain_message
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QFileDialog,QGridLayout,QHeaderView,QLabel,QMessageBox,QPushButton,QScrollArea,QTabWidget,QTableWidget,QTableWidgetItem,QVBoxLayout,QWidget
+from PySide6.QtWidgets import QFileDialog,QGridLayout,QHBoxLayout,QHeaderView,QLabel,QMessageBox,QPushButton,QScrollArea,QTabWidget,QTableWidget,QTableWidgetItem,QVBoxLayout,QWidget
+from app.use_case_factory import create_rename_project_use_case
+from application.use_cases.rename_project import RenameProjectCommand
+from ui.dialogs.rename_entity_dialog import RenameEntityDialog
 from app.icons.ui.ui_icons import ui_icon
 from application.state.assessment_domain_state import AssessmentDomainState
 from application.services.project_lines import ProjectLinesDatasetService
@@ -14,9 +17,20 @@ from .widgets import EmptyStateWidget,MetricCard,metric,quadrant_presentation,se
 
 class SiteDashboardPage(QWidget):
     domain_requested=Signal(int)
+    project_renamed=Signal(int,str)
     def __init__(self,context,site_id,name):
-        super().__init__(); self.context=context; self.site_id=site_id; self.repo=DashboardRepository(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory); self.snapshot=self.repo.site_snapshot(site_id)
-        root=QVBoxLayout(self); title=QLabel(name); title.setStyleSheet("font-size:24px;font-weight:700;color:#0F172A"); root.addWidget(title); root.addWidget(QLabel(tr("Overall project overview"))); self.tabs=QTabWidget(); root.addWidget(self.tabs); self._populate_tabs()
+        super().__init__(); self.context=context; self.site_id=site_id; self.repo=DashboardRepository(context.session_factory); self.lines_repo=ProjectLinesRepository(context.session_factory); self.rename_project=create_rename_project_use_case(context); self.snapshot=self.repo.site_snapshot(site_id)
+        root=QVBoxLayout(self); header=QHBoxLayout(); self.title_label=QLabel(name); self.title_label.setStyleSheet("font-size:24px;font-weight:700;color:#0F172A"); self.edit_button=QPushButton(tr("Edit")); self.edit_button.setIcon(ui_icon("edit","blue")); self.edit_button.setEnabled(bool(getattr(getattr(context,"current_user",None),"can_edit",False))); self.edit_button.clicked.connect(self.edit_project); header.addWidget(self.title_label); header.addStretch(); header.addWidget(self.edit_button); root.addLayout(header); root.addWidget(QLabel(tr("Overall project overview"))); self.tabs=QTabWidget(); root.addWidget(self.tabs); self._populate_tabs()
+    def edit_project(self):
+        if not self.context.current_user.can_edit:return
+        dialog=RenameEntityDialog("Project",self.title_label.text(),self)
+        while dialog.exec():
+            try:
+                user=self.context.current_user; result=self.rename_project.execute(RenameProjectCommand(self.site_id,dialog.name.text(),user.id,user.can_edit))
+            except Exception as exc: dialog.show_error(domain_message(str(exc))); continue
+            self.apply_rename_result(result.site_id,result.project_name); return
+    def apply_rename_result(self,site_id,new_name):
+        self.title_label.setText(new_name); self.project_renamed.emit(site_id,new_name)
     def _populate_tabs(self):
         while self.tabs.count():
             widget=self.tabs.widget(0); self.tabs.removeTab(0); widget.deleteLater()
