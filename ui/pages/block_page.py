@@ -32,6 +32,7 @@ class _NullAttachmentService:
 
 class BlockPage(QWidget):
     data_changed = Signal()
+    metadata_saved = Signal(int,int)
 
     def __init__(self, context: AppContext):
         super().__init__()
@@ -60,6 +61,7 @@ class BlockPage(QWidget):
         self.compact_cards = CompactInfoCards()
         bottom = QHBoxLayout()
         self.comments = CommentsWidget()
+        self.comments.edit_button.clicked.connect(self.edit_comment)
         self.audit_preview = AuditPreviewWidget()
         bottom.addWidget(self.comments, 3)
         bottom.addWidget(self.audit_preview, 2)
@@ -145,7 +147,7 @@ class BlockPage(QWidget):
             self.data_changed.emit()
 
     def edit_current_block(self) -> None:
-        if not self.current_block or not self.context.current_user.can_edit:
+        if not self.current_block or not self.context.current_user.can_edit or self.current_block.is_archived:
             return
         dialog = BlockDialog(self.block_service, self.domain_repo, self.context.current_user,
                              block=self.current_block,
@@ -154,6 +156,16 @@ class BlockPage(QWidget):
             self.current_block = self.block_service.get_block(dialog.saved_block_id or self.current_block.id)
             self.refresh()
             self.data_changed.emit()
+            self.metadata_saved.emit(self.current_block.id,self.current_block.domain_id)
+
+    def edit_comment(self):
+        if not self.current_block or not self.context.current_user.can_edit or self.current_block.is_archived:return
+        from PySide6.QtWidgets import QInputDialog
+        text,ok=QInputDialog.getMultiLineText(self,tr("Comments"),tr("Comment"),self.current_block.comment or "")
+        if not ok:return
+        try:self.block_service.update_comment(self.current_block.id,text,self.context.current_user,expected_version=self.entity_controller.expected_version)
+        except Exception as exc:QMessageBox.warning(self,tr("Could not save block"),domain_message(str(exc)));return
+        self.open_block_id(self.current_block.id); self.data_changed.emit()
 
     def _render_current_block(self) -> None:
         block = self.current_block
@@ -178,6 +190,7 @@ class BlockPage(QWidget):
         self.overview.set_block(block)
         self.compact_cards.set_block(block)
         self.comments.set_block(block)
+        self.comments.edit_button.setEnabled(bool(block and self.context.current_user.can_edit and not block.is_archived))
         self.summary.set_data(block, photo_count, document_count, len(audit_entries))
         self.photos.set_items(photos, "No photos yet")
         self.documents.set_items(documents, "No documents yet")

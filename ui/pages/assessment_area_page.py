@@ -15,6 +15,7 @@ def _value(value): return "—" if value in (None,"") else str(value)
 
 class AssessmentAreaPage(QWidget):
     edit_boundaries_requested=Signal(str)
+    metadata_saved=Signal(str,int)
     def __init__(self,context,domain_id,domain_name,area_id,parent=None):
         super().__init__(parent); self.context=context; self.domain_id=domain_id; self.domain_name=domain_name; self.area_id=area_id; self.controller=EntityPageController(context,domain_id); self.area=self.controller.area(area_id); self.read_only=not context.current_user.can_edit or self.area.is_archived
         self._build_editor()
@@ -23,11 +24,23 @@ class AssessmentAreaPage(QWidget):
         self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
 
     def _header(self,root):
-        card=CardFrame(); top=QHBoxLayout(); title=QLabel(self.area.name); title.setObjectName("EntityTitle"); self.header_status=QLabel(); apply_workflow_badge_style(self.header_status); top.addWidget(title); top.addStretch(); top.addWidget(self.header_status); card.layout.addLayout(top); rev=self.area.active_geometry_revision(); meta=QHBoxLayout()
+        card=CardFrame(); top=QHBoxLayout(); title=QLabel(self.area.name); title.setObjectName("EntityTitle"); self.header_status=QLabel(); apply_workflow_badge_style(self.header_status); top.addWidget(title); top.addStretch(); top.addWidget(self.header_status); self.edit_button=QPushButton(tr("Edit")); self.edit_button.setEnabled(not self.read_only); self.edit_button.clicked.connect(self.edit_metadata); top.addWidget(self.edit_button); card.layout.addLayout(top); rev=self.area.active_geometry_revision(); meta=QHBoxLayout()
         interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation)
         for text in (f"{tr('ID')}: {self.area.id}",f"{tr('Domain')}: {self.domain_name}",f"{tr('Assessment date')}: {self.area.assessment_date}",f"{tr('Elevation interval')}: {interval}",f"{tr('Revision')}: {rev.revision_number}"):
             badge=QLabel(text); badge.setObjectName("MetaBadge"); meta.addWidget(badge)
         meta.addStretch(); card.layout.addLayout(meta); root.addWidget(card)
+
+    def edit_metadata(self):
+        from repositories.domain_repository import DomainRepository
+        from ui.dialogs.entity_metadata_dialogs import AssessmentAreaMetadataDialog
+        repo=DomainRepository(self.context.session_factory); domains=repo.selectable_for_site(self.controller.site_id)
+        dialog=AssessmentAreaMetadataDialog(domains,self.controller.domain_id,self.area.name,self)
+        if not dialog.exec():return
+        name=dialog.name.text().strip(); target_id,target_version=dialog.selected_domain
+        if not name:QMessageBox.warning(self,tr("Could not save"),tr("Name is required"));return
+        try:self.controller.update_assessment_area_metadata(self.area,name=name,target_domain_id=target_id,target_expected_version=target_version)
+        except Exception as exc:QMessageBox.warning(self,tr("Could not save"),str(exc));return
+        self.metadata_saved.emit(self.area.id,target_id)
 
     def _build_editor(self):
         evaluation,draft=self.controller.evaluation_draft(self.area); self.evaluation=evaluation

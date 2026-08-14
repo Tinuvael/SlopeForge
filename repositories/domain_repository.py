@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Callable
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -11,6 +12,13 @@ from database.models import Domain, Site
 
 class DomainNotFoundError(LookupError):
     pass
+
+@dataclass(frozen=True)
+class SelectableDomain:
+    domain_id: int
+    domain_name: str
+    site_id: int
+    version: int
 
 
 class DomainRepository:
@@ -23,6 +31,11 @@ class DomainRepository:
                 select(Domain).where(Domain.site_id == site_id).order_by(Domain.name, Domain.id)
                 .options(joinedload(Domain.site))
             ).unique())
+
+    def selectable_for_site(self, site_id: int) -> list[SelectableDomain]:
+        """Small, detached read model used by entity metadata dialogs."""
+        return [SelectableDomain(row.id, row.name, row.site_id, row.version)
+                for row in self.list_for_site(site_id)]
 
     def get(self, domain_id: int) -> Domain | None:
         with self._session_factory() as session:

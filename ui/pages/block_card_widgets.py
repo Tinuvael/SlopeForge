@@ -279,7 +279,8 @@ class AuditPreviewWidget(CardFrame):
 
 class CommentsWidget(CardFrame):
     def __init__(self):
-        super().__init__("Comments")
+        super().__init__()
+        header=QHBoxLayout(); header.addWidget(QLabel(tr("Comments"))); header.addStretch(); self.edit_button=QPushButton(tr("Edit")); header.addWidget(self.edit_button); self.layout.addLayout(header)
         self.text = QTextEdit()
         self.text.setReadOnly(True)
         self.layout.addWidget(self.text)

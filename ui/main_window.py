@@ -32,6 +32,7 @@ class MainWindow(QMainWindow):
         self.tree.search.textChanged.connect(self._sync_header_search)
         self.header.archive_requested.connect(self._archive_selected)
         self.block_page.data_changed.connect(self.refresh_project_data)
+        self.block_page.metadata_saved.connect(lambda entity_id,target_id:self._metadata_move_saved("block",entity_id,target_id))
         central=QWidget(); self.setCentralWidget(central); root=QVBoxLayout(central); root.addWidget(self.header); body=QHBoxLayout(); body.addWidget(self.tree,1); body.addWidget(self.page_stack,4); root.addLayout(body); self._update_add()
     def _show(self,page):
         if not self._guard_leave(): return False
@@ -105,6 +106,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self,tr("Assessment Area"),f"Could not open the assessment area. The current page was preserved.\n\n{domain_message(str(exc))}"); return False
         page.edit_boundaries_requested.connect(self._edit_area_boundaries)
+        page.metadata_saved.connect(lambda entity_id,target_id:self._metadata_move_saved("area",entity_id,target_id))
         self._activate_page(page)
         domain=self.navigation_queries.get_domain_context(domain_id); self.assessment_page=None; self.area_page=page; self._set_context(site_id,domain.site_name,domain_id,domain_name,area_id=area_id); return True
     def open_contour_from_tree(self,event_id,domain_id,site_id,domain_name):
@@ -112,8 +114,16 @@ class MainWindow(QMainWindow):
         from ui.pages.contour_event_page import ContourEventPage
         try: page=ContourEventPage(self.context,domain_id,domain_name,event_id)
         except Exception as exc: QMessageBox.critical(self,tr("Contour blast"),f"Could not open the contour blast.\n\n{domain_message(str(exc))}"); return False
-        self._activate_page(page)
+        page.metadata_saved.connect(lambda entity_id,target_id:self._metadata_move_saved("contour",entity_id,target_id)); self._activate_page(page)
         domain=self.navigation_queries.get_domain_context(domain_id); self.contour_page=page; self._set_context(site_id,domain.site_name,domain_id,domain_name,contour_id=event_id); self.header.set_archive_context(True,page.blast_event.is_archived); return True
+
+    def _metadata_move_saved(self, kind, entity_id, target_domain_id):
+        """Discard the old Domain snapshot and reopen the same logical entity."""
+        domain=self.navigation_queries.get_domain_context(target_domain_id)
+        self.refresh_project_data()
+        if kind=="contour":self.open_contour_from_tree(entity_id,target_domain_id,domain.site_id,domain.domain_name)
+        elif kind=="block":self.open_block_from_tree(entity_id,target_domain_id,domain.site_id)
+        else:self.open_area_from_tree(entity_id,target_domain_id,domain.site_id,domain.domain_name)
     def _add_project(self):
         from ui.project_dialog import ProjectDialog
         d=ProjectDialog(self)
