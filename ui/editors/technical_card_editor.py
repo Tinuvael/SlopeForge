@@ -4,12 +4,13 @@ from __future__ import annotations
 from app.localization import tr
 
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout, QGroupBox,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox,
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QTabWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QInputDialog)
 
 from domain.blasting.technical_card import (CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS,
-    PRODUCTION_GROUP_TYPES, ActualDrillingGroup, BlastDrillingGroup)
+    PRODUCTION_GROUP_TYPES, ActualDrillingGroup, BlastDrillingGroup, GeomechanicalParameters,
+    JointSetOrientation)
 from ui.presentation_labels import (
     CONTROLLED_BLASTING_LABELS, domain_message, technical_group_label, technical_text,
 )
@@ -29,12 +30,12 @@ def _number(value, suffix=""):
 
 
 class TechnicalCardDialog(QDialog):
-    def __init__(self, event, card, revision, save_callback, parent=None, read_only=False):
+    def __init__(self, event, card, revision, save_callback, parent=None, read_only=False, domain_name=""):
         # QDialog already has an event() method used internally by Qt.  Do not
         # shadow it with the BlastEvent model, otherwise showing the dialog
         # fails with: "BlastEvent object is not callable".
         super().__init__(parent); self.blast_event, self.card, self.revision = event, card, revision
-        self.save_callback, self.read_only = save_callback, read_only
+        self.save_callback, self.read_only, self.domain_name = save_callback, read_only, domain_name
         self.setWindowTitle(f"{tr('Technical Card')} — {event.name}"); self.setMinimumSize(760, 560); self.resize(940, 720)
         root = QVBoxLayout(self); meta = QLabel(f"{tr('BlastEvent ID')}: {event.id}   |   {tr('Geometry revision')}: {revision.geometry_revision_id}")
         meta.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse); root.addWidget(meta)
@@ -75,15 +76,57 @@ class TechnicalCardDialog(QDialog):
 
     def _geomechanics_tab(self):
         layout = self._scroll_tab(tr("Geomechanics")); geo = self.revision.geomechanical_parameters
-        identity = QGroupBox(tr("Rock and geotechnical context")); form = QFormLayout(identity)
-        self.lithology = QLineEdit(geo.lithology); self.geotechnical_domain = QLineEdit(geo.geotechnical_domain)
-        form.addRow(tr("Lithology"), self.lithology); form.addRow(tr("Geotechnical domain"), self.geotechnical_domain); layout.addWidget(identity)
-        strength = QGroupBox(tr("Rock strength")); form = QFormLayout(strength)
-        self.strength_class = QLineEdit(geo.rock_strength_class_text); self.ucs = _number(geo.representative_ucs_mpa, "MPa"); self.ucs_min = _number(geo.ucs_min_mpa,"MPa"); self.ucs_max = _number(geo.ucs_max_mpa,"MPa")
-        form.addRow(tr("Local strength class"), self.strength_class); form.addRow(tr("Representative UCS"), self.ucs); form.addRow(tr("Minimum UCS"),self.ucs_min); form.addRow(tr("Maximum UCS"),self.ucs_max); layout.addWidget(strength)
-        quality = QGroupBox(tr("Rock mass quality")); form = QFormLayout(quality)
-        self.rqd = _number(geo.rqd_representative_percent, "%"); self.rqd_min=_number(geo.rqd_min_percent,"%"); self.rqd_max=_number(geo.rqd_max_percent,"%"); self.rock_properties = QLineEdit(geo.rock_mass_properties_text); self.fracturing=QLineEdit(geo.fracturing_description); self.water=QLineEdit(geo.water_condition); self.geo_notes=QTextEdit(geo.geomechanical_notes)
-        form.addRow(tr("Representative RQD"), self.rqd); form.addRow(tr("Minimum RQD"),self.rqd_min); form.addRow(tr("Maximum RQD"),self.rqd_max); form.addRow(tr("Rock mass description"), self.rock_properties); form.addRow(tr("Fracturing"),self.fracturing); form.addRow(tr("Water conditions"),self.water); form.addRow(tr("Geomechanical notes"),self.geo_notes); layout.addWidget(quality)
+        rock = QGroupBox(tr("Rock mass")); form = QFormLayout(rock)
+        self.lithology = QLineEdit(geo.lithology)
+        self.domain_value = QLabel(self.domain_name or "—"); self.domain_value.setObjectName("geomechanicsDomainValue")
+        self.ucs = _number(geo.ucs_mpa); self.q_value = _number(geo.q_value)
+        self.rqd = _number(geo.rqd_percent); self.gsi = _number(geo.gsi); self.jw = _number(geo.jw)
+        for widget in (self.lithology, self.ucs, self.q_value, self.rqd, self.gsi, self.jw):
+            widget.setEnabled(not self.read_only)
+        form.addRow(tr("Lithology"), self.lithology); form.addRow(tr("Domain"), self.domain_value)
+        form.addRow(tr("UCS, MPa"), self.ucs); form.addRow(tr("Q"), self.q_value)
+        form.addRow(tr("RQD, %"), self.rqd); form.addRow(tr("GSI"), self.gsi); form.addRow(tr("Jw"), self.jw)
+        layout.addWidget(rock)
+
+        orientations = QGroupBox(tr("Joint / discontinuity sets")); grid = QGridLayout(orientations)
+        grid.addWidget(QLabel(tr("Set")), 0, 0); grid.addWidget(QLabel(tr("Dip, °")), 0, 1)
+        grid.addWidget(QLabel(tr("Dip direction, °")), 0, 2)
+        self.joint_set_rows = []
+        for index in range(5):
+            dip = _number(geo.joint_sets[index].dip_deg if index < len(geo.joint_sets) else None)
+            direction = _number(geo.joint_sets[index].dip_direction_deg if index < len(geo.joint_sets) else None)
+            dip.setObjectName(f"jointSetDip{index + 1}"); direction.setObjectName(f"jointSetDirection{index + 1}")
+            dip.setEnabled(not self.read_only); direction.setEnabled(not self.read_only)
+            grid.addWidget(QLabel(str(index + 1)), index + 1, 0); grid.addWidget(dip, index + 1, 1)
+            grid.addWidget(direction, index + 1, 2); self.joint_set_rows.append((dip, direction))
+        layout.addWidget(orientations)
+
+        notes_group = QGroupBox(tr("Notes")); notes_layout = QVBoxLayout(notes_group)
+        self.geo_notes = QTextEdit(geo.notes); self.geo_notes.setMaximumHeight(90); self.geo_notes.setReadOnly(self.read_only)
+        notes_layout.addWidget(self.geo_notes); layout.addWidget(notes_group)
+
+    @staticmethod
+    def _optional_number(widget):
+        return None if widget.value() == widget.minimum() else widget.value()
+
+    def _geomechanics_from_form(self):
+        joint_sets = []
+        for index, (dip_widget, direction_widget) in enumerate(self.joint_set_rows, start=1):
+            dip = self._optional_number(dip_widget); direction = self._optional_number(direction_widget)
+            if (dip is None) != (direction is None):
+                raise ValueError(f"Joint set {index} requires both dip and dip direction")
+            if dip is None:
+                continue
+            if direction == 360:
+                direction = 0.0
+                direction_widget.setValue(0.0)
+            joint_sets.append(JointSetOrientation(dip, direction))
+        return GeomechanicalParameters(
+            lithology=self.lithology.text(), ucs_mpa=self._optional_number(self.ucs),
+            q_value=self._optional_number(self.q_value), rqd_percent=self._optional_number(self.rqd),
+            gsi=self._optional_number(self.gsi), joint_sets=joint_sets,
+            jw=self._optional_number(self.jw), notes=self.geo_notes.toPlainText(),
+        )
 
     def _drilling_tab(self, title):
         self.drilling_layout = self._scroll_tab(tr(title))
@@ -289,9 +332,12 @@ class TechnicalCardDialog(QDialog):
             QMessageBox.warning(self, tr("Read only"), tr("Archived entities and Viewer accounts cannot change the Technical Card."))
             return False
         self.revision.common_parameters.block_name = self.block_name.text(); self.revision.common_parameters.comments = self.comments.text()
-        if self.revision.production_parameters:
-            p=self.revision.production_parameters; p.design_bench_height_m=None if self.bench_height.value()==self.bench_height.minimum() else self.bench_height.value(); p.total_explosive_mass_kg=None if self.explosive.value()==self.explosive.minimum() else self.explosive.value()
-            g=self.revision.geomechanical_parameters; g.lithology=self.lithology.text(); g.geotechnical_domain=self.geotechnical_domain.text(); g.rock_strength_class_text=self.strength_class.text(); g.representative_ucs_mpa=None if self.ucs.value()==self.ucs.minimum() else self.ucs.value(); g.ucs_min_mpa=None if self.ucs_min.value()==self.ucs_min.minimum() else self.ucs_min.value(); g.ucs_max_mpa=None if self.ucs_max.value()==self.ucs_max.minimum() else self.ucs_max.value(); g.rqd_representative_percent=None if self.rqd.value()==self.rqd.minimum() else self.rqd.value(); g.rqd_min_percent=None if self.rqd_min.value()==self.rqd_min.minimum() else self.rqd_min.value(); g.rqd_max_percent=None if self.rqd_max.value()==self.rqd_max.minimum() else self.rqd_max.value(); g.rock_mass_properties_text=self.rock_properties.text(); g.fracturing_description=self.fracturing.text(); g.water_condition=self.water.text(); g.geomechanical_notes=self.geo_notes.toPlainText()
+        try:
+            if self.revision.production_parameters:
+                p=self.revision.production_parameters; p.design_bench_height_m=None if self.bench_height.value()==self.bench_height.minimum() else self.bench_height.value(); p.total_explosive_mass_kg=None if self.explosive.value()==self.explosive.minimum() else self.explosive.value()
+                self.revision.geomechanical_parameters = self._geomechanics_from_form()
+        except ValueError as exc:
+            QMessageBox.warning(self, tr("Technical Card validation"), domain_message(str(exc))); return False
         actual=self.revision.actual_execution; actual.completion_status=self.completion_status.currentData(); actual.actual_blast_date=self.actual_date.text().strip() or None; actual.execution_notes=self.execution_notes.toPlainText(); actual.recalculate()
         warnings=actual.completion_warnings()
         if warnings: QMessageBox.warning(self,tr("Actual execution"),"The card will be saved. Warnings:\n• " + "\n• ".join(domain_message(item) for item in warnings))

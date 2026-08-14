@@ -2945,5 +2945,15 @@
 Continue?</source><translation>Новый горизонт отличается от отметки активной импортированной геометрии. Существующие ревизии геометрии останутся без изменений.
 
 Продолжить?</translation></message>
+        <message><source>Rock mass</source><translation>Горный массив</translation></message>
+        <message><source>UCS, MPa</source><translation>UCS, МПа</translation></message>
+        <message><source>Q</source><translation>Q</translation></message>
+        <message><source>RQD, %</source><translation>RQD, %</translation></message>
+        <message><source>GSI</source><translation>GSI</translation></message>
+        <message><source>Joint / discontinuity sets</source><translation>Системы трещин / нарушений</translation></message>
+        <message><source>Set</source><translation>Система</translation></message>
+        <message><source>Dip, °</source><translation>Угол падения, °</translation></message>
+        <message><source>Dip direction, °</source><translation>Азимут падения, °</translation></message>
+        <message><source>Jw</source><translation>Jw</translation></message>
     </context>
 </TS>
