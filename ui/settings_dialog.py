@@ -12,6 +12,8 @@ from app.resources import resource_path
 from app.context import AppContext
 from infrastructure.services.session_service import RememberTokenService
 from ui.user_admin_page import UserAdminPage
+from ui.engineering_catalogues_page import EngineeringCataloguesPage
+from app.use_case_factory import create_explosive_catalogue
 
 
 class SettingsDialog(QDialog):
@@ -27,6 +29,10 @@ class SettingsDialog(QDialog):
         self.menu.setFixedWidth(190)
         self.pages = QStackedWidget()
         self._add_page(tr("General"), self.general_page())
+        if context:
+            self.catalogues_page = EngineeringCataloguesPage(
+                create_explosive_catalogue(context), can_edit=context.current_user.can_edit)
+            self._add_page(tr("Engineering catalogues"), self.catalogues_page)
         if context and context.current_user.role == "admin":
             self._add_page(tr("Users"), UserAdminPage(context))
         self._add_page(tr("About"), self.about_page())

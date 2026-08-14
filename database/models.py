@@ -31,6 +31,34 @@ class User(TimestampMixin, Base):
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
+class ExplosiveProduct(TimestampMixin, Base):
+    """Application-wide editable reference product; historical facts use snapshots."""
+    __tablename__ = "explosive_products"
+    __table_args__ = (
+        CheckConstraint("kind IN ('bulk', 'cartridge')", name="ck_explosive_products_kind"),
+        CheckConstraint("length(btrim(name)) > 0", name="ck_explosive_products_name"),
+        CheckConstraint("display_color ~ '^#[0-9A-Fa-f]{6}$'", name="ck_explosive_products_color"),
+        CheckConstraint(
+            "(kind = 'bulk' AND density_kg_m3 > 0 AND cartridge_diameter_mm IS NULL "
+            "AND cartridge_mass_kg IS NULL AND default_pitch_m IS NULL) OR "
+            "(kind = 'cartridge' AND density_kg_m3 IS NULL AND cartridge_diameter_mm > 0 "
+            "AND cartridge_mass_kg > 0)", name="ck_explosive_products_kind_fields"),
+        CheckConstraint("default_pitch_m IS NULL OR default_pitch_m > 0",
+                        name="ck_explosive_products_pitch"),
+        UniqueConstraint("name", name="uq_explosive_products_name"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    density_kg_m3: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 3))
+    cartridge_diameter_mm: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
+    cartridge_mass_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
+    display_color: Mapped[str] = mapped_column(String(7), nullable=False)
+    default_pitch_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True,
+                                             server_default="true", index=True)
+
+
 
 class Mine(TimestampMixin, Base):
     __tablename__ = "mines"
