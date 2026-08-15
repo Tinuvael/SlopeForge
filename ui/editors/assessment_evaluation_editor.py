@@ -212,12 +212,11 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self.inspector = QLineEdit(); self.override_reason = QLineEdit()
         self.detected = QLabel(tr("Contour drilling detected from a confirmed link") if self.draft.controlled_blasting_present else "No confirmed contour event found")
         self.comments = QTextEdit(); self.recommendations = QTextEdit()
-        revision = next(r for r in self.area.geometry_revisions if r.id == self.draft.assessment_area_geometry_revision_id)
+        self.matrix_value = QLabel(matrix_label(self.template.id, self.template.name))
         form.addRow(tr("Assessment date"), self.date); form.addRow(tr("Inspector"), self.inspector)
-        form.addRow(tr("Assessment Area ID"), QLabel(self.area.id)); form.addRow(tr("Geometry revision"), QLabel(revision.id))
-        form.addRow(tr("Elevations"), QLabel(f"{revision.min_elevation if revision.min_elevation is not None else '—'} — {revision.max_elevation if revision.max_elevation is not None else '—'}"))
-        form.addRow(tr("Matrix"), QLabel(matrix_label(self.template.id, self.template.name))); form.addRow(tr("Detection"), self.detected)
+        form.addRow(tr("Matrix"), self.matrix_value); form.addRow(tr("Detection"), self.detected)
         form.addRow(tr("Manual matrix selection reason"), self.override_reason); form.addRow(tr("Comments"), self.comments); form.addRow(tr("Recommendations"), self.recommendations)
+        self.override_reason.setVisible(self.draft.matrix_selection_source == "manual_override")
         self.tabs.addTab(page, tr("General"))
 
     def _nullable(self, maximum=999):
@@ -247,8 +246,8 @@ class AssessmentAreaEvaluationDialog(QDialog):
             self.geometry_editors[criterion.id] = editor; layout.addWidget(editor)
         self.scoring_guide_button = QToolButton(); self.scoring_guide_button.setText(tr("Scoring guide")); self.scoring_guide_button.setCheckable(True); self.scoring_guide_button.setAutoRaise(True)
         self.scoring_guide_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon); self.scoring_guide_button.setArrowType(Qt.ArrowType.RightArrow)
-        rules = QLabel(self._geometry_rules()); rules.setWordWrap(True); rules.setStyleSheet("background:#f3f5f7;padding:8px"); rules.hide()
-        self.scoring_guide_button.toggled.connect(rules.setVisible); self.scoring_guide_button.toggled.connect(lambda open_: self.scoring_guide_button.setArrowType(Qt.ArrowType.DownArrow if open_ else Qt.ArrowType.RightArrow)); layout.addWidget(self.scoring_guide_button, 0, Qt.AlignmentFlag.AlignLeft); layout.addWidget(rules)
+        self.scoring_guide = QLabel(self._geometry_rules()); self.scoring_guide.setWordWrap(True); self.scoring_guide.setStyleSheet("background:#f3f5f7;padding:8px"); self.scoring_guide.hide()
+        self.scoring_guide_button.toggled.connect(self.scoring_guide.setVisible); self.scoring_guide_button.toggled.connect(lambda open_: self.scoring_guide_button.setArrowType(Qt.ArrowType.DownArrow if open_ else Qt.ArrowType.RightArrow)); layout.addWidget(self.scoring_guide_button, 0, Qt.AlignmentFlag.AlignLeft); layout.addWidget(self.scoring_guide)
         form = QFormLayout(); form.setVerticalSpacing(5); form.addRow(tr("Measurement method"), self.method); form.addRow(tr("Measurement notes"), self.measure_notes); layout.addLayout(form); layout.addStretch()
         scroll.setWidget(page); self.tabs.addTab(scroll, tr("Geometry"))
 
@@ -284,15 +283,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self.summary = QLabel(); self.summary.setWordWrap(True); self.summary.hide()
         layout.addWidget(QLabel(f"<b>{tr('Quadrant')}</b>"))
         self.plot = QuadrantPlot(); layout.addWidget(self.plot, 1)
-        self.scoring_details_button = QToolButton(); self.scoring_details_button.setText(tr("Scoring details")); self.scoring_details_button.setCheckable(True); self.scoring_details_button.setAutoRaise(True)
-        self.scoring_details_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon); self.scoring_details_button.setArrowType(Qt.ArrowType.RightArrow); layout.addWidget(self.scoring_details_button, 0, Qt.AlignmentFlag.AlignLeft)
-        self.scoring_details = QTabWidget(); self.scoring_details.hide(); self.scoring_details_button.toggled.connect(self.scoring_details.setVisible)
-        self.scoring_details_button.toggled.connect(lambda open_: self.scoring_details_button.setArrowType(Qt.ArrowType.DownArrow if open_ else Qt.ArrowType.RightArrow))
-        self.design_table = QTableWidget(); self.condition_table = QTableWidget()
-        headers = [tr("Criterion"), tr("Entered / selected"), tr("Threshold / category"), tr("Auto"), tr("Manual"), tr("Accepted"), tr("Max."), tr("Note")]
-        for table, title in ((self.design_table, "Design"), (self.condition_table, "Face condition")):
-            table.setColumnCount(len(headers)); table.setHorizontalHeaderLabels(headers); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.scoring_details.addTab(table, tr(title))
-        layout.addWidget(self.scoring_details, 1); self.tabs.addTab(page, tr("Matrix"))
+        self.tabs.addTab(page, tr("Matrix"))
 
     def _events(self):
         table = QTableWidget(len(self.draft.linked_event_snapshots), 4); table.setHorizontalHeaderLabels([tr("BlastEvent"), tr("Type"), tr("Elevation"), tr("Card revision")]); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -408,8 +399,6 @@ class AssessmentAreaEvaluationDialog(QDialog):
             elif result.accepted_score is None: editor.validation.setText(tr("Required"))
             elif cid == "damage" and value is not None: editor.validation.setText(tr("Maximum applied: fewer than 1 feature/m².") if value < 1 else "0 points applied: more than 5 features/m².")
             else: editor.validation.setText("")
-        self._fill_table(self.design_table, [by_id[c.id] for c in self.template.section(DESIGN).criteria])
-        self._fill_table(self.condition_table, [by_id[c.id] for c in self.template.section(CONDITION).criteria])
         design = "—" if preview.design_achievement_index is None else f"{preview.design_achievement_index:.3f}"
         condition = "—" if preview.face_condition_index is None else f"{preview.face_condition_index:.3f}"
         result = result_label(preview.result_label) or tr("Result available after all criteria are completed")
@@ -417,18 +406,6 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self.dai_value.setText(design); self.fci_value.setText(condition)
         self.result_value.setText(result_label(preview.result_label) or tr("Complete required inputs"))
         self.plot.set_result(self.template, preview.design_achievement_index, preview.face_condition_index)
-
-    def _fill_table(self, table, results):
-        table.setRowCount(len(results))
-        for row, result in enumerate(results):
-            definition = self.template.criterion(result.criterion_id); option = next((o for o in definition.options if o.id == result.selected_option_id), None)
-            observed = option_label(option.id, option.label) if option else ("—" if result.raw_numeric_value is None else f"{result.raw_numeric_value:g}")
-            category = option_label(option.id, option.label) if option else self._applied_rule(result)
-            warning = result.notes or ("An expert score and reason are required" if result.criterion_id == "damage" and result.raw_numeric_value is not None and 1 <= result.raw_numeric_value <= 5 and result.accepted_score is None else "Required" if result.accepted_score is None else "")
-            values = (criterion_label(result.criterion_id, result.criterion_name_snapshot), observed, category, result.automatic_score, result.manual_score, result.accepted_score, result.maximum_score, warning)
-            for column, value in enumerate(values):
-                item = QTableWidgetItem("—" if value is None else str(value)); table.setItem(row, column, item)
-                if result.accepted_score is None: item.setBackground(QColor("#ffe2e2"))
 
     def _applied_rule(self, result):
         if result.raw_numeric_value is None: return tr("Required")

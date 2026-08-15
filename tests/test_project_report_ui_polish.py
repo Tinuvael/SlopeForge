@@ -29,7 +29,7 @@ def test_assessment_editor_tabs_are_explicitly_detached_and_keep_content():
 
 
 
-def test_assessment_page_nested_tabs_have_exclusive_initial_visibility(monkeypatch):
+def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     application=app()
     from tests.test_wall_assessment_persistence_ui import make_state,filled_draft
     from application.services.assessment_event_links import AssessmentEventLinkService
@@ -53,27 +53,32 @@ def test_assessment_page_nested_tabs_have_exclusive_initial_visibility(monkeypat
     context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True))
     before=len(evaluation.revisions); page=module.AssessmentAreaPage(context,1,"Domain",area.id); page.resize(1500,850)
     page.show(); page.tabs.setCurrentWidget(page.assessment_tab); application.processEvents()
-    sections=page.assessment_sections
-    general,geometry,condition=(sections.widget(i) for i in range(3))
-    splitter=page.assessment_splitter; live=page.result
+    splitter=page.assessment_splitter; inputs=page.assessment_inputs; live=page.result
     assert splitter.isVisible() and splitter.count()==2
-    assert splitter.widget(0) is sections and splitter.widget(1) is live
-    assert sections.isVisible() and live.isVisible()
-    assert sections.width()>0 and live.width()>300
+    assert splitter.widget(0) is inputs and splitter.widget(1) is page.assessment_right
+    assert inputs.isVisible() and live.isVisible()
+    assert inputs.width()>0 and page.assessment_right.width()>300
+    assert not hasattr(page,"assessment_sections")
+    assert page.geometry_section_title.isVisible() and page.face_condition_section_title.isVisible()
+    assert page.evaluation_editor.geometry_editors["bench_angle"].isVisible()
+    assert page.evaluation_editor.editors["loose_blocks"].isVisible()
+    assert page.evaluation_editor.date.isVisible() and page.evaluation_editor.date.isEnabled()
+    assert page.evaluation_editor.inspector.isVisible() and page.evaluation_editor.inspector.isEnabled()
+    assert page.evaluation_editor.matrix_value.isVisible() and page.evaluation_editor.detected.isVisible()
+    assert not page.evaluation_editor.override_reason.isVisible()
     assert page.evaluation_editor.dai_value.isVisible()
     assert page.evaluation_editor.fci_value.isVisible()
     assert page.evaluation_editor.result_value.isVisible()
     assert page.evaluation_editor.plot.isVisible()
-    assert sections.currentIndex()==0
-    assert general.isVisible() and not geometry.isVisible() and not condition.isVisible()
-    assert general.findChildren(QtWidgets.QWidget) and geometry.findChildren(QtWidgets.QWidget) and condition.findChildren(QtWidgets.QWidget)
     assert page.save_evaluation_button.isVisible() and page.complete_evaluation_button.isVisible()
     assert page.evaluation_editor.summary.text() and "DAI: 1.000" in page.evaluation_editor.summary.text()
-    for index,visible in ((1,geometry),(2,condition),(0,general)):
-        sections.setCurrentIndex(index); application.processEvents()
-        assert visible.isVisible()
-        assert all(not sections.widget(other).isVisible() for other in range(3) if other!=index)
-        assert live.isVisible() and live.width()>300 and page.evaluation_editor.plot.isVisible()
+    assert page.evaluation_editor.comments.isVisible() and page.evaluation_editor.recommendations.isVisible()
+    assert page.assessment_tab.findChildren(QtWidgets.QTextEdit).count(page.evaluation_editor.comments)==1
+    assert page.assessment_tab.findChildren(QtWidgets.QTextEdit).count(page.evaluation_editor.recommendations)==1
+    assert not hasattr(page.evaluation_editor,"design_table") and not hasattr(page.evaluation_editor,"condition_table")
+    page.evaluation_editor.comments.setPlainText("Field note"); page.evaluation_editor.recommendations.setPlainText("Scale loose rock")
+    application.processEvents(); collected=page.evaluation_editor.collect()
+    assert collected.comments=="Field note" and collected.recommendations=="Scale loose rock"
     assert len(evaluation.revisions)==before
     page.close()
 

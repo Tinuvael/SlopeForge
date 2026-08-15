@@ -83,7 +83,7 @@ def test_assessment_geometry_uses_direct_compact_inputs():
     geometry=editor[editor.index("    def _geometry(self):"):editor.index("    def _geometry_rules(self):")]
     for legacy in ("Design bench face angle", "Actual bench face angle", "Design berm width", "Actual berm width"):
         assert legacy not in geometry
-    assert "Scoring guide" in geometry and "rules.hide()" in geometry
+    assert "Scoring guide" in geometry and "self.scoring_guide.hide()" in geometry
 
 def test_area_links_and_focused_creation_are_reused():
     area=source("ui/pages/assessment_area_page.py")
@@ -102,9 +102,9 @@ def test_entity_page_integration_corrections_are_visible():
     assert 'QPushButton(tr("Save draft"))' in block and 'QPushButton(tr("Complete"))' in block
     assert "save_draft()" in block and "complete()" in block
     area=source("ui/pages/assessment_area_page.py")
-    assert "self.assessment_sections=QTabWidget()" in area
-    assert 'evaluation_editor.take_tab(tr(title))' in area
-    assert "self.assessment_sections.setCurrentIndex(0)" in area
+    assert "self.assessment_sections" not in area
+    assert "self.assessment_inputs=QScrollArea()" in area
+    assert "geometry_section_title" in area and "face_condition_section_title" in area
     assert "page.setVisible(True)" not in area
     assert "Save an assessment draft first" not in area
     assert "prepare_evaluation_attachment_owner" in area
