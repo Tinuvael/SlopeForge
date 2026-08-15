@@ -247,3 +247,45 @@ def test_geomechanics_ui_joint_validation_and_exact_360_normalization():
     with pytest.raises(ValueError, match="requires both"):
         dialog._geomechanics_from_form()
     dialog.close(); app.processEvents()
+
+
+def test_live_builder_appears_and_updates_production_summary(monkeypatch):
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from domain.blasting.charge_design import (ChargeComponent, ChargeComponentKind,
+        ExplosiveProduct, ExplosiveProductKind)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
+    app=widgets.QApplication.instance() or widgets.QApplication([])
+    blast=event(); card,draft=new_technical_card(blast)
+    bulk=ExplosiveProduct(1,"Игданит",ExplosiveProductKind.BULK,"#AA5500",density_kg_m3=900)
+    dialog=TechnicalCardDialog(blast,card,draft,lambda *_:None,products=[bulk])
+    assert dialog.findChild(BoreholeChargeBuilder) is None
+    dialog.findChild(widgets.QDoubleSpinBox,"hole_count").setValue(2)
+    dialog.findChild(widgets.QDoubleSpinBox,"diameter_mm").setValue(146)
+    dialog.findChild(widgets.QDoubleSpinBox,"average_depth_m").setValue(7); app.processEvents()
+    builder=dialog.findChild(BoreholeChargeBuilder); assert builder is not None and builder.hole_depth()==7
+    components=[ChargeComponent("stem",ChargeComponentKind.STEMMING,0,2),
+        ChargeComponent("bulk",ChargeComponentKind.BULK_EXPLOSIVE,5,7,bulk.snapshot())]
+    builder.set_components(components); builder.components_changed.emit(components); app.processEvents()
+    text=dialog.findChild(widgets.QLabel,"derivedChargeSummary").text()
+    assert "14" in text and "30.134" in text and "60.269" in text
+    warnings=[]; monkeypatch.setattr(widgets.QMessageBox,"warning",lambda *args:warnings.append(args))
+    assert dialog._save("draft") is True
+    assert not any("Actual" in str(args) for args in warnings)
+    dialog.close(); app.processEvents()
+
+
+def test_block_refresh_preserves_logical_tab_index():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.block_page import BlockPage
+    app=widgets.QApplication.instance() or widgets.QApplication([])
+    class Page:
+        tabs=widgets.QTabWidget()
+        def refresh(self):
+            self.tabs.removeTab(2); self.tabs.insertTab(2,widgets.QWidget(),"Blast design")
+    page=Page()
+    for title in ("General","Geomechanics","Blast design","Execution fact","Photos"):
+        page.tabs.addTab(widgets.QWidget(),title)
+    page.tabs.setCurrentIndex(2); BlockPage._refresh_preserving_tab(page)
+    assert page.tabs.currentIndex()==2 and page.tabs.tabText(2)=="Blast design"
+    page.tabs.close(); app.processEvents()

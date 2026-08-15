@@ -18,6 +18,13 @@ def test_bulk_and_cartridge_engineering_mass():
     deck=ChargeComponent("b",ChargeComponentKind.CARTRIDGE_EXPLOSIVE,0,1,cartridge,.25)
     assert component_explosive_mass_kg(deck,100)==2.5
 
+def test_windows_bulk_mass_regression_146_mm_two_metres_900_density():
+    product=ExplosiveProduct(3,"Игданит",ExplosiveProductKind.BULK,"#AA5500",density_kg_m3=900)
+    component=ChargeComponent("bulk",ChargeComponentKind.BULK_EXPLOSIVE,5,7,product.snapshot())
+    per_hole=component_explosive_mass_kg(component,146)
+    assert per_hole == pytest.approx(30.1347,rel=1e-4)
+    assert per_hole*2 == pytest.approx(60.2694,rel=1e-4)
+
 def test_canonical_component_roundtrip_has_frozen_snapshot_and_no_legacy_duplicates():
     raw={"id":"TC","blast_event_id":"E","active_revision_id":"R","revisions":[{
         "id":"R","technical_card_id":"TC","revision_number":1,"created_at":"2026-01-01T00:00:00",

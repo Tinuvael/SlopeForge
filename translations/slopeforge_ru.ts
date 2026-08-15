@@ -3046,8 +3046,9 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Add component</source><translation>Добавить компонент</translation></message>
         <message><source>Delete component</source><translation>Удалить компонент</translation></message>
         <message><source>Air</source><translation>Воздух</translation></message>
-        <message><source>Bulk explosive</source><translation>Наливное ВВ</translation></message>
-        <message><source>Cartridge explosive</source><translation>Патронированное ВВ</translation></message>
+        <message><source>Bulk explosive</source><translation>Насыпное ВВ</translation></message>
+        <message><source>Pumpable explosive</source><translation>Наливное / перекачиваемое ВВ</translation></message>
+        <message><source>Cartridged explosive</source><translation>Патронированное ВВ</translation></message>
         <message><source>Start depth, m</source><translation>Начальная глубина, м</translation></message>
         <message><source>End depth, m</source><translation>Конечная глубина, м</translation></message>
         <message><source>Length, m</source><translation>Длина, м</translation></message>
@@ -3064,6 +3065,18 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Pitch is required</source><translation>Укажите шаг патронов</translation></message>
         <message><source>Mass per hole</source><translation>Масса на скважину</translation></message>
         <message><source>Enter average hole depth to configure the charge construction.</source><translation>Укажите среднюю глубину скважины, чтобы настроить конструкцию заряда.</translation></message>
+        <message><source>Average drilled hole depth, including subdrill.</source><translation>Средняя глубина пробурённой скважины, включая перебур.</translation></message>
+        <message><source>Change rejected: component would extend beyond the hole depth.</source><translation>Изменение отклонено: компонент вышел бы за глубину скважины.</translation></message>
+        <message><source>Preset</source><translation>Шаблон</translation></message>
+        <message><source>Load</source><translation>Загрузить</translation></message>
+        <message><source>Save as...</source><translation>Сохранить как...</translation></message>
+        <message><source>Preset name</source><translation>Название шаблона</translation></message>
+        <message><source>Load preset</source><translation>Загрузить шаблон</translation></message>
+        <message><source>Save preset</source><translation>Сохранить шаблон</translation></message>
+        <message><source>Update preset</source><translation>Обновить шаблон</translation></message>
+        <message><source>Delete preset</source><translation>Удалить шаблон</translation></message>
+        <message><source>Replace the current charge construction?</source><translation>Заменить текущую конструкцию заряда?</translation></message>
+        <message><source>Delete the selected preset?</source><translation>Удалить выбранный шаблон?</translation></message>
         <message><source>Charge form</source><translation>Форма заряжания</translation></message>
         <message><source>Explosive class</source><translation>Класс ВВ</translation></message>
         <message><source>Bulk</source><translation>Насыпной</translation></message>

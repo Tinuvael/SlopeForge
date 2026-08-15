@@ -25,7 +25,7 @@ from ui.pages.block_card_widgets import (
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.technical_card_widgets import (ActualExecutionEditorWidget,
     BlastDesignEditorWidget, GeomechanicsEditorWidget, TechnicalCardEditorWidget)
-from app.use_case_factory import create_explosive_catalogue
+from app.use_case_factory import create_charge_presets, create_explosive_catalogue
 
 
 class _NullAttachmentService:
@@ -222,7 +222,8 @@ class BlockPage(QWidget):
         card,revision=self.entity_controller.technical_card_draft(event)
         editor=TechnicalCardEditorWidget(event,card,revision,self.entity_controller.save_technical_card,
             self,not editable,domain_name=block.domain_name,
-            products=create_explosive_catalogue(self.context).list_enabled_products())
+            products=create_explosive_catalogue(self.context).list_enabled_products(),
+            preset_service=create_charge_presets(self.context),site_id=self.entity_controller.site_id)
         self.geomechanics_tab=self._replace_tab(self.geomechanics_tab,GeomechanicsEditorWidget(editor.take_tab(tr("Geomechanics"))),"Geomechanics")
         self.design_tab=self._replace_tab(self.design_tab,BlastDesignEditorWidget(editor.take_tab(tr("Drilling and charging"))),"Blast design")
         self.execution_tab=self._replace_tab(self.execution_tab,ActualExecutionEditorWidget(editor.take_tab(tr("Execution fact"))),"Execution fact")
@@ -246,11 +247,17 @@ class BlockPage(QWidget):
     def _save_technical_card_draft(self):
         if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:
             if self.technical_card_editor.save_draft():
-                self.refresh()
+                self._refresh_preserving_tab()
     def _complete_technical_card(self):
         if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:
             if self.technical_card_editor.complete():
-                self.refresh()
+                self._refresh_preserving_tab()
+
+    def _refresh_preserving_tab(self):
+        """Refresh replaced engineering widgets while retaining their stable tab slot."""
+        logical_index=self.tabs.currentIndex()
+        self.refresh()
+        if 0 <= logical_index < self.tabs.count(): self.tabs.setCurrentIndex(logical_index)
 
     def _reimport_geometry(self,event):
         if not self.context.current_user.can_edit or not self.current_block or self.current_block.is_archived:

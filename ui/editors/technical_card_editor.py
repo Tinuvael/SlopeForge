@@ -15,6 +15,8 @@ from ui.presentation_labels import (
     CONTROLLED_BLASTING_LABELS, domain_message, technical_group_label, technical_text,
 )
 from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
+from domain.blasting.charge_design import ChargeComponentKind
+from domain.blasting.charge_presets import ChargeDesignPreset, ChargePresetComponent
 
 BURDEN_LABEL = "Burden / row spacing, m"
 BURDEN_TOOLTIP = "Burden. For row patterns, normally the row spacing or distance from the first row to the free face."
@@ -31,13 +33,17 @@ def _number(value, suffix=""):
 
 
 class TechnicalCardDialog(QDialog):
-    def __init__(self, event, card, revision, save_callback, parent=None, read_only=False, domain_name="", products=()):
+    def __init__(self, event, card, revision, save_callback, parent=None, read_only=False,
+                 domain_name="", products=(), preset_service=None, site_id=None):
         # QDialog already has an event() method used internally by Qt.  Do not
         # shadow it with the BlastEvent model, otherwise showing the dialog
         # fails with: "BlastEvent object is not callable".
         super().__init__(parent); self.blast_event, self.card, self.revision = event, card, revision
         self.save_callback, self.read_only, self.domain_name = save_callback, read_only, domain_name
         self.products = list(products)
+        self.preset_service, self.site_id = preset_service, site_id
+        self._group_ui = {}
+        self._preset_refreshers = []
         self.setWindowTitle(f"{tr('Technical Card')} — {event.name}"); self.setMinimumSize(760, 560); self.resize(940, 720)
         root = QVBoxLayout(self); meta = QLabel(f"{tr('BlastEvent ID')}: {event.id}   |   {tr('Geometry revision')}: {revision.geometry_revision_id}")
         meta.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse); root.addWidget(meta)
@@ -149,6 +155,8 @@ class TechnicalCardDialog(QDialog):
         self.add_group_combo.activated.connect(self._add_group); self.drilling_layout.addWidget(self.add_group_combo)
 
     def _render_groups(self):
+        self._group_ui = {}
+        self._preset_refreshers = []
         while self.group_cards_layout.count():
             item = self.group_cards_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
@@ -165,23 +173,70 @@ class TechnicalCardDialog(QDialog):
             production_fields = ((BURDEN_LABEL,"burden_m","",False),(SPACING_LABEL,"spacing_m","",False),
                 ("Rows","row_count","",True),(TOE_LABEL,"toe_standoff_m","",False))
             contour_fields = (("Design line / collar offset, m","line_offset_m","",False),)
+            widgets = {}
             for label, attr, suffix, integer in common_fields + (production_fields if self.blast_event.event_type=="production" else contour_fields):
-                self._add_number(form, label, group, attr, suffix, integer)
+                widgets[attr] = self._add_number(form, label, group, attr, suffix, integer,
+                    on_change=lambda value,g=group,a=attr:self._design_input_changed(g,a,value))
+            widgets["average_depth_m"].setToolTip(tr("Average drilled hole depth, including subdrill."))
             outer.addWidget(pattern)
-            if group.average_depth_m is None:
-                hint=QLabel(tr("Enter average hole depth to configure the charge construction.")); hint.setObjectName("chargeDepthHint"); outer.addWidget(hint)
-            else:
-                builder=BoreholeChargeBuilder(group.average_depth_m,group.diameter_mm,self.products,
-                    group.charge_components,self.read_only); builder.setObjectName("boreholeChargeBuilder")
-                builder.components_changed.connect(lambda values,g=group:setattr(g,"charge_components",values))
-                outer.addWidget(builder)
+            charge_host=QWidget(); charge_layout=QVBoxLayout(charge_host); charge_layout.setContentsMargins(0,0,0,0); outer.addWidget(charge_host)
             derived=QLabel(self._group_summary(group)); derived.setObjectName("derivedChargeSummary"); outer.addWidget(derived)
+            self._group_ui[group.id]={"widgets":widgets,"charge_layout":charge_layout,"builder":None,"summary":derived}
+            self._sync_builder(group)
             actions = QHBoxLayout(); duplicate = QPushButton(tr("Duplicate")); remove = QPushButton(tr("Delete"))
             duplicate.clicked.connect(lambda _=False, g=group: self._duplicate(g)); remove.clicked.connect(lambda _=False, g=group: self._remove(g))
             actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions); self.group_cards_layout.addWidget(box)
 
     def _included_changed(self, group, checked):
         group.included=checked
+        self._refresh_derived(group)
+
+    def _design_input_changed(self, group, attr, value):
+        ui=self._group_ui.get(group.id); builder=ui and ui["builder"]
+        if attr == "average_depth_m":
+            old=group.average_depth_m
+            if value is None and group.charge_components:
+                self._restore_number(ui["widgets"][attr],old); return
+            if builder and value is not None and not builder.set_hole_depth(value):
+                self._restore_number(ui["widgets"][attr],old); return
+            setattr(group,attr,value)
+            if builder is None or value is None: self._sync_builder(group)
+        else:
+            setattr(group,attr,value)
+            if attr == "diameter_mm" and builder: builder.set_hole_diameter(value)
+        self._refresh_derived(group)
+
+    @staticmethod
+    def _restore_number(widget,value):
+        widget.blockSignals(True); widget.setValue(value if value is not None else widget.minimum()); widget.blockSignals(False)
+
+    def _sync_builder(self, group):
+        ui=self._group_ui[group.id]; layout=ui["charge_layout"]; current=ui["builder"]
+        old_refresh=ui.pop("preset_refresh",None)
+        if old_refresh in self._preset_refreshers:self._preset_refreshers.remove(old_refresh)
+        if group.average_depth_m is None:
+            self._clear_layout(layout); ui["builder"]=None
+            hint=QLabel(tr("Enter average hole depth to configure the charge construction.")); hint.setObjectName("chargeDepthHint"); layout.addWidget(hint)
+            return
+        self._clear_layout(layout)
+        builder=BoreholeChargeBuilder(group.average_depth_m,group.diameter_mm,self.products,group.charge_components,self.read_only)
+        builder.setObjectName("boreholeChargeBuilder"); ui["builder"]=builder
+        builder.components_changed.connect(lambda values,g=group:self._components_changed(g,values))
+        layout.addLayout(self._preset_controls(group,builder)); layout.addWidget(builder)
+
+    @classmethod
+    def _clear_layout(cls,layout):
+        while layout.count():
+            item=layout.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+            elif item.layout(): cls._clear_layout(item.layout())
+
+    def _components_changed(self,group,values):
+        group.charge_components=list(values); self._refresh_derived(group)
+
+    def _refresh_derived(self,group):
+        ui=self._group_ui.get(group.id)
+        if ui: ui["summary"].setText(self._group_summary(group))
         if self.revision.production_parameters: self.revision.production_parameters.recalculate(self.revision.drilling_groups)
 
     def _group_summary(self, group):
@@ -190,13 +245,75 @@ class TechnicalCardDialog(QDialog):
                 f"{tr('Mass per hole')}: {show(group.explosive_mass_per_hole())} kg  |  "
                 f"{tr('Total explosive mass')}: {show(group.explosive_mass_total())} kg")
 
-    def _add_number(self, form, label, model, attr, suffix="", integer=False):
+    def _add_number(self, form, label, model, attr, suffix="", integer=False, on_change=None):
         widget = _number(getattr(model, attr), suffix); widget.setObjectName(attr)
         if attr == "burden_m": widget.setToolTip(tr(BURDEN_TOOLTIP))
         if attr == "spacing_m": widget.setToolTip(tr(SPACING_TOOLTIP))
-        widget.valueChanged.connect(lambda value, m=model, a=attr, i=integer, w=widget:
-            setattr(m, a, None if value == w.minimum() else (int(value) if i else value)))
+        def changed(value):
+            parsed=None if value == widget.minimum() else (int(value) if integer else value)
+            if on_change: on_change(parsed)
+            else: setattr(model,attr,parsed)
+        widget.valueChanged.connect(changed)
         form.addRow(tr(label), widget); return widget
+
+    def _preset_controls(self,group,builder):
+        row=QHBoxLayout(); combo=QComboBox(); combo.setObjectName("chargePresetCombo")
+        load=QPushButton(tr("Load")); save=QPushButton(tr("Save as...")); update=QPushButton(tr("Update")); delete=QPushButton(tr("Delete"))
+        for button,name in ((load,"loadPresetButton"),(save,"savePresetButton"),(update,"updatePresetButton"),(delete,"deletePresetButton")):
+            button.setObjectName(name); button.setEnabled(not self.read_only and self.preset_service is not None); row.addWidget(button)
+        row.insertWidget(0,QLabel(tr("Preset"))); row.insertWidget(1,combo)
+        def refresh(selected_id=None):
+            combo.clear(); combo.addItem(tr("— select —"),None)
+            if self.preset_service and self.site_id is not None:
+                for preset in self.preset_service.list(self.site_id): combo.addItem(preset.name,preset)
+            if selected_id is not None:
+                for index in range(combo.count()):
+                    value=combo.itemData(index)
+                    if value and value.id==selected_id: combo.setCurrentIndex(index); break
+        self._group_ui[group.id]["preset_refresh"]=refresh
+        self._preset_refreshers.append(refresh); refresh(); load.clicked.connect(lambda:self._load_preset(combo,group,builder))
+        save.clicked.connect(lambda:self._save_preset_as(combo,group))
+        update.clicked.connect(lambda:self._update_preset(combo,group))
+        delete.clicked.connect(lambda:self._delete_preset(combo))
+        return row
+
+    def _refresh_preset_combos(self,selected_id=None):
+        for refresh in self._preset_refreshers: refresh(selected_id)
+
+    @staticmethod
+    def _preset_specs(components):
+        return [ChargePresetComponent(c.kind,c.start_depth_m,c.end_depth_m,
+            c.product_snapshot.source_product_id if c.product_snapshot else None,c.cartridge_pitch_m) for c in components]
+
+    def _load_preset(self,combo,group,builder):
+        preset=combo.currentData()
+        if preset is None:return
+        if group.charge_components and QMessageBox.question(self,tr("Load preset"),tr("Replace the current charge construction?")) != QMessageBox.StandardButton.Yes:return
+        try: values=self.preset_service.instantiate(preset,group.average_depth_m)
+        except ValueError as exc: QMessageBox.warning(self,tr("Load preset"),domain_message(str(exc))); return
+        builder.set_components(values); self._components_changed(group,values)
+
+    def _save_preset_as(self,combo,group):
+        name,ok=QInputDialog.getText(self,tr("Save preset"),tr("Preset name"))
+        if not ok:return
+        try: preset=self.preset_service.create(ChargeDesignPreset(0,self.site_id,name,self._preset_specs(group.charge_components)))
+        except (ValueError,PermissionError) as exc: QMessageBox.warning(self,tr("Save preset"),domain_message(str(exc))); return
+        self._refresh_preset_combos(preset.id)
+
+    def _update_preset(self,combo,group):
+        preset=combo.currentData()
+        if preset is None:return
+        try: saved=self.preset_service.update(ChargeDesignPreset(preset.id,self.site_id,preset.name,self._preset_specs(group.charge_components)))
+        except (ValueError,PermissionError) as exc: QMessageBox.warning(self,tr("Update preset"),domain_message(str(exc))); return
+        self._refresh_preset_combos(saved.id)
+
+    def _delete_preset(self,combo):
+        preset=combo.currentData()
+        if preset is None:return
+        if QMessageBox.question(self,tr("Delete preset"),tr("Delete the selected preset?")) != QMessageBox.StandardButton.Yes:return
+        try:self.preset_service.delete(preset.id,self.site_id)
+        except (ValueError,PermissionError,LookupError) as exc: QMessageBox.warning(self,tr("Delete preset"),domain_message(str(exc))); return
+        self._refresh_preset_combos()
 
     def _add_group(self, index):
         kind = self.add_group_combo.itemData(index)
@@ -353,8 +470,6 @@ class TechnicalCardDialog(QDialog):
         except ValueError as exc:
             QMessageBox.warning(self, tr("Technical Card validation"), domain_message(str(exc))); return False
         actual=self.revision.actual_execution; actual.completion_status=self.completion_status.currentData(); actual.actual_blast_date=self.actual_date.text().strip() or None; actual.execution_notes=self.execution_notes.toPlainText(); actual.recalculate()
-        warnings=actual.completion_warnings()
-        if warnings: QMessageBox.warning(self,tr("Actual execution"),"The card will be saved. Warnings:\n• " + "\n• ".join(domain_message(item) for item in warnings))
         planned_date = self.planned_date.date().toPython() if self.has_planned_date.isChecked() else None
         try: self.save_callback(self.card, self.revision, status, planned_date)
         except ValueError as exc: QMessageBox.warning(self, tr("Technical Card validation"), domain_message(str(exc))); return False

@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from app.localization import tr
 from domain.blasting.charge_design import (
-    ChargeComponent, ChargeComponentKind, ChargeDesignValidationError,
+    ChargeComponent, ChargeComponentKind, ChargeDesignValidationError, ChargeForm,
     ExplosiveProduct, ExplosiveProductKind, available_air_intervals,
     cartridge_depths, validate_components,
 )
@@ -211,7 +211,7 @@ class BoreholeChargeBuilder(QWidget):
     def set_hole_depth(self, new_depth):
         try: validate_components(self._components, float(new_depth))
         except (ValueError, ChargeDesignValidationError) as exc:
-            self._feedback(str(exc)); return False
+            self._feedback(tr("Change rejected: component would extend beyond the hole depth.")); return False
         self._hole_depth_m = float(new_depth); self._selected_air = None; self._refresh(); return True
 
     def set_hole_diameter(self, diameter):
@@ -227,7 +227,7 @@ class BoreholeChargeBuilder(QWidget):
 
     def select_component(self, component_id):
         if not any(c.id == component_id for c in self._components): return
-        self._selected_component_id = component_id; self._selected_air = None; self._refresh()
+        self._selected_component_id = component_id; self._selected_air = None; self.feedback.clear(); self._refresh()
 
     def _selected(self):
         return next((c for c in self._components if c.id == self._selected_component_id), None)
@@ -277,10 +277,11 @@ class BoreholeChargeBuilder(QWidget):
     def _show_add_menu(self):
         menu = QMenu(self); stem = menu.addAction(tr("Stemming")); stem.triggered.connect(self.add_stemming)
         enabled = [p for p in self._products if p.enabled]
-        for title, product_kind, component_kind in (
-            (tr("Bulk explosive"), ExplosiveProductKind.BULK, ChargeComponentKind.BULK_EXPLOSIVE),
-            (tr("Cartridge explosive"), ExplosiveProductKind.CARTRIDGE, ChargeComponentKind.CARTRIDGE_EXPLOSIVE)):
-            submenu = menu.addMenu(title); matches = [p for p in enabled if p.kind is product_kind]
+        for title, charge_form, component_kind in (
+            (tr("Bulk explosive"), ChargeForm.BULK, ChargeComponentKind.BULK_EXPLOSIVE),
+            (tr("Pumpable explosive"), ChargeForm.PUMPABLE, ChargeComponentKind.BULK_EXPLOSIVE),
+            (tr("Cartridged explosive"), ChargeForm.CARTRIDGED, ChargeComponentKind.CARTRIDGE_EXPLOSIVE)):
+            submenu = menu.addMenu(title); matches = [p for p in enabled if p.charge_form == charge_form]
             if not matches: submenu.addAction(tr("No explosive products configured")).setEnabled(False)
             for product in matches:
                 action = submenu.addAction(product.name)
@@ -299,7 +300,8 @@ class BoreholeChargeBuilder(QWidget):
     def _replace_selected(self, replacement):
         trial = [replacement if c.id == replacement.id else c for c in self._components]
         try: validate_components(trial, self._hole_depth_m)
-        except ChargeDesignValidationError as exc: self._feedback(str(exc)); self._refresh(); return False
+        except ChargeDesignValidationError:
+            self._feedback(tr("Change rejected: component would extend beyond the hole depth.")); self._refresh(); return False
         self._components = sorted(trial, key=lambda c: c.start_depth_m); self._changed(); return True
 
     def _numeric_edit(self, field):
@@ -360,8 +362,15 @@ class BoreholeChargeBuilder(QWidget):
         self.product_combo.setEnabled(False)
         self.pitch_spin.setEnabled(False)
         if selected:
-            names = {ChargeComponentKind.STEMMING: tr("Stemming"), ChargeComponentKind.BULK_EXPLOSIVE: tr("Bulk explosive"), ChargeComponentKind.CARTRIDGE_EXPLOSIVE: tr("Cartridge explosive")}
-            self.type_label.setText(names[selected.kind]); self.start_spin.setValue(selected.start_depth_m)
+            if selected.kind is ChargeComponentKind.STEMMING:
+                type_name = tr("Stemming")
+            else:
+                form = selected.product_snapshot.charge_form
+                if form is None:  # conservative old-snapshot fallback
+                    form = (ChargeForm.CARTRIDGED if selected.kind is ChargeComponentKind.CARTRIDGE_EXPLOSIVE else ChargeForm.BULK)
+                type_name = tr({ChargeForm.BULK:"Bulk", ChargeForm.PUMPABLE:"Pumpable",
+                                ChargeForm.CARTRIDGED:"Cartridged"}[form])
+            self.type_label.setText(type_name); self.start_spin.setValue(selected.start_depth_m)
             self.end_spin.setValue(selected.end_depth_m); self.length_spin.setValue(selected.length_m)
         else: self.type_label.setText("—")
         explosive = selected is not None and selected.kind is not ChargeComponentKind.STEMMING
@@ -373,9 +382,11 @@ class BoreholeChargeBuilder(QWidget):
         if explosive:
             snapshot = selected.product_snapshot
             self.product_combo.addItem(f"{snapshot.name} ({tr('current snapshot')})", None)
-            target_kind = snapshot.kind
+            target_form = snapshot.charge_form
             for product in self._products:
-                if product.enabled and product.kind is target_kind:
+                compatible = (product.kind == snapshot.kind if target_form is None
+                              else product.charge_form == target_form)
+                if product.enabled and compatible:
                     self.product_combo.addItem(product.name, product)
             self.product_combo.setEnabled(not self.read_only)
         if cartridge:
