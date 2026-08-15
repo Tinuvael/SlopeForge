@@ -30,7 +30,7 @@ def test_production_revision_calculations_and_immutability():
     blast = event(); card, draft = new_technical_card(blast); p = draft.production_parameters
     assert draft.geometry_revision_id == "G-1" and p.drilling_area_m2.calculated_value == 50
     assert draft.drilling_groups[0].group_type == "main_pattern"
-    p.average_hole_depth_m=12; p.subdrill_m=2; p.design_bench_height_m=10; p.total_explosive_mass_kg=500
+    p.average_hole_depth_m=12; p.subdrill_m=2; p.design_bench_height_m=10
     draft.drilling_groups[0].hole_count=10; draft.drilling_groups[0].average_depth_m=12
     draft.drilling_groups.append(BlastDrillingGroup(group_type="buffer", name="Буфер", hole_count=2,
         average_depth_m=8, burden_m=5, spacing_m=4))
@@ -42,7 +42,7 @@ def test_production_revision_calculations_and_immutability():
     assert first.production_parameters.total_drilling_length_m.calculated_value == 136
     assert first.production_parameters.rock_yield_m3_per_drilling_m == pytest.approx(500/136)
     assert first.production_parameters.specific_drilling_m_per_m3 == pytest.approx(136/500)
-    assert first.production_parameters.powder_factor_kg_per_m3 == 1
+    assert first.production_parameters.powder_factor_kg_per_m3 == 0
     edit=deepcopy(first); edit.drilling_groups[1].spacing_m=6; second=card.save_revision(edit)
     assert second.revision_number == 2 and first.drilling_groups[1].spacing_m == 4
 

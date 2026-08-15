@@ -10,6 +10,10 @@ from uuid import uuid4
 
 from domain.blasting.entities import BlastEvent, utc_now
 from domain.geometry.types import PlanPolygon
+from domain.blasting.charge_design import (
+    ChargeComponent, ChargeComponentKind, ExplosiveProductKind, ExplosiveProductSnapshot,
+    component_explosive_mass_kg,
+)
 
 PRODUCTION_GROUP_TYPES = {
     "main_pattern": "Основная сеть", "inner_buffer": "Внутренний буферный ряд",
@@ -63,6 +67,17 @@ class CommonParameters:
     block_type: str = ""; source_geometry_revision_id: str = ""; source_csv: str = ""; comments: str = ""
 
 @dataclass
+class DesignSlopeOrientation:
+    azimuth_deg: float | None = None
+    angle_deg: float | None = None
+
+    def __post_init__(self):
+        if self.azimuth_deg is not None and (not isfinite(self.azimuth_deg) or not 0 <= self.azimuth_deg < 360):
+            raise ValueError("Design slope azimuth must be at least 0 and less than 360 degrees")
+        if self.angle_deg is not None and (not isfinite(self.angle_deg) or not 0 <= self.angle_deg <= 90):
+            raise ValueError("Design slope angle must be between 0 and 90 degrees")
+
+@dataclass
 class JointSetOrientation:
     dip_deg: float
     dip_direction_deg: float
@@ -113,14 +128,29 @@ class BlastDrillingGroup:
     initiation_sequence: str = ""; delay_ms: float | None = None; planned_drilling_length_m: float | None = None
     air_deck_count: int | None = None; deck_notes: str = ""; charge_decks: list[dict[str, Any]] = field(default_factory=list)
     notes: str = ""
+    charge_components: list[ChargeComponent] = field(default_factory=list)
     # Read-only migration buffer.  It is deliberately omitted from new JSON.
     legacy_actual_drilling_length_m: float | None = field(default=None, repr=False)
 
     def drilling_length(self) -> float | None:
         if not self.included: return 0.0
-        if self.planned_drilling_length_m is not None: return self.planned_drilling_length_m
         if self.hole_count is None or self.average_depth_m is None: return None
         return self.hole_count * self.average_depth_m
+
+    def explosive_mass_per_hole_kg(self) -> float | None:
+        if not self.charge_components: return 0.0
+        try: return sum(component_explosive_mass_kg(item, self.diameter_mm) for item in self.charge_components)
+        except ValueError: return None
+
+    def total_explosive_mass(self) -> float | None:
+        per_hole = self.explosive_mass_per_hole_kg()
+        return None if per_hole is None or self.hole_count is None else per_hole * self.hole_count
+
+    def stemming_total_m(self) -> float:
+        return sum(item.length_m for item in self.charge_components if item.kind is ChargeComponentKind.STEMMING)
+
+    def explosive_names(self) -> str:
+        return ", ".join(dict.fromkeys(item.product_snapshot.name for item in self.charge_components if item.product_snapshot))
 
 @dataclass
 class ProductionParameters:
@@ -142,6 +172,8 @@ class ProductionParameters:
         self.total_hole_count = sum(g.hole_count or 0 for g in included)
         lengths = [g.drilling_length() for g in included]
         self.total_drilling_length_m.calculated_value = None if any(x is None for x in lengths) else sum(lengths)
+        masses = [group.total_explosive_mass() for group in included]
+        self.total_explosive_mass_kg = None if any(value is None for value in masses) else sum(masses)
         volume, length = self.block_volume_m3.accepted_value, self.total_drilling_length_m.accepted_value
         self.rock_yield_m3_per_drilling_m = _ratio(volume, length)
         self.specific_drilling_m_per_m3 = _ratio(length, volume)
@@ -200,13 +232,15 @@ class ActualDrillingGroup:
         for name in _DESIGN_COPY_FIELDS:
             setattr(target, name, deepcopy(getattr(group, name)))
         target.drilling_length_m = group.drilling_length()
+        target.charge_mass_per_hole_kg = group.explosive_mass_per_hole_kg()
+        target.total_charge_mass_kg = group.total_explosive_mass()
+        target.stemming_length_m = group.stemming_total_m()
+        target.explosive_type = group.explosive_names()
         return target
 
 _DESIGN_COPY_FIELDS = ("group_type", "custom_type_name", "name", "sequence_order", "included", "hole_count",
     "diameter_mm", "average_depth_m", "subdrill_m", "burden_m", "spacing_m", "row_count", "inclination_deg",
-    "azimuth_deg", "line_offset_m", "toe_standoff_m", "stemming_length_m", "charge_mass_per_hole_kg",
-    "charge_concentration_kg_per_m", "total_charge_mass_kg", "explosive_type", "charge_construction_text",
-    "initiation_sequence", "delay_ms", "air_deck_count", "deck_notes", "charge_decks")
+    "azimuth_deg", "line_offset_m", "toe_standoff_m", "initiation_sequence", "delay_ms")
 
 @dataclass
 class ActualExecution:
@@ -293,6 +327,7 @@ class BlastEventTechnicalCardRevision:
     contour_parameters: ContourParameters | None = None; geomechanical_parameters: GeomechanicalParameters | None = None
     actual_execution: ActualExecution = field(default_factory=ActualExecution); notes: str = ""
     author: str | None = None; change_reason: str = ""
+    design_slope_orientation: DesignSlopeOrientation = field(default_factory=DesignSlopeOrientation)
 
     def validate_completion(self) -> list[str]:
         errors = []
@@ -316,16 +351,18 @@ class BlastEventTechnicalCardRevision:
         for design in self.drilling_groups:
             actual = actual_by_design.get(design.id)
             for attr, label, unit in specs:
-                project = design.drilling_length() if attr == "drilling_length" else getattr(design, attr)
+                if attr == "drilling_length": project = design.drilling_length()
+                elif attr == "charge_mass_per_hole_kg": project = design.explosive_mass_per_hole_kg()
+                elif attr == "total_charge_mass_kg": project = design.total_explosive_mass()
+                elif attr == "stemming_length_m": project = design.stemming_total_m()
+                else: project = getattr(design, attr)
                 fact = actual.effective_drilling_length() if actual and attr == "drilling_length" else (getattr(actual, attr) if actual else None)
                 rows.append(comparison_value(design.name, label, unit, project, fact))
         included = [g for g in self.drilling_groups if g.included]
         project_holes = sum(g.hole_count or 0 for g in included)
         lengths = [g.drilling_length() for g in included]
         project_length = None if any(v is None for v in lengths) else sum(lengths)
-        masses = [g.total_charge_mass_kg if g.total_charge_mass_kg is not None else
-                  (g.hole_count * g.charge_mass_per_hole_kg if g.hole_count is not None and g.charge_mass_per_hole_kg is not None else None)
-                  for g in included]
+        masses = [g.total_explosive_mass() for g in included]
         project_mass = None if any(v is None for v in masses) else sum(masses)
         production = self.production_parameters
         project_volume = production.block_volume_m3.accepted_value if production else None
@@ -403,7 +440,10 @@ def _encode(value):
     if isinstance(value, datetime): return value.isoformat()
     if isinstance(value, float) and not isfinite(value): return None
     if isinstance(value, BlastDrillingGroup):
-        return {f.name: _encode(getattr(value, f.name)) for f in fields(value) if f.name != "legacy_actual_drilling_length_m"}
+        legacy = {"legacy_actual_drilling_length_m", "charge_decks", "explosive_type", "charge_mass_per_hole_kg",
+            "charge_concentration_kg_per_m", "total_charge_mass_kg", "stemming_length_m",
+            "charge_construction_text", "air_deck_count", "deck_notes", "planned_drilling_length_m"}
+        return {f.name: _encode(getattr(value, f.name)) for f in fields(value) if f.name not in legacy}
     if hasattr(value, "__dataclass_fields__"): return {f.name: _encode(getattr(value, f.name)) for f in fields(value)}
     if isinstance(value, dict): return {k: _encode(v) for k, v in value.items()}
     if isinstance(value, list): return [_encode(v) for v in value]
@@ -411,6 +451,17 @@ def _encode(value):
 
 def _construct(cls, data):
     return cls(**{f.name: data[f.name] for f in fields(cls) if f.name in data})
+
+def _charge_component_from_dict(data):
+    raw = dict(data); snapshot = raw.get("product_snapshot")
+    if snapshot:
+        snapshot = dict(snapshot)
+        snapshot["kind"] = ExplosiveProductKind(snapshot["kind"])
+        from domain.blasting.charge_design import ChargeForm
+        if snapshot.get("charge_form") is not None: snapshot["charge_form"] = ChargeForm(snapshot["charge_form"])
+        raw["product_snapshot"] = _construct(ExplosiveProductSnapshot, snapshot)
+    raw["kind"] = ChargeComponentKind(raw["kind"])
+    return _construct(ChargeComponent, raw)
 
 def _geomechanics_from_dict(data):
     """Read the canonical payload, conservatively falling back to representatives."""
@@ -439,6 +490,7 @@ def _card_from_dict(d):
         groups = []
         for raw in raw_groups:
             migrated = dict(raw)
+            migrated["charge_components"] = [_charge_component_from_dict(item) for item in migrated.get("charge_components", [])]
             legacy = migrated.pop("actual_drilling_length_m", None)
             group = _construct(BlastDrillingGroup, migrated); group.legacy_actual_drilling_length_m = legacy; groups.append(group)
         raw_actual = dict(x.get("actual_execution", {}))
@@ -466,5 +518,6 @@ def _card_from_dict(d):
             drilling_groups=groups,
             production_parameters=prod, contour_parameters=_construct(ContourParameters, x["contour_parameters"]) if x.get("contour_parameters") else None,
             geomechanical_parameters=_geomechanics_from_dict(x["geomechanical_parameters"]) if x.get("geomechanical_parameters") else None,
-            actual_execution=actual, notes=x.get("notes", ""), author=x.get("author"), change_reason=x.get("change_reason", "")))
+            actual_execution=actual, notes=x.get("notes", ""), author=x.get("author"), change_reason=x.get("change_reason", ""),
+            design_slope_orientation=_construct(DesignSlopeOrientation, x.get("design_slope_orientation", {}))))
     return card

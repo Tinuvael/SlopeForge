@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from app.localization import tr
 from domain.blasting.charge_design import (
-    ChargeComponent, ChargeComponentKind, ChargeDesignValidationError,
+    ChargeComponent, ChargeComponentKind, ChargeDesignValidationError, ChargeForm,
     ExplosiveProduct, ExplosiveProductKind, available_air_intervals,
     cartridge_depths, validate_components,
 )
@@ -277,10 +277,11 @@ class BoreholeChargeBuilder(QWidget):
     def _show_add_menu(self):
         menu = QMenu(self); stem = menu.addAction(tr("Stemming")); stem.triggered.connect(self.add_stemming)
         enabled = [p for p in self._products if p.enabled]
-        for title, product_kind, component_kind in (
-            (tr("Bulk explosive"), ExplosiveProductKind.BULK, ChargeComponentKind.BULK_EXPLOSIVE),
-            (tr("Cartridge explosive"), ExplosiveProductKind.CARTRIDGE, ChargeComponentKind.CARTRIDGE_EXPLOSIVE)):
-            submenu = menu.addMenu(title); matches = [p for p in enabled if p.kind is product_kind]
+        for title, charge_form, component_kind in (
+            (tr("Bulk explosive"), ChargeForm.BULK, ChargeComponentKind.BULK_EXPLOSIVE),
+            (tr("Pumpable explosive"), ChargeForm.PUMPABLE, ChargeComponentKind.BULK_EXPLOSIVE),
+            (tr("Cartridged explosive"), ChargeForm.CARTRIDGED, ChargeComponentKind.CARTRIDGE_EXPLOSIVE)):
+            submenu = menu.addMenu(title); matches = [p for p in enabled if p.charge_form is charge_form]
             if not matches: submenu.addAction(tr("No explosive products configured")).setEnabled(False)
             for product in matches:
                 action = submenu.addAction(product.name)
@@ -299,7 +300,7 @@ class BoreholeChargeBuilder(QWidget):
     def _replace_selected(self, replacement):
         trial = [replacement if c.id == replacement.id else c for c in self._components]
         try: validate_components(trial, self._hole_depth_m)
-        except ChargeDesignValidationError as exc: self._feedback(str(exc)); self._refresh(); return False
+        except ChargeDesignValidationError as exc: self._feedback(tr("Change rejected") + f": {exc}"); self._refresh(); return False
         self._components = sorted(trial, key=lambda c: c.start_depth_m); self._changed(); return True
 
     def _numeric_edit(self, field):

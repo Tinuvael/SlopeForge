@@ -6,11 +6,12 @@ from app.localization import tr
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox,
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QTabWidget,
-    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QInputDialog)
+    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QInputDialog, QSizePolicy)
 
 from domain.blasting.technical_card import (CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS,
-    PRODUCTION_GROUP_TYPES, ActualDrillingGroup, BlastDrillingGroup, GeomechanicalParameters,
-    JointSetOrientation)
+    PRODUCTION_GROUP_TYPES, ActualDrillingGroup, BlastDrillingGroup, DesignSlopeOrientation,
+    GeomechanicalParameters, JointSetOrientation)
+from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
 from ui.presentation_labels import (
     CONTROLLED_BLASTING_LABELS, domain_message, technical_group_label, technical_text,
 )
@@ -30,12 +31,14 @@ def _number(value, suffix=""):
 
 
 class TechnicalCardDialog(QDialog):
-    def __init__(self, event, card, revision, save_callback, parent=None, read_only=False, domain_name=""):
+    def __init__(self, event, card, revision, save_callback, parent=None, read_only=False, domain_name="",
+                 explosive_products=None, charge_presets=None):
         # QDialog already has an event() method used internally by Qt.  Do not
         # shadow it with the BlastEvent model, otherwise showing the dialog
         # fails with: "BlastEvent object is not callable".
         super().__init__(parent); self.blast_event, self.card, self.revision = event, card, revision
         self.save_callback, self.read_only, self.domain_name = save_callback, read_only, domain_name
+        self.explosive_products = list(explosive_products or []); self.charge_presets = charge_presets
         self.setWindowTitle(f"{tr('Technical Card')} — {event.name}"); self.setMinimumSize(760, 560); self.resize(940, 720)
         root = QVBoxLayout(self); meta = QLabel(f"{tr('BlastEvent ID')}: {event.id}   |   {tr('Geometry revision')}: {revision.geometry_revision_id}")
         meta.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse); root.addWidget(meta)
@@ -65,8 +68,8 @@ class TechnicalCardDialog(QDialog):
         if self.revision.production_parameters:
             p = self.revision.production_parameters; calc = QGroupBox(tr("Calculated values")); f = QFormLayout(calc)
             f.addRow(tr("Drilling area"), QLabel(f"{p.drilling_area_m2.accepted_value:g} m²" if p.drilling_area_m2.accepted_value is not None else "— m²"))
-            self.bench_height = _number(p.design_bench_height_m, "m"); self.explosive = _number(p.total_explosive_mass_kg, "kg")
-            f.addRow(tr("Design bench height"), self.bench_height); f.addRow(tr("Explosive mass"), self.explosive); layout.addWidget(calc)
+            self.bench_height = _number(p.design_bench_height_m, "m"); self.production_explosive_label=QLabel("— kg" if p.total_explosive_mass_kg is None else f"{p.total_explosive_mass_kg:g} kg")
+            f.addRow(tr("Design bench height"), self.bench_height); f.addRow(tr("Explosive mass"), self.production_explosive_label); layout.addWidget(calc)
         else:
             contour = self.revision.contour_parameters; method = QGroupBox(tr("Controlled blasting method")); f = QFormLayout(method)
             self.method = QComboBox(); self.method.addItem(tr("— select —"), "")
@@ -138,7 +141,13 @@ class TechnicalCardDialog(QDialog):
             self.planned_date.setDate(QDate.currentDate()); self.planned_date.setEnabled(False)
         self.has_planned_date.toggled.connect(self.planned_date.setEnabled)
         date_row = QHBoxLayout(); date_row.addWidget(self.has_planned_date); date_row.addWidget(self.planned_date)
-        planned_form.addRow(tr("Planned blast date"), date_row); self.drilling_layout.addWidget(planned)
+        planned_form.addRow(tr("Planned blast date"), date_row)
+        slope=self.revision.design_slope_orientation
+        self.design_slope_azimuth=_number(slope.azimuth_deg); self.design_slope_azimuth.setRange(-1,360); self.design_slope_azimuth.setSpecialValueText("—"); self.design_slope_azimuth.setObjectName("designSlopeAzimuth")
+        self.design_slope_angle=_number(slope.angle_deg); self.design_slope_angle.setRange(-1,90); self.design_slope_angle.setSpecialValueText("—"); self.design_slope_angle.setObjectName("designSlopeAngle")
+        for spin in (self.design_slope_azimuth,self.design_slope_angle): spin.setMaximumWidth(160); spin.setEnabled(not self.read_only)
+        planned_form.addRow(tr("Design slope azimuth, °"),self.design_slope_azimuth); planned_form.addRow(tr("Design slope angle, °"),self.design_slope_angle)
+        self.drilling_layout.addWidget(planned)
         self.group_cards = QWidget(); self.group_cards_layout = QVBoxLayout(self.group_cards)
         self.drilling_layout.addWidget(self.group_cards); self._render_groups()
         self.add_group_combo = QComboBox(); catalogue = PRODUCTION_GROUP_TYPES if self.blast_event.event_type == "production" else CONTOUR_GROUP_TYPES
@@ -152,37 +161,108 @@ class TechnicalCardDialog(QDialog):
             if item.widget(): item.widget().deleteLater()
         for group in self.revision.drilling_groups:
             display_name = technical_group_label(group.group_type, group.name)
-            box = QGroupBox(display_name); box.setCheckable(True); box.setChecked(True)
+            box = QGroupBox(display_name); box.setCheckable(True); box.setChecked(group.included); box.setCheckable(not self.read_only); box.setObjectName("drillingGroupCard")
             outer = QVBoxLayout(box); identity = QFormLayout(); outer.addLayout(identity)
-            name = QLineEdit(display_name); identity.addRow(tr("Title"), name); name.textChanged.connect(lambda value, g=group: setattr(g, "name", value))
-            pattern = QGroupBox(tr("Drilling pattern")); pattern.setCheckable(True); pattern.setChecked(True); form = QFormLayout(pattern)
+            name = QLineEdit(display_name); name.setEnabled(not self.read_only); identity.addRow(tr("Title"), name); name.textChanged.connect(lambda value, g=group: setattr(g, "name", value))
+            columns=QGridLayout(); columns.setColumnStretch(0,0); columns.setColumnStretch(1,1); box.setProperty("engineeringComposition","left-right")
+            pattern = QGroupBox(tr("Drilling design")); pattern.setObjectName("drillingDesignArea"); form = QFormLayout(pattern)
             fields = (("Holes, count", "hole_count", "", True), ("Diameter, mm", "diameter_mm", "", False),
                 ("Average depth, m", "average_depth_m", "", False), ("Subdrill, m", "subdrill_m", "", False),
-                (BURDEN_LABEL, "burden_m", "", False), (SPACING_LABEL, "spacing_m", "", False),
-                ("Rows", "row_count", "", True), ("Inclination, °", "inclination_deg", "", False),
-                ("Azimuth, °", "azimuth_deg", "", False), ("Line offset, m", "line_offset_m", "", False),
-                (TOE_LABEL, "toe_standoff_m", "", False), ("Design drilling length override, m", "planned_drilling_length_m", "", False))
-            for label, attr, suffix, integer in fields: self._add_number(form, label, group, attr, suffix, integer)
-            outer.addWidget(pattern)
-            charging = QGroupBox(tr("Charging")); charging.setCheckable(True); charging.setChecked(False); charge_form = QFormLayout(charging)
-            for label, attr, suffix, integer in (("Charge mass per hole, kg","charge_mass_per_hole_kg","",False),
-                ("Charge concentration, kg/m","charge_concentration_kg_per_m","",False),("Total charge mass, kg","total_charge_mass_kg","",False),
-                ("Stemming length, m","stemming_length_m","",False),("Delay, ms","delay_ms","",False),("Air decks","air_deck_count","",True)):
-                self._add_number(charge_form,label,group,attr,suffix,integer)
-            for label, attr in (("Explosive type","explosive_type"),("Charge construction","charge_construction_text"),("Initiation sequence","initiation_sequence"),("Deck notes","deck_notes")):
-                edit=QLineEdit(getattr(group,attr)); edit.textChanged.connect(lambda v,g=group,a=attr:setattr(g,a,v)); charge_form.addRow(tr(label),edit)
-            outer.addWidget(charging)
+                ("Inclination, °", "inclination_deg", "", False),
+                ("Azimuth, °", "azimuth_deg", "", False))
+            if self.blast_event.event_type == "production": fields += ((BURDEN_LABEL,"burden_m","",False),(SPACING_LABEL,"spacing_m","",False),("Rows","row_count","",True),(TOE_LABEL,"toe_standoff_m","",False))
+            else: fields += (("Design line / collar offset, m","line_offset_m","",False),)
+            widgets={}
+            for label, attr, suffix, integer in fields: widgets[attr]=self._add_number(form,label,group,attr,suffix,integer,compact=True)
+            columns.addWidget(pattern,0,0,Qt.AlignmentFlag.AlignTop)
+            charge=QGroupBox(tr("Charge design")); charge.setObjectName("chargeDesignArea"); charge_layout=QVBoxLayout(charge)
+            preset_row=QHBoxLayout(); preset_row.addWidget(QLabel(tr("Preset"))); combo=QComboBox(); combo.setObjectName("chargePresetCombo"); combo.setEnabled(not self.read_only); preset_row.addWidget(combo,1)
+            load=QPushButton(tr("Load")); save=QPushButton(tr("Save as...")); update=QPushButton(tr("Update")); delete=QPushButton(tr("Delete"))
+            for button,name_ in ((load,"loadChargePresetButton"),(save,"saveChargePresetButton"),(update,"updateChargePresetButton"),(delete,"deleteChargePresetButton")):
+                button.setObjectName(name_); button.setEnabled(not self.read_only and self.charge_presets is not None); preset_row.addWidget(button)
+            charge_layout.addLayout(preset_row)
+            builder_host=QWidget(); builder_layout=QVBoxLayout(builder_host); builder_layout.setContentsMargins(0,0,0,0); charge_layout.addWidget(builder_host,1)
+            columns.addWidget(charge,0,1); outer.addLayout(columns)
+            summary=QLabel(); summary.setObjectName("drillingChargeSummary"); summary.setWordWrap(True); outer.addWidget(summary)
+            state={"builder":None,"last_depth":group.average_depth_m}
+            self._refresh_preset_combo(combo)
+            def refresh(g=group,label=summary):
+                drilling=g.drilling_length(); per=g.explosive_mass_per_hole_kg(); total=g.total_explosive_mass()
+                show=lambda value: "—" if value is None else f"{value:.3f}"
+                label.setText(f"{tr('Drilling length')}: {show(drilling)} m   |   {tr('Explosive mass / hole')}: {show(per)} kg   |   {tr('Total explosive mass')}: {show(total)} kg")
+                if self.revision.production_parameters: self.revision.production_parameters.recalculate(self.revision.drilling_groups)
+                if self.revision.production_parameters: self.production_explosive_label.setText(show(self.revision.production_parameters.total_explosive_mass_kg)+" kg")
+            def ensure_builder(g=group):
+                depth=g.average_depth_m
+                if not depth or depth <= 0:
+                    if state["builder"]: state["builder"].deleteLater(); state["builder"]=None
+                    if not builder_layout.count(): builder_layout.addWidget(QLabel(tr("Enter average hole depth to configure the charge construction.")))
+                    return
+                while builder_layout.count():
+                    item=builder_layout.takeAt(0)
+                    if item.widget(): item.widget().deleteLater()
+                builder=BoreholeChargeBuilder(depth,g.diameter_mm,self.explosive_products,g.charge_components,self.read_only)
+                builder.setObjectName("boreholeChargeBuilder"); builder.setMinimumHeight(350); builder.setMaximumHeight(500)
+                builder.components_changed.connect(lambda values,g=g:(setattr(g,"charge_components",values),refresh()))
+                builder_layout.addWidget(builder); state["builder"]=builder; state["last_depth"]=depth
+            ensure_builder(); refresh()
+            def depth_changed(value,g=group,w=widgets["average_depth_m"]):
+                value=None if value==w.minimum() else value
+                if state["builder"] and value and not state["builder"].set_hole_depth(value):
+                    w.blockSignals(True); w.setValue(state["last_depth"]); w.blockSignals(False); g.average_depth_m=state["last_depth"]; return
+                g.average_depth_m=value
+                if state["builder"]: state["last_depth"]=value
+                else: ensure_builder()
+                refresh()
+            widgets["average_depth_m"].valueChanged.disconnect(); widgets["average_depth_m"].valueChanged.connect(depth_changed)
+            widgets["diameter_mm"].valueChanged.connect(lambda value,w=widgets["diameter_mm"]: state["builder"] and state["builder"].set_hole_diameter(None if value==w.minimum() else value))
+            for attr in ("hole_count","diameter_mm","subdrill_m"): widgets[attr].valueChanged.connect(refresh)
+            box.toggled.connect(lambda checked,g=group:(setattr(g,"included",checked),refresh()))
+            load.clicked.connect(lambda _=False,c=combo,g=group:self._load_preset(c,g,state,refresh))
+            save.clicked.connect(lambda _=False,c=combo,g=group:self._save_preset(c,g))
+            update.clicked.connect(lambda _=False,c=combo,g=group:self._update_preset(c,g))
+            delete.clicked.connect(lambda _=False,c=combo:self._delete_preset(c))
             actions = QHBoxLayout(); duplicate = QPushButton(tr("Duplicate")); remove = QPushButton(tr("Delete"))
+            duplicate.setEnabled(not self.read_only); remove.setEnabled(not self.read_only)
             duplicate.clicked.connect(lambda _=False, g=group: self._duplicate(g)); remove.clicked.connect(lambda _=False, g=group: self._remove(g))
-            actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions); self.group_cards_layout.addWidget(box)
+            actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions); self.group_cards_layout.addWidget(box)
 
-    def _add_number(self, form, label, model, attr, suffix="", integer=False):
+    def _add_number(self, form, label, model, attr, suffix="", integer=False,compact=False):
         widget = _number(getattr(model, attr), suffix); widget.setObjectName(attr)
+        widget.setEnabled(not self.read_only)
+        if compact: widget.setMinimumWidth(120); widget.setMaximumWidth(160); widget.setSizePolicy(QSizePolicy.Policy.Preferred,QSizePolicy.Policy.Fixed)
         if attr == "burden_m": widget.setToolTip(tr(BURDEN_TOOLTIP))
         if attr == "spacing_m": widget.setToolTip(tr(SPACING_TOOLTIP))
         widget.valueChanged.connect(lambda value, m=model, a=attr, i=integer, w=widget:
             setattr(m, a, None if value == w.minimum() else (int(value) if i else value)))
         form.addRow(tr(label), widget); return widget
+
+    def _refresh_preset_combo(self, combo, selected=None):
+        combo.clear()
+        if self.charge_presets is None:return
+        for preset in self.charge_presets.list_presets(): combo.addItem(preset.name,preset)
+        if selected is not None:
+            index=next((i for i in range(combo.count()) if combo.itemData(i).id==selected),-1)
+            if index>=0: combo.setCurrentIndex(index)
+    def _refresh_all_preset_combos(self,selected=None):
+        for combo in self.group_cards.findChildren(QComboBox,"chargePresetCombo"): self._refresh_preset_combo(combo,selected)
+    def _load_preset(self,combo,group,state,refresh):
+        preset=combo.currentData()
+        if not preset or not group.average_depth_m:return
+        try: values=self.charge_presets.apply(preset,self.explosive_products,group.average_depth_m)
+        except ValueError as exc: QMessageBox.warning(self,tr("Charge preset"),str(exc)); return
+        group.charge_components=values
+        if state["builder"]: state["builder"].set_components(values)
+        refresh()
+    def _save_preset(self,combo,group):
+        name,ok=QInputDialog.getText(self,tr("Save charge preset"),tr("Preset name"))
+        if ok and name.strip(): preset=self.charge_presets.create(name,group.charge_components); self._refresh_all_preset_combos(preset.id)
+    def _update_preset(self,combo,group):
+        preset=combo.currentData()
+        if preset: updated=self.charge_presets.update(preset.id,preset.name,group.charge_components); self._refresh_all_preset_combos(updated.id)
+    def _delete_preset(self,combo):
+        preset=combo.currentData()
+        if preset:self.charge_presets.delete(preset.id); self._refresh_all_preset_combos()
 
     def _add_group(self, index):
         kind = self.add_group_combo.itemData(index)
@@ -333,14 +413,15 @@ class TechnicalCardDialog(QDialog):
             return False
         self.revision.common_parameters.block_name = self.block_name.text(); self.revision.common_parameters.comments = self.comments.text()
         try:
+            azimuth=self._optional_number(self.design_slope_azimuth)
+            if azimuth==360: azimuth=0.0; self.design_slope_azimuth.setValue(0.0)
+            self.revision.design_slope_orientation=DesignSlopeOrientation(azimuth,self._optional_number(self.design_slope_angle))
             if self.revision.production_parameters:
-                p=self.revision.production_parameters; p.design_bench_height_m=None if self.bench_height.value()==self.bench_height.minimum() else self.bench_height.value(); p.total_explosive_mass_kg=None if self.explosive.value()==self.explosive.minimum() else self.explosive.value()
+                p=self.revision.production_parameters; p.design_bench_height_m=None if self.bench_height.value()==self.bench_height.minimum() else self.bench_height.value()
                 self.revision.geomechanical_parameters = self._geomechanics_from_form()
         except ValueError as exc:
             QMessageBox.warning(self, tr("Technical Card validation"), domain_message(str(exc))); return False
         actual=self.revision.actual_execution; actual.completion_status=self.completion_status.currentData(); actual.actual_blast_date=self.actual_date.text().strip() or None; actual.execution_notes=self.execution_notes.toPlainText(); actual.recalculate()
-        warnings=actual.completion_warnings()
-        if warnings: QMessageBox.warning(self,tr("Actual execution"),"The card will be saved. Warnings:\n• " + "\n• ".join(domain_message(item) for item in warnings))
         planned_date = self.planned_date.date().toPython() if self.has_planned_date.isChecked() else None
         try: self.save_callback(self.card, self.revision, status, planned_date)
         except ValueError as exc: QMessageBox.warning(self, tr("Technical Card validation"), domain_message(str(exc))); return False

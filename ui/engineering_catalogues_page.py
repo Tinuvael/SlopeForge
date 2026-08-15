@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from domain.blasting.charge_design import ExplosiveProduct, ExplosiveProductKind
+from domain.blasting.charge_design import ChargeForm, ExplosiveProduct, ExplosiveProductKind
 from app.localization import tr
 
 
@@ -24,6 +24,11 @@ class ExplosiveProductDialog(QDialog):
         self.kind_combo.addItem(tr("Cartridge"), ExplosiveProductKind.CARTRIDGE)
         if product:
             self.kind_combo.setCurrentIndex(self.kind_combo.findData(product.kind))
+        self.form_combo = QComboBox()
+        self.form_combo.addItem(tr("Bulk"), ChargeForm.BULK)
+        self.form_combo.addItem(tr("Pumpable"), ChargeForm.PUMPABLE)
+        if product and product.kind is ExplosiveProductKind.BULK:
+            self.form_combo.setCurrentIndex(self.form_combo.findData(product.charge_form))
         color_row = QWidget(); color_layout = QHBoxLayout(color_row); color_layout.setContentsMargins(0, 0, 0, 0)
         self.color_edit = QLineEdit(product.display_color if product else "#000000")
         choose = QPushButton(tr("Choose color"))
@@ -34,6 +39,7 @@ class ExplosiveProductDialog(QDialog):
         self.mass = self._number(product.cartridge_mass_kg if product else None, decimals=4)
         self.pitch = self._number(product.default_pitch_m if product else None, decimals=4)
         form.addRow(tr("Name"), self.name_edit); form.addRow(tr("Type"), self.kind_combo)
+        self.form_label = QLabel(tr("Charge form")); form.addRow(self.form_label, self.form_combo)
         form.addRow(tr("Display color"), color_row)
         self.density_label = QLabel(tr("Density, kg/m³")); form.addRow(self.density_label, self.density)
         self.diameter_label = QLabel(tr("Cartridge diameter, mm")); form.addRow(self.diameter_label, self.diameter)
@@ -61,6 +67,7 @@ class ExplosiveProductDialog(QDialog):
 
     def _update_fields(self):
         bulk = self.kind_combo.currentData() is ExplosiveProductKind.BULK
+        self.form_label.setVisible(bulk); self.form_combo.setVisible(bulk)
         for widget in (self.density_label, self.density): widget.setVisible(bulk)
         for widget in (self.diameter_label, self.diameter, self.mass_label, self.mass,
                        self.pitch_label, self.pitch): widget.setVisible(not bulk)
@@ -78,6 +85,7 @@ class ExplosiveProductDialog(QDialog):
             cartridge_diameter_mm=self._number_value(self.diameter) if kind is ExplosiveProductKind.CARTRIDGE else None,
             cartridge_mass_kg=self._number_value(self.mass) if kind is ExplosiveProductKind.CARTRIDGE else None,
             default_pitch_m=self._number_value(self.pitch) if kind is ExplosiveProductKind.CARTRIDGE else None,
+            charge_form=self.form_combo.currentData() if kind is ExplosiveProductKind.BULK else ChargeForm.CARTRIDGED,
         )
 
     def _validate_and_accept(self):

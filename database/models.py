@@ -45,6 +45,8 @@ class ExplosiveProduct(TimestampMixin, Base):
             "AND cartridge_mass_kg > 0)", name="ck_explosive_products_kind_fields"),
         CheckConstraint("default_pitch_m IS NULL OR default_pitch_m > 0",
                         name="ck_explosive_products_pitch"),
+        CheckConstraint("charge_form IN ('bulk', 'pumpable', 'cartridged')",
+                        name="ck_explosive_products_charge_form"),
         UniqueConstraint("name", name="uq_explosive_products_name"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -57,6 +59,16 @@ class ExplosiveProduct(TimestampMixin, Base):
     default_pitch_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True,
                                              server_default="true", index=True)
+    charge_form: Mapped[str] = mapped_column(String(20), nullable=False, default="bulk", server_default="bulk")
+
+
+class ChargeDesignPreset(TimestampMixin, Base):
+    __tablename__ = "charge_design_presets"
+    __table_args__ = (UniqueConstraint("site_id", "name", name="uq_charge_design_presets_site_name"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    components_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
 
 
 

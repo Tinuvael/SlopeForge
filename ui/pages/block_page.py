@@ -219,8 +219,11 @@ class BlockPage(QWidget):
         self._reimport_callback = lambda: self._reimport_geometry(event)
         self.overview.scheme.reimport_requested.connect(self._reimport_callback)
         card,revision=self.entity_controller.technical_card_draft(event)
+        from app.use_case_factory import create_charge_presets,create_explosive_catalogue
         editor=TechnicalCardEditorWidget(event,card,revision,self.entity_controller.save_technical_card,
-            self,not editable,domain_name=block.domain_name)
+            self,not editable,domain_name=block.domain_name,
+            explosive_products=create_explosive_catalogue(self.context).list_enabled_products(),
+            charge_presets=create_charge_presets(self.context,self.entity_controller.site_id))
         self.geomechanics_tab=self._replace_tab(self.geomechanics_tab,GeomechanicsEditorWidget(editor.take_tab(tr("Geomechanics"))),"Geomechanics")
         self.design_tab=self._replace_tab(self.design_tab,BlastDesignEditorWidget(editor.take_tab(tr("Drilling and charging"))),"Blast design")
         self.execution_tab=self._replace_tab(self.execution_tab,ActualExecutionEditorWidget(editor.take_tab(tr("Execution fact"))),"Execution fact")
@@ -244,11 +247,17 @@ class BlockPage(QWidget):
     def _save_technical_card_draft(self):
         if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:
             if self.technical_card_editor.save_draft():
-                self.refresh()
+                self._refresh_preserving_active_tab()
     def _complete_technical_card(self):
         if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:
             if self.technical_card_editor.complete():
-                self.refresh()
+                self._refresh_preserving_active_tab()
+
+    def _refresh_preserving_active_tab(self):
+        title=self.tabs.tabText(self.tabs.currentIndex())
+        self.refresh()
+        for index in range(self.tabs.count()):
+            if self.tabs.tabText(index)==title: self.tabs.setCurrentIndex(index); break
 
     def _reimport_geometry(self,event):
         if not self.context.current_user.can_edit or not self.current_block or self.current_block.is_archived:

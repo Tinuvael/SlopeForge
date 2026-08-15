@@ -22,6 +22,8 @@ from infrastructure.db.entity_renaming import (
 )
 from application.use_cases.explosive_catalogue import ExplosiveCatalogue
 from infrastructure.db.explosive_catalogue import SqlAlchemyExplosiveCatalogue
+from application.use_cases.charge_presets import ChargePresets
+from infrastructure.db.charge_presets import SqlAlchemyChargePresetPersistence
 
 
 def create_blast_event_use_case(context):
@@ -74,3 +76,10 @@ def create_generate_project_report_use_case(context):
 def create_explosive_catalogue(context):
     adapter = SqlAlchemyExplosiveCatalogue(context.session_factory)
     return ExplosiveCatalogue(adapter, adapter, can_edit=context.current_user.can_edit)
+
+
+def create_charge_presets(context, site_id=None):
+    scope = site_id if site_id is not None else getattr(context, "site_id", None)
+    if scope is None: raise ValueError("Project is required for charge presets")
+    return ChargePresets(SqlAlchemyChargePresetPersistence(context.session_factory),
+                         site_id=scope, can_edit=context.current_user.can_edit)

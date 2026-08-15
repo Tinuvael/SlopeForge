@@ -224,7 +224,7 @@ def test_metadata_and_indexes_compile_with_postgresql():
 def test_assessment_schema_keeps_immutable_mvp_baseline():
     versions = sorted(Path("alembic/versions").glob("*.py"))
     assert [path.name for path in versions] == [
-        "0001_mvp_baseline.py", "0002_workflow_status.py", "0003_explosive_catalog.py"]
+        "0001_mvp_baseline.py", "0002_workflow_status.py", "0003_explosive_catalog.py", "0004_charge_presets.py"]
     source = versions[0].read_text()
     assert 'revision = "0001_mvp_baseline"' in source
     assert "down_revision = None" in source
