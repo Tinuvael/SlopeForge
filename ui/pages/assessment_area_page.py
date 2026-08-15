@@ -1,9 +1,9 @@
 from app.localization import tr
 from domain.blasting.workflow import ASSESSMENT_PROGRESS_LABELS, assessment_progress_for
 """Normal, revision-safe page for one Assessment Area."""
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QGridLayout,QHBoxLayout,QInputDialog,QLabel,QMessageBox,QPushButton,QTableWidget,QTableWidgetItem,
-                               QTabWidget,QVBoxLayout,QWidget)
+                               QSplitter,QTabWidget,QVBoxLayout,QWidget)
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame,apply_workflow_badge_style
@@ -20,8 +20,8 @@ class AssessmentAreaPage(QWidget):
         super().__init__(parent); self.context=context; self.domain_id=domain_id; self.domain_name=domain_name; self.area_id=area_id; self.controller=EntityPageController(context,domain_id); self.area=self.controller.area(area_id); self.read_only=not context.current_user.can_edit or self.area.is_archived
         self._build_editor()
         root=QVBoxLayout(self); self._header(root); body=QHBoxLayout(); left=QVBoxLayout(); self.tabs=QTabWidget(); left.addWidget(self.tabs); body.addLayout(left,4); self._sidebar(body); root.addLayout(body)
-        self._overview(); self.tabs.addTab(self.assessment_tab,tr("Assessment")); self.tabs.addTab(self.result,tr("Result")); self._linked_events(); self._attachment_tab("Photos"); self._attachment_tab("Documents"); self.tabs.addTab(self.history,tr("History")); self._refresh_overview_and_sidebar()
-        self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
+        self._overview(); self.tabs.addTab(self.assessment_tab,tr("Assessment")); self._linked_events(); self._attachment_tab("Photos"); self._attachment_tab("Documents"); self.tabs.addTab(self.history,tr("History")); self._refresh_overview_and_sidebar()
+        self.setStyleSheet("#CardFrame,#CriterionCard,#ResultCard{background:white;border:1px solid #dfe3ea;border-radius:6px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
 
     def _header(self,root):
         card=CardFrame(); top=QHBoxLayout(); title=QLabel(self.area.name); title.setObjectName("EntityTitle"); self.header_status=QLabel(); apply_workflow_badge_style(self.header_status); top.addWidget(title); top.addWidget(self.header_status)
@@ -47,14 +47,15 @@ class AssessmentAreaPage(QWidget):
     def _build_editor(self):
         evaluation,draft=self.controller.evaluation_draft(self.area); self.evaluation=evaluation
         self.evaluation_editor=AssessmentAreaEvaluationDialog(self.area,evaluation,draft,self.controller.save_evaluation,None,read_only=self.read_only)
-        self.assessment_tab=QWidget(); layout=QVBoxLayout(self.assessment_tab); self.assessment_sections=QTabWidget(); layout.addWidget(self.assessment_sections)
+        self.assessment_tab=QWidget(); layout=QVBoxLayout(self.assessment_tab); layout.setContentsMargins(4,4,4,4); self.assessment_splitter=QSplitter(Qt.Orientation.Horizontal); self.assessment_sections=QTabWidget(); self.assessment_splitter.addWidget(self.assessment_sections)
         for title in ("General","Geometry","Face condition"):
             page=self.evaluation_editor.take_tab(tr(title)); self.assessment_sections.addTab(page,tr(title))
+        self.result=self.evaluation_editor.take_tab(tr("Matrix")); self.assessment_splitter.addWidget(self.result); self.assessment_splitter.setStretchFactor(0,3); self.assessment_splitter.setStretchFactor(1,2); self.assessment_splitter.setSizes([680,480]); layout.addWidget(self.assessment_splitter)
         controls=QHBoxLayout(); controls.addStretch(); self.save_evaluation_button=QPushButton(tr("Save draft")); self.complete_evaluation_button=QPushButton(tr("Complete assessment"));
         for button in (self.save_evaluation_button,self.complete_evaluation_button):button.setEnabled(not self.read_only); controls.addWidget(button)
         self.save_evaluation_button.clicked.connect(lambda:self._save_evaluation("draft")); self.complete_evaluation_button.clicked.connect(lambda:self._save_evaluation("completed")); layout.addLayout(controls)
         self.assessment_sections.setCurrentIndex(0)
-        self.result=self.evaluation_editor.take_tab(tr("Matrix")); self.history=self.evaluation_editor.take_tab(tr("History"))
+        self.history=self.evaluation_editor.take_tab(tr("History"))
 
     def _sidebar(self,body):
         right=QVBoxLayout(); self.summary_card=CardFrame("Summary"); self.summary_grid=QGridLayout(); self.summary_card.layout.addLayout(self.summary_grid); right.addWidget(self.summary_card)

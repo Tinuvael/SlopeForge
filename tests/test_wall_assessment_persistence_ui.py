@@ -73,7 +73,7 @@ def test_completed_end_to_end_save_load_restores_everything(tmp_path):
 
 def test_dialog_restores_without_mutating_source_and_nullable_zero():
     app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); source=deepcopy(draft); dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
-    assert dialog.da.nullable_value()==65 and dialog.aa.nullable_value()==66 and dialog.toe.nullable_value()==0
+    assert dialog.shortfall.nullable_value()==0 and dialog.deficit.nullable_value()==0 and dialog.toe.nullable_value()==0
     assert dialog.editors["visible_drillhole_traces"].input.nullable_value()==90
     assert dialog.editors["loose_blocks"].input.currentData()=="several_small"
     assert dialog.editors["damage"].manual_score.nullable_value()==8 and dialog.editors["damage"].reason.text()=="Экспертная оценка"
@@ -95,10 +95,37 @@ def test_dialog_initialization_does_not_collect_before_restore(monkeypatch):
     app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); calls=[]
     original=AssessmentAreaEvaluationDialog.collect
     def checked(self):
-        calls.append(self.da.nullable_value()); return original(self)
+        calls.append(self.shortfall.nullable_value()); return original(self)
     monkeypatch.setattr(AssessmentAreaEvaluationDialog,"collect",checked)
     dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
-    assert calls and calls[0]==65
+    assert calls and calls[0]==0
+    dialog._allow_close=True; dialog.close()
+
+def test_direct_geometry_inputs_are_canonical_and_live_preview_does_not_save():
+    app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); calls=[]
+    dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:calls.append(True))
+    dialog.shortfall.set_nullable_value(3); dialog.deficit.set_nullable_value(1.5); dialog.toe.set_nullable_value(.8)
+    collected=dialog.collect()
+    assert collected.design_inputs=={
+        "bench_angle_shortfall_deg":3.0,"berm_width_deficit_m":1.5,
+        "toe_offset_from_design_m":.8,"measurement_method":"рулетка","measurement_notes":"контроль",
+    }
+    assert not ({"design_bench_face_angle_deg","actual_bench_face_angle_deg","design_berm_width_m","actual_berm_width_m"}&collected.design_inputs.keys())
+    assert calls==[] and dialog.angle_score.text()!="Required"
+    assert not dialog.scoring_details.isVisible() and not dialog.scoring_details_button.isChecked()
+    assert dialog.scoring_details.count()==2
+    dialog._allow_close=True; dialog.close()
+
+def test_legacy_geometry_payload_is_presented_without_mutating_history():
+    app(); state,area=make_state(); evaluation,draft=filled_draft(state,area)
+    draft.design_inputs={"design_bench_face_angle_deg":60,"actual_bench_face_angle_deg":57,
+                         "design_berm_width_m":8,"actual_berm_width_m":6.5,
+                         "toe_offset_from_design_m":.4,"measurement_method":"survey","measurement_notes":"legacy"}
+    original=deepcopy(draft)
+    dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
+    assert dialog.shortfall.nullable_value()==3 and dialog.deficit.nullable_value()==1.5
+    assert draft.to_dict()==original.to_dict()
+    assert set(dialog.collect().design_inputs)=={"bench_angle_shortfall_deg","berm_width_deficit_m","toe_offset_from_design_m","measurement_method","measurement_notes"}
     dialog._allow_close=True; dialog.close()
 
 def test_storage_failure_does_not_report_success_or_create_revision(monkeypatch):

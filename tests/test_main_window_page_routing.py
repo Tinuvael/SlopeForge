@@ -69,11 +69,21 @@ def test_block_page_embeds_geometry_and_revision_safe_technical_card_tabs():
 def test_area_page_is_focused_without_legacy_mode_switch():
     area=source("ui/pages/assessment_area_page.py")
     assert "class AssessmentAreaPage" in area
-    assert '"Overview"' in area and '"Assessment"' in area and '"Result"' in area
+    assert '"Overview"' in area and '"Assessment"' in area
+    assert 'addTab(self.result,tr("Result"))' not in area
     assert '"Linked events"' in area
     assert "Blast Events / Assessment Areas" not in area
-    assert "AssessmentAreaEvaluationDialog" in area and "Matrix" in area
+    assert "AssessmentAreaEvaluationDialog" in area and "Matrix" in area and "assessment_splitter" in area
     assert "Design Achievement Index" not in area  # calculated by reused dialog/QuadrantPlot
+
+def test_assessment_geometry_uses_direct_compact_inputs():
+    editor=source("ui/editors/assessment_evaluation_editor.py")
+    for label in ("Bench face angle shortfall from design, °","Berm width deficit from design, m","Toe deviation from design, m"):
+        assert label in editor
+    geometry=editor[editor.index("    def _geometry(self):"):editor.index("    def _geometry_rules(self):")]
+    for legacy in ("Design bench face angle", "Actual bench face angle", "Design berm width", "Actual berm width"):
+        assert legacy not in geometry
+    assert "Scoring guide" in geometry and "rules.hide()" in geometry
 
 def test_area_links_and_focused_creation_are_reused():
     area=source("ui/pages/assessment_area_page.py")

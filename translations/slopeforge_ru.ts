@@ -3096,5 +3096,14 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Search...</source><translation>Поиск...</translation></message>
         <message><source>Could not change Assessment Area archive state</source><translation>Не удалось изменить состояние архива зоны оценки</translation></message>
         <message><source>Could not change Contour Blast archive state</source><translation>Не удалось изменить состояние архива контурного взрыва</translation></message>
+        <message><source>Toe deviation from design, m</source><translation>Отклонение подошвы от проекта, м</translation></message>
+        <message><source>Live result</source><translation>Текущий результат</translation></message>
+        <message><source>Scoring details</source><translation>Детали оценки</translation></message>
+        <message><source>Scoring guide</source><translation>Правила оценки</translation></message>
+        <message><source>Override score</source><translation>Изменить балл</translation></message>
+        <message><source>Complete required inputs</source><translation>Заполните обязательные данные</translation></message>
+        <message><source>Design Achievement Index</source><translation>Индекс достижения проектных параметров</translation></message>
+        <message><source>Face Condition Index</source><translation>Индекс состояния откоса</translation></message>
+        <message><source>Score</source><translation>Балл</translation></message>
     </context>
 </TS>
