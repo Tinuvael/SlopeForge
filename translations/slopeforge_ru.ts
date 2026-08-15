@@ -3105,5 +3105,7 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Design Achievement Index</source><translation>Индекс достижения проектных параметров</translation></message>
         <message><source>Face Condition Index</source><translation>Индекс состояния откоса</translation></message>
         <message><source>Score</source><translation>Балл</translation></message>
+        <message><source>preview</source><translation>предпросмотр</translation></message>
+        <message><source>Quadrant</source><translation>Квадрант</translation></message>
     </context>
 </TS>

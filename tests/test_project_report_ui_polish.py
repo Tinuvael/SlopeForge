@@ -51,10 +51,19 @@ def test_assessment_page_nested_tabs_have_exclusive_initial_visibility(monkeypat
         def save(self):raise AssertionError("construction must not persist")
     monkeypatch.setattr(module,"EntityPageController",Controller)
     context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True))
-    before=len(evaluation.revisions); page=module.AssessmentAreaPage(context,1,"Domain",area.id)
+    before=len(evaluation.revisions); page=module.AssessmentAreaPage(context,1,"Domain",area.id); page.resize(1500,850)
     page.show(); page.tabs.setCurrentWidget(page.assessment_tab); application.processEvents()
     sections=page.assessment_sections
     general,geometry,condition=(sections.widget(i) for i in range(3))
+    splitter=page.assessment_splitter; live=page.result
+    assert splitter.isVisible() and splitter.count()==2
+    assert splitter.widget(0) is sections and splitter.widget(1) is live
+    assert sections.isVisible() and live.isVisible()
+    assert sections.width()>0 and live.width()>300
+    assert page.evaluation_editor.dai_value.isVisible()
+    assert page.evaluation_editor.fci_value.isVisible()
+    assert page.evaluation_editor.result_value.isVisible()
+    assert page.evaluation_editor.plot.isVisible()
     assert sections.currentIndex()==0
     assert general.isVisible() and not geometry.isVisible() and not condition.isVisible()
     assert general.findChildren(QtWidgets.QWidget) and geometry.findChildren(QtWidgets.QWidget) and condition.findChildren(QtWidgets.QWidget)
@@ -64,6 +73,7 @@ def test_assessment_page_nested_tabs_have_exclusive_initial_visibility(monkeypat
         sections.setCurrentIndex(index); application.processEvents()
         assert visible.isVisible()
         assert all(not sections.widget(other).isVisible() for other in range(3) if other!=index)
+        assert live.isVisible() and live.width()>300 and page.evaluation_editor.plot.isVisible()
     assert len(evaluation.revisions)==before
     page.close()
 

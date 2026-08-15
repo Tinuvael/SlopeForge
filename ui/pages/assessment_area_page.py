@@ -3,7 +3,7 @@ from domain.blasting.workflow import ASSESSMENT_PROGRESS_LABELS, assessment_prog
 """Normal, revision-safe page for one Assessment Area."""
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QGridLayout,QHBoxLayout,QInputDialog,QLabel,QMessageBox,QPushButton,QTableWidget,QTableWidgetItem,
-                               QSplitter,QTabWidget,QVBoxLayout,QWidget)
+                               QSizePolicy,QSplitter,QTabWidget,QVBoxLayout,QWidget)
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame,apply_workflow_badge_style
@@ -47,10 +47,10 @@ class AssessmentAreaPage(QWidget):
     def _build_editor(self):
         evaluation,draft=self.controller.evaluation_draft(self.area); self.evaluation=evaluation
         self.evaluation_editor=AssessmentAreaEvaluationDialog(self.area,evaluation,draft,self.controller.save_evaluation,None,read_only=self.read_only)
-        self.assessment_tab=QWidget(); layout=QVBoxLayout(self.assessment_tab); layout.setContentsMargins(4,4,4,4); self.assessment_splitter=QSplitter(Qt.Orientation.Horizontal); self.assessment_sections=QTabWidget(); self.assessment_splitter.addWidget(self.assessment_sections)
+        self.assessment_tab=QWidget(); layout=QVBoxLayout(self.assessment_tab); layout.setContentsMargins(4,4,4,4); self.assessment_splitter=QSplitter(Qt.Orientation.Horizontal); self.assessment_splitter.setChildrenCollapsible(False); self.assessment_sections=QTabWidget(); self.assessment_sections.setMinimumWidth(480); self.assessment_sections.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding); self.assessment_splitter.addWidget(self.assessment_sections)
         for title in ("General","Geometry","Face condition"):
             page=self.evaluation_editor.take_tab(tr(title)); self.assessment_sections.addTab(page,tr(title))
-        self.result=self.evaluation_editor.take_tab(tr("Matrix")); self.assessment_splitter.addWidget(self.result); self.assessment_splitter.setStretchFactor(0,3); self.assessment_splitter.setStretchFactor(1,2); self.assessment_splitter.setSizes([680,480]); layout.addWidget(self.assessment_splitter)
+        self.result=self.evaluation_editor.take_tab(tr("Matrix"),self.assessment_splitter); self.result.setMinimumWidth(360); self.result.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding); self.assessment_splitter.addWidget(self.result); self.result.show(); self.assessment_splitter.setStretchFactor(0,58); self.assessment_splitter.setStretchFactor(1,42); self.assessment_splitter.setSizes([580,420]); layout.addWidget(self.assessment_splitter)
         controls=QHBoxLayout(); controls.addStretch(); self.save_evaluation_button=QPushButton(tr("Save draft")); self.complete_evaluation_button=QPushButton(tr("Complete assessment"));
         for button in (self.save_evaluation_button,self.complete_evaluation_button):button.setEnabled(not self.read_only); controls.addWidget(button)
         self.save_evaluation_button.clicked.connect(lambda:self._save_evaluation("draft")); self.complete_evaluation_button.clicked.connect(lambda:self._save_evaluation("completed")); layout.addLayout(controls)

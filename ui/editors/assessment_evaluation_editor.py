@@ -9,7 +9,8 @@ from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout,
     QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
-    QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+    QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QToolButton,
+    QVBoxLayout, QWidget,
 )
 
 from domain.assessment.evaluation import (
@@ -98,11 +99,12 @@ class CriterionEditor(QWidget):
         self.clear_button = None
         if criterion.kind in ("numeric", "damage"):
             self.input = NullableDoubleSpinBox(100 if criterion.id == "visible_drillhole_traces" else 999)
+            self.input.setFixedWidth(120)
             self.input.nullableValueChanged.connect(self.changed)
             self.clear_button = QPushButton(tr("Clear")); self.clear_button.clicked.connect(self.input.clear_value)
             top.addWidget(self.input); top.addWidget(self.clear_button)
         else:
-            self.input = QComboBox(); self.input.addItem(tr("— select observation —"), None)
+            self.input = QComboBox(); self.input.setMaximumWidth(380); self.input.addItem(tr("— select observation —"), None)
             for option in criterion.options:
                 self.input.addItem(f"{option_label(option.id, option.label)} — {option.score:g} points", option.id)
             self.input.currentIndexChanged.connect(self.changed); top.addWidget(self.input, 1)
@@ -111,7 +113,8 @@ class CriterionEditor(QWidget):
         self.title.setToolTip(help_text)
         self.validation = QLabel(); self.validation.setWordWrap(True); self.validation.setStyleSheet("color:#a33")
         score_row = QHBoxLayout(); self.score_label = QLabel(tr("Required")); score_row.addWidget(self.score_label); score_row.addWidget(self.validation); score_row.addStretch()
-        self.override_toggle = QCheckBox(tr("Override score"))
+        self.override_toggle = QToolButton(); self.override_toggle.setText(tr("Override score")); self.override_toggle.setCheckable(True); self.override_toggle.setAutoRaise(True)
+        self.override_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon); self.override_toggle.setArrowType(Qt.ArrowType.RightArrow)
         self.override_toggle.toggled.connect(self._toggle_override); self.override_toggle.toggled.connect(self.changed)
         score_row.addWidget(self.override_toggle); root.addLayout(score_row)
         self.override_panel = QWidget(); override = QFormLayout(self.override_panel); override.setContentsMargins(18, 0, 0, 0)
@@ -129,6 +132,7 @@ class CriterionEditor(QWidget):
         root.addWidget(self.override_panel); self.override_panel.hide()
 
     def _toggle_override(self, checked):
+        self.override_toggle.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
         self.override_panel.setVisible(checked)
 
     def restore(self, result):
@@ -241,9 +245,10 @@ class AssessmentAreaEvaluationDialog(QDialog):
             editor.score_label.hide(); editor.layout().itemAt(1).layout().insertWidget(0, QLabel(tr("Score"))); editor.layout().itemAt(1).layout().insertWidget(1, score)
             editor.changed.connect(self._changed)
             self.geometry_editors[criterion.id] = editor; layout.addWidget(editor)
-        self.scoring_guide_button = QPushButton(tr("Scoring guide") + " ▸"); self.scoring_guide_button.setCheckable(True)
+        self.scoring_guide_button = QToolButton(); self.scoring_guide_button.setText(tr("Scoring guide")); self.scoring_guide_button.setCheckable(True); self.scoring_guide_button.setAutoRaise(True)
+        self.scoring_guide_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon); self.scoring_guide_button.setArrowType(Qt.ArrowType.RightArrow)
         rules = QLabel(self._geometry_rules()); rules.setWordWrap(True); rules.setStyleSheet("background:#f3f5f7;padding:8px"); rules.hide()
-        self.scoring_guide_button.toggled.connect(rules.setVisible); layout.addWidget(self.scoring_guide_button); layout.addWidget(rules)
+        self.scoring_guide_button.toggled.connect(rules.setVisible); self.scoring_guide_button.toggled.connect(lambda open_: self.scoring_guide_button.setArrowType(Qt.ArrowType.DownArrow if open_ else Qt.ArrowType.RightArrow)); layout.addWidget(self.scoring_guide_button, 0, Qt.AlignmentFlag.AlignLeft); layout.addWidget(rules)
         form = QFormLayout(); form.setVerticalSpacing(5); form.addRow(tr("Measurement method"), self.method); form.addRow(tr("Measurement notes"), self.measure_notes); layout.addLayout(form); layout.addStretch()
         scroll.setWidget(page); self.tabs.addTab(scroll, tr("Geometry"))
 
@@ -269,7 +274,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
 
     def _matrix(self):
         page = QWidget(); page.setObjectName("LiveResultPanel"); layout = QVBoxLayout(page); layout.setContentsMargins(8, 8, 8, 8); layout.setSpacing(7)
-        self.live_title = QLabel(f"<b>{tr('Live result')}</b>"); layout.addWidget(self.live_title)
+        self.live_title = QLabel(f"<b>{tr('Live result')} ({tr('preview')})</b>"); layout.addWidget(self.live_title)
         cards = QHBoxLayout(); self.dai_value = QLabel("—"); self.fci_value = QLabel("—"); self.result_value = QLabel(tr("Complete required inputs"))
         for title, value, caption in (("DAI", self.dai_value, tr("Design Achievement Index")), ("FCI", self.fci_value, tr("Face Condition Index")), (tr("Result"), self.result_value, "")):
             card = QFrame(); card.setObjectName("ResultCard"); box = QVBoxLayout(card); box.setContentsMargins(8, 5, 8, 5); box.addWidget(QLabel(f"<b>{title}</b>")); value.setWordWrap(True); value.setStyleSheet("font-size:17px;font-weight:600;color:#1261a0"); box.addWidget(value)
@@ -277,9 +282,12 @@ class AssessmentAreaEvaluationDialog(QDialog):
             cards.addWidget(card)
         layout.addLayout(cards)
         self.summary = QLabel(); self.summary.setWordWrap(True); self.summary.hide()
+        layout.addWidget(QLabel(f"<b>{tr('Quadrant')}</b>"))
         self.plot = QuadrantPlot(); layout.addWidget(self.plot, 1)
-        self.scoring_details_button = QPushButton(tr("Scoring details") + " ▸"); self.scoring_details_button.setCheckable(True); layout.addWidget(self.scoring_details_button)
+        self.scoring_details_button = QToolButton(); self.scoring_details_button.setText(tr("Scoring details")); self.scoring_details_button.setCheckable(True); self.scoring_details_button.setAutoRaise(True)
+        self.scoring_details_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon); self.scoring_details_button.setArrowType(Qt.ArrowType.RightArrow); layout.addWidget(self.scoring_details_button, 0, Qt.AlignmentFlag.AlignLeft)
         self.scoring_details = QTabWidget(); self.scoring_details.hide(); self.scoring_details_button.toggled.connect(self.scoring_details.setVisible)
+        self.scoring_details_button.toggled.connect(lambda open_: self.scoring_details_button.setArrowType(Qt.ArrowType.DownArrow if open_ else Qt.ArrowType.RightArrow))
         self.design_table = QTableWidget(); self.condition_table = QTableWidget()
         headers = [tr("Criterion"), tr("Entered / selected"), tr("Threshold / category"), tr("Auto"), tr("Manual"), tr("Accepted"), tr("Max."), tr("Note")]
         for table, title in ((self.design_table, "Design"), (self.condition_table, "Face condition")):
@@ -466,5 +474,5 @@ class AssessmentAreaEvaluationDialog(QDialog):
     def _set_read_only(self):
         for widget in self.findChildren(QWidget):
             if widget is self.cancel_button: continue
-            if isinstance(widget, (QLineEdit, QTextEdit, QDateEdit, QDoubleSpinBox, QComboBox, QCheckBox, QPushButton)):
+            if isinstance(widget, (QLineEdit, QTextEdit, QDateEdit, QDoubleSpinBox, QComboBox, QCheckBox, QPushButton, QToolButton)):
                 widget.setEnabled(False)
