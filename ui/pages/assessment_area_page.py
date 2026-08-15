@@ -55,7 +55,7 @@ class AssessmentAreaPage(QWidget):
         for editor in self.evaluation_editor.geometry_editors.values():inputs.addWidget(editor)
         self.face_condition_section_title=QLabel(f"<b>{tr('Face condition')}</b>"); inputs.addWidget(self.face_condition_section_title)
         for editor in self.evaluation_editor.editors.values():inputs.addWidget(editor)
-        inputs.addStretch(); self.assessment_splitter.addWidget(self.assessment_inputs)
+        inputs.setAlignment(Qt.AlignmentFlag.AlignTop); self.assessment_splitter.addWidget(self.assessment_inputs)
         self.assessment_right=QWidget(); self.assessment_right.setMinimumWidth(360); self.assessment_right.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding); right=QVBoxLayout(self.assessment_right); right.setContentsMargins(0,0,0,0); right.setSpacing(7)
         context=QFrame(); context.setObjectName("CriterionCard"); context_form=QFormLayout(context); context_form.setContentsMargins(10,8,10,8); context_form.addRow(tr("Assessment date"),self.evaluation_editor.date); context_form.addRow(tr("Inspector"),self.evaluation_editor.inspector); context_form.addRow(tr("Matrix"),self.evaluation_editor.matrix_value); context_form.addRow(tr("Detection"),self.evaluation_editor.detected)
         self.override_reason_label=QLabel(tr("Manual matrix selection reason")); context_form.addRow(self.override_reason_label,self.evaluation_editor.override_reason); manual_matrix=draft.controlled_blasting_detection_source=="manual_override"; self.override_reason_label.setVisible(manual_matrix); self.evaluation_editor.override_reason.setVisible(manual_matrix)

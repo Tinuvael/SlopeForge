@@ -18,7 +18,7 @@ from domain.assessment.evaluation import (
     calculate_revision,
 )
 from ui.presentation_labels import (
-    CRITERION_HELP, criterion_label, domain_message, matrix_label, option_label, result_label,
+    CRITERION_HELP, compact_criterion_label, criterion_label, domain_message, matrix_label, option_label, result_label,
 )
 
 DAMAGE_WARNING = "The matrix has no automatic score for the range of 1–5 features/m²."
@@ -46,6 +46,11 @@ class NullableDoubleSpinBox(QDoubleSpinBox):
 
     def clear_value(self):
         self.set_nullable_value(None)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            self.clear_value(); self.editingFinished.emit(); event.accept(); return
+        super().keyPressEvent(event)
 
 
 class QuadrantPlot(QWidget):
@@ -94,34 +99,29 @@ class CriterionEditor(QWidget):
         super().__init__(parent)
         self.criterion = criterion
         self.setObjectName("CriterionCard")
-        self._restoring = False; self.override_reason = None; self.notes = ""
+        self._restoring = False; self._setting_score = False; self._manual_value = None; self._accepted_value = None; self.override_reason = None; self.notes = ""
         root = QVBoxLayout(self); root.setContentsMargins(7, 3, 7, 3); root.setSpacing(1)
-        top = QHBoxLayout(); self.title = QLabel(f"<b>{criterion_label(criterion.id, criterion.name)}</b>"); self.title.setWordWrap(True); top.addWidget(self.title, 1)
+        top = QHBoxLayout(); self.title = QLabel(f"<b>{compact_criterion_label(criterion.id, criterion.name)}</b>"); self.title.setWordWrap(True); top.addWidget(self.title, 1)
         self.help_button = QToolButton(); self.help_button.setText("?"); self.help_button.setAutoRaise(True); top.addWidget(self.help_button)
-        self.clear_button = None
         if criterion.kind in ("numeric", "damage"):
             self.input = NullableDoubleSpinBox(100 if criterion.id == "visible_drillhole_traces" else 999)
             self.input.setFixedWidth(120)
             self.input.nullableValueChanged.connect(self.changed)
-            self.clear_button = QPushButton(tr("Clear")); self.clear_button.clicked.connect(self.input.clear_value)
-            top.addWidget(self.input); top.addWidget(self.clear_button)
+            top.addWidget(self.input)
         else:
             self.input = QComboBox(); self.input.setMaximumWidth(380); self.input.addItem(tr("— select observation —"), None)
             for option in criterion.options:
-                self.input.addItem(f"{option_label(option.id, option.label)} — {option.score:g} points", option.id)
+                self.input.addItem(option_label(option.id, option.label), option.id)
             self.input.currentIndexChanged.connect(self.changed); top.addWidget(self.input, 1)
-        help_text = CRITERION_HELP.get(criterion.id, criterion.help_text)
+        help_text = criterion_label(criterion.id,criterion.name) + "\n" + CRITERION_HELP.get(criterion.id, criterion.help_text)
         if criterion.options: help_text += "\n" + "\n".join(f"{option_label(o.id,o.label)}: {o.score:g}" for o in criterion.options)
         self.title.setToolTip(help_text); self.help_button.setToolTip(help_text)
-        self.score_label = QLabel(tr("Required")); top.addWidget(self.score_label)
-        top.addWidget(QLabel(tr("Manual score")))
-        self.manual_score = NullableDoubleSpinBox(criterion.maximum_score); self.manual_score.setFixedWidth(100)
-        self.manual_score.nullableValueChanged.connect(self._manual_changed); top.addWidget(self.manual_score)
-        self.manual_clear = QToolButton(); self.manual_clear.setText(tr("Clear")); self.manual_clear.setAutoRaise(True); self.manual_clear.clicked.connect(self.manual_score.clear_value); top.addWidget(self.manual_clear)
+        self.manual_score = NullableDoubleSpinBox(criterion.maximum_score); self.manual_score.setFixedWidth(105); self.manual_score.setSuffix(f" / {criterion.maximum_score:g}")
+        self.manual_score.setToolTip(tr("Edit to override the automatic score. Delete or Backspace restores automatic scoring."))
+        self.manual_score.editingFinished.connect(self._score_committed); top.addWidget(self.manual_score)
         root.addLayout(top)
         self.validation = QLabel(); self.validation.setWordWrap(True); self.validation.setStyleSheet("color:#a33"); self.validation.hide(); root.addWidget(self.validation)
-        self.auto_score = QLabel(tr("—"))
-        self.accepted = QLabel(tr("—"))
+        self.auto_score = QLabel(tr("—")); self.accepted = QLabel(tr("—"))
 
         self.primary_input = self.input
 
@@ -131,18 +131,36 @@ class CriterionEditor(QWidget):
     def set_help(self, text): self.title.setToolTip(text); self.help_button.setToolTip(text)
 
     def _sync_primary(self):
-        automatic = self.manual_score.nullable_value() is None; self.primary_input.setEnabled(automatic)
-        if self.clear_button and self.primary_input is self.input: self.clear_button.setEnabled(automatic)
+        self.primary_input.setEnabled(self._manual_value is None)
 
-    def _manual_changed(self, value):
-        if self._restoring: return
-        previous = getattr(self, "_manual_value", None)
+    def _set_score_value(self, value):
+        self._setting_score=True; self.manual_score.set_nullable_value(value); self._setting_score=False
+
+    def _score_committed(self):
+        if self._restoring or self._setting_score: return
+        value=self.manual_score.nullable_value(); previous=self._manual_value
         if value is None:
-            self._manual_value = None; self.override_reason = None; self.manual_score.setToolTip(""); self._sync_primary(); self.changed.emit(); return
+            self._manual_value=None; self.override_reason=None; self._sync_primary(); self.changed.emit(); return
+        if previous is None and self._accepted_value is not None and value == self._accepted_value:
+            self._set_score_value(self._accepted_value); return
+        if previous is not None and value == previous: return
         reason, ok = QInputDialog.getText(self, tr("Override score"), tr("Reason for manual score"), QLineEdit.EchoMode.Normal, self.override_reason or "")
         if not ok or not reason.strip():
-            self._restoring=True; self.manual_score.set_nullable_value(previous); self._restoring=False; self._sync_primary(); return
-        self._manual_value=float(value); self.override_reason=reason.strip(); self.manual_score.setToolTip(self.override_reason); self._sync_primary(); self.changed.emit()
+            self._set_score_value(previous if previous is not None else self._accepted_value); self._sync_primary(); return
+        self._manual_value=float(value); self.override_reason=reason.strip(); self._sync_primary(); self.changed.emit()
+
+    def set_score(self, result):
+        self._accepted_value=result.accepted_score
+        self._set_score_value(result.accepted_score)
+        if result.manual_score is not None:
+            self.manual_score.setObjectName("ManualScore"); self.manual_score.setStyleSheet("background:#fff4d6;border:1px solid #d6a23a")
+            self.manual_score.setToolTip(f"{tr('Manual override')}\n{tr('Reason')}: {result.override_reason or '—'}")
+        elif result.accepted_score is None:
+            self.manual_score.setObjectName("MissingScore"); self.manual_score.setStyleSheet("background:#fff1f1;border:1px solid #d99")
+            self.manual_score.setToolTip(tr("Required for completion"))
+        else:
+            self.manual_score.setObjectName("AutomaticScore"); self.manual_score.setStyleSheet("")
+            self.manual_score.setToolTip(tr("Edit to override the automatic score. Delete or Backspace restores automatic scoring."))
 
     def restore(self, result):
         if result:
@@ -150,13 +168,12 @@ class CriterionEditor(QWidget):
             if isinstance(self.input, NullableDoubleSpinBox): self.input.set_nullable_value(result.raw_numeric_value)
             else:
                 index = self.input.findData(result.selected_option_id); self.input.setCurrentIndex(max(index, 0))
-            self.manual_score.set_nullable_value(result.manual_score)
-            self._manual_value=result.manual_score; self.override_reason=result.override_reason; self.notes=result.notes or ""; self.manual_score.setToolTip(self.override_reason or ""); self._restoring=False; self._sync_primary()
+            self._manual_value=result.manual_score; self.override_reason=result.override_reason; self.notes=result.notes or ""; self._restoring=False; self._sync_primary()
 
     def result(self):
         numeric = self.input.nullable_value() if isinstance(self.input, NullableDoubleSpinBox) else None
         selected = self.input.currentData() if isinstance(self.input, QComboBox) else None
-        manual = self.manual_score.nullable_value()
+        manual = self._manual_value
         return AssessmentCriterionResult(
             self.criterion.id, self.criterion.name, self.criterion.section,
             raw_numeric_value=numeric, selected_option_id=selected,
@@ -235,21 +252,19 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self.shortfall = self._nullable(90); self.deficit = self._nullable(); self.toe = self._nullable()
         self.geometry_editors = {}
         controls = {
-            "bench_angle": (tr("Bench face angle deviation from design, °"), self.shortfall),
-            "berm_width": (tr("Berm width deviation from design, m"), self.deficit),
-            "toe_position": (tr("Toe deviation from design, m"), self.toe),
+            "bench_angle": (tr("Angle deviation, °"), self.shortfall),
+            "berm_width": (tr("Berm deviation, m"), self.deficit),
+            "toe_position": (tr("Toe deviation, m"), self.toe),
         }
         for criterion in self.template.section(DESIGN).criteria:
             editor = CriterionEditor(criterion)
             label, control = controls[criterion.id]
             editor.title.setText(f"<b>{label}</b>")
             editor.input.hide()
-            if editor.clear_button: editor.clear_button.hide()
             top = editor.layout().itemAt(0).layout(); top.insertWidget(2,control)
             editor.set_primary_input(control); editor.set_help(self._geometry_help(criterion.id))
             editor.changed.connect(self._changed)
             self.geometry_editors[criterion.id] = editor; layout.addWidget(editor)
-        self.angle_score=self.geometry_editors["bench_angle"].score_label; self.berm_score=self.geometry_editors["berm_width"].score_label; self.toe_score=self.geometry_editors["toe_position"].score_label
         layout.addStretch()
         scroll.setWidget(page); self.tabs.addTab(scroll, tr("Geometry"))
 
@@ -266,7 +281,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
     def _geometry_help(self, criterion_id):
         meaning = tr("Enter 0 when design is met or exceeded; otherwise enter the deviation magnitude used by the scoring matrix.")
         rules = self._geometry_rules().splitlines()
-        return meaning + "\n" + {"bench_angle":rules[0],"berm_width":rules[1],"toe_position":rules[2]}[criterion_id]
+        return criterion_label(criterion_id) + "\n" + meaning + "\n" + {"bench_angle":rules[0],"berm_width":rules[1],"toe_position":rules[2]}[criterion_id]
 
     def _condition(self):
         scroll = QScrollArea(); scroll.setWidgetResizable(True); page = QWidget(); layout = QVBoxLayout(page); self.editors = {}
@@ -388,21 +403,17 @@ class AssessmentAreaEvaluationDialog(QDialog):
     def _render_preview(self, preview):
         """Render already-stored or live-calculated values without recalculating them."""
         by_id = {r.criterion_id: r for r in preview.criterion_results}
-        for label, cid in ((self.angle_score, "bench_angle"), (self.berm_score, "berm_width"), (self.toe_score, "toe_position")):
-            result = by_id[cid]; label.setText(tr("Required") if result.accepted_score is None else f"{result.accepted_score:g} of {result.maximum_score:g}")
+        for cid, editor in self.geometry_editors.items():
+            result = by_id[cid]; editor.set_score(result)
             editor = self.geometry_editors[cid]
             editor.auto_score.setText(tr("—") if result.automatic_score is None else f"{result.automatic_score:g}")
             editor.accepted.setText(tr("—") if result.accepted_score is None else f"{result.accepted_score:g}")
-            label.setStyleSheet("color:#1261a0;font-weight:600" if result.manual_score is not None else "font-weight:600")
         for cid, editor in self.editors.items():
-            result = by_id[cid]; editor.auto_score.setText(tr("—") if result.automatic_score is None else f"{result.automatic_score:g}"); editor.accepted.setText(tr("—") if result.accepted_score is None else f"{result.accepted_score:g}"); editor.score_label.setText(tr("Required") if result.accepted_score is None else f"{tr('Score')}: {result.accepted_score:g} / {result.maximum_score:g}")
+            result = by_id[cid]; editor.set_score(result); editor.auto_score.setText(tr("—") if result.automatic_score is None else f"{result.automatic_score:g}"); editor.accepted.setText(tr("—") if result.accepted_score is None else f"{result.accepted_score:g}")
             value = result.raw_numeric_value
             if cid == "damage" and value is not None and 1 <= value <= 5:
-                editor.validation.setText(DAMAGE_WARNING + " An expert score and reason are required.")
-                editor.validation.show()
-            elif result.accepted_score is None: editor.validation.setText(tr("Required")); editor.validation.show()
-            elif cid == "damage" and value is not None: editor.validation.setText(tr("Maximum applied: fewer than 1 feature/m².") if value < 1 else "0 points applied: more than 5 features/m².")
-            else: editor.validation.setText(""); editor.validation.hide()
+                if DAMAGE_WARNING not in editor.help_button.toolTip(): editor.help_button.setToolTip(editor.help_button.toolTip()+"\n"+DAMAGE_WARNING)
+            editor.validation.hide()
         design = "—" if preview.design_achievement_index is None else f"{preview.design_achievement_index:.3f}"
         condition = "—" if preview.face_condition_index is None else f"{preview.face_condition_index:.3f}"
         result = result_label(preview.result_label) or tr("Result available after all criteria are completed")

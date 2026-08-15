@@ -83,9 +83,9 @@ def test_dialog_restores_without_mutating_source_and_nullable_zero():
 
 def test_damage_intermediate_manual_workflow_and_russian_table(monkeypatch):
     app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
-    editor=dialog.editors["damage"]; editor.input.set_nullable_value(1); editor.manual_score.clear_value(); dialog.refresh(False)
+    editor=dialog.editors["damage"]; editor.input.set_nullable_value(1); editor.manual_score.clear_value(); editor.manual_score.editingFinished.emit(); dialog.refresh(False)
     assert DAMAGE_WARNING in editor.validation.text() and dialog._preview.face_condition_index is None
-    monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:("Экспертный осмотр",True)); editor.manual_score.set_nullable_value(8); dialog.refresh(False)
+    monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:("Экспертный осмотр",True)); editor.manual_score.set_nullable_value(8); editor.manual_score.editingFinished.emit(); dialog.refresh(False)
     assert dialog._preview.design_achievement_index==1 and dialog._preview.face_condition_index is not None and dialog.plot.design==1
     assert "Несколько небольших блоков" in dialog.editors["loose_blocks"].input.currentText()
     assert "Твёрдая подошва" in dialog.editors["face_profile"].input.currentText()
@@ -144,15 +144,19 @@ def test_compact_manual_score_prompt_cancel_clear_and_geometry_control(monkeypat
     assert not hasattr(editor,"override_panel") and not hasattr(editor,"override_toggle")
     assert editor.manual_score.maximum()==editor.criterion.maximum_score
     assert editor.manual_score.parentWidget() is editor and editor.help_button.toolTip()
-    monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:("Survey review",True))
+    assert not [button for button in editor.findChildren(QtWidgets.QPushButton) if button.text() in {"Clear","Очистить"}]
+    assert not [label for label in editor.findChildren(QtWidgets.QLabel) if label.text() in {"Required","Manual score","Обязательно","Ручной балл"}]
+    prompts=[]; monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:(prompts.append(True) or "Survey review",True))
     editor.manual_score.set_nullable_value(12)
+    assert prompts==[] and dialog.shortfall.isEnabled()
+    editor.manual_score.editingFinished.emit()
     assert editor.override_reason=="Survey review" and not dialog.shortfall.isEnabled()
     assert dialog._preview.criterion_results[0].accepted_score==12
-    editor.manual_score.clear_value()
+    editor.manual_score.clear_value(); editor.manual_score.editingFinished.emit()
     assert editor.override_reason is None and dialog.shortfall.isEnabled()
     monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:("",False))
-    editor.manual_score.set_nullable_value(10)
-    assert editor.manual_score.nullable_value() is None and dialog.shortfall.isEnabled()
+    editor.manual_score.set_nullable_value(10); editor.manual_score.editingFinished.emit()
+    assert editor._manual_value is None and dialog.shortfall.isEnabled()
     dialog._allow_close=True; dialog.close()
 
 def test_storage_failure_does_not_report_success_or_create_revision(monkeypatch):

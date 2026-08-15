@@ -52,6 +52,11 @@ CRITERION_LABELS = {
     "loose_blocks": "Loose blocks and unstable fragments on the face",
     "face_profile": "Actual face profile",
 }
+COMPACT_CRITERION_LABELS = {
+    "bench_angle":"Angle deviation, °", "berm_width":"Berm deviation, m", "toe_position":"Toe deviation, m",
+    "visible_drillhole_traces":"Contour traces, %", "crest_loss":"Crest loss, m", "loose_blocks":"Loose blocks",
+    "face_profile":"Face profile", "damage":"Blast damage, /m²", "open_cracks":"Blast cracks",
+}
 
 CRITERION_HELP = {
     "bench_angle": "Enter 0 when design is met or exceeded; otherwise enter the deviation magnitude used by the scoring matrix.",
@@ -150,6 +155,10 @@ def matrix_label(matrix_id: str, fallback: str = "") -> str:
 
 def criterion_label(criterion_id: str, fallback: str = "") -> str:
     return tr(CRITERION_LABELS.get(criterion_id, fallback or criterion_id))
+
+
+def compact_criterion_label(criterion_id: str, fallback: str = "") -> str:
+    return tr(COMPACT_CRITERION_LABELS.get(criterion_id, CRITERION_LABELS.get(criterion_id, fallback or criterion_id)))
 
 
 def option_label(option_id: str, fallback: str = "") -> str:

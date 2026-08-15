@@ -3110,5 +3110,18 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Manual score</source><translation>Ручной балл</translation></message>
         <message><source>Reason for manual score</source><translation>Причина ручного балла</translation></message>
         <message><source>Enter 0 when design is met or exceeded; otherwise enter the deviation magnitude used by the scoring matrix.</source><translation>Введите 0, если проект достигнут или превышен; иначе укажите величину отклонения для матрицы оценки.</translation></message>
+        <message><source>Angle deviation, °</source><translation>Отклонение угла, °</translation></message>
+        <message><source>Berm deviation, m</source><translation>Отклонение бермы, м</translation></message>
+        <message><source>Toe deviation, m</source><translation>Отклонение подошвы, м</translation></message>
+        <message><source>Contour traces, %</source><translation>Следы контурных скважин, %</translation></message>
+        <message><source>Crest loss, m</source><translation>Потеря бровки, м</translation></message>
+        <message><source>Loose blocks</source><translation>Свободные блоки</translation></message>
+        <message><source>Face profile</source><translation>Профиль откоса</translation></message>
+        <message><source>Blast damage, /m²</source><translation>Взрывное повреждение, шт/м²</translation></message>
+        <message><source>Blast cracks</source><translation>Взрывные трещины</translation></message>
+        <message><source>Edit to override the automatic score. Delete or Backspace restores automatic scoring.</source><translation>Измените балл для ручной корректировки. Delete или Backspace возвращает автоматический расчёт.</translation></message>
+        <message><source>Manual override</source><translation>Ручная корректировка</translation></message>
+        <message><source>Required for completion</source><translation>Обязательно для завершения</translation></message>
+
     </context>
 </TS>
