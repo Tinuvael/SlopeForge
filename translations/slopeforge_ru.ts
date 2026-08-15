@@ -3093,5 +3093,6 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Heavy ANFO</source><translation>Тяжёлый АНФО</translation></message>
         <message><source>Water gel / Slurry</source><translation>Водогелевое / Slurry</translation></message>
         <message><source>Dynamite / gelatinous</source><translation>Динамит / желатинит</translation></message>
+        <message><source>Search...</source><translation>Поиск...</translation></message>
     </context>
 </TS>
