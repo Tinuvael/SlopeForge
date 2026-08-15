@@ -11,7 +11,7 @@ from uuid import uuid4
 from domain.blasting.entities import BlastEvent, utc_now
 from domain.geometry.types import PlanPolygon
 from domain.blasting.charge_design import (
-    ChargeComponent, ChargeComponentKind, ExplosiveProductKind, ExplosiveProductSnapshot,
+    ChargeComponent, ChargeComponentKind, ExplosiveClass, ExplosiveProductKind, ExplosiveProductSnapshot,
     component_explosive_mass_kg,
 )
 
@@ -459,6 +459,7 @@ def _charge_component_from_dict(data):
         snapshot["kind"] = ExplosiveProductKind(snapshot["kind"])
         from domain.blasting.charge_design import ChargeForm
         if snapshot.get("charge_form") is not None: snapshot["charge_form"] = ChargeForm(snapshot["charge_form"])
+        snapshot["explosive_class"] = ExplosiveClass(snapshot.get("explosive_class", "other"))
         raw["product_snapshot"] = _construct(ExplosiveProductSnapshot, snapshot)
     raw["kind"] = ChargeComponentKind(raw["kind"])
     return _construct(ChargeComponent, raw)

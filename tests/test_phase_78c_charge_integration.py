@@ -6,7 +6,7 @@ import pytest
 
 from application.use_cases.charge_presets import ChargePresets
 from domain.blasting.charge_design import (
-    ChargeComponent, ChargeComponentKind, ChargeDesignPreset, ChargeForm,
+    ChargeComponent, ChargeComponentKind, ChargeDesignPreset, ChargeForm, ExplosiveClass,
     ChargePresetComponent, ExplosiveProduct, ExplosiveProductKind,
 )
 from domain.blasting.technical_card import BlastEventTechnicalCard, DesignSlopeOrientation
@@ -43,6 +43,11 @@ def test_charge_components_snapshot_roundtrip_and_engineering_totals():
     for legacy in ("charge_decks","explosive_type","charge_mass_per_hole_kg","total_charge_mass_kg",
                    "stemming_length_m","planned_drilling_length_m"):
         assert legacy not in payload
+
+    old_payload=card.to_dict(); old_snapshot=old_payload["revisions"][0]["drilling_groups"][0]["charge_components"][0]["product_snapshot"]
+    old_snapshot.pop("explosive_class",None); old_snapshot.pop("cartridge_length_mm",None)
+    legacy=BlastEventTechnicalCard.from_dict(old_payload).revisions[0].drilling_groups[0].charge_components[0].product_snapshot
+    assert legacy.explosive_class is ExplosiveClass.OTHER and legacy.cartridge_length_mm is None
 
 
 def test_cartridge_count_mass_and_design_to_actual_compatibility():

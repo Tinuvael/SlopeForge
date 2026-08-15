@@ -4,7 +4,7 @@ import pytest
 
 from application.errors import CatalogueConflictError
 from application.use_cases.explosive_catalogue import ExplosiveCatalogue
-from domain.blasting.charge_design import ChargeForm, ExplosiveProduct, ExplosiveProductKind
+from domain.blasting.charge_design import ChargeForm, ExplosiveClass, ExplosiveProduct, ExplosiveProductKind
 
 
 class MemoryCatalogue:
@@ -94,7 +94,7 @@ def test_real_settings_dialog_catalogue_page_permissions_and_rows(monkeypatch):
     assert dialog.catalogues_page.findChild(type(dialog.catalogues_page.empty_label)).text() != ""
     assert dialog.catalogues_page.add_button.isEnabled()
     assert dialog.catalogues_page.table.item(0, 0).text() == "Bulk"
-    assert dialog.catalogues_page.table.item(0, 7).text() == "Disabled"
+    assert dialog.catalogues_page.table.item(0, 9).text() == "Disabled"
     dialog.close()
     viewer = ExplosiveCatalogue(adapter, adapter, can_edit=False)
     monkeypatch.setattr(module, "create_explosive_catalogue", lambda _context: viewer)
@@ -117,10 +117,10 @@ def test_product_dialog_required_numeric_fields_have_real_unset_state():
     assert dialog.density.text() == "Not set"
     with pytest.raises(ValueError, match="Density"):
         dialog.value()
-    dialog.density.setValue(1000)
+    dialog.density.setValue(1.0)
     assert dialog.value().density_kg_m3 == 1000
 
-    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ExplosiveProductKind.CARTRIDGE))
+    dialog.form_combo.setCurrentIndex(dialog.form_combo.findData(ChargeForm.CARTRIDGED))
     assert dialog.diameter.text() == "Not set"
     assert dialog.mass.text() == "Not set"
     assert dialog.pitch.text() == "Not set"
@@ -139,51 +139,51 @@ def test_product_dialog_required_numeric_fields_have_real_unset_state():
     assert result.cartridge_mass_kg == .5
     assert result.default_pitch_m is None
 
-    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ExplosiveProductKind.BULK))
-    assert dialog.density.value() == 1000
-    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ExplosiveProductKind.CARTRIDGE))
+    dialog.form_combo.setCurrentIndex(dialog.form_combo.findData(ChargeForm.BULK))
+    assert dialog.density.value() == 1.0
+    dialog.form_combo.setCurrentIndex(dialog.form_combo.findData(ChargeForm.CARTRIDGED))
     assert dialog.pitch.text() == "Not set"
     dialog.close(); app.processEvents()
 
 
-def test_product_dialog_normalizes_qt_item_data_and_shows_fields_by_kind():
+def test_product_dialog_restores_rich_charge_form_and_class_fields():
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6.QtWidgets import QApplication
     from ui.engineering_catalogues_page import ExplosiveProductDialog
     app = QApplication.instance() or QApplication([])
     dialog = ExplosiveProductDialog()
     # Exercise the Windows/Qt case where QVariant returns the underlying strings.
-    for index in range(dialog.kind_combo.count()):
-        dialog.kind_combo.setItemData(index, ExplosiveProductKind(dialog.kind_combo.itemData(index)).value)
     for index in range(dialog.form_combo.count()):
         dialog.form_combo.setItemData(index, ChargeForm(dialog.form_combo.itemData(index)).value)
+    for index in range(dialog.class_combo.count()):
+        dialog.class_combo.setItemData(index,ExplosiveClass(dialog.class_combo.itemData(index)).value)
 
-    dialog.kind_combo.setCurrentIndex(dialog._find_enum_index(
-        dialog.kind_combo, ExplosiveProductKind, ExplosiveProductKind.BULK))
+    dialog.form_combo.setCurrentIndex(dialog._find_enum_index(dialog.form_combo,ChargeForm,ChargeForm.BULK))
+    dialog.class_combo.setCurrentIndex(dialog._find_enum_index(dialog.class_combo,ExplosiveClass,ExplosiveClass.ANFO))
     dialog._update_fields()
-    assert dialog._selected_kind() == ExplosiveProductKind.BULK
-    assert not dialog.density.isHidden() and not dialog.form_combo.isHidden()
+    assert not dialog.density.isHidden()
     assert dialog.diameter.isHidden() and dialog.mass.isHidden() and dialog.pitch.isHidden()
-    dialog.name_edit.setText("Igdanite"); dialog.density.setValue(900)
-    dialog.form_combo.setCurrentIndex(dialog._find_enum_index(dialog.form_combo, ChargeForm, ChargeForm.BULK))
+    dialog.name_edit.setText("Igdanite"); dialog.density.setValue(.9)
     bulk = dialog.value()
     assert bulk.kind == ExplosiveProductKind.BULK and bulk.charge_form == ChargeForm.BULK
-    assert bulk.density_kg_m3 == 900
+    assert bulk.density_kg_m3 == 900 and bulk.explosive_class==ExplosiveClass.ANFO
 
-    dialog.density.setValue(1100)
+    dialog.density.setValue(1.15)
     dialog.form_combo.setCurrentIndex(dialog._find_enum_index(dialog.form_combo, ChargeForm, ChargeForm.PUMPABLE))
+    dialog.class_combo.setCurrentIndex(dialog._find_enum_index(dialog.class_combo,ExplosiveClass,ExplosiveClass.EMULSION))
     pumpable = dialog.value()
     assert pumpable.kind == ExplosiveProductKind.BULK and pumpable.charge_form == ChargeForm.PUMPABLE
-    assert pumpable.density_kg_m3 == 1100
+    assert pumpable.density_kg_m3 == 1150 and pumpable.explosive_class==ExplosiveClass.EMULSION
 
-    dialog.kind_combo.setCurrentIndex(dialog._find_enum_index(
-        dialog.kind_combo, ExplosiveProductKind, ExplosiveProductKind.CARTRIDGE))
-    assert dialog.density.isHidden() and dialog.form_combo.isHidden()
+    dialog.form_combo.setCurrentIndex(dialog._find_enum_index(dialog.form_combo,ChargeForm,ChargeForm.CARTRIDGED))
+    dialog.class_combo.setCurrentIndex(dialog._find_enum_index(dialog.class_combo,ExplosiveClass,ExplosiveClass.DYNAMITE))
+    assert dialog.density.isHidden()
     assert not dialog.diameter.isHidden() and not dialog.mass.isHidden() and not dialog.pitch.isHidden()
-    dialog.diameter.setValue(36); dialog.mass.setValue(.2)
+    dialog.diameter.setValue(36); dialog.mass.setValue(.2); dialog.length.setValue(200)
     cartridge = dialog.value()
     assert cartridge.kind == ExplosiveProductKind.CARTRIDGE
     assert cartridge.charge_form == ChargeForm.CARTRIDGED
+    assert cartridge.explosive_class==ExplosiveClass.DYNAMITE and cartridge.cartridge_length_mm==200
     dialog.close(); app.processEvents()
 
 
@@ -194,7 +194,7 @@ def test_real_catalogue_page_reopens_bulk_and_builder_classifies_it():
     from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
     app = QApplication.instance() or QApplication([])
     adapter=MemoryCatalogue(); service=ExplosiveCatalogue(adapter,adapter,can_edit=True)
-    create=ExplosiveProductDialog(); create.name_edit.setText("Igdanite"); create.density.setValue(900)
+    create=ExplosiveProductDialog(); create.name_edit.setText("Igdanite"); create.density.setValue(.9)
     saved=service.create_product(create.value()); page=EngineeringCataloguesPage(service,can_edit=True)
     reopened=ExplosiveProductDialog(page.products[0])
     assert reopened.value().density_kg_m3==900 and reopened.value().charge_form==ChargeForm.BULK
@@ -215,7 +215,7 @@ def test_white_product_uses_separate_color_cell_without_recoloring_name():
     adapter = MemoryCatalogue(); service = ExplosiveCatalogue(adapter, adapter, can_edit=True)
     service.create_product(product(display_color="#FFFFFF"))
     page = EngineeringCataloguesPage(service, can_edit=True)
-    name_item, color_item = page.table.item(0, 0), page.table.item(0, 2)
+    name_item, color_item = page.table.item(0, 0), page.table.item(0, 3)
     assert name_item.foreground().style() == Qt.BrushStyle.NoBrush
     assert color_item.text() == "#FFFFFF"
     assert color_item.background().color() == QColor("#FFFFFF")

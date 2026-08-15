@@ -334,8 +334,14 @@ class BoreholeChargeBuilder(QWidget):
         component = next((c for c in self._components if c.id == component_id), None)
         if not component: return
         target = snap_depth(depth)
-        if role == "start": start, end = target, component.end_depth_m
-        elif role == "end": start, end = component.start_depth_m, target
+        ordered=sorted(self._components,key=lambda item:(item.start_depth_m,item.end_depth_m))
+        index=ordered.index(component); previous=ordered[index-1] if index else None
+        following=ordered[index+1] if index+1<len(ordered) else None
+        if role == "start":
+            start=max(0.0,target,previous.end_depth_m if previous else 0.0); end=component.end_depth_m
+        elif role == "end":
+            start=component.start_depth_m; end=min(self._hole_depth_m,target,
+                following.start_depth_m if following else self._hole_depth_m)
         else:
             delta = snap_depth(depth - origin_depth)
             if delta == 0: return

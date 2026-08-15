@@ -3084,5 +3084,14 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Overwrite Project preset "{name}"?</source><translation>Перезаписать шаблон проекта «{name}»?</translation></message>
         <message><source>Replace</source><translation>Заменить</translation></message>
         <message><source>Replace the current charge construction with preset "{name}"?</source><translation>Заменить текущую конструкцию заряда шаблоном «{name}»?</translation></message>
+        <message><source>Cartridge length, mm (optional)</source><translation>Длина патрона, мм (необязательно)</translation></message>
+        <message><source>Cartridged</source><translation>Патронированное</translation></message>
+        <message><source>Density, g/cm³</source><translation>Плотность, г/см³</translation></message>
+        <message><source>Explosive class</source><translation>Класс ВВ</translation></message>
+        <message><source>ANFO / Igdanite</source><translation>АНФО / Игданит</translation></message>
+        <message><source>Emulsion explosive</source><translation>Эмульсионное ВВ</translation></message>
+        <message><source>Heavy ANFO</source><translation>Тяжёлый АНФО</translation></message>
+        <message><source>Water gel / Slurry</source><translation>Водогелевое / Slurry</translation></message>
+        <message><source>Dynamite / gelatinous</source><translation>Динамит / желатинит</translation></message>
     </context>
 </TS>

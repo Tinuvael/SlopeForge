@@ -47,6 +47,12 @@ class ExplosiveProduct(TimestampMixin, Base):
                         name="ck_explosive_products_pitch"),
         CheckConstraint("charge_form IN ('bulk', 'pumpable', 'cartridged')",
                         name="ck_explosive_products_charge_form"),
+        CheckConstraint("explosive_class IN ('anfo', 'emulsion', 'heavy_anfo', 'slurry', 'dynamite', 'other')",
+                        name="ck_explosive_products_class"),
+        CheckConstraint("cartridge_length_mm IS NULL OR cartridge_length_mm > 0",
+                        name="ck_explosive_products_cartridge_length"),
+        CheckConstraint("charge_form = 'cartridged' OR cartridge_length_mm IS NULL",
+                        name="ck_explosive_products_form_cartridge_length"),
         UniqueConstraint("name", name="uq_explosive_products_name"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -60,6 +66,8 @@ class ExplosiveProduct(TimestampMixin, Base):
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True,
                                              server_default="true", index=True)
     charge_form: Mapped[str] = mapped_column(String(20), nullable=False, default="bulk", server_default="bulk")
+    explosive_class: Mapped[str] = mapped_column(String(20), nullable=False, default="other", server_default="other")
+    cartridge_length_mm: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
 
 
 class ChargeDesignPreset(TimestampMixin, Base):

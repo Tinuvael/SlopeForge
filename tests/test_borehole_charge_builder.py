@@ -34,6 +34,20 @@ def test_selected_bulk_component_type_uses_frozen_charge_form(charge_form,label)
     assert widget.type_label.text()==label
 
 
+def test_drag_handle_clamps_to_neighbour_and_clears_feedback():
+    product=bulk(); components=[ChargeComponent("stem",ChargeComponentKind.STEMMING,0,1),
+        ChargeComponent("bulk",ChargeComponentKind.BULK_EXPLOSIVE,1.2,6,product.snapshot())]
+    widget=BoreholeChargeBuilder(6,100,[product],components); widget.select_component("bulk")
+    widget.feedback.setText("Charge components must not overlap")
+    widget._drag_component("bulk","start",1.1,1.2)
+    assert widget._selected().start_depth_m==1.1
+    widget._drag_component("bulk","start",1.0,1.1)
+    assert widget._selected().start_depth_m==1.0 and widget.air_intervals()==[]
+    assert widget.feedback.text()==""
+    widget._drag_component("bulk","start",0.5,1.0)
+    assert widget._selected().start_depth_m==1.0
+
+
 def cartridge():
     return ExplosiveProduct(2, "Cartridge A", ExplosiveProductKind.CARTRIDGE, "#49A35B",
                             cartridge_diameter_mm=40, cartridge_mass_kg=.5,

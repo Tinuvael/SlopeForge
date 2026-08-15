@@ -135,8 +135,9 @@ def test_phase_78a_migration_is_the_only_alembic_head() -> None:
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0005_explosive_charge_form"]
+    assert script.get_heads() == ["0006_explosive_product_metadata"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0006_explosive_product_metadata",
         "0005_explosive_charge_form",
         "0004_charge_presets",
         "0003_explosive_catalog",
@@ -176,7 +177,7 @@ def test_explosive_catalogue_migration_and_postgresql_round_trip(
         assert "explosive_products" not in inspect(engine).get_table_names()
         command.upgrade(config, "0003_explosive_catalog")
         assert "explosive_products" in inspect(engine).get_table_names()
-        command.upgrade(config, "0005_explosive_charge_form")
+        command.upgrade(config, "0006_explosive_product_metadata")
         bulk = adapter.create_product(ExplosiveProduct(
             0, "Bulk PG", ExplosiveProductKind.BULK, "#AA0000", density_kg_m3=1000))
         cartridge = adapter.create_product(ExplosiveProduct(
@@ -190,7 +191,7 @@ def test_explosive_catalogue_migration_and_postgresql_round_trip(
         assert adapter.set_product_enabled(cartridge.id, True).enabled is True
         command.downgrade(config, "0002_workflow_status")
         assert "explosive_products" not in inspect(engine).get_table_names()
-        command.upgrade(config, "0005_explosive_charge_form")
+        command.upgrade(config, "0006_explosive_product_metadata")
         assert adapter.list_products() == []
     finally:
         engine.dispose()
