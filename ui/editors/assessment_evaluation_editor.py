@@ -94,7 +94,7 @@ class CriterionEditor(QWidget):
         super().__init__(parent)
         self.criterion = criterion
         self.setObjectName("CriterionCard")
-        root = QVBoxLayout(self); root.setContentsMargins(10, 7, 10, 7); root.setSpacing(4)
+        root = QVBoxLayout(self); root.setContentsMargins(7, 3, 7, 3); root.setSpacing(2)
         top = QHBoxLayout(); self.title = QLabel(f"<b>{criterion_label(criterion.id, criterion.name)}</b>"); self.title.setWordWrap(True); top.addWidget(self.title, 1)
         self.clear_button = None
         if criterion.kind in ("numeric", "damage"):
@@ -227,7 +227,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self.shortfall = self._nullable(90); self.deficit = self._nullable(); self.toe = self._nullable()
         self.angle_score = QLabel(tr("Required")); self.berm_score = QLabel(tr("Required")); self.toe_score = QLabel(tr("Required"))
         self.method = QLineEdit(); self.measure_notes = QTextEdit()
-        self.measure_notes.setMaximumHeight(70)
+        self.measure_notes.setMaximumHeight(60)
         self.geometry_editors = {}
         controls = {
             "bench_angle": (tr("Bench face angle shortfall from design, °"), self.shortfall, self.angle_score),

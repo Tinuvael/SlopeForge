@@ -103,7 +103,8 @@ def test_entity_page_integration_corrections_are_visible():
     assert "save_draft()" in block and "complete()" in block
     area=source("ui/pages/assessment_area_page.py")
     assert "self.assessment_sections" not in area
-    assert "self.assessment_inputs=QScrollArea()" in area
+    assert "self.assessment_inputs=QWidget()" in area
+    assert "self.assessment_inputs=QScrollArea()" not in area
     assert "geometry_section_title" in area and "face_condition_section_title" in area
     assert "page.setVisible(True)" not in area
     assert "Save an assessment draft first" not in area

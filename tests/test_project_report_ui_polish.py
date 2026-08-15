@@ -51,17 +51,18 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
         def save(self):raise AssertionError("construction must not persist")
     monkeypatch.setattr(module,"EntityPageController",Controller)
     context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True))
-    before=len(evaluation.revisions); page=module.AssessmentAreaPage(context,1,"Domain",area.id); page.resize(1500,850)
+    before=len(evaluation.revisions); page=module.AssessmentAreaPage(context,1,"Domain",area.id); page.resize(1920,1080)
     page.show(); page.tabs.setCurrentWidget(page.assessment_tab); application.processEvents()
     splitter=page.assessment_splitter; inputs=page.assessment_inputs; live=page.result
     assert splitter.isVisible() and splitter.count()==2
     assert splitter.widget(0) is inputs and splitter.widget(1) is page.assessment_right
     assert inputs.isVisible() and live.isVisible()
     assert inputs.width()>0 and page.assessment_right.width()>300
+    assert page.assessment_tab.findChildren(QtWidgets.QScrollArea)==[]
     assert not hasattr(page,"assessment_sections")
     assert page.geometry_section_title.isVisible() and page.face_condition_section_title.isVisible()
-    assert page.evaluation_editor.geometry_editors["bench_angle"].isVisible()
-    assert page.evaluation_editor.editors["loose_blocks"].isVisible()
+    assert all(editor.isVisible() for editor in page.evaluation_editor.geometry_editors.values())
+    assert all(editor.isVisible() for editor in page.evaluation_editor.editors.values())
     assert page.evaluation_editor.date.isVisible() and page.evaluation_editor.date.isEnabled()
     assert page.evaluation_editor.inspector.isVisible() and page.evaluation_editor.inspector.isEnabled()
     assert page.evaluation_editor.matrix_value.isVisible() and page.evaluation_editor.detected.isVisible()
@@ -73,14 +74,27 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     assert page.save_evaluation_button.isVisible() and page.complete_evaluation_button.isVisible()
     assert page.evaluation_editor.summary.text() and "DAI: 1.000" in page.evaluation_editor.summary.text()
     assert page.evaluation_editor.comments.isVisible() and page.evaluation_editor.recommendations.isVisible()
+    assert page.evaluation_editor.comments.height()<=70 and page.evaluation_editor.recommendations.height()<=70
     assert page.assessment_tab.findChildren(QtWidgets.QTextEdit).count(page.evaluation_editor.comments)==1
     assert page.assessment_tab.findChildren(QtWidgets.QTextEdit).count(page.evaluation_editor.recommendations)==1
     assert not hasattr(page.evaluation_editor,"design_table") and not hasattr(page.evaluation_editor,"condition_table")
     page.evaluation_editor.comments.setPlainText("Field note"); page.evaluation_editor.recommendations.setPlainText("Scale loose rock")
     application.processEvents(); collected=page.evaluation_editor.collect()
     assert collected.comments=="Field note" and collected.recommendations=="Scale loose rock"
+    assert page.evaluation_editor.override_reason.isHidden()
+    page.evaluation_editor.shortfall.set_nullable_value(2.5); application.processEvents()
+    assert page.evaluation_editor.collect().design_inputs["bench_angle_shortfall_deg"]==2.5
     assert len(evaluation.revisions)==before
     page.close()
+    application.processEvents()
+
+    evaluation.active_revision().matrix_selection_source="manual_override"
+    evaluation.active_revision().change_reason="Engineering review"
+    manual=module.AssessmentAreaPage(context,1,"Domain",area.id); manual.resize(1920,1080); manual.show(); manual.tabs.setCurrentWidget(manual.assessment_tab); application.processEvents()
+    assert manual.evaluation_editor.override_reason.isVisible()
+    assert manual.evaluation_editor.override_reason.text()=="Engineering review"
+    assert manual.evaluation_editor.collect().change_reason=="Engineering review"
+    manual.close()
 
 
 def test_completed_initial_result_uses_stored_values_then_live_edit_recalculates(monkeypatch):
