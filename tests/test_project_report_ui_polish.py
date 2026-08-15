@@ -88,13 +88,47 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     page.close()
     application.processEvents()
 
-    evaluation.active_revision().matrix_selection_source="manual_override"
+    evaluation.active_revision().controlled_blasting_detection_source="manual_override"
     evaluation.active_revision().change_reason="Engineering review"
     manual=module.AssessmentAreaPage(context,1,"Domain",area.id); manual.resize(1920,1080); manual.show(); manual.tabs.setCurrentWidget(manual.assessment_tab); application.processEvents()
     assert manual.evaluation_editor.override_reason.isVisible()
     assert manual.evaluation_editor.override_reason.text()=="Engineering review"
     assert manual.evaluation_editor.collect().change_reason=="Engineering review"
     manual.close()
+
+
+@pytest.mark.parametrize("manual_override",[False,True])
+def test_assessment_page_opens_real_new_draft_sources(monkeypatch,manual_override):
+    application=app()
+    from tests.test_wall_assessment_persistence_ui import make_state
+    from application.services.assessment_event_links import AssessmentEventLinkService
+    from domain.assessment.evaluation import AssessmentAreaEvaluationService
+    import ui.pages.assessment_area_page as module
+
+    state,area=make_state(); area.event_links[0].status="excluded"
+    service=AssessmentAreaEvaluationService(state)
+    if manual_override:
+        evaluation,draft=service.new_evaluation(area,"controlled_blasting_v1","Engineering review")
+        assert draft.controlled_blasting_detection_source=="manual_override"
+    else:
+        evaluation,draft=service.new_evaluation(area)
+        assert draft.controlled_blasting_detection_source=="no_confirmed_contour_link"
+
+    class Attachments:
+        def list_for_owner(self,*_args):return []
+    class Controller:
+        def __init__(self,*_args):self.state=state; self.attachments=Attachments(); self.links=AssessmentEventLinkService(state)
+        def area(self,_id):return area
+        def evaluation_draft(self,_area):return evaluation,draft
+        def save_evaluation(self,*_args):raise AssertionError("opening and preview must not save")
+    monkeypatch.setattr(module,"EntityPageController",Controller)
+    context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True))
+    page=module.AssessmentAreaPage(context,1,"Domain",area.id); page.resize(1920,1080); page.show(); page.tabs.setCurrentWidget(page.assessment_tab); application.processEvents()
+    assert page.evaluation_editor.override_reason.isVisible() is manual_override
+    assert page.evaluation_editor.collect().controlled_blasting_detection_source==draft.controlled_blasting_detection_source
+    page.evaluation_editor.toe.set_nullable_value(.5); application.processEvents()
+    assert page.evaluation_editor.collect().design_inputs["toe_offset_from_design_m"]==.5
+    page.close()
 
 
 def test_completed_initial_result_uses_stored_values_then_live_edit_recalculates(monkeypatch):

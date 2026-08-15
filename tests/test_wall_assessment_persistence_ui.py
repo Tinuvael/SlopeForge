@@ -133,7 +133,7 @@ def test_manual_matrix_reason_is_only_available_for_manual_selection():
     automatic=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
     assert automatic.override_reason.isHidden()
     automatic._allow_close=True; automatic.close()
-    draft.matrix_selection_source="manual_override"; draft.change_reason="Engineering review"
+    draft.controlled_blasting_detection_source="manual_override"; draft.change_reason="Engineering review"
     manual=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
     assert not manual.override_reason.isHidden() and manual.override_reason.text()=="Engineering review"
     manual._allow_close=True; manual.close()

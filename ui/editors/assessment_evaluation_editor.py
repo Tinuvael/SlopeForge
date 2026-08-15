@@ -216,7 +216,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         form.addRow(tr("Assessment date"), self.date); form.addRow(tr("Inspector"), self.inspector)
         form.addRow(tr("Matrix"), self.matrix_value); form.addRow(tr("Detection"), self.detected)
         form.addRow(tr("Manual matrix selection reason"), self.override_reason); form.addRow(tr("Comments"), self.comments); form.addRow(tr("Recommendations"), self.recommendations)
-        self.override_reason.setVisible(self.draft.matrix_selection_source == "manual_override")
+        self.override_reason.setVisible(self.draft.controlled_blasting_detection_source == "manual_override")
         self.tabs.addTab(page, tr("General"))
 
     def _nullable(self, maximum=999):
