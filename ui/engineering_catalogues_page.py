@@ -23,12 +23,14 @@ class ExplosiveProductDialog(QDialog):
         self.kind_combo.addItem(tr("Bulk"), ExplosiveProductKind.BULK)
         self.kind_combo.addItem(tr("Cartridge"), ExplosiveProductKind.CARTRIDGE)
         if product:
-            self.kind_combo.setCurrentIndex(self.kind_combo.findData(product.kind))
+            self.kind_combo.setCurrentIndex(self._find_enum_index(
+                self.kind_combo, ExplosiveProductKind, product.kind))
         self.form_combo = QComboBox()
         self.form_combo.addItem(tr("Bulk"), ChargeForm.BULK)
         self.form_combo.addItem(tr("Pumpable"), ChargeForm.PUMPABLE)
-        if product and product.kind is ExplosiveProductKind.BULK:
-            self.form_combo.setCurrentIndex(self.form_combo.findData(product.charge_form))
+        if product and product.kind == ExplosiveProductKind.BULK:
+            self.form_combo.setCurrentIndex(self._find_enum_index(
+                self.form_combo, ChargeForm, product.charge_form))
         color_row = QWidget(); color_layout = QHBoxLayout(color_row); color_layout.setContentsMargins(0, 0, 0, 0)
         self.color_edit = QLineEdit(product.display_color if product else "#000000")
         choose = QPushButton(tr("Choose color"))
@@ -65,8 +67,22 @@ class ExplosiveProductDialog(QDialog):
         """Never allow the UI-only unset sentinel to cross into the domain."""
         return None if field.value() == field.minimum() else field.value()
 
+    @staticmethod
+    def _find_enum_index(combo: QComboBox, enum_type, value) -> int:
+        expected = enum_type(value)
+        return next((index for index in range(combo.count())
+                     if enum_type(combo.itemData(index)) == expected), -1)
+
+    def _selected_kind(self) -> ExplosiveProductKind:
+        """Normalize QVariant/string item data at the Qt boundary."""
+        return ExplosiveProductKind(self.kind_combo.currentData())
+
+    def _selected_charge_form(self) -> ChargeForm:
+        """Normalize QVariant/string item data at the Qt boundary."""
+        return ChargeForm(self.form_combo.currentData())
+
     def _update_fields(self):
-        bulk = self.kind_combo.currentData() is ExplosiveProductKind.BULK
+        bulk = self._selected_kind() == ExplosiveProductKind.BULK
         self.form_label.setVisible(bulk); self.form_combo.setVisible(bulk)
         for widget in (self.density_label, self.density): widget.setVisible(bulk)
         for widget in (self.diameter_label, self.diameter, self.mass_label, self.mass,
@@ -77,15 +93,15 @@ class ExplosiveProductDialog(QDialog):
         if color.isValid(): self.color_edit.setText(color.name().upper())
 
     def value(self) -> ExplosiveProduct:
-        kind = self.kind_combo.currentData()
+        kind = self._selected_kind()
         return ExplosiveProduct(
             id=self.product.id if self.product else 0, name=self.name_edit.text(), kind=kind,
             display_color=self.color_edit.text(), enabled=self.product.enabled if self.product else True,
-            density_kg_m3=self._number_value(self.density) if kind is ExplosiveProductKind.BULK else None,
-            cartridge_diameter_mm=self._number_value(self.diameter) if kind is ExplosiveProductKind.CARTRIDGE else None,
-            cartridge_mass_kg=self._number_value(self.mass) if kind is ExplosiveProductKind.CARTRIDGE else None,
-            default_pitch_m=self._number_value(self.pitch) if kind is ExplosiveProductKind.CARTRIDGE else None,
-            charge_form=self.form_combo.currentData() if kind is ExplosiveProductKind.BULK else ChargeForm.CARTRIDGED,
+            density_kg_m3=self._number_value(self.density) if kind == ExplosiveProductKind.BULK else None,
+            cartridge_diameter_mm=self._number_value(self.diameter) if kind == ExplosiveProductKind.CARTRIDGE else None,
+            cartridge_mass_kg=self._number_value(self.mass) if kind == ExplosiveProductKind.CARTRIDGE else None,
+            default_pitch_m=self._number_value(self.pitch) if kind == ExplosiveProductKind.CARTRIDGE else None,
+            charge_form=self._selected_charge_form() if kind == ExplosiveProductKind.BULK else ChargeForm.CARTRIDGED,
         )
 
     def _validate_and_accept(self):

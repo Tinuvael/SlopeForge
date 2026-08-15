@@ -4,7 +4,7 @@ import pytest
 
 from application.errors import CatalogueConflictError
 from application.use_cases.explosive_catalogue import ExplosiveCatalogue
-from domain.blasting.charge_design import ExplosiveProduct, ExplosiveProductKind
+from domain.blasting.charge_design import ChargeForm, ExplosiveProduct, ExplosiveProductKind
 
 
 class MemoryCatalogue:
@@ -144,6 +144,65 @@ def test_product_dialog_required_numeric_fields_have_real_unset_state():
     dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(ExplosiveProductKind.CARTRIDGE))
     assert dialog.pitch.text() == "Not set"
     dialog.close(); app.processEvents()
+
+
+def test_product_dialog_normalizes_qt_item_data_and_shows_fields_by_kind():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QApplication
+    from ui.engineering_catalogues_page import ExplosiveProductDialog
+    app = QApplication.instance() or QApplication([])
+    dialog = ExplosiveProductDialog()
+    # Exercise the Windows/Qt case where QVariant returns the underlying strings.
+    for index in range(dialog.kind_combo.count()):
+        dialog.kind_combo.setItemData(index, ExplosiveProductKind(dialog.kind_combo.itemData(index)).value)
+    for index in range(dialog.form_combo.count()):
+        dialog.form_combo.setItemData(index, ChargeForm(dialog.form_combo.itemData(index)).value)
+
+    dialog.kind_combo.setCurrentIndex(dialog._find_enum_index(
+        dialog.kind_combo, ExplosiveProductKind, ExplosiveProductKind.BULK))
+    dialog._update_fields()
+    assert dialog._selected_kind() == ExplosiveProductKind.BULK
+    assert not dialog.density.isHidden() and not dialog.form_combo.isHidden()
+    assert dialog.diameter.isHidden() and dialog.mass.isHidden() and dialog.pitch.isHidden()
+    dialog.name_edit.setText("Igdanite"); dialog.density.setValue(900)
+    dialog.form_combo.setCurrentIndex(dialog._find_enum_index(dialog.form_combo, ChargeForm, ChargeForm.BULK))
+    bulk = dialog.value()
+    assert bulk.kind == ExplosiveProductKind.BULK and bulk.charge_form == ChargeForm.BULK
+    assert bulk.density_kg_m3 == 900
+
+    dialog.density.setValue(1100)
+    dialog.form_combo.setCurrentIndex(dialog._find_enum_index(dialog.form_combo, ChargeForm, ChargeForm.PUMPABLE))
+    pumpable = dialog.value()
+    assert pumpable.kind == ExplosiveProductKind.BULK and pumpable.charge_form == ChargeForm.PUMPABLE
+    assert pumpable.density_kg_m3 == 1100
+
+    dialog.kind_combo.setCurrentIndex(dialog._find_enum_index(
+        dialog.kind_combo, ExplosiveProductKind, ExplosiveProductKind.CARTRIDGE))
+    assert dialog.density.isHidden() and dialog.form_combo.isHidden()
+    assert not dialog.diameter.isHidden() and not dialog.mass.isHidden() and not dialog.pitch.isHidden()
+    dialog.diameter.setValue(36); dialog.mass.setValue(.2)
+    cartridge = dialog.value()
+    assert cartridge.kind == ExplosiveProductKind.CARTRIDGE
+    assert cartridge.charge_form == ChargeForm.CARTRIDGED
+    dialog.close(); app.processEvents()
+
+
+def test_real_catalogue_page_reopens_bulk_and_builder_classifies_it():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QApplication
+    from ui.engineering_catalogues_page import EngineeringCataloguesPage, ExplosiveProductDialog
+    from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
+    app = QApplication.instance() or QApplication([])
+    adapter=MemoryCatalogue(); service=ExplosiveCatalogue(adapter,adapter,can_edit=True)
+    create=ExplosiveProductDialog(); create.name_edit.setText("Igdanite"); create.density.setValue(900)
+    saved=service.create_product(create.value()); page=EngineeringCataloguesPage(service,can_edit=True)
+    reopened=ExplosiveProductDialog(page.products[0])
+    assert reopened.value().density_kg_m3==900 and reopened.value().charge_form==ChargeForm.BULK
+    builder=BoreholeChargeBuilder(10,146,[saved],[])
+    assert builder.enabled_products_for_form(ChargeForm.BULK)==[saved]
+    assert builder.enabled_products_for_form(ChargeForm.PUMPABLE)==[]
+    assert builder.enabled_products_for_form(ChargeForm.CARTRIDGED)==[]
+    builder.close(); reopened.close(); create.close(); page.close(); app.processEvents()
 
 
 def test_white_product_uses_separate_color_cell_without_recoloring_name():

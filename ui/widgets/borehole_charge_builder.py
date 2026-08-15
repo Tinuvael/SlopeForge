@@ -276,17 +276,21 @@ class BoreholeChargeBuilder(QWidget):
 
     def _show_add_menu(self):
         menu = QMenu(self); stem = menu.addAction(tr("Stemming")); stem.triggered.connect(self.add_stemming)
-        enabled = [p for p in self._products if p.enabled]
         for title, charge_form, component_kind in (
             (tr("Bulk explosive"), ChargeForm.BULK, ChargeComponentKind.BULK_EXPLOSIVE),
             (tr("Pumpable explosive"), ChargeForm.PUMPABLE, ChargeComponentKind.BULK_EXPLOSIVE),
             (tr("Cartridged explosive"), ChargeForm.CARTRIDGED, ChargeComponentKind.CARTRIDGE_EXPLOSIVE)):
-            submenu = menu.addMenu(title); matches = [p for p in enabled if p.charge_form is charge_form]
+            submenu = menu.addMenu(title); matches = self.enabled_products_for_form(charge_form)
             if not matches: submenu.addAction(tr("No explosive products configured")).setEnabled(False)
             for product in matches:
                 action = submenu.addAction(product.name)
                 action.triggered.connect(lambda _checked=False, k=component_kind, p=product: self.add_component(k, p))
         menu.exec(self.add_button.mapToGlobal(self.add_button.rect().bottomLeft()))
+
+    def enabled_products_for_form(self, charge_form):
+        expected = ChargeForm(charge_form)
+        return [product for product in self._products
+                if product.enabled and product.charge_form == expected]
 
     def delete_selected_component(self):
         selected = self._selected()
