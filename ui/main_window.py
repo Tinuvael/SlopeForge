@@ -110,7 +110,7 @@ class MainWindow(QMainWindow):
         page.edit_boundaries_requested.connect(self._edit_area_boundaries)
         page.metadata_saved.connect(lambda entity_id,target_id:self._metadata_move_saved("area",entity_id,target_id))
         self._activate_page(page)
-        domain=self.navigation_queries.get_domain_context(domain_id); self.assessment_page=None; self.area_page=page; self._set_context(site_id,domain.site_name,domain_id,domain_name,area_id=area_id); return True
+        domain=self.navigation_queries.get_domain_context(domain_id); self.assessment_page=None; self.area_page=page; self._set_context(site_id,domain.site_name,domain_id,domain_name,area_id=area_id); self.header.set_archive_context(True,page.area.is_archived); return True
     def open_contour_from_tree(self,event_id,domain_id,site_id,domain_name):
         if not self._guard_leave(): return False
         from ui.pages.contour_event_page import ContourEventPage
@@ -239,11 +239,17 @@ class MainWindow(QMainWindow):
         if self.selected_assessment_area_id and getattr(self,"area_page",None):
             area=self.area_page.area; action="Restore" if area.is_archived else "Archive"
             if QMessageBox.question(self,action,f'{action} Assessment Area "{area.name}"?') != QMessageBox.StandardButton.Yes:return
-            self.area_page.controller.set_assessment_area_archived(area,not area.is_archived); self.refresh_project_data(); self.open_area_from_tree(area.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
+            try:self.area_page.controller.set_assessment_area_archived(area,not area.is_archived)
+            except Exception as exc:
+                QMessageBox.warning(self,tr("Could not change Assessment Area archive state"),domain_message(str(exc))); return
+            self.refresh_project_data(); self.open_area_from_tree(area.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
         elif self.selected_contour_event_id and getattr(self,"contour_page",None):
             event=self.contour_page.blast_event; action="Restore" if event.is_archived else "Archive"
             if QMessageBox.question(self,action,f'{action} Contour Blast "{event.name}"?') != QMessageBox.StandardButton.Yes:return
-            self.contour_page.controller.set_contour_event_archived(event,not event.is_archived); self.refresh_project_data(); self.open_contour_from_tree(event.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
+            try:self.contour_page.controller.set_contour_event_archived(event,not event.is_archived)
+            except Exception as exc:
+                QMessageBox.warning(self,tr("Could not change Contour Blast archive state"),domain_message(str(exc))); return
+            self.refresh_project_data(); self.open_contour_from_tree(event.id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
     def refresh_project_data(self): self.tree.reload_filters(); self.tree.load_data(); self._update_add()
     def closeEvent(self,event):
         if not self._guard_leave(): event.ignore(); return

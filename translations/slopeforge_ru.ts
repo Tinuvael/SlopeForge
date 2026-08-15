@@ -3094,5 +3094,7 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Water gel / Slurry</source><translation>Водогелевое / Slurry</translation></message>
         <message><source>Dynamite / gelatinous</source><translation>Динамит / желатинит</translation></message>
         <message><source>Search...</source><translation>Поиск...</translation></message>
+        <message><source>Could not change Assessment Area archive state</source><translation>Не удалось изменить состояние архива зоны оценки</translation></message>
+        <message><source>Could not change Contour Blast archive state</source><translation>Не удалось изменить состояние архива контурного взрыва</translation></message>
     </context>
 </TS>
