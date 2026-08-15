@@ -28,8 +28,8 @@ class MainWindow(QMainWindow):
         self.tree.site_selected.connect(self.select_site); self.tree.domain_selected.connect(self.select_domain); self.tree.block_selected.connect(self.open_block_from_tree); self.tree.contour_event_selected.connect(self.open_contour_from_tree); self.tree.assessment_area_selected.connect(self.open_area_from_tree)
         self.header.add_project_requested.connect(self._add_project); self.header.add_domain_requested.connect(self._add_domain); self.header.add_blast_event_requested.connect(self._add_blast_event); self.header.add_assessment_area_requested.connect(self._add_area)
         self.header.report_requested.connect(self._project_report)
-        self.header.search.textChanged.connect(self._sync_tree_search)
-        self.tree.search.textChanged.connect(self._sync_header_search)
+        self.header.search.textChanged.connect(self.tree.set_search_query)
+        self.tree.reset_search_requested.connect(self.header.search.clear)
         self.header.archive_requested.connect(self._archive_selected)
         self.block_page.data_changed.connect(self.refresh_project_data)
         self.block_page.metadata_saved.connect(lambda entity_id,target_id:self._metadata_move_saved("block",entity_id,target_id))
@@ -48,12 +48,6 @@ class MainWindow(QMainWindow):
             return
         self.page_stack.removeWidget(current)
         current.deleteLater()
-    def _sync_tree_search(self, text):
-        if self.tree.search.text() != text:
-            self.tree.search.setText(text)
-    def _sync_header_search(self, text):
-        if self.header.search.text() != text:
-            self.header.search.setText(text)
     def _guard_leave(self):
         page=self.assessment_page
         if page is None or self.page_stack.currentWidget() is not page: return True

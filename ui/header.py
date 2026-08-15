@@ -1,10 +1,19 @@
 
 from app.localization import tr
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMenu, QPushButton, QWidget
 from ui.settings_dialog import SettingsDialog
 from app.icons.ui.ui_icons import ui_icon
+class SearchLineEdit(QLineEdit):
+    """Header-only search behavior; Escape remains untouched elsewhere."""
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.clear()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
 class Header(QWidget):
     add_project_requested=Signal(); add_domain_requested=Signal(); add_blast_event_requested=Signal(); add_assessment_area_requested=Signal(); archive_requested=Signal(); report_requested=Signal()
     def __init__(self, context):
@@ -15,7 +24,7 @@ class Header(QWidget):
         self.add_button.setToolTip(tr("Create a project, domain, blast event, or assessment area"))
         self.add_project_action.triggered.connect(self.add_project_requested); self.add_domain_action.triggered.connect(self.add_domain_requested); self.add_blast_event_action.triggered.connect(self.add_blast_event_requested); self.add_assessment_area_action.triggered.connect(self.add_assessment_area_requested)
         self.add_button.setMenu(self.add_menu); self.archive_button=QPushButton(tr("Archive")); self.archive_button.setEnabled(False); self.archive_button.clicked.connect(self.archive_requested)
-        self.archive_button.setIcon(ui_icon("archive")); self.search=QLineEdit(); self.search.setPlaceholderText(tr("Search blast events...")); self.search.setMaximumWidth(350); self.report_button=QPushButton(tr("Report")); self.report_button.setEnabled(False); self.report_button.clicked.connect(self.report_requested); self.settings=QPushButton(tr("Settings")); self.settings.setIcon(ui_icon("settings")); self.settings.clicked.connect(self.open_settings)
+        self.archive_button.setIcon(ui_icon("archive")); self.search=SearchLineEdit(); self.search.setClearButtonEnabled(True); self.search.setPlaceholderText(tr("Search...")); self.search.setMaximumWidth(350); self.report_button=QPushButton(tr("Report")); self.report_button.setEnabled(False); self.report_button.clicked.connect(self.report_requested); self.settings=QPushButton(tr("Settings")); self.settings.setIcon(ui_icon("settings")); self.settings.clicked.connect(self.open_settings)
         self.search_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
         self.search_shortcut.activated.connect(self.focus_search)
         layout.addWidget(self.add_button); layout.addWidget(self.archive_button); layout.addStretch(); layout.addWidget(self.search); layout.addStretch(); layout.addWidget(self.report_button); layout.addWidget(self.settings); self.update_add_availability(False,False,False)

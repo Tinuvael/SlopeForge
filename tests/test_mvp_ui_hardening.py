@@ -16,13 +16,14 @@ def test_header_uses_project_terminology_and_real_find_shortcut():
     assert "self.search.selectAll()" in header
 
 
-def test_header_search_is_synchronized_with_project_tree():
+def test_header_search_is_canonical_for_project_tree():
     main = source("ui/main_window.py")
-    assert "header.search.textChanged.connect(self._sync_tree_search)" in main
-    assert "tree.search.textChanged.connect(self._sync_header_search)" in main
+    assert "header.search.textChanged.connect(self.tree.set_search_query)" in main
+    assert "tree.search" not in main
     tree = source("ui/widgets/project_tree.py")
-    assert "number_query=self.search.text()" in tree
-    assert "event.name.lower()" in tree
+    assert "def set_search_query" in tree
+    assert "query in block.block_number.casefold()" in tree
+    assert "query in event.name.casefold()" in tree
 
 
 def test_normal_entity_pages_do_not_import_ui_prototype_package():
@@ -37,9 +38,9 @@ def test_normal_entity_pages_do_not_import_ui_prototype_package():
 
 def test_all_tree_entity_types_share_show_archived_filter():
     tree = source("ui/widgets/project_tree.py")
-    assert "list_areas(self.show_archived.isChecked())" in tree
-    assert "list_contour_events(self.show_archived.isChecked())" in tree
-    assert "show_archived=self.show_archived.isChecked()" in tree
+    assert "list_areas(show_archived)" in tree
+    assert "list_contour_events(show_archived)" in tree
+    assert "show_archived=show_archived" in tree
 
 
 def test_attachment_owner_ids_are_the_domain_owner_ids():
@@ -85,6 +86,23 @@ def test_header_ctrl_f_focuses_and_selects_search_text():
     header.close()
 
 
+def test_header_escape_clears_only_focused_search():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from types import SimpleNamespace
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from ui.header import Header
+
+    app = _app()
+    header = Header(SimpleNamespace(current_user=SimpleNamespace(can_edit=True)))
+    header.search.setText("north"); header.search.setFocus()
+    QTest.keyClick(header.search, Qt.Key.Key_Escape); app.processEvents()
+    assert header.search.text() == ""
+    assert header.search.isClearButtonEnabled()
+    assert not hasattr(header, "escape_shortcut")
+    header.close()
+
+
 def test_project_tree_search_filters_real_displayed_rows(monkeypatch):
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from types import SimpleNamespace
@@ -94,20 +112,21 @@ def test_project_tree_search_filters_real_displayed_rows(monkeypatch):
     site = SimpleNamespace(id=1, name="Project")
     domain = SimpleNamespace(id=2, name="Domain")
     blocks = [
-        SimpleNamespace(id=10, domain_id=2, block_number="P-101", horizon_m=100, status="planned", is_archived=False),
-        SimpleNamespace(id=11, domain_id=2, block_number="P-202", horizon_m=100, status="planned", is_archived=False),
+        SimpleNamespace(id=10, domain_id=2, block_number="P-101", horizon_m=100, planned_blast_date=None, status="planned", is_archived=False),
+        SimpleNamespace(id=11, domain_id=2, block_number="P-202", horizon_m=100, planned_blast_date=None, status="planned", is_archived=False),
     ]
-    contours = [SimpleNamespace(id="C1", domain_id=2, name="C-101", elevation=100, is_archived=False)]
+    contours = [SimpleNamespace(id="C1", domain_id=2, name="C-101", elevation=100, event_date=None, status="planned", is_archived=False)]
     monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: [site]))
     monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda _id: [domain]))
     monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(
-        list_blocks=lambda **kwargs: [b for b in blocks if not kwargs["number_query"] or kwargs["number_query"].lower() in b.block_number.lower()]
+        list_blocks=lambda **kwargs: [b for b in blocks if not kwargs.get("status") or kwargs["status"] == b.status]
     ))
     monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
         list_areas=lambda _archived: [], list_contour_events=lambda _archived: contours
     ))
     tree = module.ProjectTree(SimpleNamespace(session_factory=object()))
-    tree.search.setText("C-101")
+    assert tree.findChildren(__import__("PySide6.QtWidgets", fromlist=["QLineEdit"]).QLineEdit) == []
+    tree.set_search_query(" c-101 ")
     app.processEvents()
 
     labels = []
@@ -135,7 +154,8 @@ def test_project_tree_renders_nullable_area_navigation_rows(
     app = _app()
     minimum = Decimal(minimum) if minimum is not None else None
     maximum = Decimal(maximum) if maximum is not None else None
-    area = AreaNavigationRow("AA-1", 2, "West wall", minimum, maximum, False)
+    from datetime import date
+    area = AreaNavigationRow("AA-1", 2, "West wall", minimum, maximum, False, date(2026, 8, 15))
     assert area.min_elevation == minimum and area.max_elevation == maximum
     assert not hasattr(area, "lower_elevation") and not hasattr(area, "upper_elevation")
 
