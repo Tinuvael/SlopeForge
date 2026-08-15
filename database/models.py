@@ -64,7 +64,11 @@ class ExplosiveProduct(TimestampMixin, Base):
 
 class ChargeDesignPreset(TimestampMixin, Base):
     __tablename__ = "charge_design_presets"
-    __table_args__ = (UniqueConstraint("site_id", "name", name="uq_charge_design_presets_site_name"),)
+    __table_args__ = (
+        CheckConstraint("length(btrim(name)) > 0", name="ck_charge_design_presets_name"),
+        CheckConstraint("jsonb_typeof(components_json) = 'array'", name="ck_charge_design_presets_components_array"),
+        UniqueConstraint("site_id", "name", name="uq_charge_design_presets_site_name"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)

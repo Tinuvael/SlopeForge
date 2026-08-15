@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from application.errors import CatalogueConflictError
 from database.models import ChargeDesignPreset as PresetRow
 from domain.blasting.charge_design import ChargeDesignPreset, ChargePresetComponent
@@ -27,13 +27,17 @@ class SqlAlchemyChargePresetPersistence:
             row.name=name; row.components_json=self._json(components); return row
         return self._write(operation)
     def delete_preset(self, preset_id, site_id):
-        with self._session_factory() as session:
-            row=session.get(PresetRow,preset_id)
-            if row is None or row.site_id != site_id: raise LookupError("Charge preset was not found")
-            session.delete(row); session.commit()
+        try:
+            with self._session_factory() as session:
+                row=session.get(PresetRow,preset_id)
+                if row is None or row.site_id != site_id: raise LookupError("Charge preset was not found")
+                session.delete(row); session.commit()
+        except SQLAlchemyError as exc: raise RuntimeError("Could not delete the charge preset") from exc
     def _write(self, operation):
         with self._session_factory() as session:
             try:
                 row=operation(session); session.add(row); session.flush(); result=_domain(row); session.commit(); return result
             except IntegrityError as exc:
                 session.rollback(); raise CatalogueConflictError("A charge preset with this name already exists") from exc
+            except SQLAlchemyError as exc:
+                session.rollback(); raise RuntimeError("Could not save the charge preset") from exc

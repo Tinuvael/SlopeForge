@@ -3079,5 +3079,10 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Pumpable explosive</source><translation>Наливное / перекачиваемое ВВ</translation></message>
         <message><source>Save as...</source><translation>Сохранить как...</translation></message>
         <message><source>Save charge preset</source><translation>Сохранить шаблон заряда</translation></message>
+        <message><source>Could not save the charge preset.</source><translation>Не удалось сохранить шаблон заряда.</translation></message>
+        <message><source>Delete Project preset "{name}" permanently?</source><translation>Навсегда удалить шаблон проекта «{name}»?</translation></message>
+        <message><source>Overwrite Project preset "{name}"?</source><translation>Перезаписать шаблон проекта «{name}»?</translation></message>
+        <message><source>Replace</source><translation>Заменить</translation></message>
+        <message><source>Replace the current charge construction with preset "{name}"?</source><translation>Заменить текущую конструкцию заряда шаблоном «{name}»?</translation></message>
     </context>
 </TS>

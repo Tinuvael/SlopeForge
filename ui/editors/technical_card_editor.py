@@ -249,20 +249,42 @@ class TechnicalCardDialog(QDialog):
     def _load_preset(self,combo,group,state,refresh):
         preset=combo.currentData()
         if not preset or not group.average_depth_m:return
+        if group.charge_components:
+            prompt=QMessageBox(self); prompt.setWindowTitle(tr("Charge preset")); prompt.setText(
+                tr('Replace the current charge construction with preset "{name}"?').format(name=preset.name))
+            replace=prompt.addButton(tr("Replace"),QMessageBox.ButtonRole.AcceptRole)
+            prompt.addButton(QMessageBox.StandardButton.Cancel); prompt.exec()
+            if prompt.clickedButton() is not replace:return
         try: values=self.charge_presets.apply(preset,self.explosive_products,group.average_depth_m)
-        except ValueError as exc: QMessageBox.warning(self,tr("Charge preset"),str(exc)); return
+        except Exception as exc: self._show_preset_error(exc); return
         group.charge_components=values
         if state["builder"]: state["builder"].set_components(values)
         refresh()
     def _save_preset(self,combo,group):
         name,ok=QInputDialog.getText(self,tr("Save charge preset"),tr("Preset name"))
-        if ok and name.strip(): preset=self.charge_presets.create(name,group.charge_components); self._refresh_all_preset_combos(preset.id)
+        if not ok:return
+        try:preset=self.charge_presets.create(name,group.charge_components,self.explosive_products)
+        except Exception as exc:self._show_preset_error(exc); return
+        self._refresh_all_preset_combos(preset.id)
     def _update_preset(self,combo,group):
         preset=combo.currentData()
-        if preset: updated=self.charge_presets.update(preset.id,preset.name,group.charge_components); self._refresh_all_preset_combos(updated.id)
+        if not preset:return
+        if QMessageBox.question(self,tr("Charge preset"),tr('Overwrite Project preset "{name}"?').format(name=preset.name),
+                QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.Cancel)!=QMessageBox.StandardButton.Yes:return
+        try:updated=self.charge_presets.update(preset.id,preset.name,group.charge_components,self.explosive_products)
+        except Exception as exc:self._show_preset_error(exc); return
+        self._refresh_all_preset_combos(updated.id)
     def _delete_preset(self,combo):
         preset=combo.currentData()
-        if preset:self.charge_presets.delete(preset.id); self._refresh_all_preset_combos()
+        if not preset:return
+        if QMessageBox.question(self,tr("Charge preset"),tr('Delete Project preset "{name}" permanently?').format(name=preset.name),
+                QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.Cancel)!=QMessageBox.StandardButton.Yes:return
+        try:self.charge_presets.delete(preset.id)
+        except Exception as exc:self._show_preset_error(exc); return
+        self._refresh_all_preset_combos()
+    def _show_preset_error(self,exc):
+        safe=str(exc) if isinstance(exc,(ValueError,LookupError,PermissionError)) else tr("Could not save the charge preset.")
+        QMessageBox.warning(self,tr("Charge preset"),safe)
 
     def _add_group(self, index):
         kind = self.add_group_combo.itemData(index)

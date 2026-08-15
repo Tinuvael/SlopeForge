@@ -9,7 +9,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from domain.blasting.charge_design import (
-    ChargeComponent, ChargeComponentKind, ExplosiveProduct, ExplosiveProductKind,
+    ChargeComponent, ChargeComponentKind, ChargeForm, ExplosiveProduct, ExplosiveProductKind,
     validate_components,
 )
 from ui.widgets.borehole_charge_builder import (
@@ -24,6 +24,14 @@ def app(): return QApplication.instance() or QApplication([])
 def bulk():
     return ExplosiveProduct(1, "Bulk A", ExplosiveProductKind.BULK, "#C87533",
                             density_kg_m3=1000)
+
+
+@pytest.mark.parametrize((charge_form,label),[(ChargeForm.BULK,"Bulk explosive"),(ChargeForm.PUMPABLE,"Pumpable explosive")])
+def test_selected_bulk_component_type_uses_frozen_charge_form(charge_form,label):
+    product=ExplosiveProduct(7,"Product",ExplosiveProductKind.BULK,"#C87533",density_kg_m3=1000,charge_form=charge_form)
+    component=ChargeComponent("c",ChargeComponentKind.BULK_EXPLOSIVE,1,2,product.snapshot())
+    widget=BoreholeChargeBuilder(3,100,[product],[component]); widget.select_component("c")
+    assert widget.type_label.text()==label
 
 
 def cartridge():

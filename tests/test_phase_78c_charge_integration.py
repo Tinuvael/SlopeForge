@@ -69,13 +69,27 @@ class MemoryPersistence:
 def test_project_preset_uses_current_catalogue_snapshot_and_rejects_short_hole():
     persistence=MemoryPersistence(); service=ChargePresets(persistence,site_id=7,can_edit=True)
     original=ChargeComponent("old",ChargeComponentKind.BULK_EXPLOSIVE,0,10,bulk(density=800).snapshot())
-    preset=service.create("Standard",[original])
+    preset=service.create("Standard",[original],[bulk(density=800)])
     current=bulk(density=950)
     applied=service.apply(preset,[current],12)
     assert applied[0].id!="old" and applied[0].product_snapshot.density_kg_m3==950
     with pytest.raises(ValueError,match="beyond"):
         service.apply(preset,[current],8)
     assert ChargePresets(persistence,site_id=8,can_edit=True).list_presets()==[]
+
+
+def test_preset_name_and_catalogue_are_validated_before_adapter_call():
+    class RejectPersistence(MemoryPersistence):
+        called=False
+        def create_preset(self,*args): self.called=True; return super().create_preset(*args)
+    persistence=RejectPersistence(); service=ChargePresets(persistence,site_id=7,can_edit=True)
+    with pytest.raises(ValueError,match="255"):
+        service.create("x"*256,[],[])
+    assert persistence.called is False
+    stale=ChargeComponent("old",ChargeComponentKind.BULK_EXPLOSIVE,0,1,bulk(99).snapshot())
+    with pytest.raises(ValueError,match="current enabled"):
+        service.create("Stale",[stale],[bulk(1)])
+    assert persistence.called is False
 
 
 def test_design_slope_roundtrip_history_and_old_payload():
@@ -88,7 +102,7 @@ def test_design_slope_roundtrip_history_and_old_payload():
     assert BlastEventTechnicalCard.from_dict(payload).revisions[0].design_slope_orientation.azimuth_deg is None
 
 
-def test_compact_builder_ui_and_no_legacy_design_controls():
+def test_compact_builder_ui_and_no_legacy_design_controls(monkeypatch):
     widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
     from ui.editors.technical_card_editor import TechnicalCardDialog
     from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
@@ -110,3 +124,39 @@ def test_compact_builder_ui_and_no_legacy_design_controls():
         assert group.findChild(widgets.QDoubleSpinBox,legacy) is None
     dialog.design_slope_azimuth.setValue(360); dialog._save("draft")
     assert draft.design_slope_orientation.azimuth_deg==0
+
+
+def test_preset_load_cancel_preserves_components_and_replace_applies(monkeypatch):
+    widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app=widgets.QApplication.instance() or widgets.QApplication([])
+    blast=event(); card,draft=new_technical_card(blast); group=draft.drilling_groups[0]
+    group.average_depth_m=3; group.diameter_mm=100
+    original=ChargeComponent("old",ChargeComponentKind.BULK_EXPLOSIVE,1,2,bulk().snapshot()); group.charge_components=[original]
+    service=ChargePresets(MemoryPersistence(),site_id=1,can_edit=True)
+    service.create("Stemming",[ChargeComponent("s",ChargeComponentKind.STEMMING,0,1)],[])
+    dialog=TechnicalCardDialog(blast,card,draft,lambda *_:None,explosive_products=[bulk()],charge_presets=service)
+    combo=dialog.findChild(widgets.QComboBox,"chargePresetCombo"); state={"builder":None}; refreshed=[]
+    monkeypatch.setattr(widgets.QMessageBox,"exec",lambda self:self.button(widgets.QMessageBox.StandardButton.Cancel).click())
+    dialog._load_preset(combo,group,state,lambda:refreshed.append(True)); assert group.charge_components==[original]
+    def accept(message):
+        next(button for button in message.buttons() if message.buttonRole(button)==widgets.QMessageBox.ButtonRole.AcceptRole).click()
+    monkeypatch.setattr(widgets.QMessageBox,"exec",accept)
+    dialog._load_preset(combo,group,state,lambda:refreshed.append(True))
+    assert group.charge_components[0].kind is ChargeComponentKind.STEMMING and refreshed
+
+
+def test_duplicate_preset_error_is_presented_without_escaping_qt_slot(monkeypatch):
+    widgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
+    from application.errors import CatalogueConflictError
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app=widgets.QApplication.instance() or widgets.QApplication([])
+    blast=event(); card,draft=new_technical_card(blast)
+    class DuplicateService:
+        def list_presets(self):return []
+        def create(self,*_):raise CatalogueConflictError("A charge preset with this name already exists")
+    dialog=TechnicalCardDialog(blast,card,draft,lambda *_:None,explosive_products=[],charge_presets=DuplicateService())
+    messages=[]; monkeypatch.setattr(widgets.QInputDialog,"getText",lambda *_:("Duplicate",True))
+    monkeypatch.setattr(widgets.QMessageBox,"warning",lambda *args:messages.append(args[-1]))
+    dialog._save_preset(None,draft.drilling_groups[0])
+    assert messages==["A charge preset with this name already exists"]

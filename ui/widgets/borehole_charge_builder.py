@@ -361,8 +361,17 @@ class BoreholeChargeBuilder(QWidget):
         self.product_combo.setEnabled(False)
         self.pitch_spin.setEnabled(False)
         if selected:
-            names = {ChargeComponentKind.STEMMING: tr("Stemming"), ChargeComponentKind.BULK_EXPLOSIVE: tr("Bulk explosive"), ChargeComponentKind.CARTRIDGE_EXPLOSIVE: tr("Cartridge explosive")}
-            self.type_label.setText(names[selected.kind]); self.start_spin.setValue(selected.start_depth_m)
+            if selected.kind is ChargeComponentKind.STEMMING:
+                type_name = tr("Stemming")
+            elif selected.product_snapshot and selected.product_snapshot.charge_form is ChargeForm.PUMPABLE:
+                type_name = tr("Pumpable explosive")
+            elif selected.product_snapshot and selected.product_snapshot.charge_form is ChargeForm.CARTRIDGED:
+                type_name = tr("Cartridged explosive")
+            elif selected.kind is ChargeComponentKind.CARTRIDGE_EXPLOSIVE:
+                type_name = tr("Cartridged explosive")
+            else:
+                type_name = tr("Bulk explosive")
+            self.type_label.setText(type_name); self.start_spin.setValue(selected.start_depth_m)
             self.end_spin.setValue(selected.end_depth_m); self.length_spin.setValue(selected.length_m)
         else: self.type_label.setText("—")
         explosive = selected is not None and selected.kind is not ChargeComponentKind.STEMMING
