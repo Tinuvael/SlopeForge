@@ -3062,5 +3062,15 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>No air interval has 0.1 m available.</source><translation>Нет воздушного интервала длиной 0,1 м.</translation></message>
         <message><source>Cartridge pitch</source><translation>Шаг патронов</translation></message>
         <message><source>Pitch is required</source><translation>Укажите шаг патронов</translation></message>
+        <message><source>Charge design</source><translation>Конструкция заряда</translation></message>
+        <message><source>Derived summary</source><translation>Расчётная сводка</translation></message>
+        <message><source>Design slope angle, °</source><translation>Угол проектного откоса, °</translation></message>
+        <message><source>Design slope azimuth, °</source><translation>Азимут проектного откоса, °</translation></message>
+        <message><source>Drilling design</source><translation>Параметры бурения</translation></message>
+        <message><source>Load</source><translation>Загрузить</translation></message>
+        <message><source>Preset</source><translation>Шаблон</translation></message>
+        <message><source>Preset name</source><translation>Название шаблона</translation></message>
+        <message><source>Save as...</source><translation>Сохранить как...</translation></message>
+        <message><source>Save charge preset</source><translation>Сохранить шаблон заряда</translation></message>
     </context>
 </TS>

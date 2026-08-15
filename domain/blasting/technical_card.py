@@ -63,6 +63,20 @@ class CommonParameters:
     block_type: str = ""; source_geometry_revision_id: str = ""; source_csv: str = ""; comments: str = ""
 
 @dataclass
+class DesignSlopeOrientation:
+    """Frozen design context shared by every drilling group in a revision."""
+    azimuth_deg: float | None = None
+    angle_deg: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.azimuth_deg is not None and (
+                not isfinite(self.azimuth_deg) or not 0 <= self.azimuth_deg < 360):
+            raise ValueError("Design slope azimuth must be at least 0 and less than 360 degrees")
+        if self.angle_deg is not None and (
+                not isfinite(self.angle_deg) or not 0 <= self.angle_deg <= 90):
+            raise ValueError("Design slope angle must be between 0 and 90 degrees")
+
+@dataclass
 class JointSetOrientation:
     dip_deg: float
     dip_direction_deg: float
@@ -293,6 +307,7 @@ class BlastEventTechnicalCardRevision:
     contour_parameters: ContourParameters | None = None; geomechanical_parameters: GeomechanicalParameters | None = None
     actual_execution: ActualExecution = field(default_factory=ActualExecution); notes: str = ""
     author: str | None = None; change_reason: str = ""
+    design_slope_orientation: DesignSlopeOrientation = field(default_factory=DesignSlopeOrientation)
 
     def validate_completion(self) -> list[str]:
         errors = []
@@ -466,5 +481,7 @@ def _card_from_dict(d):
             drilling_groups=groups,
             production_parameters=prod, contour_parameters=_construct(ContourParameters, x["contour_parameters"]) if x.get("contour_parameters") else None,
             geomechanical_parameters=_geomechanics_from_dict(x["geomechanical_parameters"]) if x.get("geomechanical_parameters") else None,
-            actual_execution=actual, notes=x.get("notes", ""), author=x.get("author"), change_reason=x.get("change_reason", "")))
+            actual_execution=actual, notes=x.get("notes", ""), author=x.get("author"), change_reason=x.get("change_reason", ""),
+            design_slope_orientation=_construct(
+                DesignSlopeOrientation, x.get("design_slope_orientation", {}))))
     return card

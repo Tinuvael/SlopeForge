@@ -6,11 +6,13 @@ from app.localization import tr
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox,
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QTabWidget,
-    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QInputDialog)
+    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QInputDialog, QSizePolicy)
 
 from domain.blasting.technical_card import (CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS,
-    PRODUCTION_GROUP_TYPES, ActualDrillingGroup, BlastDrillingGroup, GeomechanicalParameters,
-    JointSetOrientation)
+    PRODUCTION_GROUP_TYPES, ActualDrillingGroup, BlastDrillingGroup, DesignSlopeOrientation,
+    GeomechanicalParameters, JointSetOrientation)
+from domain.blasting.charge_design import (ChargeComponent, ExplosiveProductKind, ExplosiveProductSnapshot)
+from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
 from ui.presentation_labels import (
     CONTROLLED_BLASTING_LABELS, domain_message, technical_group_label, technical_text,
 )
@@ -36,6 +38,7 @@ class TechnicalCardDialog(QDialog):
         # fails with: "BlastEvent object is not callable".
         super().__init__(parent); self.blast_event, self.card, self.revision = event, card, revision
         self.save_callback, self.read_only, self.domain_name = save_callback, read_only, domain_name
+        self._charge_presets = {}
         self.setWindowTitle(f"{tr('Technical Card')} — {event.name}"); self.setMinimumSize(760, 560); self.resize(940, 720)
         root = QVBoxLayout(self); meta = QLabel(f"{tr('BlastEvent ID')}: {event.id}   |   {tr('Geometry revision')}: {revision.geometry_revision_id}")
         meta.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse); root.addWidget(meta)
@@ -138,7 +141,16 @@ class TechnicalCardDialog(QDialog):
             self.planned_date.setDate(QDate.currentDate()); self.planned_date.setEnabled(False)
         self.has_planned_date.toggled.connect(self.planned_date.setEnabled)
         date_row = QHBoxLayout(); date_row.addWidget(self.has_planned_date); date_row.addWidget(self.planned_date)
-        planned_form.addRow(tr("Planned blast date"), date_row); self.drilling_layout.addWidget(planned)
+        planned_form.addRow(tr("Planned blast date"), date_row)
+        slope = self.revision.design_slope_orientation
+        self.design_slope_azimuth = _number(slope.azimuth_deg); self.design_slope_azimuth.setRange(-1, 360)
+        self.design_slope_azimuth.setSpecialValueText("—"); self.design_slope_azimuth.setObjectName("designSlopeAzimuth")
+        self.design_slope_angle = _number(slope.angle_deg); self.design_slope_angle.setRange(-1, 90)
+        self.design_slope_angle.setSpecialValueText("—"); self.design_slope_angle.setObjectName("designSlopeAngle")
+        for spin in (self.design_slope_azimuth, self.design_slope_angle): spin.setMaximumWidth(160)
+        planned_form.addRow(tr("Design slope azimuth, °"), self.design_slope_azimuth)
+        planned_form.addRow(tr("Design slope angle, °"), self.design_slope_angle)
+        self.drilling_layout.addWidget(planned)
         self.group_cards = QWidget(); self.group_cards_layout = QVBoxLayout(self.group_cards)
         self.drilling_layout.addWidget(self.group_cards); self._render_groups()
         self.add_group_combo = QComboBox(); catalogue = PRODUCTION_GROUP_TYPES if self.blast_event.event_type == "production" else CONTOUR_GROUP_TYPES
@@ -155,29 +167,103 @@ class TechnicalCardDialog(QDialog):
             box = QGroupBox(display_name); box.setCheckable(True); box.setChecked(True)
             outer = QVBoxLayout(box); identity = QFormLayout(); outer.addLayout(identity)
             name = QLineEdit(display_name); identity.addRow(tr("Title"), name); name.textChanged.connect(lambda value, g=group: setattr(g, "name", value))
-            pattern = QGroupBox(tr("Drilling pattern")); pattern.setCheckable(True); pattern.setChecked(True); form = QFormLayout(pattern)
+            columns = QGridLayout(); columns.setColumnStretch(0, 0); columns.setColumnStretch(1, 1)
+            box.setProperty("engineeringComposition", "left-right")
+            pattern = QGroupBox(tr("Drilling design")); pattern.setObjectName("drillingDesignArea"); form = QFormLayout(pattern)
             fields = (("Holes, count", "hole_count", "", True), ("Diameter, mm", "diameter_mm", "", False),
                 ("Average depth, m", "average_depth_m", "", False), ("Subdrill, m", "subdrill_m", "", False),
                 (BURDEN_LABEL, "burden_m", "", False), (SPACING_LABEL, "spacing_m", "", False),
                 ("Rows", "row_count", "", True), ("Inclination, °", "inclination_deg", "", False),
                 ("Azimuth, °", "azimuth_deg", "", False), ("Line offset, m", "line_offset_m", "", False),
                 (TOE_LABEL, "toe_standoff_m", "", False), ("Design drilling length override, m", "planned_drilling_length_m", "", False))
-            for label, attr, suffix, integer in fields: self._add_number(form, label, group, attr, suffix, integer)
-            outer.addWidget(pattern)
-            charging = QGroupBox(tr("Charging")); charging.setCheckable(True); charging.setChecked(False); charge_form = QFormLayout(charging)
+            field_widgets = {}
+            for label, attr, suffix, integer in fields: field_widgets[attr] = self._add_number(form, label, group, attr, suffix, integer)
+            columns.addWidget(pattern, 0, 0, Qt.AlignmentFlag.AlignTop)
+            charging = QGroupBox(tr("Charge design")); charging.setObjectName("chargeDesignArea"); charge_layout = QVBoxLayout(charging)
+            preset_bar = QHBoxLayout(); preset_bar.addWidget(QLabel(tr("Preset")))
+            preset_combo = QComboBox(); preset_combo.setObjectName("chargePresetCombo"); preset_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            load_preset = QPushButton(tr("Load")); load_preset.setObjectName("loadChargePresetButton")
+            save_preset = QPushButton(tr("Save as...")); save_preset.setObjectName("saveChargePresetButton")
+            update_preset = QPushButton(tr("Update")); update_preset.setObjectName("updateChargePresetButton")
+            delete_preset = QPushButton(tr("Delete")); delete_preset.setObjectName("deleteChargePresetButton")
+            for widget in (preset_combo, load_preset, save_preset, update_preset, delete_preset): preset_bar.addWidget(widget)
+            charge_layout.addLayout(preset_bar)
+            components = self._charge_components(group.charge_decks)
+            builder = BoreholeChargeBuilder(group.average_depth_m or 1.0, group.diameter_mm, [], components, self.read_only)
+            builder.setObjectName("boreholeChargeBuilder"); builder.setMinimumHeight(360); builder.setMaximumHeight(520)
+            builder.components_changed.connect(lambda values, g=group: setattr(g, "charge_decks", self._charge_dicts(values)))
+            field_widgets["average_depth_m"].valueChanged.connect(
+                lambda value, b=builder, w=field_widgets["average_depth_m"]: value != w.minimum() and b.set_hole_depth(value))
+            field_widgets["diameter_mm"].valueChanged.connect(
+                lambda value, b=builder, w=field_widgets["diameter_mm"]: b.set_hole_diameter(None if value == w.minimum() else value))
+            load_preset.clicked.connect(lambda _=False, c=preset_combo, b=builder: self._load_charge_preset(c, b))
+            save_preset.clicked.connect(lambda _=False, c=preset_combo, b=builder: self._save_charge_preset(c, b))
+            update_preset.clicked.connect(lambda _=False, c=preset_combo, b=builder: self._update_charge_preset(c, b))
+            delete_preset.clicked.connect(lambda _=False, c=preset_combo: self._delete_charge_preset(c))
+            charge_layout.addWidget(builder, 1)
+            charge_properties = QWidget(); charge_form = QFormLayout(charge_properties)
             for label, attr, suffix, integer in (("Charge mass per hole, kg","charge_mass_per_hole_kg","",False),
                 ("Charge concentration, kg/m","charge_concentration_kg_per_m","",False),("Total charge mass, kg","total_charge_mass_kg","",False),
                 ("Stemming length, m","stemming_length_m","",False),("Delay, ms","delay_ms","",False),("Air decks","air_deck_count","",True)):
                 self._add_number(charge_form,label,group,attr,suffix,integer)
             for label, attr in (("Explosive type","explosive_type"),("Charge construction","charge_construction_text"),("Initiation sequence","initiation_sequence"),("Deck notes","deck_notes")):
                 edit=QLineEdit(getattr(group,attr)); edit.textChanged.connect(lambda v,g=group,a=attr:setattr(g,a,v)); charge_form.addRow(tr(label),edit)
-            outer.addWidget(charging)
+            charge_layout.addWidget(charge_properties)
+            columns.addWidget(charging, 0, 1); outer.addLayout(columns)
+            summary = QLabel(self._group_summary(group)); summary.setObjectName("drillingChargeSummary"); summary.setWordWrap(True); outer.addWidget(summary)
             actions = QHBoxLayout(); duplicate = QPushButton(tr("Duplicate")); remove = QPushButton(tr("Delete"))
             duplicate.clicked.connect(lambda _=False, g=group: self._duplicate(g)); remove.clicked.connect(lambda _=False, g=group: self._remove(g))
-            actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions); self.group_cards_layout.addWidget(box)
+            actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions); self.group_cards_layout.addWidget(box)
+
+    @staticmethod
+    def _charge_components(items):
+        components = []
+        for item in items:
+            raw = dict(item); snapshot = raw.get("product_snapshot")
+            if snapshot:
+                snapshot = dict(snapshot); snapshot["kind"] = ExplosiveProductKind(snapshot["kind"])
+                raw["product_snapshot"] = ExplosiveProductSnapshot(**snapshot)
+            components.append(ChargeComponent(**raw))
+        return components
+
+    @staticmethod
+    def _charge_dicts(components):
+        from dataclasses import asdict
+        return [asdict(component) for component in components]
+
+    @staticmethod
+    def _group_summary(group):
+        length = group.drilling_length()
+        return tr("Derived summary") + f":  {length:g} m" if length is not None else tr("Derived summary") + ": —"
+
+    def _refresh_preset_combos(self, selected=None):
+        for combo in self.group_cards.findChildren(QComboBox, "chargePresetCombo"):
+            current = selected or combo.currentText(); combo.clear(); combo.addItems(sorted(self._charge_presets))
+            if current: combo.setCurrentText(current)
+
+    def _save_charge_preset(self, combo, builder):
+        name, accepted = QInputDialog.getText(self, tr("Save charge preset"), tr("Preset name"))
+        name = name.strip()
+        if accepted and name:
+            self._charge_presets[name] = self._charge_dicts(builder.components()); self._refresh_preset_combos(name)
+
+    def _load_charge_preset(self, combo, builder):
+        if combo.currentText() in self._charge_presets:
+            builder.set_components(self._charge_components(self._charge_presets[combo.currentText()]))
+            builder.components_changed.emit(builder.components())
+
+    def _update_charge_preset(self, combo, builder):
+        if combo.currentText() in self._charge_presets:
+            self._charge_presets[combo.currentText()] = self._charge_dicts(builder.components())
+
+    def _delete_charge_preset(self, combo):
+        if combo.currentText() in self._charge_presets:
+            del self._charge_presets[combo.currentText()]; self._refresh_preset_combos()
 
     def _add_number(self, form, label, model, attr, suffix="", integer=False):
         widget = _number(getattr(model, attr), suffix); widget.setObjectName(attr)
+        if isinstance(model, BlastDrillingGroup):
+            widget.setMinimumWidth(120); widget.setMaximumWidth(160)
         if attr == "burden_m": widget.setToolTip(tr(BURDEN_TOOLTIP))
         if attr == "spacing_m": widget.setToolTip(tr(SPACING_TOOLTIP))
         widget.valueChanged.connect(lambda value, m=model, a=attr, i=integer, w=widget:
@@ -333,6 +419,11 @@ class TechnicalCardDialog(QDialog):
             return False
         self.revision.common_parameters.block_name = self.block_name.text(); self.revision.common_parameters.comments = self.comments.text()
         try:
+            azimuth = self._optional_number(self.design_slope_azimuth)
+            if azimuth == 360:
+                azimuth = 0.0; self.design_slope_azimuth.setValue(0.0)
+            self.revision.design_slope_orientation = DesignSlopeOrientation(
+                azimuth_deg=azimuth, angle_deg=self._optional_number(self.design_slope_angle))
             if self.revision.production_parameters:
                 p=self.revision.production_parameters; p.design_bench_height_m=None if self.bench_height.value()==self.bench_height.minimum() else self.bench_height.value(); p.total_explosive_mass_kg=None if self.explosive.value()==self.explosive.minimum() else self.explosive.value()
                 self.revision.geomechanical_parameters = self._geomechanics_from_form()

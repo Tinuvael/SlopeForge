@@ -7,7 +7,7 @@ import pytest
 from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent, BlastEventGeometryRevision
 from application.state.assessment_domain_state import AssessmentDomainState
-from domain.blasting.technical_card import (BlastDrillingGroup, ContourParameters,
+from domain.blasting.technical_card import (BlastDrillingGroup, BlastEventTechnicalCard, ContourParameters,
     GeomechanicalParameters, JointSetOrientation, TechnicalCardService,
     new_technical_card, polygon_area_m2)
 
@@ -170,6 +170,25 @@ def test_revision_remains_on_historical_geometry_after_reimport():
     assert old.geometry_revision_id == "G-1"
 
 
+def test_design_slope_orientation_roundtrip_and_revision_history():
+    blast = event(); card, draft = new_technical_card(blast)
+    draft.design_slope_orientation.azimuth_deg = 130
+    draft.design_slope_orientation.angle_deg = 65
+    first = card.save_revision(draft)
+    restored = BlastEventTechnicalCard.from_dict(json.loads(json.dumps(card.to_dict())))
+    orientation = restored.active_revision().design_slope_orientation
+    assert (orientation.azimuth_deg, orientation.angle_deg) == (130, 65)
+
+    edit = deepcopy(first); edit.design_slope_orientation.azimuth_deg = 140
+    card.save_revision(edit)
+    assert card.revisions[0].design_slope_orientation.azimuth_deg == 130
+    assert card.revisions[1].design_slope_orientation.azimuth_deg == 140
+
+    old_payload = card.to_dict()
+    old_payload["revisions"][0].pop("design_slope_orientation")
+    assert BlastEventTechnicalCard.from_dict(old_payload).revisions[0].design_slope_orientation.azimuth_deg is None
+
+
 def test_technical_card_dialog_does_not_shadow_qt_event_method():
     """Regression: assigning BlastEvent to QDialog.event broke every show()."""
     QApplication = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError).QApplication
@@ -208,6 +227,28 @@ def test_real_embedded_production_editor_controls_and_ucs_persistence():
     restored = AssessmentDomainState.from_dict(json.loads(json.dumps(state.to_dict())))
     assert restored.technical_cards[0].active_revision().geomechanical_parameters.ucs_mpa == 123.0
     embedded.deleteLater(); app.processEvents()
+
+
+def test_drilling_group_uses_compact_two_column_charge_composition():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast)
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None)
+    card_widget = dialog.group_cards_layout.itemAt(0).widget()
+    assert card_widget.property("engineeringComposition") == "left-right"
+    assert card_widget.findChild(widgets.QGroupBox, "drillingDesignArea") is not None
+    charge_area = card_widget.findChild(widgets.QGroupBox, "chargeDesignArea")
+    assert charge_area.findChild(BoreholeChargeBuilder, "boreholeChargeBuilder") is not None
+    assert card_widget.findChild(widgets.QDoubleSpinBox, "average_depth_m").maximumWidth() <= 160
+    assert charge_area.findChild(widgets.QPushButton, "loadChargePresetButton") is not None
+    dialog._charge_presets["Typical"] = []; dialog._refresh_preset_combos("Typical")
+    combo = charge_area.findChild(widgets.QComboBox, "chargePresetCombo")
+    assert combo.currentText() == "Typical"
+    labels = {label.text() for label in dialog.findChildren(widgets.QLabel)}
+    assert {"Design slope azimuth, °", "Design slope angle, °", "Inclination, °", "Azimuth, °"} <= labels
+    dialog.close(); app.processEvents()
 
 
 def test_real_geomechanics_ui_is_compact_and_domain_is_read_only():
