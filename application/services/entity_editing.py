@@ -232,7 +232,8 @@ class AssessmentEditingSession:
              if item.assessment_area_id == area.id), None,
         )
         if existing and existing.active_revision():
-            return existing, deepcopy(existing.active_revision())
+            draft = deepcopy(existing.active_revision())
+            return existing, self.evaluations.refresh_auto_draft(draft, area)
         if existing:
             return self.evaluations.new_draft(existing, area)
         return self.evaluations.new_evaluation(area)

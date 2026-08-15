@@ -170,6 +170,8 @@ class AssessmentGeometryEditorWidget(QWidget):
             self._draw_snap_marker(self._candidate.anchor.frozen_point_xyz)
         if self._last_point and self._cursor and self.workflow_state=="DRAWING":
             target=self._candidate.anchor.frozen_point_xyz if self._candidate else self._cursor
+            if hypot(target.x-self._last_point.x,target.y-self._last_point.y) <= EPSILON:
+                return
             if self._last_anchor and self._candidate and self._last_anchor.source_line_id==self._candidate.anchor.source_line_id:
                 line=next(l for l in dataset.lines if l.source_id==self._candidate.anchor.source_line_id); preview=extract_project_line_span(line,self._last_anchor,self._candidate.anchor).frozen_trace_xyz; color=QColor(30,175,90)
             else: preview=(self._last_point,target); color=QColor(225,125,25)

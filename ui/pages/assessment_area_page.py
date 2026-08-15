@@ -53,8 +53,6 @@ class AssessmentAreaPage(QWidget):
         self.assessment_inputs=QWidget(); self.assessment_inputs.setMinimumWidth(500); inputs=QVBoxLayout(self.assessment_inputs); inputs.setContentsMargins(4,2,4,2); inputs.setSpacing(3)
         self.geometry_section_title=QLabel(f"<b>{tr('Geometry')}</b>"); inputs.addWidget(self.geometry_section_title)
         for editor in self.evaluation_editor.geometry_editors.values():inputs.addWidget(editor)
-        inputs.addWidget(self.evaluation_editor.scoring_guide_button,0,Qt.AlignmentFlag.AlignLeft); inputs.addWidget(self.evaluation_editor.scoring_guide)
-        measures=QFormLayout(); measures.addRow(tr("Measurement method"),self.evaluation_editor.method); measures.addRow(tr("Measurement notes"),self.evaluation_editor.measure_notes); inputs.addLayout(measures)
         self.face_condition_section_title=QLabel(f"<b>{tr('Face condition')}</b>"); inputs.addWidget(self.face_condition_section_title)
         for editor in self.evaluation_editor.editors.values():inputs.addWidget(editor)
         inputs.addStretch(); self.assessment_splitter.addWidget(self.assessment_inputs)

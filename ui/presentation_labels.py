@@ -42,19 +42,20 @@ MATRIX_LABELS = {
 }
 
 CRITERION_LABELS = {
-    "bench_angle": "Bench face angle shortfall from design, °",
-    "berm_width": "Berm width deficit from design, m",
-    "toe_position": "Actual toe deviation from design, m",
+    "bench_angle": "Bench face angle deviation from design, °",
+    "berm_width": "Berm width deviation from design, m",
+    "toe_position": "Toe deviation from design, m",
     "crest_loss": "Crest loss / damage, m",
     "open_cracks": "Open blast-induced cracks",
-    "damage": "Blast damage features in previously intact rock, count/m²",
+    "damage": "Blast damage, features/m²",
     "visible_drillhole_traces": "Visible contour drillhole traces, %",
     "loose_blocks": "Loose blocks and unstable fragments on the face",
     "face_profile": "Actual face profile",
 }
 
 CRITERION_HELP = {
-    "bench_angle": "max(design angle − actual angle, 0)",
+    "bench_angle": "Enter 0 when design is met or exceeded; otherwise enter the deviation magnitude used by the scoring matrix.",
+    "berm_width": "Enter 0 when design is met or exceeded; otherwise enter the deviation magnitude used by the scoring matrix.",
     "toe_position": "Enter the absolute distance between actual and design toe positions.",
     "crest_loss": "Enter the width of actual crest loss relative to the design position.",
     "damage": "Estimate visible crushed zones, opened discontinuities, or other damage features per 1 m². Values from 1 to 5 require an expert score and reason.",

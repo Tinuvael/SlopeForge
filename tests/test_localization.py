@@ -49,7 +49,7 @@ def test_russian_catalog_presentation_and_validation(qapp, tmp_path):
     assert tr("Unknown source text") == "Unknown source text"
     assert technical_group_label("main_pattern") == "Основная сеть"
     assert matrix_label("controlled_blasting_v1") == "С контурным бурением"
-    assert criterion_label("bench_angle") == "Недобор угла относительно проекта, °"
+    assert criterion_label("bench_angle") == "Отклонение угла откоса от проекта, °"
     assert option_label("none") == "Нет"
     assert result_label("Хорошие результаты") == "Хорошие результаты"
     assert technical_text("Скважины") == "Скважины"

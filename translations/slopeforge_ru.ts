@@ -151,16 +151,16 @@
             <translation>Назад / Закрыть</translation>
         </message>
         <message>
-            <source>Bench face angle shortfall from design, °</source>
-            <translation>Недобор угла относительно проекта, °</translation>
+            <source>Bench face angle deviation from design, °</source>
+            <translation>Отклонение угла откоса от проекта, °</translation>
         </message>
         <message>
-            <source>Berm width deficit from design, m</source>
-            <translation>Уменьшение ширины относительно проекта, м</translation>
+            <source>Berm width deviation from design, m</source>
+            <translation>Отклонение ширины бермы от проекта, м</translation>
         </message>
         <message>
-            <source>Blast damage features in previously intact rock, count/m²</source>
-            <translation>Признаки взрывного повреждения ранее ненарушенной породы, шт/м²</translation>
+            <source>Blast damage, features/m²</source>
+            <translation>Взрывное повреждение, шт/м²</translation>
         </message>
         <message>
             <source>Blast design</source>
@@ -3107,5 +3107,8 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Score</source><translation>Балл</translation></message>
         <message><source>preview</source><translation>предпросмотр</translation></message>
         <message><source>Quadrant</source><translation>Квадрант</translation></message>
+        <message><source>Manual score</source><translation>Ручной балл</translation></message>
+        <message><source>Reason for manual score</source><translation>Причина ручного балла</translation></message>
+        <message><source>Enter 0 when design is met or exceeded; otherwise enter the deviation magnitude used by the scoring matrix.</source><translation>Введите 0, если проект достигнут или превышен; иначе укажите величину отклонения для матрицы оценки.</translation></message>
     </context>
 </TS>

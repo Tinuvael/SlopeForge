@@ -78,12 +78,12 @@ def test_area_page_is_focused_without_legacy_mode_switch():
 
 def test_assessment_geometry_uses_direct_compact_inputs():
     editor=source("ui/editors/assessment_evaluation_editor.py")
-    for label in ("Bench face angle shortfall from design, °","Berm width deficit from design, m","Toe deviation from design, m"):
+    for label in ("Bench face angle deviation from design, °","Berm width deviation from design, m","Toe deviation from design, m"):
         assert label in editor
     geometry=editor[editor.index("    def _geometry(self):"):editor.index("    def _geometry_rules(self):")]
     for legacy in ("Design bench face angle", "Actual bench face angle", "Design berm width", "Actual berm width"):
         assert legacy not in geometry
-    assert "Scoring guide" in geometry and "self.scoring_guide.hide()" in geometry
+    assert "Scoring guide" not in geometry and "set_help" in geometry
 
 def test_area_links_and_focused_creation_are_reused():
     area=source("ui/pages/assessment_area_page.py")

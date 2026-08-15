@@ -73,6 +73,13 @@ def test_trace_preview_commit_jump_and_new_active_source(state, app):
     assert len([item for item in editor.scene.items() if item.data(PROJECT_LINE_ROLE)]) == 2
     editor._drawing_click(9, 10.4)
     assert isinstance(editor._segments[-1], ProjectLineSpan)
+
+
+def test_same_anchor_hover_preview_is_ignored(state, app):
+    editor=AssessmentGeometryEditorWidget(state,committer(state)); editor.start_new_area()
+    editor._drawing_click(1,10.4)
+    editor._drawing_move(1,10.4)
+    assert editor._segments==[] and editor._last_anchor is not None
     assert editor._segments[-1].frozen_trace_xyz[1].y == 12
 
     editor._drawing_move(9, .4)  # hover B: active source remains A
