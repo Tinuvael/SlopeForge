@@ -3046,7 +3046,7 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Add component</source><translation>Добавить компонент</translation></message>
         <message><source>Delete component</source><translation>Удалить компонент</translation></message>
         <message><source>Air</source><translation>Воздух</translation></message>
-        <message><source>Bulk explosive</source><translation>Наливное ВВ</translation></message>
+        <message><source>Bulk explosive</source><translation>Насыпное ВВ</translation></message>
         <message><source>Cartridge explosive</source><translation>Патронированное ВВ</translation></message>
         <message><source>Start depth, m</source><translation>Начальная глубина, м</translation></message>
         <message><source>End depth, m</source><translation>Конечная глубина, м</translation></message>
@@ -3062,5 +3062,36 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>No air interval has 0.1 m available.</source><translation>Нет воздушного интервала длиной 0,1 м.</translation></message>
         <message><source>Cartridge pitch</source><translation>Шаг патронов</translation></message>
         <message><source>Pitch is required</source><translation>Укажите шаг патронов</translation></message>
+        <message><source>Cartridged explosive</source><translation>Патронированное ВВ</translation></message>
+        <message><source>Change rejected</source><translation>Изменение отклонено</translation></message>
+        <message><source>Charge design</source><translation>Конструкция заряда</translation></message>
+        <message><source>Charge form</source><translation>Форма заряда</translation></message>
+        <message><source>Charge preset</source><translation>Шаблон заряда</translation></message>
+        <message><source>Design slope angle, °</source><translation>Угол проектного откоса, °</translation></message>
+        <message><source>Design slope azimuth, °</source><translation>Азимут проектного откоса, °</translation></message>
+        <message><source>Drilling design</source><translation>Параметры бурения</translation></message>
+        <message><source>Enter average hole depth to configure the charge construction.</source><translation>Введите среднюю глубину скважины для настройки конструкции заряда.</translation></message>
+        <message><source>Explosive mass / hole</source><translation>Масса ВВ на скважину</translation></message>
+        <message><source>Load</source><translation>Загрузить</translation></message>
+        <message><source>Preset</source><translation>Шаблон</translation></message>
+        <message><source>Preset name</source><translation>Название шаблона</translation></message>
+        <message><source>Pumpable</source><translation>Наливное / перекачиваемое</translation></message>
+        <message><source>Pumpable explosive</source><translation>Наливное / перекачиваемое ВВ</translation></message>
+        <message><source>Save as...</source><translation>Сохранить как...</translation></message>
+        <message><source>Save charge preset</source><translation>Сохранить шаблон заряда</translation></message>
+        <message><source>Could not save the charge preset.</source><translation>Не удалось сохранить шаблон заряда.</translation></message>
+        <message><source>Delete Project preset "{name}" permanently?</source><translation>Навсегда удалить шаблон проекта «{name}»?</translation></message>
+        <message><source>Overwrite Project preset "{name}"?</source><translation>Перезаписать шаблон проекта «{name}»?</translation></message>
+        <message><source>Replace</source><translation>Заменить</translation></message>
+        <message><source>Replace the current charge construction with preset "{name}"?</source><translation>Заменить текущую конструкцию заряда шаблоном «{name}»?</translation></message>
+        <message><source>Cartridge length, mm (optional)</source><translation>Длина патрона, мм (необязательно)</translation></message>
+        <message><source>Cartridged</source><translation>Патронированное</translation></message>
+        <message><source>Density, g/cm³</source><translation>Плотность, г/см³</translation></message>
+        <message><source>Explosive class</source><translation>Класс ВВ</translation></message>
+        <message><source>ANFO / Igdanite</source><translation>АНФО / Игданит</translation></message>
+        <message><source>Emulsion explosive</source><translation>Эмульсионное ВВ</translation></message>
+        <message><source>Heavy ANFO</source><translation>Тяжёлый АНФО</translation></message>
+        <message><source>Water gel / Slurry</source><translation>Водогелевое / Slurry</translation></message>
+        <message><source>Dynamite / gelatinous</source><translation>Динамит / желатинит</translation></message>
     </context>
 </TS>

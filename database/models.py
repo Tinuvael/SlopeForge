@@ -45,6 +45,14 @@ class ExplosiveProduct(TimestampMixin, Base):
             "AND cartridge_mass_kg > 0)", name="ck_explosive_products_kind_fields"),
         CheckConstraint("default_pitch_m IS NULL OR default_pitch_m > 0",
                         name="ck_explosive_products_pitch"),
+        CheckConstraint("charge_form IN ('bulk', 'pumpable', 'cartridged')",
+                        name="ck_explosive_products_charge_form"),
+        CheckConstraint("explosive_class IN ('anfo', 'emulsion', 'heavy_anfo', 'slurry', 'dynamite', 'other')",
+                        name="ck_explosive_products_class"),
+        CheckConstraint("cartridge_length_mm IS NULL OR cartridge_length_mm > 0",
+                        name="ck_explosive_products_cartridge_length"),
+        CheckConstraint("charge_form = 'cartridged' OR cartridge_length_mm IS NULL",
+                        name="ck_explosive_products_form_cartridge_length"),
         UniqueConstraint("name", name="uq_explosive_products_name"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -57,6 +65,22 @@ class ExplosiveProduct(TimestampMixin, Base):
     default_pitch_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True,
                                              server_default="true", index=True)
+    charge_form: Mapped[str] = mapped_column(String(20), nullable=False, default="bulk", server_default="bulk")
+    explosive_class: Mapped[str] = mapped_column(String(20), nullable=False, default="other", server_default="other")
+    cartridge_length_mm: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
+
+
+class ChargeDesignPreset(TimestampMixin, Base):
+    __tablename__ = "charge_design_presets"
+    __table_args__ = (
+        CheckConstraint("length(btrim(name)) > 0", name="ck_charge_design_presets_name"),
+        CheckConstraint("jsonb_typeof(components_json) = 'array'", name="ck_charge_design_presets_components_array"),
+        UniqueConstraint("site_id", "name", name="uq_charge_design_presets_site_name"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    components_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
 
 
 

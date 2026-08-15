@@ -27,8 +27,8 @@ def test_lns_and_spacing_keep_existing_domain_fields_and_design_override():
     assert not hasattr(group, "lns_m") and group.drilling_length() == 30
     group.legacy_actual_drilling_length_m = 99
     assert group.drilling_length() == 30
-    group.planned_drilling_length_m = 31
-    assert group.drilling_length() == 31
+    group.planned_drilling_length_m = 31  # legacy payload field no longer overrides canonical design
+    assert group.drilling_length() == 30
 
 
 def test_copy_all_is_independent_and_links_stable_ids():

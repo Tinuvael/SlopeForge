@@ -8,8 +8,13 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from domain.blasting.charge_design import ExplosiveProduct, ExplosiveProductKind
+from domain.blasting.charge_design import ChargeForm, ExplosiveClass, ExplosiveProduct, ExplosiveProductKind
 from app.localization import tr
+
+CHARGE_FORM_LABELS={ChargeForm.BULK:"Bulk",ChargeForm.PUMPABLE:"Pumpable",ChargeForm.CARTRIDGED:"Cartridged"}
+EXPLOSIVE_CLASS_LABELS={ExplosiveClass.ANFO:"ANFO / Igdanite",ExplosiveClass.EMULSION:"Emulsion explosive",
+    ExplosiveClass.HEAVY_ANFO:"Heavy ANFO",ExplosiveClass.SLURRY:"Water gel / Slurry",
+    ExplosiveClass.DYNAMITE:"Dynamite / gelatinous",ExplosiveClass.OTHER:"Other"}
 
 
 class ExplosiveProductDialog(QDialog):
@@ -19,30 +24,38 @@ class ExplosiveProductDialog(QDialog):
         self.setWindowTitle(tr("Edit explosive product") if product else tr("Add explosive product"))
         form = QFormLayout(self)
         self.name_edit = QLineEdit(product.name if product else "")
-        self.kind_combo = QComboBox()
-        self.kind_combo.addItem(tr("Bulk"), ExplosiveProductKind.BULK)
-        self.kind_combo.addItem(tr("Cartridge"), ExplosiveProductKind.CARTRIDGE)
+        self.form_combo = QComboBox()
+        self.form_combo.addItem(tr("Bulk"), ChargeForm.BULK)
+        self.form_combo.addItem(tr("Pumpable"), ChargeForm.PUMPABLE)
+        self.form_combo.addItem(tr("Cartridged"), ChargeForm.CARTRIDGED)
         if product:
-            self.kind_combo.setCurrentIndex(self.kind_combo.findData(product.kind))
+            self.form_combo.setCurrentIndex(self._find_enum_index(
+                self.form_combo, ChargeForm, product.charge_form))
+        self.class_combo=QComboBox()
+        for value,label in EXPLOSIVE_CLASS_LABELS.items(): self.class_combo.addItem(tr(label),value)
+        if product:self.class_combo.setCurrentIndex(self._find_enum_index(self.class_combo,ExplosiveClass,product.explosive_class))
         color_row = QWidget(); color_layout = QHBoxLayout(color_row); color_layout.setContentsMargins(0, 0, 0, 0)
         self.color_edit = QLineEdit(product.display_color if product else "#000000")
         choose = QPushButton(tr("Choose color"))
         choose.clicked.connect(self._choose_color)
         color_layout.addWidget(self.color_edit); color_layout.addWidget(choose)
-        self.density = self._number(product.density_kg_m3 if product else None)
+        self.density = self._number(product.density_kg_m3/1000 if product and product.density_kg_m3 is not None else None)
         self.diameter = self._number(product.cartridge_diameter_mm if product else None)
         self.mass = self._number(product.cartridge_mass_kg if product else None, decimals=4)
+        self.length = self._number(product.cartridge_length_mm if product else None)
         self.pitch = self._number(product.default_pitch_m if product else None, decimals=4)
-        form.addRow(tr("Name"), self.name_edit); form.addRow(tr("Type"), self.kind_combo)
+        form.addRow(tr("Name"), self.name_edit); form.addRow(tr("Charge form"), self.form_combo)
+        form.addRow(tr("Explosive class"),self.class_combo)
         form.addRow(tr("Display color"), color_row)
-        self.density_label = QLabel(tr("Density, kg/m³")); form.addRow(self.density_label, self.density)
+        self.density_label = QLabel(tr("Density, g/cm³")); form.addRow(self.density_label, self.density)
         self.diameter_label = QLabel(tr("Cartridge diameter, mm")); form.addRow(self.diameter_label, self.diameter)
         self.mass_label = QLabel(tr("Cartridge mass, kg")); form.addRow(self.mass_label, self.mass)
+        self.length_label=QLabel(tr("Cartridge length, mm (optional)")); form.addRow(self.length_label,self.length)
         self.pitch_label = QLabel(tr("Default pitch, m (optional)")); form.addRow(self.pitch_label, self.pitch)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save)
         buttons.rejected.connect(self.reject); buttons.accepted.connect(self._validate_and_accept)
         form.addRow(buttons)
-        self.kind_combo.currentIndexChanged.connect(self._update_fields)
+        self.form_combo.currentIndexChanged.connect(self._update_fields)
         self._update_fields()
 
     @staticmethod
@@ -59,25 +72,41 @@ class ExplosiveProductDialog(QDialog):
         """Never allow the UI-only unset sentinel to cross into the domain."""
         return None if field.value() == field.minimum() else field.value()
 
+    @staticmethod
+    def _find_enum_index(combo: QComboBox, enum_type, value) -> int:
+        expected = enum_type(value)
+        return next((index for index in range(combo.count())
+                     if enum_type(combo.itemData(index)) == expected), -1)
+
+    def _selected_charge_form(self) -> ChargeForm:
+        """Normalize QVariant/string item data at the Qt boundary."""
+        return ChargeForm(self.form_combo.currentData())
+
+    def _selected_explosive_class(self)->ExplosiveClass:
+        return ExplosiveClass(self.class_combo.currentData())
+
     def _update_fields(self):
-        bulk = self.kind_combo.currentData() is ExplosiveProductKind.BULK
+        bulk = self._selected_charge_form() != ChargeForm.CARTRIDGED
         for widget in (self.density_label, self.density): widget.setVisible(bulk)
         for widget in (self.diameter_label, self.diameter, self.mass_label, self.mass,
-                       self.pitch_label, self.pitch): widget.setVisible(not bulk)
+                       self.length_label,self.length,self.pitch_label, self.pitch): widget.setVisible(not bulk)
 
     def _choose_color(self):
         color = QColorDialog.getColor(QColor(self.color_edit.text()), self)
         if color.isValid(): self.color_edit.setText(color.name().upper())
 
     def value(self) -> ExplosiveProduct:
-        kind = self.kind_combo.currentData()
+        charge_form=self._selected_charge_form()
+        kind=(ExplosiveProductKind.CARTRIDGE if charge_form==ChargeForm.CARTRIDGED else ExplosiveProductKind.BULK)
         return ExplosiveProduct(
             id=self.product.id if self.product else 0, name=self.name_edit.text(), kind=kind,
             display_color=self.color_edit.text(), enabled=self.product.enabled if self.product else True,
-            density_kg_m3=self._number_value(self.density) if kind is ExplosiveProductKind.BULK else None,
-            cartridge_diameter_mm=self._number_value(self.diameter) if kind is ExplosiveProductKind.CARTRIDGE else None,
-            cartridge_mass_kg=self._number_value(self.mass) if kind is ExplosiveProductKind.CARTRIDGE else None,
-            default_pitch_m=self._number_value(self.pitch) if kind is ExplosiveProductKind.CARTRIDGE else None,
+            density_kg_m3=(self._number_value(self.density)*1000 if kind == ExplosiveProductKind.BULK and self._number_value(self.density) is not None else None),
+            cartridge_diameter_mm=self._number_value(self.diameter) if kind == ExplosiveProductKind.CARTRIDGE else None,
+            cartridge_mass_kg=self._number_value(self.mass) if kind == ExplosiveProductKind.CARTRIDGE else None,
+            default_pitch_m=self._number_value(self.pitch) if kind == ExplosiveProductKind.CARTRIDGE else None,
+            charge_form=charge_form,explosive_class=self._selected_explosive_class(),
+            cartridge_length_mm=self._number_value(self.length) if kind==ExplosiveProductKind.CARTRIDGE else None,
         )
 
     def _validate_and_accept(self):
@@ -87,8 +116,8 @@ class ExplosiveProductDialog(QDialog):
 
 
 class EngineeringCataloguesPage(QWidget):
-    HEADERS = ("Name", "Type", "Color", "Density, kg/m³", "Cartridge diameter, mm",
-               "Cartridge mass, kg", "Default pitch, m", "Status")
+    HEADERS = ("Name", "Charge form", "Explosive class", "Color", "Density, kg/m³", "Cartridge diameter, mm",
+               "Cartridge mass, kg", "Cartridge length, mm", "Default pitch, m", "Status")
 
     def __init__(self, catalogue, *, can_edit: bool, parent=None):
         super().__init__(parent); self.catalogue = catalogue; self.can_edit = can_edit
@@ -114,15 +143,15 @@ class EngineeringCataloguesPage(QWidget):
         self.products = self.catalogue.list_products()
         self.table.setRowCount(len(self.products))
         for row, product in enumerate(self.products):
-            values = (product.name, tr("Bulk") if product.kind is ExplosiveProductKind.BULK else tr("Cartridge"),
+            values = (product.name, tr(CHARGE_FORM_LABELS[product.charge_form]),tr(EXPLOSIVE_CLASS_LABELS[product.explosive_class]),
                       product.display_color, product.density_kg_m3,
                       product.cartridge_diameter_mm, product.cartridge_mass_kg,
-                      product.default_pitch_m, tr("Enabled") if product.enabled else tr("Disabled"))
+                      product.cartridge_length_mm,product.default_pitch_m, tr("Enabled") if product.enabled else tr("Disabled"))
             for column, value in enumerate(values):
                 item = QTableWidgetItem("—" if value is None else str(value))
                 if column == 0:
                     item.setData(Qt.ItemDataRole.UserRole, product.id)
-                elif column == 2:
+                elif column == 3:
                     item.setBackground(QColor(product.display_color))
                 self.table.setItem(row, column, item)
         self.empty_label.setVisible(not self.products); self.table.setVisible(bool(self.products))

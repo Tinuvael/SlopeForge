@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 
 from domain.blasting.charge_design import (
-    ChargeComponent, ChargeComponentKind, ChargeDesignValidationError,
+    ChargeComponent, ChargeComponentKind, ChargeDesignValidationError, ChargeForm, ExplosiveClass,
     ExplosiveProduct, ExplosiveProductKind, available_air_intervals,
     cartridge_depths, validate_components,
 )
@@ -29,6 +29,14 @@ def test_snapshot_is_frozen_after_catalogue_product_changes():
     product.name = "Bulk B"; product.density_kg_m3 = 1200; product.display_color = "#BB0000"
     assert (snapshot.name, snapshot.density_kg_m3, snapshot.display_color) == (
         "Bulk A", 1000, "#AA0000")
+
+
+def test_snapshot_freezes_rich_catalogue_metadata():
+    product=ExplosiveProduct(3,"Dynamite",ExplosiveProductKind.CARTRIDGE,"#112233",
+        cartridge_diameter_mm=36,cartridge_mass_kg=.2,charge_form=ChargeForm.CARTRIDGED,
+        explosive_class=ExplosiveClass.DYNAMITE,cartridge_length_mm=200)
+    snapshot=product.snapshot(); product.cartridge_length_mm=250; product.explosive_class=ExplosiveClass.OTHER
+    assert snapshot.explosive_class is ExplosiveClass.DYNAMITE and snapshot.cartridge_length_mm==200
 
 
 def test_valid_component_properties_and_lengths():
@@ -70,6 +78,16 @@ def test_unsorted_component_validation_detects_overlap_and_bounds():
         validate_components([stemming("b", 2, 4), stemming("a", 0, 2.1)], 10)
     with pytest.raises(ChargeDesignValidationError):
         validate_components([stemming("x", 9, 10.1)], 10)
+
+
+def test_touching_components_allow_only_machine_epsilon_not_real_overlap():
+    exact = stemming("b", 1, 6)
+    validate_components([stemming("a", 0, 1), exact], 6)
+    noisy = stemming("noisy", 0, 1.0000000000000002)
+    validate_components([noisy, exact], 6 - 1e-15)
+    assert available_air_intervals(6, [noisy, exact]) == []
+    with pytest.raises(ChargeDesignValidationError, match="overlap"):
+        validate_components([stemming("overlap", 0, 1.001), exact], 6)
 
 
 def test_air_intervals_are_exact_and_do_not_mutate_input_order():

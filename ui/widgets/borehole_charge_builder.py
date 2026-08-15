@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from app.localization import tr
 from domain.blasting.charge_design import (
-    ChargeComponent, ChargeComponentKind, ChargeDesignValidationError,
+    ChargeComponent, ChargeComponentKind, ChargeDesignValidationError, ChargeForm,
     ExplosiveProduct, ExplosiveProductKind, available_air_intervals,
     cartridge_depths, validate_components,
 )
@@ -276,16 +276,21 @@ class BoreholeChargeBuilder(QWidget):
 
     def _show_add_menu(self):
         menu = QMenu(self); stem = menu.addAction(tr("Stemming")); stem.triggered.connect(self.add_stemming)
-        enabled = [p for p in self._products if p.enabled]
-        for title, product_kind, component_kind in (
-            (tr("Bulk explosive"), ExplosiveProductKind.BULK, ChargeComponentKind.BULK_EXPLOSIVE),
-            (tr("Cartridge explosive"), ExplosiveProductKind.CARTRIDGE, ChargeComponentKind.CARTRIDGE_EXPLOSIVE)):
-            submenu = menu.addMenu(title); matches = [p for p in enabled if p.kind is product_kind]
+        for title, charge_form, component_kind in (
+            (tr("Bulk explosive"), ChargeForm.BULK, ChargeComponentKind.BULK_EXPLOSIVE),
+            (tr("Pumpable explosive"), ChargeForm.PUMPABLE, ChargeComponentKind.BULK_EXPLOSIVE),
+            (tr("Cartridged explosive"), ChargeForm.CARTRIDGED, ChargeComponentKind.CARTRIDGE_EXPLOSIVE)):
+            submenu = menu.addMenu(title); matches = self.enabled_products_for_form(charge_form)
             if not matches: submenu.addAction(tr("No explosive products configured")).setEnabled(False)
             for product in matches:
                 action = submenu.addAction(product.name)
                 action.triggered.connect(lambda _checked=False, k=component_kind, p=product: self.add_component(k, p))
         menu.exec(self.add_button.mapToGlobal(self.add_button.rect().bottomLeft()))
+
+    def enabled_products_for_form(self, charge_form):
+        expected = ChargeForm(charge_form)
+        return [product for product in self._products
+                if product.enabled and product.charge_form == expected]
 
     def delete_selected_component(self):
         selected = self._selected()
@@ -299,7 +304,7 @@ class BoreholeChargeBuilder(QWidget):
     def _replace_selected(self, replacement):
         trial = [replacement if c.id == replacement.id else c for c in self._components]
         try: validate_components(trial, self._hole_depth_m)
-        except ChargeDesignValidationError as exc: self._feedback(str(exc)); self._refresh(); return False
+        except ChargeDesignValidationError as exc: self._feedback(tr("Change rejected") + f": {exc}"); self._refresh(); return False
         self._components = sorted(trial, key=lambda c: c.start_depth_m); self._changed(); return True
 
     def _numeric_edit(self, field):
@@ -329,8 +334,14 @@ class BoreholeChargeBuilder(QWidget):
         component = next((c for c in self._components if c.id == component_id), None)
         if not component: return
         target = snap_depth(depth)
-        if role == "start": start, end = target, component.end_depth_m
-        elif role == "end": start, end = component.start_depth_m, target
+        ordered=sorted(self._components,key=lambda item:(item.start_depth_m,item.end_depth_m))
+        index=ordered.index(component); previous=ordered[index-1] if index else None
+        following=ordered[index+1] if index+1<len(ordered) else None
+        if role == "start":
+            start=max(0.0,target,previous.end_depth_m if previous else 0.0); end=component.end_depth_m
+        elif role == "end":
+            start=component.start_depth_m; end=min(self._hole_depth_m,target,
+                following.start_depth_m if following else self._hole_depth_m)
         else:
             delta = snap_depth(depth - origin_depth)
             if delta == 0: return
@@ -360,8 +371,17 @@ class BoreholeChargeBuilder(QWidget):
         self.product_combo.setEnabled(False)
         self.pitch_spin.setEnabled(False)
         if selected:
-            names = {ChargeComponentKind.STEMMING: tr("Stemming"), ChargeComponentKind.BULK_EXPLOSIVE: tr("Bulk explosive"), ChargeComponentKind.CARTRIDGE_EXPLOSIVE: tr("Cartridge explosive")}
-            self.type_label.setText(names[selected.kind]); self.start_spin.setValue(selected.start_depth_m)
+            if selected.kind is ChargeComponentKind.STEMMING:
+                type_name = tr("Stemming")
+            elif selected.product_snapshot and selected.product_snapshot.charge_form is ChargeForm.PUMPABLE:
+                type_name = tr("Pumpable explosive")
+            elif selected.product_snapshot and selected.product_snapshot.charge_form is ChargeForm.CARTRIDGED:
+                type_name = tr("Cartridged explosive")
+            elif selected.kind is ChargeComponentKind.CARTRIDGE_EXPLOSIVE:
+                type_name = tr("Cartridged explosive")
+            else:
+                type_name = tr("Bulk explosive")
+            self.type_label.setText(type_name); self.start_spin.setValue(selected.start_depth_m)
             self.end_spin.setValue(selected.end_depth_m); self.length_spin.setValue(selected.length_m)
         else: self.type_label.setText("—")
         explosive = selected is not None and selected.kind is not ChargeComponentKind.STEMMING

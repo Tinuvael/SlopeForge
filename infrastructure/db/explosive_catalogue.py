@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from application.errors import CatalogueConflictError
 from database.models import ExplosiveProduct as ExplosiveProductRow
-from domain.blasting.charge_design import ExplosiveProduct, ExplosiveProductKind
+from domain.blasting.charge_design import ChargeForm, ExplosiveClass, ExplosiveProduct, ExplosiveProductKind
 
 
 def _domain(row: ExplosiveProductRow) -> ExplosiveProduct:
@@ -16,6 +16,9 @@ def _domain(row: ExplosiveProductRow) -> ExplosiveProduct:
         cartridge_diameter_mm=float(row.cartridge_diameter_mm) if row.cartridge_diameter_mm is not None else None,
         cartridge_mass_kg=float(row.cartridge_mass_kg) if row.cartridge_mass_kg is not None else None,
         default_pitch_m=float(row.default_pitch_m) if row.default_pitch_m is not None else None,
+        charge_form=ChargeForm(row.charge_form),
+        explosive_class=ExplosiveClass(row.explosive_class),
+        cartridge_length_mm=float(row.cartridge_length_mm) if row.cartridge_length_mm is not None else None,
     )
 
 
@@ -26,7 +29,9 @@ def _values(product: ExplosiveProduct) -> dict:
                 cartridge_mass_kg=product.cartridge_mass_kg,
                 display_color=product.display_color,
                 default_pitch_m=product.default_pitch_m,
-                is_enabled=product.enabled)
+                is_enabled=product.enabled, charge_form=product.charge_form.value,
+                explosive_class=product.explosive_class.value,
+                cartridge_length_mm=product.cartridge_length_mm)
 
 
 class SqlAlchemyExplosiveCatalogue:

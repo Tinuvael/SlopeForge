@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from sqlalchemy import create_engine, inspect, select
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import make_url
 
@@ -135,8 +135,11 @@ def test_phase_78a_migration_is_the_only_alembic_head() -> None:
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0003_explosive_catalog"]
+    assert script.get_heads() == ["0006_explosive_product_metadata"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0006_explosive_product_metadata",
+        "0005_explosive_charge_form",
+        "0004_charge_presets",
         "0003_explosive_catalog",
         "0002_workflow_status",
         "0001_mvp_baseline"
@@ -174,6 +177,7 @@ def test_explosive_catalogue_migration_and_postgresql_round_trip(
         assert "explosive_products" not in inspect(engine).get_table_names()
         command.upgrade(config, "0003_explosive_catalog")
         assert "explosive_products" in inspect(engine).get_table_names()
+        command.upgrade(config, "0006_explosive_product_metadata")
         bulk = adapter.create_product(ExplosiveProduct(
             0, "Bulk PG", ExplosiveProductKind.BULK, "#AA0000", density_kg_m3=1000))
         cartridge = adapter.create_product(ExplosiveProduct(
@@ -187,10 +191,52 @@ def test_explosive_catalogue_migration_and_postgresql_round_trip(
         assert adapter.set_product_enabled(cartridge.id, True).enabled is True
         command.downgrade(config, "0002_workflow_status")
         assert "explosive_products" not in inspect(engine).get_table_names()
-        command.upgrade(config, "0003_explosive_catalog")
+        command.upgrade(config, "0006_explosive_product_metadata")
         assert adapter.list_products() == []
     finally:
         engine.dispose()
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
+def test_charge_preset_postgresql_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from alembic import command
+    from database.models import Mine, Site
+    from domain.blasting.charge_design import ChargePresetComponent, ChargeComponentKind
+    from infrastructure.db.charge_presets import SqlAlchemyChargePresetPersistence
+    url=os.environ["TEST_DATABASE_URL"]; config=_alembic_config(monkeypatch,tmp_path,url)
+    engine=create_engine(url); sessions=sessionmaker(engine,expire_on_commit=False)
+    try:
+        command.downgrade(config,"base"); command.upgrade(config,"0004_charge_presets")
+        with sessions() as session:
+            mine=Mine(name="Preset mine"); session.add(mine); session.flush(); site=Site(mine_id=mine.id,name="Preset project"); session.add(site); session.commit(); site_id=site.id
+        adapter=SqlAlchemyChargePresetPersistence(sessions)
+        components=(ChargePresetComponent(ChargeComponentKind.STEMMING,0,1),)
+        created=adapter.create_preset(site_id,"Standard",components)
+        assert adapter.list_presets(site_id)==[created]
+        updated=adapter.update_preset(created.id,site_id,"Updated",components); assert updated.name=="Updated"
+        adapter.delete_preset(created.id,site_id); assert adapter.list_presets(site_id)==[]
+    finally: engine.dispose()
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
+def test_existing_preset_only_0004_upgrades_without_losing_rows(monkeypatch, tmp_path):
+    from alembic import command
+    url=os.environ["TEST_DATABASE_URL"]; config=_alembic_config(monkeypatch,tmp_path,url); engine=create_engine(url)
+    try:
+        command.downgrade(config,"base"); command.upgrade(config,"0004_charge_presets")
+        with engine.begin() as connection:
+            mine_id=connection.execute(text("INSERT INTO mines (name) VALUES ('M') RETURNING id")).scalar_one()
+            site_id=connection.execute(text("INSERT INTO sites (mine_id,name) VALUES (:m,'P') RETURNING id"),{"m":mine_id}).scalar_one()
+            connection.execute(text("INSERT INTO charge_design_presets (site_id,name,components_json) VALUES (:s,'Keep','[]'::jsonb)"),{"s":site_id})
+        with pytest.raises(Exception), engine.begin() as connection:
+            connection.execute(text("INSERT INTO charge_design_presets (site_id,name,components_json) VALUES (:s,'   ','[]'::jsonb)"),{"s":site_id})
+        with pytest.raises(Exception), engine.begin() as connection:
+            connection.execute(text("INSERT INTO charge_design_presets (site_id,name,components_json) VALUES (:s,'Bad','{}'::jsonb)"),{"s":site_id})
+        command.upgrade(config,"0005_explosive_charge_form")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT name FROM charge_design_presets")).scalar_one()=="Keep"
+        assert "charge_form" in {column["name"] for column in inspect(engine).get_columns("explosive_products")}
+    finally: engine.dispose()
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
