@@ -86,6 +86,23 @@ def test_header_ctrl_f_focuses_and_selects_search_text():
     header.close()
 
 
+def test_header_escape_clears_only_focused_search():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from types import SimpleNamespace
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from ui.header import Header
+
+    app = _app()
+    header = Header(SimpleNamespace(current_user=SimpleNamespace(can_edit=True)))
+    header.search.setText("north"); header.search.setFocus()
+    QTest.keyClick(header.search, Qt.Key.Key_Escape); app.processEvents()
+    assert header.search.text() == ""
+    assert header.search.isClearButtonEnabled()
+    assert not hasattr(header, "escape_shortcut")
+    header.close()
+
+
 def test_project_tree_search_filters_real_displayed_rows(monkeypatch):
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from types import SimpleNamespace

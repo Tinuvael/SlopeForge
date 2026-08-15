@@ -4,7 +4,8 @@ from types import SimpleNamespace
 import pytest
 
 QtWidgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLineEdit
 
 
@@ -15,6 +16,26 @@ def _labels(tree):
         for index in range(item.childCount()): visit(item.child(index))
     for index in range(tree.tree.topLevelItemCount()): visit(tree.tree.topLevelItem(index))
     return result
+
+
+def test_optional_date_popup_uses_current_page_without_activating_filter():
+    from ui.widgets.project_tree import OptionalDateEdit
+
+    app = QApplication.instance() or QApplication([])
+    edit = OptionalDateEdit()
+    assert edit.value() is None
+    edit.calendarWidget().show(); app.processEvents()
+    today = QDate.currentDate()
+    assert (edit.calendarWidget().yearShown(), edit.calendarWidget().monthShown()) == (today.year(), today.month())
+    assert edit.value() is None
+    assert (edit.calendarWidget().yearShown(), edit.calendarWidget().monthShown()) != (1752, 9)
+    edit.calendarWidget().setSelectedDate(today.addDays(-1)); app.processEvents()
+    assert edit.value() == today.addDays(-1).toPython()
+    edit.setFocus(); QTest.keyClick(edit, Qt.Key.Key_Delete)
+    assert edit.value() is None
+    edit.set_value(today.toPython()); QTest.keyClick(edit, Qt.Key.Key_Backspace)
+    assert edit.value() is None
+    edit.close()
 
 
 @pytest.fixture

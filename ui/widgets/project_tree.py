@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.localization import tr
-from PySide6.QtCore import QDate, Qt, Signal
+from PySide6.QtCore import QDate, QEvent, QTimer, Qt, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QFormLayout,
                                QLabel, QPushButton, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
@@ -30,6 +30,7 @@ class OptionalDateEdit(QDateEdit):
         self.setCalendarPopup(True)
         self.setMinimumDate(self.UNSET)
         self.setSpecialValueText(tr("Not set"))
+        self.calendarWidget().installEventFilter(self)
         self.clear_date()
 
     def clear_date(self):
@@ -40,6 +41,26 @@ class OptionalDateEdit(QDateEdit):
 
     def set_value(self, value: date | None):
         self.setDate(self.minimumDate() if value is None else QDate(value.year, value.month, value.day))
+
+    def eventFilter(self, watched, event):
+        if watched is self.calendarWidget() and event.type() == QEvent.Type.Show and self.value() is None:
+            # QDateEdit may restore the sentinel page while constructing its popup.
+            # Move only the visible calendar page after that work is complete; the
+            # selected date (and therefore the active filter) stays genuinely unset.
+            QTimer.singleShot(0, self._show_current_calendar_page_if_unset)
+        return super().eventFilter(watched, event)
+
+    def _show_current_calendar_page_if_unset(self):
+        if self.value() is None:
+            today = QDate.currentDate()
+            self.calendarWidget().setCurrentPage(today.year(), today.month())
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            self.clear_date()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class ProjectTree(QWidget):
