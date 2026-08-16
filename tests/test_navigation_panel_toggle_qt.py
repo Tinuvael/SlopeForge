@@ -79,7 +79,8 @@ def test_main_window_wires_header_toggle_without_rebuilding_tree():
     assert "set_search_query(" not in toggle
 
 
-def test_project_tree_header_domain_collapse_and_always_open_horizon(monkeypatch):
+def test_project_tree_header_domain_collapse_and_virtual_sections(monkeypatch):
+    from datetime import date
     from ui.widgets import project_tree as module
 
     app = _app()
@@ -89,11 +90,15 @@ def test_project_tree_header_domain_collapse_and_always_open_horizon(monkeypatch
         id=10, domain_id=2, block_number="B-1", horizon_m=630,
         planned_blast_date=None, status="planned", is_archived=False,
     )
+    area = SimpleNamespace(
+        id="AA-1", domain_id=2, name="Wall", min_elevation=600,
+        max_elevation=620, assessment_date=date.today(), is_archived=False,
+    )
     monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: [site]))
     monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda _id: [domain]))
     monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(list_blocks=lambda **_kwargs: [block]))
     monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
-        list_areas=lambda _archived: [], list_contour_events=lambda _archived: []))
+        list_areas=lambda _archived: [area], list_contour_events=lambda _archived: []))
 
     panel = module.ProjectTree(SimpleNamespace(session_factory=object()))
     panel.show(); app.processEvents()
@@ -111,13 +116,20 @@ def test_project_tree_header_domain_collapse_and_always_open_horizon(monkeypatch
     for index in range(panel.tree.topLevelItemCount()):
         items.extend(walk(panel.tree.topLevelItem(index)))
     horizon = next(item for item in items if (item.data(0, Qt.ItemDataRole.UserRole) or {}).get("type") == "horizon")
+    interval = next(item for item in items if (item.data(0, Qt.ItemDataRole.UserRole) or {}).get("type") == "interval")
     assert horizon.text(0) == "Horizon 630"
-    assert horizon.isExpanded()
-    assert horizon.childIndicatorPolicy() == QtWidgets.QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator
-    assert not (horizon.flags() & Qt.ItemFlag.ItemIsSelectable)
+    assert interval.text(0) == "Interval 600–620"
+    for section in (horizon, interval):
+        assert section.isExpanded()
+        assert section.childIndicatorPolicy() == QtWidgets.QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator
+        assert not (section.flags() & Qt.ItemFlag.ItemIsSelectable)
+        assert section.childCount() == 1
 
-    horizon.setExpanded(False); app.processEvents()
-    assert horizon.isExpanded()
+    assert horizon.child(0).text(0) == "Block B-1"
+    assert interval.child(0).text(0) == "Wall"
+
+    horizon.setExpanded(False); interval.setExpanded(False); app.processEvents()
+    assert horizon.isExpanded() and interval.isExpanded()
 
     panel.tree.expandAll(); app.processEvents()
     project = panel.tree.topLevelItem(0)
@@ -125,5 +137,5 @@ def test_project_tree_header_domain_collapse_and_always_open_horizon(monkeypatch
     QTest.mouseClick(panel.collapse_button, Qt.MouseButton.LeftButton); app.processEvents()
     assert project.isExpanded()
     assert not domain_item.isExpanded()
-    assert horizon.isExpanded()
+    assert horizon.isExpanded() and interval.isExpanded()
     panel.close()
