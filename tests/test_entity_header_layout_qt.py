@@ -34,8 +34,8 @@ def test_contour_header_order_is_title_status_stretch_edit(qapp):
     host = QWidget(); root = QVBoxLayout(host)
     event = SimpleNamespace(name="c4", id="C4", elevation=640,
                             event_date=None, is_archived=False)
-    page = SimpleNamespace(blast_event=event, read_only=False, rev=None,
-                           edit_metadata=lambda: None,
+    page = SimpleNamespace(blast_event=event, domain_name="North", read_only=False,
+                           rev=None, edit_metadata=lambda: None,
                            _refresh_workflow_presentation=lambda: None)
     ContourEventPage._header(page, root)
     top = root.itemAt(0).widget().layout.itemAt(0).layout()

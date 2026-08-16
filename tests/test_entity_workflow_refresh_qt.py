@@ -31,6 +31,7 @@ def test_production_save_refreshes_persisted_status_and_can_demote(app):
         current_block=SimpleNamespace(is_archived=False),
     )
     page.refresh = lambda: visible.setText(persisted["status"].title())
+    page._refresh_preserving_active_tab = page.refresh
     BlockPage._save_technical_card_draft(page)
     assert visible.text() == "Blasted"
 
@@ -73,6 +74,7 @@ def test_assessment_complete_refreshes_header_without_navigation(app):
             save=lambda status: evaluation.update(completed=status == "completed") or True,
             refresh_history=lambda: None,
         ),
+        _ensure_editable=lambda: True,
         _refresh_attachment_controls=lambda: None,
         _refresh_overview_and_sidebar=lambda: header.setText(
             "Completed" if evaluation["completed"] else "In progress"),

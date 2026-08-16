@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from app.localization import tr
 
 from PySide6.QtCore import Qt
@@ -50,7 +52,8 @@ def format_date(value) -> str:
 def format_decimal(value) -> str:
     if value is None:
         return "—"
-    text = format(value.normalize(), "f")
+    decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
+    text = format(decimal_value.normalize(), "f")
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 

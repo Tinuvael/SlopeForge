@@ -85,7 +85,7 @@ class BlockPage(QWidget):
         self.save_engineering_draft.setEnabled(False); self.complete_engineering.setEnabled(False)
         self.save_engineering_draft.clicked.connect(self._save_technical_card_draft); self.complete_engineering.clicked.connect(self._complete_technical_card)
         engineering_actions.addWidget(self.save_engineering_draft); engineering_actions.addWidget(self.complete_engineering); left.addLayout(engineering_actions)
-        body.addLayout(left, 4)
+        body.addLayout(left, 1)
 
         right = QVBoxLayout()
         self.summary = BlockSummaryWidget()
@@ -93,11 +93,14 @@ class BlockPage(QWidget):
         self.documents = AttachmentPreviewWidget("Documents")
         self.photos.add_button.clicked.connect(lambda: self._open_attachments("photo"))
         self.documents.add_button.clicked.connect(lambda: self._open_attachments("document"))
+        for widget in (self.summary, self.photos, self.documents):
+            widget.setMinimumWidth(250)
+            widget.setMaximumWidth(290)
         right.addWidget(self.summary)
         right.addWidget(self.photos)
         right.addWidget(self.documents)
         right.addStretch()
-        body.addLayout(right, 1)
+        body.addLayout(right, 0)
         layout.addLayout(body)
 
         self.setStyleSheet(
@@ -182,8 +185,8 @@ class BlockPage(QWidget):
             manager.refresh()
         self.photos.add_button.setEnabled(attachments_available)
         self.documents.add_button.setEnabled(attachments_available)
-        self.manage_photos_button.setEnabled(attachments_available)
-        self.manage_documents_button.setEnabled(attachments_available)
+        self.manage_photos_button.setEnabled(attachments_available and not self.photo_manager.read_only)
+        self.manage_documents_button.setEnabled(attachments_available and not self.document_manager.read_only)
         self.photos_tab_count.setText(f"{photo_count} photo{'s' if photo_count!=1 else ''}" if photo_count else "No photos yet")
         self.documents_tab_count.setText(f"{document_count} document{'s' if document_count!=1 else ''}" if document_count else "No documents yet")
         self.header.set_block(block, self.context.current_user.can_edit and not block.is_archived if block else False)
@@ -260,10 +263,9 @@ class BlockPage(QWidget):
             if self.tabs.tabText(index)==title: self.tabs.setCurrentIndex(index); break
 
     def _reimport_geometry(self,event):
-        if not self.context.current_user.can_edit or not self.current_block or self.current_block.is_archived:
-            QMessageBox.warning(self,tr("Read only"),tr("Archived Blocks and Viewer accounts cannot reimport geometry.")); return
+        if not self.context.current_user.can_edit or self.current_block.is_archived:return
         path,_=QFileDialog.getOpenFileName(self,tr("Reimport production geometry"),"",tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
         if not path:return
-        try:
-            self.entity_controller.reimport_blast_event_geometry(event,path); self._render_engineering(self.current_block)
+        try:self.entity_controller.reimport_blast_event_geometry(event,path)
         except Exception as exc:QMessageBox.warning(self,tr("Geometry import"),domain_message(str(exc)))
+        self._render_current_block()

@@ -6,7 +6,7 @@ from decimal import Decimal
 from app.localization import tr
 from PySide6.QtCore import QDate, QEvent, QTimer, Qt, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QFormLayout,
-                               QLabel, QPushButton, QTreeWidget,
+                               QHBoxLayout, QLabel, QPushButton, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
 from repositories.blast_block_repository import BlastBlockRepository
 from repositories.domain_repository import DomainRepository
@@ -35,18 +35,18 @@ class OptionalDateEdit(QDateEdit):
 
     def clear_date(self):
         self.setDate(self.minimumDate())
+        self._show_current_calendar_page_if_unset()
 
     def value(self) -> date | None:
         return None if self.date() == self.minimumDate() else self.date().toPython()
 
     def set_value(self, value: date | None):
         self.setDate(self.minimumDate() if value is None else QDate(value.year, value.month, value.day))
+        if value is None:
+            self._show_current_calendar_page_if_unset()
 
     def eventFilter(self, watched, event):
         if watched is self.calendarWidget() and event.type() == QEvent.Type.Show and self.value() is None:
-            # QDateEdit may restore the sentinel page while constructing its popup.
-            # Move only the visible calendar page after that work is complete; the
-            # selected date (and therefore the active filter) stays genuinely unset.
             QTimer.singleShot(0, self._show_current_calendar_page_if_unset)
         return super().eventFilter(watched, event)
 
@@ -63,6 +63,18 @@ class OptionalDateEdit(QDateEdit):
         super().keyPressEvent(event)
 
 
+class ProjectTreeWidget(QTreeWidget):
+    """Tree whose virtual grouping rows stay expanded but draw no disclosure arrow."""
+
+    VIRTUAL_SECTION_TYPES = {"horizon", "interval"}
+
+    def drawBranches(self, painter, rect, index):
+        payload = index.data(Qt.ItemDataRole.UserRole) or {}
+        if isinstance(payload, dict) and payload.get("type") in self.VIRTUAL_SECTION_TYPES:
+            return
+        super().drawBranches(painter, rect, index)
+
+
 class ProjectTree(QWidget):
     block_selected = Signal(int, int, int)
     site_selected = Signal(int, str)
@@ -71,12 +83,21 @@ class ProjectTree(QWidget):
     contour_event_selected = Signal(str, int, int, str)
     reset_search_requested = Signal()
 
+    _VIRTUAL_SECTION_TYPES = ProjectTreeWidget.VIRTUAL_SECTION_TYPES
+
     def __init__(self, context):
         super().__init__(); self.context = context; self._search_query = ""
         self.site_repo = SiteRepository(context.session_factory); self.domain_repo = DomainRepository(context.session_factory)
         self.block_repo = BlastBlockRepository(context.session_factory); self.navigation_repo = NavigationRepository(context.session_factory)
-        layout = QVBoxLayout(self); layout.setContentsMargins(8,8,8,8); layout.addWidget(QLabel(tr("Projects")))
-        self.tree = QTreeWidget(); self.tree.setHeaderHidden(True); self.tree.itemClicked.connect(self._item_clicked); layout.addWidget(self.tree)
+        layout = QVBoxLayout(self); layout.setContentsMargins(8,8,8,8)
+        tree_header = QHBoxLayout(); tree_header.setContentsMargins(0,0,0,0)
+        self.tree_title = QLabel(tr("Project tree"))
+        self.collapse_button = QPushButton(); self.collapse_button.setObjectName("collapseProjectTreeButton")
+        self.collapse_button.setIcon(ui_icon("collapse")); self.collapse_button.setFixedSize(30,26)
+        self.collapse_button.setToolTip(tr("Collapse domains")); self.collapse_button.setAccessibleName(self.collapse_button.toolTip())
+        tree_header.addWidget(self.tree_title); tree_header.addStretch(); tree_header.addWidget(self.collapse_button); layout.addLayout(tree_header)
+        self.tree = ProjectTreeWidget(); self.tree.setHeaderHidden(True); self.tree.itemClicked.connect(self._item_clicked); self.tree.itemCollapsed.connect(self._keep_virtual_section_expanded); layout.addWidget(self.tree)
+        self.collapse_button.clicked.connect(self.collapse_domains)
         layout.addWidget(QLabel(tr("Filters")))
         self.project_filter = QComboBox(); self.domain_filter = QComboBox(); self.status_filter = QComboBox()
         self.from_date = OptionalDateEdit(); self.to_date = OptionalDateEdit()
@@ -131,7 +152,6 @@ class ProjectTree(QWidget):
         if refresh: self.load_data()
 
     def reset_filters(self):
-        # Reset atomically: no intermediate signal is allowed to restore Domain.
         controls = (self.project_filter, self.domain_filter, self.status_filter,
                     self.from_date, self.to_date, self.show_archived)
         for control in controls: control.blockSignals(True)
@@ -145,6 +165,31 @@ class ProjectTree(QWidget):
         start, end = self.from_date.value(), self.to_date.value()
         if (start or end) and value is None: return False
         return not ((start and value < start) or (end and value > end))
+
+    def collapse_domains(self):
+        """Keep Project rows visible and collapse only their Domain children."""
+        for project_index in range(self.tree.topLevelItemCount()):
+            project = self.tree.topLevelItem(project_index)
+            project.setExpanded(True)
+            for domain_index in range(project.childCount()):
+                domain = project.child(domain_index)
+                payload = domain.data(0, Qt.ItemDataRole.UserRole) or {}
+                if payload.get("type") == "domain":
+                    domain.setExpanded(False)
+        self._expand_virtual_sections()
+
+    def _keep_virtual_section_expanded(self, item):
+        payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
+        if payload.get("type") in self._VIRTUAL_SECTION_TYPES:
+            QTimer.singleShot(0, lambda target=item: target.setExpanded(True))
+
+    def _expand_virtual_sections(self):
+        def visit(item):
+            payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
+            if payload.get("type") in self._VIRTUAL_SECTION_TYPES:
+                item.setExpanded(True)
+            for index in range(item.childCount()): visit(item.child(index))
+        for index in range(self.tree.topLevelItemCount()): visit(self.tree.topLevelItem(index))
 
     def load_data(self, *_args, **_kwargs):
         self.tree.clear(); query = self._search_query
@@ -175,8 +220,6 @@ class ProjectTree(QWidget):
                 areas = [area for area in areas_by_domain.get(domain.id, [])
                          if self._date_matches(area.assessment_date)
                          and (not query or inherited_match or query in area.name.casefold())]
-                # A parent-name match reveals its descendants, but active date/status
-                # constraints still require at least one applicable result.
                 include_domain = bool(blasts or areas or (not constrained) or (inherited_match and not (status or self.from_date.value() or self.to_date.value())))
                 if not include_domain: continue
                 site_item.addChild(domain_item)
@@ -202,18 +245,25 @@ class ProjectTree(QWidget):
                         interval.addChild(self._item(text,{"type":"area","id":area.id,"archived":area.is_archived,**base}))
             if site_item.childCount(): self.tree.addTopLevelItem(site_item)
         self.tree.expandAll() if constrained else self.tree.expandToDepth(1)
+        self._expand_virtual_sections()
+        QTimer.singleShot(0, self._expand_virtual_sections)
 
     @staticmethod
     def _item(text, payload):
         item=QTreeWidgetItem([text]); item.setData(0,Qt.ItemDataRole.UserRole,payload)
         icons={"site":"mine","domain":"domain","folder":"blast-blocks" if payload.get("folder_kind")=="blast_events" else "assessment-area","horizon":"horizon","block":"block","contour":"contour","interval":"layers","area":"assessment-area"}
         item.setIcon(0,ui_icon(icons.get(payload.get("type"),"folder-open")))
+        if payload.get("type") in ProjectTree._VIRTUAL_SECTION_TYPES:
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            font = item.font(0); font.setBold(True); item.setFont(0, font)
         if payload.get("archived"): item.setForeground(0,Qt.GlobalColor.gray)
         return item
 
     def _item_clicked(self, item, _column=0):
         p=item.data(0,Qt.ItemDataRole.UserRole) or {}; kind=p.get("type")
-        if kind in {"folder","horizon","interval"}: item.setExpanded(not item.isExpanded()); return
+        if kind in self._VIRTUAL_SECTION_TYPES:
+            item.setExpanded(True); return
+        if kind=="folder": item.setExpanded(not item.isExpanded()); return
         if kind=="site": self.site_selected.emit(p["id"],p["site_name"])
         elif kind=="domain": self.domain_selected.emit(p["domain_id"],p["domain_name"],p["site_id"],p["site_name"])
         elif kind=="block": self.block_selected.emit(p["id"],p["domain_id"],p["site_id"])

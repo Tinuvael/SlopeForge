@@ -57,10 +57,30 @@ def cleanup_project(factory, site_id):
         site = session.get(Site, site_id)
         if site is None: return
         mine_id = site.mine_id
-        session.execute(delete(orm.BlastEvent).where(orm.BlastEvent.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
-        session.execute(delete(orm.AssessmentArea).where(orm.AssessmentArea.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
-        session.execute(delete(orm.ProjectLinesDataset).where(orm.ProjectLinesDataset.site_id == site_id))
-        session.execute(delete(BlastBlock).where(BlastBlock.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
+        domain_ids = select(Domain.id).where(Domain.site_id == site_id)
+        event_ids = select(orm.BlastEvent.id).where(orm.BlastEvent.domain_id.in_(domain_ids))
+        card_ids = select(orm.BlastEventTechnicalCard.id).where(
+            orm.BlastEventTechnicalCard.blast_event_id.in_(event_ids)
+        )
+
+        # Area geometry owns AssessmentEventLink rows. Remove it before the
+        # referenced BlastEvent geometry.
+        session.execute(delete(orm.AssessmentArea).where(
+            orm.AssessmentArea.domain_id.in_(domain_ids)))
+
+        # Technical-card revisions also reference BlastEvent geometry with
+        # RESTRICT. Delete that branch explicitly instead of relying on two
+        # simultaneous CASCADE paths from BlastEvent.
+        session.execute(delete(orm.BlastEventTechnicalCardRevision).where(
+            orm.BlastEventTechnicalCardRevision.technical_card_id.in_(card_ids)))
+        session.execute(delete(orm.BlastEventTechnicalCard).where(
+            orm.BlastEventTechnicalCard.blast_event_id.in_(event_ids)))
+        session.execute(delete(orm.BlastEvent).where(
+            orm.BlastEvent.domain_id.in_(domain_ids)))
+
+        session.execute(delete(orm.ProjectLinesDataset).where(
+            orm.ProjectLinesDataset.site_id == site_id))
+        session.execute(delete(BlastBlock).where(BlastBlock.domain_id.in_(domain_ids)))
         session.execute(delete(Domain).where(Domain.site_id == site_id))
         session.delete(site); session.flush()
         session.execute(delete(Mine).where(Mine.id == mine_id))
@@ -163,7 +183,7 @@ def test_concrete_report_query_preserves_actual_date_stored_scores_and_links(fac
         production.event_date = date(2026, 7, 1)
         contour.event_date = date(2026, 8, 7)
         actual = state.technical_cards[0].active_revision().actual_execution
-        actual.actual_blast_date = date(2026, 8, 6)
+        actual.actual_blast_date = date(2026, 8, 6).isoformat()
         actual.actual_block_volume_m3 = 1234
         actual.actual_total_explosive_mass_kg = 87
         actual.actual_total_drilling_length_m = 456

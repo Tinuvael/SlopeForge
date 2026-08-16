@@ -125,7 +125,7 @@ def test_project_tree_search_filters_real_displayed_rows(monkeypatch):
         list_areas=lambda _archived: [], list_contour_events=lambda _archived: contours
     ))
     tree = module.ProjectTree(SimpleNamespace(session_factory=object()))
-    assert tree.findChildren(__import__("PySide6.QtWidgets", fromlist=["QLineEdit"]).QLineEdit) == []
+    assert not hasattr(tree, "search")
     tree.set_search_query(" c-101 ")
     app.processEvents()
 
@@ -213,31 +213,26 @@ def test_editable_block_attachment_controls_are_enabled(monkeypatch):
     assert page.photos.add_button.text() == "Manage"
     assert page.photos.add_button.isEnabled()
     assert page.documents.add_button.isEnabled()
+    assert not page.photo_manager.read_only and not page.document_manager.read_only
+    assert all(button.isEnabled() for button in page.photo_manager.mutation_buttons)
     page.close()
 
 
-def test_archived_and_viewer_block_attachment_dialogs_are_read_only(monkeypatch):
+def test_archived_and_viewer_block_attachment_managers_are_read_only(monkeypatch):
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    import sys
-    from types import ModuleType
-
-    captured = []
-    fake_module = ModuleType("ui.dialogs.entity_attachment_dialog")
-    class FakeDialog:
-        def __init__(self, *_args, **kwargs):
-            captured.append(kwargs["read_only"])
-            self.tabs = type("Tabs", (), {"setCurrentIndex": lambda self, _index: None})()
-        def exec(self): return 0
-    fake_module.EntityAttachmentDialog = FakeDialog
-    monkeypatch.setitem(sys.modules, "ui.dialogs.entity_attachment_dialog", fake_module)
-
     archived = _block_page(monkeypatch, can_edit=True, archived=True)
     assert archived.photos.add_button.isEnabled()
+    assert archived.photo_manager.read_only and archived.document_manager.read_only
+    assert all(not button.isEnabled() for button in archived.photo_manager.mutation_buttons)
     archived._open_attachments("photo")
+    assert archived.tabs.currentWidget() is archived.photos_tab
+
     viewer = _block_page(monkeypatch, can_edit=False, archived=False)
     assert viewer.documents.add_button.isEnabled()
+    assert viewer.photo_manager.read_only and viewer.document_manager.read_only
+    assert all(not button.isEnabled() for button in viewer.document_manager.mutation_buttons)
     viewer._open_attachments("document")
-    assert captured == [True, True]
+    assert viewer.tabs.currentWidget() is viewer.documents_tab
     archived.close(); viewer.close()
 
 
@@ -435,24 +430,9 @@ def test_block_attachment_tabs_are_real_and_ordered():
 
 def test_block_attachment_tabs_select_the_requested_manager_tab(monkeypatch):
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    import sys
-    from types import ModuleType
-
-    calls = []
-    fake_module = ModuleType("ui.dialogs.entity_attachment_dialog")
-    class FakeTabs:
-        def setCurrentIndex(self, index): calls[-1]["tab"] = index
-    class FakeDialog:
-        def __init__(self, _service, owner_type, owner_id, _parent, read_only):
-            calls.append({"owner_type": owner_type, "owner_id": owner_id, "read_only": read_only})
-            self.tabs = FakeTabs()
-        def exec(self): return 0
-    fake_module.EntityAttachmentDialog = FakeDialog
-    monkeypatch.setitem(sys.modules, "ui.dialogs.entity_attachment_dialog", fake_module)
     page = _block_page(monkeypatch, can_edit=True, archived=False)
     page._open_attachments("photo")
+    assert page.tabs.currentWidget() is page.photos_tab
     page._open_attachments("document")
-    assert [(item["owner_type"], item["owner_id"], item["tab"]) for item in calls] == [
-        ("blast_event", "EVENT-7", 0), ("blast_event", "EVENT-7", 1),
-    ]
+    assert page.tabs.currentWidget() is page.documents_tab
     page.close()

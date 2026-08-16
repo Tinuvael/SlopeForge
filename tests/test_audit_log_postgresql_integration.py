@@ -1,12 +1,12 @@
 from __future__ import annotations
 import os
 from datetime import date
-from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from app.context import CurrentUser
+from database.assessment_models import BlastEvent
 from database.models import AuditLogEntry, BlastBlock, Domain, Mine, Site, User
 from repositories.audit_log_repository import AuditLogRepository
 from repositories.blast_block_repository import BlastBlockRepository
@@ -36,12 +36,11 @@ def context(factory):
         site=Site(mine_id=mine.id,name="Audit Project");session.add(site);session.flush()
         domain=Domain(site_id=site.id,name="North");session.add(domain);session.flush()
         block=BlastBlock(domain_id=domain.id,block_number="B-001",created_by_user_id=user.id)
-        session.add(block);session.flush(); ids=(user.id,mine.id,site.id,domain.id,block.id)
+        session.add(block);session.flush()
+        session.add(BlastEvent(domain_id=domain.id,logical_id="BE-B-001",name="B-001",
+            event_type="production",event_date=date.today(),elevation_m=0,blast_block_id=block.id))
+        session.flush(); ids=(user.id,mine.id,site.id,domain.id,block.id)
     yield ids
-    with factory.begin() as session:
-        session.query(AuditLogEntry).delete();session.query(BlastBlock).filter_by(domain_id=ids[3]).delete()
-        session.query(Domain).filter_by(id=ids[3]).delete();session.query(Site).filter_by(id=ids[2]).delete()
-        session.query(Mine).filter_by(id=ids[1]).delete();session.query(User).filter_by(id=ids[0]).delete()
 
 def service(factory,audit=None):
     return BlastBlockService(BlastBlockRepository(factory),DomainRepository(factory),audit)

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import os
 
 import pytest
-from sqlalchemy import create_engine, delete
+from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -15,7 +15,6 @@ if not URL:
 if "test" not in (make_url(URL).database or "").lower():
     pytest.fail("Refusing destructive Project Lines tests outside a test database", pytrace=False)
 
-from database import assessment_models as orm
 from database.models import Domain, Mine, Site
 from domain.project.project_lines import ProjectLinesDataset
 from application.state.assessment_domain_state import AssessmentDomainState
@@ -43,15 +42,10 @@ def context():
         other = Domain(site_id=other_site.id, name="Other")
         session.add_all([north, south, other]); session.flush()
         ids = mine.id, north_site.id, other_site.id, north.id, south.id, other.id
-    yield factory, ids
-    with factory.begin() as session:
-        domain_ids = ids[3:]
-        session.execute(delete(orm.ProjectLinesDataset).where(
-            orm.ProjectLinesDataset.site_id.in_(ids[1:3])))
-        session.execute(delete(Domain).where(Domain.id.in_(ids[3:])))
-        session.execute(delete(Site).where(Site.id.in_(ids[1:3])))
-        session.execute(delete(Mine).where(Mine.id == ids[0]))
-    engine.dispose()
+    try:
+        yield factory, ids
+    finally:
+        engine.dispose()
 
 
 def dataset(dataset_id: str) -> ProjectLinesDataset:
@@ -65,7 +59,7 @@ def test_add_list_activate_archive_restore_and_stable_pk(context):
     first = repo.add_dataset(ids[1], dataset("D-X"))
     second = repo.add_dataset(ids[1], dataset("D-Y"))
     assert [row.logical_id for row in repo.list_for_site(ids[1])] == ["D-X", "D-Y"]
-    assert repo.get_active(ids[1]) is None  # import and activation are separate operations
+    assert repo.get_active(ids[1]) is None
     repo.set_active(ids[1], "D-X")
     assert repo.get_active(ids[1]).id == first.id
     repo.archive(ids[1], "D-X")
@@ -99,7 +93,7 @@ def test_repeated_dashboard_style_import_allocates_new_site_dataset_id(context):
     factory, ids = context
     repo = ProjectLinesRepository(factory)
     first = dataset("D-001")
-    second = dataset("D-001")  # a fresh AssessmentDomainState proposes D-001 again
+    second = dataset("D-001")
 
     repo.import_dataset(ids[1], first, make_active=True)
     repo.import_dataset(ids[1], second, make_active=True)
@@ -125,7 +119,7 @@ def test_empty_import_does_not_change_persisted_active_dataset(context, monkeypa
         ProjectLinesDatasetService(AssessmentDomainState()).import_dataset("empty.dxf")
 
     rows = repo.list_for_site(ids[1])
-    assert len(rows) == 1 and rows[0].domain_id == "D-001" and rows[0].is_active
+    assert len(rows) == 1 and rows[0].logical_id == "D-001" and rows[0].is_active
 
 
 def test_degenerate_dxf_does_not_change_persisted_active_dataset(context, tmp_path):
@@ -143,7 +137,7 @@ def test_degenerate_dxf_does_not_change_persisted_active_dataset(context, tmp_pa
         ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(source)
 
     rows = repo.list_for_site(ids[1])
-    assert len(rows) == 1 and rows[0].domain_id == "D-001" and rows[0].is_active
+    assert len(rows) == 1 and rows[0].logical_id == "D-001" and rows[0].is_active
 
 
 def test_csv_to_dxf_and_same_file_reimports_create_history(context, tmp_path):

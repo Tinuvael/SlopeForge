@@ -18,6 +18,15 @@ SUPPORTED_LANGUAGES = ("en", "ru")
 logger = logging.getLogger(__name__)
 _translator: QTranslator | None = None
 
+# Small compatibility bridge for strings introduced after the current TS catalogue
+# was frozen. Issue #64 will fold these back into the normal catalogue pass.
+RUSSIAN_RUNTIME_FALLBACKS = {
+    "Project tree": "Дерево проекта",
+    "Collapse domains": "Свернуть домены",
+    "Hide navigation": "Скрыть навигацию",
+    "Show navigation": "Показать навигацию",
+}
+
 # Qt asks the installed translator for platform-theme captions in contexts such
 # as QPlatformTheme.  Returning an empty string there produces blank standard
 # buttons on some Windows/PySide builds, instead of falling back to English.
@@ -72,6 +81,8 @@ class TsTranslator(QTranslator):
         translated = self._messages.get((context, source_text), "")
         if translated:
             return translated
+        if context == "SlopeForge" and source_text in RUSSIAN_RUNTIME_FALLBACKS:
+            return RUSSIAN_RUNTIME_FALLBACKS[source_text]
         # Platform captions may contain mnemonic markers or an ellipsis.
         normalized = source_text.replace("&", "").removesuffix("...")
         canonical = _STANDARD_BUTTON_SOURCES.get(normalized)

@@ -97,11 +97,11 @@ def persist_project_lines(session_factory, site_id, state):
 
 
 def semantic(state):
-    """Canonical public payload; datetime offsets compare as the same instant."""
+    """Canonical public payload; JSON arrays/tuples and datetime offsets compare semantically."""
     def normalize(value):
         if isinstance(value, dict):
             return {key: normalize(item) for key, item in value.items()}
-        if isinstance(value, list):
+        if isinstance(value, (list, tuple)):
             return [normalize(item) for item in value]
         if isinstance(value, str) and "T" in value:
             try:
@@ -141,7 +141,7 @@ def test_read_loads_realistic_seeded_graph(session_factory, assessment_context):
 
 
 def test_cross_domain_assessment_event_link_is_rejected(session_factory, assessment_context):
-    """A relationally valid FK must still not bridge two owning Domains."""
+    """A relationally valid active link must still not bridge two owning Domains."""
     state = build_rich_state()
     persist_project_lines(session_factory, assessment_context.site_id, state)
     AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, state)
@@ -160,7 +160,11 @@ def test_cross_domain_assessment_event_link_is_rejected(session_factory, assessm
             elevation_m=100, is_active=True,
         )
         session.add(foreign_geometry); session.flush()
-        link_id = session.scalar(select(orm.AssessmentEventLink.id))
+        link_id = session.scalar(
+            select(orm.AssessmentEventLink.id)
+            .join(orm.AssessmentAreaGeometryRevision)
+            .where(orm.AssessmentAreaGeometryRevision.is_active.is_(True))
+        )
         session.execute(update(orm.AssessmentEventLink).where(
             orm.AssessmentEventLink.id == link_id).values(
                 blast_event_geometry_revision_id=foreign_geometry.id))
@@ -227,6 +231,7 @@ def test_zero_revision_evaluation_container_round_trips(session_factory, assessm
     area = state.assessment_areas[0]
     owner = AssessmentAreaEvaluationService(state).create_evaluation(area)
     state.evaluations.append(owner)
+    persist_project_lines(session_factory, assessment_context.site_id, state)
     repository = AssessmentStateRepository(session_factory)
     AssessmentGraphSeeder(session_factory).seed_for_domain(assessment_context.domain_id, state)
 

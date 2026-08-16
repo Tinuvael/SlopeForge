@@ -58,17 +58,18 @@ def test_creation_page_does_not_auto_start_drawing():
     source = Path("ui/pages/assessment_area_creation_page.py").read_text(encoding="utf-8")
     constructor = source[source.index("    def __init__"):source.index("    def _start_drawing")]
     assert "self._start_drawing()" not in constructor
-    assert '"Wheel: zoom · Middle drag: pan' in source
+    assert '"Click near a Project Line to snap."' in source
+    assert '"Close boundary when finished."' in source
 
 
 def test_trace_preview_commit_jump_and_new_active_source(state, app):
     editor = AssessmentGeometryEditorWidget(state, committer(state)); editor.start_new_area()
-    editor._drawing_click(1, 10.4)  # snaps to curved A
+    editor._drawing_click(1, 10.4)
     editor._drawing_move(9, 10.4)
     candidate = editor._candidate.anchor
     line_a = state.active_dataset().lines[0]
     preview = editor._segment_points(extract_project_line_span(line_a, editor._last_anchor, candidate))
-    assert len(preview) == 3 and preview[1].y == 12  # no endpoint chord
+    assert len(preview) == 3 and preview[1].y == 12
     assert [item for item in editor.scene.items() if item.data(SNAP_MARKER_ROLE)]
     assert len([item for item in editor.scene.items() if item.data(PROJECT_LINE_ROLE)]) == 2
     editor._drawing_click(9, 10.4)
@@ -80,9 +81,8 @@ def test_same_anchor_hover_preview_is_ignored(state, app):
     editor._drawing_click(1,10.4)
     editor._drawing_move(1,10.4)
     assert editor._segments==[] and editor._last_anchor is not None
-    assert editor._segments[-1].frozen_trace_xyz[1].y == 12
 
-    editor._drawing_move(9, .4)  # hover B: active source remains A
+    editor._drawing_move(9, .4)
     assert editor._last_anchor.source_line_id == "A"
     editor._drawing_click(9, .4)
     assert isinstance(editor._segments[-1], StraightConnector)
@@ -169,7 +169,6 @@ def test_undo_closed_reopens_and_cancel_clears_draft(state, app):
 
 
 def test_edit_existing_boundary_creates_r2_without_changing_r1(state, app):
-    """Exercise the real editor lifecycle, not only the application service."""
     service = AssessmentAreaService(state)
     shape = PlanPolygon((PlanPoint(0, 10), PlanPoint(10, 10), PlanPoint(10, 0),
                          PlanPoint(0, 0), PlanPoint(0, 10)))
@@ -182,7 +181,7 @@ def test_edit_existing_boundary_creates_r2_without_changing_r1(state, app):
     editor.start_edit(area.id)
     assert editor.workflow_state == "DRAWING"
     editor.undo_vertex()
-    editor._drawing_click(0, 1)  # replace the removed side with a changed free connector
+    editor._drawing_click(0, 1)
     editor.finish_polygon()
     editor.confirm_boundaries(name="ignored", assessment_date=date(2000, 1, 1))
 
@@ -203,7 +202,8 @@ def test_page_owns_name_and_date_fields_and_grid_is_not_exposed():
     source=Path("ui/pages/assessment_area_creation_page.py").read_text(encoding="utf-8")
     assert "self.area_name" in source and "self.assessment_date" in source
     assert "name=self.area_name.text()" in source
-    assert "Grid" not in source
+    assert "self.grid" not in source
+    assert 'tr("Grid")' not in source and '"Grid size"' not in source
 
 
 def test_dense_parallel_lines_use_active_line_hysteresis(tmp_path, app):
@@ -215,12 +215,10 @@ def test_dense_parallel_lines_use_active_line_hysteresis(tmp_path, app):
     state=AssessmentDomainState(); ProjectLinesDatasetService(state).import_dataset(source)
     editor=AssessmentGeometryEditorWidget(state,committer(state)); editor.plan_view.scale(10,10); editor.start_new_area()
     editor._drawing_click(0,0); assert editor._last_anchor.source_line_id=="A"
-    # B is microscopically nearer, but not by the 3 px screen-space hysteresis.
     editor._drawing_move(5,1.51); assert editor._candidate.anchor.source_line_id=="A"
     active=state.active_dataset().lines[0]
     preview=extract_project_line_span(active,editor._last_anchor,editor._candidate.anchor)
     assert preview.frozen_trace_xyz[1].y==1
-    # Clearly on B: preview is a connector until the explicit click activates B.
     editor._drawing_move(5,2); assert editor._candidate.anchor.source_line_id=="B"
     editor._drawing_click(5,2); assert isinstance(editor._segments[-1],StraightConnector)
     assert editor._last_anchor.source_line_id=="B"

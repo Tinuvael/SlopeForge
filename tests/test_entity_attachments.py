@@ -29,12 +29,15 @@ def test_imports_each_owner_and_kind(store, tmp_path, owner, owner_id, kind, fol
 
 
 def test_safe_filename_and_collision(store, tmp_path):
-    _, service = store; source = tmp_path / "wall?.JPG"; source.write_bytes(b"one")
+    _, service = store
+    # Windows cannot create a source file containing '?', so sanitization of
+    # illegal names is tested independently from the physical collision flow.
+    assert sanitize_filename("../../bad:name?.JPG") == "bad_name_.jpg"
+    source = tmp_path / "wall.JPG"; source.write_bytes(b"one")
     first = service.add_files("blast_event", "BE-1", "photo", [source])[0]
     second = service.add_files("blast_event", "BE-1", "photo", [source])[0]
-    assert sanitize_filename("../../bad:name?.JPG") == "bad_name_.jpg"
-    assert first.stored_filename == "wall_.jpg"
-    assert second.stored_filename == "wall__2.jpg"
+    assert first.stored_filename == "wall.jpg"
+    assert second.stored_filename == "wall_2.jpg"
 
 
 def test_same_source_creates_independent_copies_and_deletes(store, tmp_path):

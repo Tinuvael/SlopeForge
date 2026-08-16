@@ -5,6 +5,8 @@ import ast
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
+from app.localization import RUSSIAN_RUNTIME_FALLBACKS
+
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVE = [ROOT / "main.py", *sorted((ROOT / "app").rglob("*.py")), *sorted((ROOT / "ui").rglob("*.py")), *sorted((ROOT / "widgets").rglob("*.py"))]
 INVARIANTS = {"SlopeForge", "DAI", "FCI", "UCS", "RQD", "MPa", "m", "mm", "kg", "ms", "m²", "m³", "%", "—"}
@@ -41,7 +43,10 @@ def russian_catalog():
 
 def test_every_literal_tr_call_has_finished_russian_translation():
     catalogue = russian_catalog()
-    missing = sorted(source for source in literal_tr_sources() if source not in INVARIANTS and not catalogue.get(source))
+    missing = sorted(source for source in literal_tr_sources()
+                     if source not in INVARIANTS
+                     and not catalogue.get(source)
+                     and not RUSSIAN_RUNTIME_FALLBACKS.get(source))
     assert missing == []
 
 
@@ -80,6 +85,7 @@ def test_representative_active_screen_labels_are_translated():
         "Interval": "Интервал", "Block": "Блок",
     }
     assert {source: catalogue[source] for source in expected} == expected
+    assert RUSSIAN_RUNTIME_FALLBACKS["Project tree"] == "Дерево проекта"
 
 
 def test_internal_group_ids_are_not_rendered_in_technical_card():
