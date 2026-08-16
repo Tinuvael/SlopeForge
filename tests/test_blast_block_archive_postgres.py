@@ -68,12 +68,6 @@ def linked_block(session_factory):
         session.add(blast_event); session.flush()
         ids = mine.id, site.id, domain.id, block.id, blast_event.id
     yield ids
-    mine_id, site_id, domain_id, block_id, _ = ids
-    with session_factory.begin() as session:
-        session.query(BlastBlock).filter_by(id=block_id).delete()
-        session.query(Domain).filter_by(id=domain_id).delete()
-        session.query(Site).filter_by(id=site_id).delete()
-        session.query(Mine).filter_by(id=mine_id).delete()
 
 
 def test_concrete_archive_restore_changes_only_block_archive_fields(session_factory, linked_block):
@@ -83,7 +77,8 @@ def test_concrete_archive_restore_changes_only_block_archive_fields(session_fact
         audit_before = session.scalar(select(func.count()).select_from(AuditLogEntry).where(
             AuditLogEntry.blast_block_id == block_id))
 
-    adapter.set_archived(block_id, True, actor_id=123)
+    version = adapter.set_archived(block_id, 0, True, actor_id=123)
+    assert version == 1
     with session_factory() as session:
         block = session.get(BlastBlock, block_id)
         production = session.get(BlastEvent, event_id)
@@ -95,7 +90,8 @@ def test_concrete_archive_restore_changes_only_block_archive_fields(session_fact
         assert session.scalar(select(func.count()).select_from(AuditLogEntry).where(
             AuditLogEntry.blast_block_id == block_id)) == audit_before
 
-    adapter.set_archived(block_id, False, actor_id=123)
+    version = adapter.set_archived(block_id, 1, False, actor_id=123)
+    assert version == 2
     with session_factory() as session:
         block = session.get(BlastBlock, block_id)
         production = session.get(BlastEvent, event_id)
@@ -107,7 +103,7 @@ def test_concrete_adapter_missing_block_and_commit_failure_roll_back(session_fac
     *_, block_id, _ = linked_block
     adapter = SqlAlchemyBlastBlockArchivePersistence(session_factory)
     with pytest.raises(ValueError, match="Blast block not found"):
-        adapter.set_archived(2_000_000_000, True, actor_id=123)
+        adapter.set_archived(2_000_000_000, 0, True, actor_id=123)
 
     def fail_commit(_session):
         raise RuntimeError("injected commit failure")
@@ -115,7 +111,7 @@ def test_concrete_adapter_missing_block_and_commit_failure_roll_back(session_fac
     event.listen(session_factory.class_, "before_commit", fail_commit)
     try:
         with pytest.raises(RuntimeError, match="injected commit failure"):
-            adapter.set_archived(block_id, True, actor_id=123)
+            adapter.set_archived(block_id, 0, True, actor_id=123)
     finally:
         event.remove(session_factory.class_, "before_commit", fail_commit)
     with session_factory() as session:
