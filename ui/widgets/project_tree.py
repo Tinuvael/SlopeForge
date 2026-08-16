@@ -71,6 +71,8 @@ class ProjectTree(QWidget):
     contour_event_selected = Signal(str, int, int, str)
     reset_search_requested = Signal()
 
+    _VIRTUAL_SECTION_TYPES = {"horizon", "interval"}
+
     def __init__(self, context):
         super().__init__(); self.context = context; self._search_query = ""
         self.site_repo = SiteRepository(context.session_factory); self.domain_repo = DomainRepository(context.session_factory)
@@ -162,17 +164,18 @@ class ProjectTree(QWidget):
                 payload = domain.data(0, Qt.ItemDataRole.UserRole) or {}
                 if payload.get("type") == "domain":
                     domain.setExpanded(False)
-        self._expand_horizons()
+        self._expand_virtual_sections()
 
     def _keep_virtual_section_expanded(self, item):
         payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
-        if payload.get("type") == "horizon":
-            item.setExpanded(True)
+        if payload.get("type") in self._VIRTUAL_SECTION_TYPES:
+            QTimer.singleShot(0, lambda target=item: target.setExpanded(True))
 
-    def _expand_horizons(self):
+    def _expand_virtual_sections(self):
         def visit(item):
             payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
-            if payload.get("type") == "horizon": item.setExpanded(True)
+            if payload.get("type") in self._VIRTUAL_SECTION_TYPES:
+                item.setExpanded(True)
             for index in range(item.childCount()): visit(item.child(index))
         for index in range(self.tree.topLevelItemCount()): visit(self.tree.topLevelItem(index))
 
@@ -230,14 +233,17 @@ class ProjectTree(QWidget):
                         interval.addChild(self._item(text,{"type":"area","id":area.id,"archived":area.is_archived,**base}))
             if site_item.childCount(): self.tree.addTopLevelItem(site_item)
         self.tree.expandAll() if constrained else self.tree.expandToDepth(1)
-        self._expand_horizons()
+        self._expand_virtual_sections()
+        # Windows can apply an internal collapse while polishing newly inserted
+        # tree items. Reassert virtual groups after the current event loop turn.
+        QTimer.singleShot(0, self._expand_virtual_sections)
 
     @staticmethod
     def _item(text, payload):
         item=QTreeWidgetItem([text]); item.setData(0,Qt.ItemDataRole.UserRole,payload)
         icons={"site":"mine","domain":"domain","folder":"blast-blocks" if payload.get("folder_kind")=="blast_events" else "assessment-area","horizon":"horizon","block":"block","contour":"contour","interval":"layers","area":"assessment-area"}
         item.setIcon(0,ui_icon(icons.get(payload.get("type"),"folder-open")))
-        if payload.get("type") == "horizon":
+        if payload.get("type") in ProjectTree._VIRTUAL_SECTION_TYPES:
             item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             font = item.font(0); font.setBold(True); item.setFont(0, font)
@@ -246,8 +252,9 @@ class ProjectTree(QWidget):
 
     def _item_clicked(self, item, _column=0):
         p=item.data(0,Qt.ItemDataRole.UserRole) or {}; kind=p.get("type")
-        if kind=="horizon": item.setExpanded(True); return
-        if kind in {"folder","interval"}: item.setExpanded(not item.isExpanded()); return
+        if kind in self._VIRTUAL_SECTION_TYPES:
+            item.setExpanded(True); return
+        if kind=="folder": item.setExpanded(not item.isExpanded()); return
         if kind=="site": self.site_selected.emit(p["id"],p["site_name"])
         elif kind=="domain": self.domain_selected.emit(p["domain_id"],p["domain_name"],p["site_id"],p["site_name"])
         elif kind=="block": self.block_selected.emit(p["id"],p["domain_id"],p["site_id"])
