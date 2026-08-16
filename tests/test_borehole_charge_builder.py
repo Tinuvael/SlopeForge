@@ -26,7 +26,7 @@ def bulk():
                             density_kg_m3=1000)
 
 
-@pytest.mark.parametrize((charge_form,label),[(ChargeForm.BULK,"Bulk explosive"),(ChargeForm.PUMPABLE,"Pumpable explosive")])
+@pytest.mark.parametrize(("charge_form", "label"),[(ChargeForm.BULK,"Bulk explosive"),(ChargeForm.PUMPABLE,"Pumpable explosive")])
 def test_selected_bulk_component_type_uses_frozen_charge_form(charge_form,label):
     product=ExplosiveProduct(7,"Product",ExplosiveProductKind.BULK,"#C87533",density_kg_m3=1000,charge_form=charge_form)
     component=ChargeComponent("c",ChargeComponentKind.BULK_EXPLOSIVE,1,2,product.snapshot())
