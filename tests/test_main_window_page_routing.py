@@ -8,7 +8,9 @@ def test_tree_is_primary_navigation_without_project_lines_branch():
     tree=source("ui/widgets/project_tree.py")
     assert '"Project Lines"' not in tree
     assert '"type":"horizon"' in tree and '"type":"interval"' in tree
-    assert 'kind in {"folder","horizon","interval"}' in tree
+    assert 'kind in {"folder","interval"}' in tree
+    assert 'if kind=="horizon": item.setExpanded(True); return' in tree
+    assert "DontShowIndicator" in tree
 
 def test_project_and_domain_filters_are_user_facing():
     tree=source("ui/widgets/project_tree.py")
