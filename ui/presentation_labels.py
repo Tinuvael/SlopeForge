@@ -42,19 +42,25 @@ MATRIX_LABELS = {
 }
 
 CRITERION_LABELS = {
-    "bench_angle": "Bench face angle shortfall from design, °",
-    "berm_width": "Berm width deficit from design, m",
-    "toe_position": "Actual toe deviation from design, m",
+    "bench_angle": "Bench face angle deviation from design, °",
+    "berm_width": "Berm width deviation from design, m",
+    "toe_position": "Toe deviation from design, m",
     "crest_loss": "Crest loss / damage, m",
     "open_cracks": "Open blast-induced cracks",
-    "damage": "Blast damage features in previously intact rock, count/m²",
+    "damage": "Blast damage, features/m²",
     "visible_drillhole_traces": "Visible contour drillhole traces, %",
     "loose_blocks": "Loose blocks and unstable fragments on the face",
     "face_profile": "Actual face profile",
 }
+COMPACT_CRITERION_LABELS = {
+    "bench_angle":"Angle deviation, °", "berm_width":"Berm deviation, m", "toe_position":"Toe deviation, m",
+    "visible_drillhole_traces":"Contour traces, %", "crest_loss":"Crest loss, m", "loose_blocks":"Loose blocks",
+    "face_profile":"Face profile", "damage":"Blast damage, /m²", "open_cracks":"Blast cracks",
+}
 
 CRITERION_HELP = {
-    "bench_angle": "max(design angle − actual angle, 0)",
+    "bench_angle": "Enter 0 when design is met or exceeded; otherwise enter the deviation magnitude used by the scoring matrix.",
+    "berm_width": "Enter 0 when design is met or exceeded; otherwise enter the deviation magnitude used by the scoring matrix.",
     "toe_position": "Enter the absolute distance between actual and design toe positions.",
     "crest_loss": "Enter the width of actual crest loss relative to the design position.",
     "damage": "Estimate visible crushed zones, opened discontinuities, or other damage features per 1 m². Values from 1 to 5 require an expert score and reason.",
@@ -149,6 +155,10 @@ def matrix_label(matrix_id: str, fallback: str = "") -> str:
 
 def criterion_label(criterion_id: str, fallback: str = "") -> str:
     return tr(CRITERION_LABELS.get(criterion_id, fallback or criterion_id))
+
+
+def compact_criterion_label(criterion_id: str, fallback: str = "") -> str:
+    return tr(COMPACT_CRITERION_LABELS.get(criterion_id, CRITERION_LABELS.get(criterion_id, fallback or criterion_id)))
 
 
 def option_label(option_id: str, fallback: str = "") -> str:

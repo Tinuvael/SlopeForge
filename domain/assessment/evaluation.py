@@ -9,6 +9,7 @@ from uuid import uuid4
 
 DESIGN = "design"
 CONDITION = "face_condition"
+REQUIRE_MANUAL_SCORE_REASON = False
 
 @dataclass(frozen=True)
 class AssessmentCriterionOption:
@@ -104,7 +105,7 @@ class AssessmentCriterionResult:
     def validate(self):
         if self.manual_score is not None:
             if not 0 <= self.manual_score <= self.maximum_score: raise ValueError("Ручной балл вне допустимого диапазона")
-            if not (self.override_reason or "").strip(): raise ValueError("Для ручного балла укажите причину")
+            if REQUIRE_MANUAL_SCORE_REASON and not (self.override_reason or "").strip(): raise ValueError("Для ручного балла укажите причину")
         self.is_manual_override=self.manual_score is not None
         self.accepted_score=self.manual_score if self.manual_score is not None else self.automatic_score
 
@@ -230,6 +231,29 @@ class AssessmentAreaEvaluationService:
     def new_evaluation(self,area,template_id=None,override_reason=None):
         evaluation = self.create_evaluation(area)
         return self.new_draft(evaluation, area, template_id, override_reason)
+    def refresh_auto_draft(self, draft, area):
+        """Refresh current-link facts on an editable copy; stored revisions stay frozen."""
+        if draft.status == "completed" or draft.controlled_blasting_detection_source == "manual_override":
+            return draft
+        template_id, present, source = self.detect_template(area); changed = template_id != draft.matrix_template_id
+        template = get_template(template_id)
+        draft.assessment_area_geometry_revision_id = area.active_geometry_revision_id
+        draft.matrix_template_id = template.id; draft.matrix_template_version = template.version; draft.matrix_template_snapshot = template.to_dict()
+        draft.controlled_blasting_present = present; draft.controlled_blasting_detection_source = source; draft.linked_event_snapshots = self.snapshot_links(area)
+        if changed:
+            old = {result.criterion_id: result for result in draft.criterion_results}; rebuilt = []
+            for section in template.sections:
+                for criterion in section.criteria:
+                    previous = old.get(criterion.id)
+                    rebuilt.append(AssessmentCriterionResult(criterion.id, criterion.name, section.id,
+                        raw_numeric_value=previous.raw_numeric_value if previous else None,
+                        selected_option_id=previous.selected_option_id if previous else None,
+                        maximum_score=criterion.maximum_score,
+                        notes=previous.notes if previous else ""))
+            draft.criterion_results = rebuilt
+            draft.face_condition_inputs = {r.criterion_id:(r.raw_numeric_value if r.raw_numeric_value is not None else r.selected_option_id) for r in rebuilt if r.section==CONDITION}
+            calculate_revision(draft)
+        return draft
     def snapshot_links(self,area):
         result=[]
         for link in area.event_links:

@@ -7,7 +7,7 @@ from application.ports.assessment_state import AssessmentStateSnapshot
 from application.ports.domain_version import DomainWriteResult
 from application.services.entity_editing import AssessmentEditingSession
 from application.state.assessment_domain_state import AssessmentDomainState
-from domain.assessment.entities import AssessmentArea
+from domain.assessment.entities import AssessmentArea, AssessmentEventLink
 from tests.assessment_boundary_fixtures import boundary_from_polygon, geometry_revision
 from domain.assessment.evaluation import AssessmentAreaEvaluationService
 from domain.blasting.entities import BlastEvent, BlastEventGeometryRevision
@@ -141,6 +141,26 @@ def test_historical_completed_evaluation_draft_reads_separate_stored_indices_wit
     assert historical.face_condition_index == 0.87
     assert historical.result_quadrant == "stored_historical_result"
     assert historical is not stored
+
+
+def test_auto_draft_matrix_refreshes_for_confirmed_contour_and_reverse():
+    editing,persistence,_,area=session(); evaluation,draft=editing.evaluation_draft(area); editing.save_evaluation(evaluation,draft,"draft")
+    stored=deepcopy(evaluation.active_revision()); contour=BlastEvent("BE-C","Contour","contour",date.today(),100); editing.state.blast_events.append(contour)
+    link=AssessmentEventLink(contour.id,"BEG-C","confirmed","automatic",assessment_area_geometry_revision_id=area.active_geometry_revision_id); area.event_links.append(link)
+    _,controlled=editing.evaluation_draft(area)
+    assert controlled.matrix_template_id=="controlled_blasting_v1"
+    assert "visible_drillhole_traces" in {r.criterion_id for r in controlled.criterion_results}
+    assert evaluation.active_revision().to_dict()==stored.to_dict() and persistence.saves==1
+    editing.save_evaluation(evaluation,controlled,"draft")
+    link.status="excluded"; _,plain=editing.evaluation_draft(area)
+    assert plain.matrix_template_id=="no_controlled_blasting_v1"
+
+
+def test_manual_matrix_draft_is_not_auto_replaced():
+    editing,_,_,area=session(); evaluation,draft=editing.evaluations.new_evaluation(area,"controlled_blasting_v1","Manual choice"); editing.save_evaluation(evaluation,draft,"draft")
+    assert evaluation.active_revision().controlled_blasting_detection_source=="manual_override"
+    _,reopened=editing.evaluation_draft(area)
+    assert reopened.matrix_template_id=="controlled_blasting_v1" and reopened.controlled_blasting_detection_source=="manual_override"
 
 
 def test_lazy_owner_rollback_only_removes_new_empty_owner():

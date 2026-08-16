@@ -4,6 +4,9 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 QtWidgets = pytest.importorskip("PySide6.QtWidgets", reason="Qt unavailable", exc_type=ImportError)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent
@@ -73,32 +76,101 @@ def test_completed_end_to_end_save_load_restores_everything(tmp_path):
 
 def test_dialog_restores_without_mutating_source_and_nullable_zero():
     app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); source=deepcopy(draft); dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
-    assert dialog.da.nullable_value()==65 and dialog.aa.nullable_value()==66 and dialog.toe.nullable_value()==0
+    assert dialog.shortfall.nullable_value()==0 and dialog.deficit.nullable_value()==0 and dialog.toe.nullable_value()==0
     assert dialog.editors["visible_drillhole_traces"].input.nullable_value()==90
     assert dialog.editors["loose_blocks"].input.currentData()=="several_small"
-    assert dialog.editors["damage"].manual_score.nullable_value()==8 and dialog.editors["damage"].reason.text()=="Экспертная оценка"
+    assert dialog.editors["damage"].manual_score.nullable_value()==8 and dialog.editors["damage"].override_reason=="Экспертная оценка"
     assert draft.to_dict()==source.to_dict() and not dialog._dirty
     blank=NullableDoubleSpinBox(); assert blank.nullable_value() is None; blank.set_nullable_value(0); assert blank.nullable_value()==0
     dialog._allow_close=True; dialog.close()
 
-def test_damage_intermediate_manual_workflow_and_russian_table():
+def test_damage_intermediate_manual_workflow_and_russian_table(monkeypatch):
     app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
-    editor=dialog.editors["damage"]; editor.input.set_nullable_value(1); editor.manual_score.clear_value(); editor.reason.clear(); dialog.refresh(False)
+    editor=dialog.editors["damage"]; editor.input.set_nullable_value(1); editor.manual_score.clear_value(); editor.manual_score.editingFinished.emit(); dialog.refresh(False)
     assert DAMAGE_WARNING in editor.validation.text() and dialog._preview.face_condition_index is None
-    editor.manual_score.set_nullable_value(8); editor.reason.setText("Экспертный осмотр"); dialog.refresh(False)
+    monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:("Экспертный осмотр",True)); editor.manual_score.set_nullable_value(8); editor.manual_score.editingFinished.emit(); dialog.refresh(False)
     assert dialog._preview.design_achievement_index==1 and dialog._preview.face_condition_index is not None and dialog.plot.design==1
-    texts=[dialog.condition_table.item(row,col).text() for row in range(dialog.condition_table.rowCount()) for col in range(dialog.condition_table.columnCount())]
-    assert "Несколько небольших блоков" in texts and "several_small" not in texts and "Твёрдая подошва" in texts
+    assert "Несколько небольших блоков" in dialog.editors["loose_blocks"].input.currentText()
+    assert "Твёрдая подошва" in dialog.editors["face_profile"].input.currentText()
     dialog._allow_close=True; dialog.close()
 
 def test_dialog_initialization_does_not_collect_before_restore(monkeypatch):
     app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); calls=[]
     original=AssessmentAreaEvaluationDialog.collect
     def checked(self):
-        calls.append(self.da.nullable_value()); return original(self)
+        calls.append(self.shortfall.nullable_value()); return original(self)
     monkeypatch.setattr(AssessmentAreaEvaluationDialog,"collect",checked)
     dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
-    assert calls and calls[0]==65
+    assert calls and calls[0]==0
+    dialog._allow_close=True; dialog.close()
+
+def test_direct_geometry_inputs_are_canonical_and_live_preview_does_not_save():
+    app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); calls=[]
+    dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:calls.append(True))
+    dialog.shortfall.set_nullable_value(3); dialog.deficit.set_nullable_value(1.5); dialog.toe.set_nullable_value(.8)
+    collected=dialog.collect()
+    assert collected.design_inputs=={
+        "bench_angle_shortfall_deg":3.0,"berm_width_deficit_m":1.5,
+        "toe_offset_from_design_m":.8,
+    }
+    assert not ({"design_bench_face_angle_deg","actual_bench_face_angle_deg","design_berm_width_m","actual_berm_width_m"}&collected.design_inputs.keys())
+    assert calls==[] and dialog.angle_score.text()!="Required"
+    assert not hasattr(dialog,"design_table") and not hasattr(dialog,"condition_table")
+    assert not hasattr(dialog,"scoring_details")
+    dialog._allow_close=True; dialog.close()
+
+def test_legacy_geometry_payload_is_presented_without_mutating_history():
+    app(); state,area=make_state(); evaluation,draft=filled_draft(state,area)
+    draft.design_inputs={"design_bench_face_angle_deg":60,"actual_bench_face_angle_deg":57,
+                         "design_berm_width_m":8,"actual_berm_width_m":6.5,
+                         "toe_offset_from_design_m":.4,"measurement_method":"survey","measurement_notes":"legacy"}
+    original=deepcopy(draft)
+    dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
+    assert dialog.shortfall.nullable_value()==3 and dialog.deficit.nullable_value()==1.5
+    assert draft.to_dict()==original.to_dict()
+    assert set(dialog.collect().design_inputs)=={"bench_angle_shortfall_deg","berm_width_deficit_m","toe_offset_from_design_m"}
+    dialog._allow_close=True; dialog.close()
+
+def test_manual_matrix_reason_is_only_available_for_manual_selection():
+    app(); state,area=make_state(); evaluation,draft=filled_draft(state,area)
+    automatic=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
+    assert automatic.override_reason.isHidden()
+    automatic._allow_close=True; automatic.close()
+    draft.controlled_blasting_detection_source="manual_override"; draft.change_reason="Engineering review"
+    manual=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
+    assert not manual.override_reason.isHidden() and manual.override_reason.text()=="Engineering review"
+    manual._allow_close=True; manual.close()
+
+def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
+    application=app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None); dialog.show(); application.processEvents()
+    editor=dialog.geometry_editors["bench_angle"]
+    def rendered(colour):
+        image=editor.manual_score.lineEdit().grab().toImage(); target=QColor(colour)
+        return any(abs(image.pixelColor(x,y).red()-target.red())<=12 and abs(image.pixelColor(x,y).green()-target.green())<=12 and abs(image.pixelColor(x,y).blue()-target.blue())<=12 for x in range(3,max(4,image.width()-3)) for y in range(3,max(4,image.height()-3)))
+    assert editor.manual_score.objectName()=="AutomaticScore" and editor.manual_score.lineEdit().styleSheet()==""
+    assert not rendered("#fff4cc") and not rendered("#fff0f0")
+    assert not hasattr(editor,"override_panel") and not hasattr(editor,"override_toggle")
+    assert editor.manual_score.maximum()==editor.criterion.maximum_score
+    assert editor.score_state_frame.isAncestorOf(editor.manual_score) and editor.help_button.toolTip()
+    assert not [button for button in editor.findChildren(QtWidgets.QPushButton) if button.text() in {"Clear","Очистить"}]
+    assert not [label for label in editor.findChildren(QtWidgets.QLabel) if label.text() in {"Required","Manual score","Обязательно","Ручной балл"}]
+    prompts=[]; monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:(prompts.append(True) or "Survey review",True))
+    editor.manual_score.set_nullable_value(12)
+    assert prompts==[] and editor.override_reason is None and not dialog.shortfall.isEnabled()
+    assert dialog._preview.criterion_results[0].accepted_score==12
+    assert isinstance(editor.manual_score,QtWidgets.QSpinBox) and editor.manual_score.singleStep()==1
+    assert editor.manual_score.text().startswith("12 / 40") and editor.manual_score.styleSheet()==""
+    application.processEvents(); assert rendered("#fff4cc")
+    editor.manual_score.stepUp(); assert editor.manual_score.value()==13 and editor._manual_value==13
+    editor.manual_score.stepDown(); assert editor.manual_score.value()==12 and editor._manual_value==12
+    QTest.keyClick(editor.manual_score,Qt.Key.Key_Up); assert editor.manual_score.value()==13
+    QTest.keyClick(editor.manual_score,Qt.Key.Key_Down); assert editor.manual_score.value()==12
+    editor.manual_score.clear_value(); editor.manual_score.editingFinished.emit()
+    assert editor.override_reason is None and dialog.shortfall.isEnabled()
+    dialog.shortfall.clear_value(); dialog.refresh(False); assert editor.manual_score.objectName()=="MissingScore" and "Required" in editor.manual_score.toolTip()
+    application.processEvents(); assert rendered("#fff0f0")
+    editor.manual_score.set_nullable_value(10); editor.manual_score.editingFinished.emit()
+    assert editor._manual_value==10 and not dialog.shortfall.isEnabled() and prompts==[]
     dialog._allow_close=True; dialog.close()
 
 def test_storage_failure_does_not_report_success_or_create_revision(monkeypatch):

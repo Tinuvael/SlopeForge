@@ -151,16 +151,16 @@
             <translation>Назад / Закрыть</translation>
         </message>
         <message>
-            <source>Bench face angle shortfall from design, °</source>
-            <translation>Недобор угла относительно проекта, °</translation>
+            <source>Bench face angle deviation from design, °</source>
+            <translation>Отклонение угла откоса от проекта, °</translation>
         </message>
         <message>
-            <source>Berm width deficit from design, m</source>
-            <translation>Уменьшение ширины относительно проекта, м</translation>
+            <source>Berm width deviation from design, m</source>
+            <translation>Отклонение ширины бермы от проекта, м</translation>
         </message>
         <message>
-            <source>Blast damage features in previously intact rock, count/m²</source>
-            <translation>Признаки взрывного повреждения ранее ненарушенной породы, шт/м²</translation>
+            <source>Blast damage, features/m²</source>
+            <translation>Взрывное повреждение, шт/м²</translation>
         </message>
         <message>
             <source>Blast design</source>
@@ -3096,5 +3096,39 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Search...</source><translation>Поиск...</translation></message>
         <message><source>Could not change Assessment Area archive state</source><translation>Не удалось изменить состояние архива зоны оценки</translation></message>
         <message><source>Could not change Contour Blast archive state</source><translation>Не удалось изменить состояние архива контурного взрыва</translation></message>
+        <message><source>Toe deviation from design, m</source><translation>Отклонение подошвы от проекта, м</translation></message>
+        <message><source>Live result</source><translation>Текущий результат</translation></message>
+        <message><source>Scoring details</source><translation>Детали оценки</translation></message>
+        <message><source>Scoring guide</source><translation>Правила оценки</translation></message>
+        <message><source>Override score</source><translation>Изменить балл</translation></message>
+        <message><source>Complete required inputs</source><translation>Заполните обязательные данные</translation></message>
+        <message><source>Design Achievement Index</source><translation>Индекс достижения проектных параметров</translation></message>
+        <message><source>Face Condition Index</source><translation>Индекс состояния откоса</translation></message>
+        <message><source>Score</source><translation>Балл</translation></message>
+        <message><source>preview</source><translation>предпросмотр</translation></message>
+        <message><source>Quadrant</source><translation>Квадрант</translation></message>
+        <message><source>Manual score</source><translation>Ручной балл</translation></message>
+        <message><source>Reason for manual score</source><translation>Причина ручного балла</translation></message>
+        <message><source>Enter 0 when design is met or exceeded; otherwise enter the deviation magnitude used by the scoring matrix.</source><translation>Введите 0, если проект достигнут или превышен; иначе укажите величину отклонения для матрицы оценки.</translation></message>
+        <message><source>Angle deviation, °</source><translation>Отклонение угла, °</translation></message>
+        <message><source>Berm deviation, m</source><translation>Отклонение бермы, м</translation></message>
+        <message><source>Toe deviation, m</source><translation>Отклонение подошвы, м</translation></message>
+        <message><source>Contour traces, %</source><translation>Следы контурных скважин, %</translation></message>
+        <message><source>Crest loss, m</source><translation>Потеря бровки, м</translation></message>
+        <message><source>Loose blocks</source><translation>Свободные блоки</translation></message>
+        <message><source>Face profile</source><translation>Профиль откоса</translation></message>
+        <message><source>Blast damage, /m²</source><translation>Взрывное повреждение, шт/м²</translation></message>
+        <message><source>Blast cracks</source><translation>Взрывные трещины</translation></message>
+        <message><source>Edit to override the automatic score. Delete or Backspace restores automatic scoring.</source><translation>Измените балл для ручной корректировки. Delete или Backspace возвращает автоматический расчёт.</translation></message>
+        <message><source>Manual override</source><translation>Ручная корректировка</translation></message>
+        <message><source>Required for completion</source><translation>Обязательно для завершения</translation></message>
+
+        <message><source>Assessment details</source><translation>Данные оценки</translation></message>
+        <message><source>Assessment basis</source><translation>Основание оценки</translation></message>
+        <message><source>Controlled blasting</source><translation>Контурное взрывание</translation></message>
+        <message><source>Standard blasting</source><translation>Обычное взрывание</translation></message>
+        <message><source>Confirmed contour blast link</source><translation>Подтвержденная связь с контурным взрывом</translation></message>
+        <message><source>No confirmed contour blast link</source><translation>Подтвержденная связь с контурным взрывом отсутствует</translation></message>
+        <message><source>Manual matrix selection</source><translation>Матрица выбрана вручную</translation></message>
     </context>
 </TS>

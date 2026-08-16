@@ -29,7 +29,7 @@ def test_assessment_editor_tabs_are_explicitly_detached_and_keep_content():
 
 
 
-def test_assessment_page_nested_tabs_have_exclusive_initial_visibility(monkeypatch):
+def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     application=app()
     from tests.test_wall_assessment_persistence_ui import make_state,filled_draft
     from application.services.assessment_event_links import AssessmentEventLinkService
@@ -50,21 +50,92 @@ def test_assessment_page_nested_tabs_have_exclusive_initial_visibility(monkeypat
         def ensure_evaluation_owner(self,*_args):raise AssertionError("opening must not create an owner")
         def save(self):raise AssertionError("construction must not persist")
     monkeypatch.setattr(module,"EntityPageController",Controller)
-    context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True))
-    before=len(evaluation.revisions); page=module.AssessmentAreaPage(context,1,"Domain",area.id)
+    context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True,display_name="Current User"))
+    before=len(evaluation.revisions); page=module.AssessmentAreaPage(context,1,"Domain",area.id); page.resize(1920,1080)
     page.show(); page.tabs.setCurrentWidget(page.assessment_tab); application.processEvents()
-    sections=page.assessment_sections
-    general,geometry,condition=(sections.widget(i) for i in range(3))
-    assert sections.currentIndex()==0
-    assert general.isVisible() and not geometry.isVisible() and not condition.isVisible()
-    assert general.findChildren(QtWidgets.QWidget) and geometry.findChildren(QtWidgets.QWidget) and condition.findChildren(QtWidgets.QWidget)
+    splitter=page.assessment_splitter; inputs=page.assessment_inputs; live=page.result
+    assert splitter.isVisible() and splitter.count()==2
+    assert splitter.widget(0) is inputs and splitter.widget(1) is page.assessment_right
+    assert inputs.isVisible() and live.isVisible()
+    assert inputs.width()>0 and page.assessment_right.width()>300
+    assert page.assessment_tab.findChildren(QtWidgets.QScrollArea)==[]
+    assert not hasattr(page,"assessment_sections")
+    assert page.geometry_section_title.isVisible() and page.face_condition_section_title.isVisible()
+    assert all(editor.isVisible() for editor in page.evaluation_editor.geometry_editors.values())
+    assert all(editor.isVisible() for editor in page.evaluation_editor.editors.values())
+    assert page.evaluation_editor.date.isVisible() and page.evaluation_editor.date.isEnabled()
+    assert page.evaluation_editor.inspector.isVisible() and page.evaluation_editor.inspector.isEnabled()
+    assert page.evaluation_editor.inspector.text()=="Иванов"  # saved value is never overwritten
+    assert page.assessment_details_card.isVisible() and inputs.isAncestorOf(page.evaluation_editor.date) and inputs.isAncestorOf(page.evaluation_editor.inspector)
+    assert page.assessment_right.width()/(inputs.width()+page.assessment_right.width())>.42
+    assert page.assessment_basis_value.text()=="With contour drilling" or page.assessment_basis_value.text()=="Controlled blasting"
+    assert page.assessment_basis_detection.text()=="Confirmed contour blast link"
+    assert page.face_condition_divider.isVisible()
+    assert not page.evaluation_editor.override_reason.isVisible()
+    assert page.evaluation_editor.dai_value.isVisible()
+    assert page.evaluation_editor.fci_value.isVisible()
+    assert page.evaluation_editor.result_value.isVisible()
+    assert page.evaluation_editor.plot.isVisible()
     assert page.save_evaluation_button.isVisible() and page.complete_evaluation_button.isVisible()
     assert page.evaluation_editor.summary.text() and "DAI: 1.000" in page.evaluation_editor.summary.text()
-    for index,visible in ((1,geometry),(2,condition),(0,general)):
-        sections.setCurrentIndex(index); application.processEvents()
-        assert visible.isVisible()
-        assert all(not sections.widget(other).isVisible() for other in range(3) if other!=index)
+    assert page.evaluation_editor.comments.isVisible() and page.evaluation_editor.recommendations.isVisible()
+    assert page.evaluation_editor.comments.height()<=70 and page.evaluation_editor.recommendations.height()<=70
+    assert page.assessment_tab.findChildren(QtWidgets.QTextEdit).count(page.evaluation_editor.comments)==1
+    assert page.assessment_tab.findChildren(QtWidgets.QTextEdit).count(page.evaluation_editor.recommendations)==1
+    assert not hasattr(page.evaluation_editor,"design_table") and not hasattr(page.evaluation_editor,"condition_table")
+    page.evaluation_editor.comments.setPlainText("Field note"); page.evaluation_editor.recommendations.setPlainText("Scale loose rock")
+    application.processEvents(); collected=page.evaluation_editor.collect()
+    assert collected.comments=="Field note" and collected.recommendations=="Scale loose rock"
+    assert page.evaluation_editor.override_reason.isHidden()
+    page.evaluation_editor.shortfall.set_nullable_value(2.5); application.processEvents()
+    assert page.evaluation_editor.collect().design_inputs["bench_angle_shortfall_deg"]==2.5
     assert len(evaluation.revisions)==before
+    page.close()
+    application.processEvents()
+
+    evaluation.active_revision().controlled_blasting_detection_source="manual_override"
+    evaluation.active_revision().change_reason="Engineering review"
+    manual=module.AssessmentAreaPage(context,1,"Domain",area.id); manual.resize(1920,1080); manual.show(); manual.tabs.setCurrentWidget(manual.assessment_tab); application.processEvents()
+    assert manual.evaluation_editor.override_reason.isVisible()
+    assert manual.evaluation_editor.override_reason.text()=="Engineering review"
+    assert manual.evaluation_editor.collect().change_reason=="Engineering review"
+    manual.close()
+
+
+@pytest.mark.parametrize("manual_override",[False,True])
+def test_assessment_page_opens_real_new_draft_sources(monkeypatch,manual_override):
+    application=app()
+    from tests.test_wall_assessment_persistence_ui import make_state
+    from application.services.assessment_event_links import AssessmentEventLinkService
+    from domain.assessment.evaluation import AssessmentAreaEvaluationService
+    import ui.pages.assessment_area_page as module
+
+    state,area=make_state(); area.event_links[0].status="excluded"
+    service=AssessmentAreaEvaluationService(state)
+    if manual_override:
+        evaluation,draft=service.new_evaluation(area,"controlled_blasting_v1","Engineering review")
+        assert draft.controlled_blasting_detection_source=="manual_override"
+    else:
+        evaluation,draft=service.new_evaluation(area)
+        assert draft.controlled_blasting_detection_source=="no_confirmed_contour_link"
+
+    class Attachments:
+        def list_for_owner(self,*_args):return []
+    class Controller:
+        def __init__(self,*_args):self.state=state; self.attachments=Attachments(); self.links=AssessmentEventLinkService(state)
+        def area(self,_id):return area
+        def evaluation_draft(self,_area):return evaluation,draft
+        def save_evaluation(self,*_args):raise AssertionError("opening and preview must not save")
+    monkeypatch.setattr(module,"EntityPageController",Controller)
+    context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True,display_name="Current Inspector"))
+    page=module.AssessmentAreaPage(context,1,"Domain",area.id); page.resize(1920,1080); page.show(); page.tabs.setCurrentWidget(page.assessment_tab); application.processEvents()
+    assert page.evaluation_editor.inspector.text()=="Current Inspector"
+    assert page.assessment_basis_value.text()==("Controlled blasting" if manual_override else "Standard blasting")
+    assert page.assessment_basis_detection.text()==("Manual matrix selection" if manual_override else "No confirmed contour blast link")
+    assert page.evaluation_editor.override_reason.isVisible() is manual_override
+    assert page.evaluation_editor.collect().controlled_blasting_detection_source==draft.controlled_blasting_detection_source
+    page.evaluation_editor.toe.set_nullable_value(.5); application.processEvents()
+    assert page.evaluation_editor.collect().design_inputs["toe_offset_from_design_m"]==.5
     page.close()
 
 

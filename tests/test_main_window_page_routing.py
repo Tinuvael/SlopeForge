@@ -69,11 +69,21 @@ def test_block_page_embeds_geometry_and_revision_safe_technical_card_tabs():
 def test_area_page_is_focused_without_legacy_mode_switch():
     area=source("ui/pages/assessment_area_page.py")
     assert "class AssessmentAreaPage" in area
-    assert '"Overview"' in area and '"Assessment"' in area and '"Result"' in area
+    assert '"Overview"' in area and '"Assessment"' in area
+    assert 'addTab(self.result,tr("Result"))' not in area
     assert '"Linked events"' in area
     assert "Blast Events / Assessment Areas" not in area
-    assert "AssessmentAreaEvaluationDialog" in area and "Matrix" in area
+    assert "AssessmentAreaEvaluationDialog" in area and "Matrix" in area and "assessment_splitter" in area
     assert "Design Achievement Index" not in area  # calculated by reused dialog/QuadrantPlot
+
+def test_assessment_geometry_uses_direct_compact_inputs():
+    editor=source("ui/editors/assessment_evaluation_editor.py")
+    for label in ("Angle deviation, °","Berm deviation, m","Toe deviation, m"):
+        assert label in editor
+    geometry=editor[editor.index("    def _geometry(self):"):editor.index("    def _geometry_rules(self):")]
+    for legacy in ("Design bench face angle", "Actual bench face angle", "Design berm width", "Actual berm width"):
+        assert legacy not in geometry
+    assert "Scoring guide" not in geometry and "set_help" in geometry
 
 def test_area_links_and_focused_creation_are_reused():
     area=source("ui/pages/assessment_area_page.py")
@@ -92,9 +102,10 @@ def test_entity_page_integration_corrections_are_visible():
     assert 'QPushButton(tr("Save draft"))' in block and 'QPushButton(tr("Complete"))' in block
     assert "save_draft()" in block and "complete()" in block
     area=source("ui/pages/assessment_area_page.py")
-    assert "self.assessment_sections=QTabWidget()" in area
-    assert 'evaluation_editor.take_tab(tr(title))' in area
-    assert "self.assessment_sections.setCurrentIndex(0)" in area
+    assert "self.assessment_sections" not in area
+    assert "self.assessment_inputs=QWidget()" in area
+    assert "self.assessment_inputs=QScrollArea()" not in area
+    assert "geometry_section_title" in area and "face_condition_section_title" in area
     assert "page.setVisible(True)" not in area
     assert "Save an assessment draft first" not in area
     assert "prepare_evaluation_attachment_owner" in area

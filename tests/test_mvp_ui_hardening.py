@@ -343,7 +343,7 @@ def test_dynamic_domain_validation_messages_are_presented_in_english():
     assert domain_message("Dataset 'D-1' не найден") == "Dataset 'D-1' was not found"
     assert domain_message("BlastEvent 'E-1' не найден") == "BlastEvent 'E-1' was not found"
     incomplete = domain_message("Не заполнено: Недобор угла относительно проекта, °, Дата оценки, Инспектор")
-    assert incomplete.startswith("Missing required fields: Bench face angle shortfall")
+    assert incomplete.startswith("Missing required fields: Bench face angle deviation")
     assert not __import__("re").search(r"[А-Яа-яЁё]", incomplete)
     assert domain_message("Добавьте группу бурения; Выберите метод контурного взрывания") == (
         "Add a drilling group; Select a controlled blasting method"

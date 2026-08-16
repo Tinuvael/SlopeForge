@@ -30,6 +30,24 @@ def test_plain_angle_next_worse(value,score): assert score_numeric("bench_angle"
 @pytest.mark.parametrize("criterion,value,template,score",[("berm_width",0,"controlled_blasting_v1",40),("berm_width",1,"controlled_blasting_v1",25),("berm_width",3,"controlled_blasting_v1",0),("toe_position",.5,"controlled_blasting_v1",8),("toe_position",1,"no_controlled_blasting_v1",5),("visible_drillhole_traces",75,"controlled_blasting_v1",15),("crest_loss",2.5,"controlled_blasting_v1",5)])
 def test_numeric_matrices(criterion,value,template,score): assert score_numeric(criterion,value,template)==score
 
+def test_direct_geometry_differences_keep_legacy_scores_and_dai():
+    template=get_template("no_controlled_blasting_v1")
+    legacy_angle=max(60-57,0); legacy_berm=max(8-6.5,0)
+    direct_angle,direct_berm=3,1.5
+    assert score_numeric("bench_angle",legacy_angle,template.id)==score_numeric("bench_angle",direct_angle,template.id)
+    assert score_numeric("berm_width",legacy_berm,template.id)==score_numeric("berm_width",direct_berm,template.id)
+    def revision(angle,berm):
+        item=complete_revision(template.id)
+        for result in item.criterion_results:
+            if result.criterion_id in {"bench_angle","berm_width"}:
+                result.manual_score=None; result.override_reason=None
+                result.raw_numeric_value=angle if result.criterion_id=="bench_angle" else berm
+        calculate_revision(item)
+        return item
+    legacy,direct=revision(legacy_angle,legacy_berm),revision(direct_angle,direct_berm)
+    assert legacy.design_achievement_index==direct.design_achievement_index
+    assert [r.accepted_score for r in legacy.criterion_results if r.section==DESIGN]==[r.accepted_score for r in direct.criterion_results if r.section==DESIGN]
+
 def test_detection_confirmed_only_and_manual_reason(area):
     contour=BlastEvent("BE","Contour","contour",None,105)
     area.event_links=[AssessmentEventLink("BE","G","suggested","automatic",assessment_area_geometry_revision_id=area.active_geometry_revision_id)]
@@ -44,12 +62,10 @@ def test_categories_damage_and_manual_rules():
     r=AssessmentCriterionResult("damage","x",CONDITION,raw_numeric_value=3)
     assert score_result(r,t) is None
     r.manual_score=7
-    with pytest.raises(ValueError): score_result(r,t)
-    r.override_reason="осмотр"; assert score_result(r,t)==7
+    assert score_result(r,t)==7
     r=AssessmentCriterionResult("open_cracks","x",CONDITION,selected_option_id="many_open",manual_score=11,override_reason="x")
     with pytest.raises(ValueError): score_result(r,t)
-    r.manual_score=5; r.override_reason=""
-    with pytest.raises(ValueError): score_result(r,t)
+    r.manual_score=5; r.override_reason=""; assert score_result(r,t)==5
 
 def complete_revision(template_id="controlled_blasting_v1"):
     t=get_template(template_id); results=[]
@@ -67,6 +83,13 @@ def test_indices_quadrants_draft_and_completion():
     assert classify(.5,.5,t)[0]=="unacceptable"
     draft=deepcopy(r); draft.criterion_results=[]; calculate_revision(draft); assert draft.result_quadrant is None
     with pytest.raises(ValueError): calculate_revision(draft,True)
+
+def test_manual_scores_complete_without_reasons_while_mvp_flag_is_disabled():
+    assert REQUIRE_MANUAL_SCORE_REASON is False
+    revision=complete_revision()
+    for result in revision.criterion_results:result.override_reason=None
+    calculate_revision(revision,True)
+    assert revision.design_achievement_index==revision.face_condition_index==1
 
 def test_versioning_roundtrip_old_json_archive_and_geometry_history(area):
     state=AssessmentDomainState(assessment_areas=[area]); svc=AssessmentAreaEvaluationService(state); evaluation,draft=svc.new_evaluation(area)
