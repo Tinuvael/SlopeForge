@@ -57,8 +57,10 @@ def cleanup_project(factory, site_id):
         site = session.get(Site, site_id)
         if site is None: return
         mine_id = site.mine_id
-        session.execute(delete(orm.BlastEvent).where(orm.BlastEvent.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
+        # AssessmentEventLink points from Area geometry to BlastEvent geometry
+        # with RESTRICT on the BlastEvent side, so remove the owning Areas first.
         session.execute(delete(orm.AssessmentArea).where(orm.AssessmentArea.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
+        session.execute(delete(orm.BlastEvent).where(orm.BlastEvent.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
         session.execute(delete(orm.ProjectLinesDataset).where(orm.ProjectLinesDataset.site_id == site_id))
         session.execute(delete(BlastBlock).where(BlastBlock.domain_id.in_(select(Domain.id).where(Domain.site_id == site_id))))
         session.execute(delete(Domain).where(Domain.site_id == site_id))
