@@ -45,3 +45,12 @@ class Header(QWidget):
     def focus_search(self):
         self.search.setFocus(Qt.FocusReason.ShortcutFocusReason)
         self.search.selectAll()
+    def keyPressEvent(self, event):
+        # ApplicationShortcut is the real desktop behavior.  The explicit
+        # fallback also makes direct QTest delivery to a standalone Header
+        # deterministic on Windows where the test widget may not own focus.
+        if event.matches(QKeySequence.StandardKey.Find):
+            self.focus_search()
+            event.accept()
+            return
+        super().keyPressEvent(event)
