@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import make_url
 
 
@@ -35,24 +37,42 @@ def isolate_installed_translator():
     _remove_installed_slopeforge_translator()
 
 
-@pytest.fixture(scope="session", autouse=True)
-def reset_disposable_postgresql_test_database(tmp_path_factory):
-    """Start integration tests from a clean Alembic head on the dedicated test DB.
-
-    The suite is intentionally destructive only when an explicitly configured
-    database name contains ``test``.  This prevents leftovers from a previous
-    pytest run from changing row counts or violating globally unique logical IDs.
-    """
-    url = os.getenv("TEST_DATABASE_URL")
-    if not url:
-        yield
-        return
+def _assert_disposable_database(url: str) -> None:
     database_name = (make_url(url).database or "").lower()
     if "test" not in database_name:
         pytest.fail(
             "Refusing destructive PostgreSQL test reset outside a database whose name contains 'test'",
             pytrace=False,
         )
+
+
+def _truncate_test_data(url: str) -> None:
+    """Remove all application rows while keeping the migrated schema intact."""
+    _assert_disposable_database(url)
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            tables = [name for name in inspect(connection).get_table_names()
+                      if name != "alembic_version"]
+            if not tables:
+                return
+            quoted = ", ".join(connection.dialect.identifier_preparer.quote(name)
+                               for name in tables)
+            connection.exec_driver_sql(
+                f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE"
+            )
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def reset_disposable_postgresql_test_database(tmp_path_factory):
+    """Start integration tests from a clean Alembic head on the dedicated test DB."""
+    url = os.getenv("TEST_DATABASE_URL")
+    if not url:
+        yield
+        return
+    _assert_disposable_database(url)
 
     from alembic import command
     from alembic.config import Config
@@ -75,4 +95,22 @@ def reset_disposable_postgresql_test_database(tmp_path_factory):
         else:
             os.environ["STORAGE_ROOT"] = old_storage
 
+    yield
+
+
+@pytest.fixture(autouse=True)
+def isolate_postgresql_integration_test_data(request):
+    """Give each PostgreSQL integration test an empty data set.
+
+    Migration tests own schema lifecycle themselves and are intentionally excluded.
+    Other PostgreSQL modules share one disposable database, so leaving rows between
+    tests makes global logical IDs and CAS versions order-dependent.
+    """
+    url = os.getenv("TEST_DATABASE_URL")
+    filename = Path(str(request.node.fspath)).name
+    if (not url or "postgres" not in filename.lower()
+            or filename == "test_alembic_postgresql_integration.py"):
+        yield
+        return
+    _truncate_test_data(url)
     yield
