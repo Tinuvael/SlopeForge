@@ -35,12 +35,15 @@ class OptionalDateEdit(QDateEdit):
 
     def clear_date(self):
         self.setDate(self.minimumDate())
+        self._show_current_calendar_page_if_unset()
 
     def value(self) -> date | None:
         return None if self.date() == self.minimumDate() else self.date().toPython()
 
     def set_value(self, value: date | None):
         self.setDate(self.minimumDate() if value is None else QDate(value.year, value.month, value.day))
+        if value is None:
+            self._show_current_calendar_page_if_unset()
 
     def eventFilter(self, watched, event):
         if watched is self.calendarWidget() and event.type() == QEvent.Type.Show and self.value() is None:
@@ -75,10 +78,12 @@ class ProjectTree(QWidget):
         layout = QVBoxLayout(self); layout.setContentsMargins(8,8,8,8)
         tree_header = QHBoxLayout(); tree_header.setContentsMargins(0,0,0,0)
         self.tree_title = QLabel(tr("Project tree"))
-        self.collapse_button = QPushButton(tr("Collapse all")); self.collapse_button.setObjectName("collapseProjectTreeButton"); self.collapse_button.setMaximumHeight(26)
+        self.collapse_button = QPushButton(); self.collapse_button.setObjectName("collapseProjectTreeButton")
+        self.collapse_button.setIcon(ui_icon("collapse")); self.collapse_button.setFixedSize(30,26)
+        self.collapse_button.setToolTip(tr("Collapse domains")); self.collapse_button.setAccessibleName(self.collapse_button.toolTip())
         tree_header.addWidget(self.tree_title); tree_header.addStretch(); tree_header.addWidget(self.collapse_button); layout.addLayout(tree_header)
         self.tree = QTreeWidget(); self.tree.setHeaderHidden(True); self.tree.itemClicked.connect(self._item_clicked); self.tree.itemCollapsed.connect(self._keep_virtual_section_expanded); layout.addWidget(self.tree)
-        self.collapse_button.clicked.connect(self.collapse_all)
+        self.collapse_button.clicked.connect(self.collapse_domains)
         layout.addWidget(QLabel(tr("Filters")))
         self.project_filter = QComboBox(); self.domain_filter = QComboBox(); self.status_filter = QComboBox()
         self.from_date = OptionalDateEdit(); self.to_date = OptionalDateEdit()
@@ -147,9 +152,16 @@ class ProjectTree(QWidget):
         if (start or end) and value is None: return False
         return not ((start and value < start) or (end and value > end))
 
-    def collapse_all(self):
-        """Collapse navigable branches while Horizons stay always-open sections."""
-        self.tree.collapseAll()
+    def collapse_domains(self):
+        """Keep Project rows visible and collapse only their Domain children."""
+        for project_index in range(self.tree.topLevelItemCount()):
+            project = self.tree.topLevelItem(project_index)
+            project.setExpanded(True)
+            for domain_index in range(project.childCount()):
+                domain = project.child(domain_index)
+                payload = domain.data(0, Qt.ItemDataRole.UserRole) or {}
+                if payload.get("type") == "domain":
+                    domain.setExpanded(False)
         self._expand_horizons()
 
     def _keep_virtual_section_expanded(self, item):
