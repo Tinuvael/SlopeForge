@@ -103,15 +103,22 @@ class AssessmentAreaPage(QWidget):
         persisted=self.evaluation in self.controller.state.evaluations; photos=self.controller.attachments.list_for_owner("assessment_evaluation",self.evaluation.id,"photo") if persisted else []; documents=self.controller.attachments.list_for_owner("assessment_evaluation",self.evaluation.id,"document") if persisted else []; self.photo_preview.set_items(photos,tr("No photos yet")); self.document_preview.set_items(documents,tr("No documents yet")); self.photo_preview.add_button.setEnabled(True); self.document_preview.add_button.setEnabled(True)
 
     def _linked_events(self):
-        page=QWidget(); layout=QVBoxLayout(page); self.links_table=QTableWidget(0,8); self.links_table.setHorizontalHeaderLabels([tr("Status"),tr("Source"),tr("BlastEvent"),tr("Type"),tr("Elevation"),tr("Revision"),tr("State"),tr("Spatial match")]); layout.addWidget(self.links_table); actions=QHBoxLayout()
-        for label,callback in (("Confirm",self.confirm_link),("Exclude",self.exclude_link),("Restore suggestion",self.restore_link),("Add manually",self.add_manual_link),("Recalculate links",self.recalculate_links),("Show on plan",self.show_link_on_plan)):
-            button=QPushButton(tr(label)); button.setEnabled(label=="Show on plan" or not self.read_only); button.clicked.connect(callback); actions.addWidget(button)
-        layout.addLayout(actions); self.tabs.addTab(page,tr("Linked events")); self.refresh_links()
+        page=QWidget(); layout=QVBoxLayout(page); self.links_splitter=QSplitter(Qt.Orientation.Horizontal); self.links_splitter.setChildrenCollapsible(False)
+        left=QWidget(); left_layout=QVBoxLayout(left); left_layout.setContentsMargins(0,0,0,0); self.links_table=QTableWidget(0,8); self.links_table.setHorizontalHeaderLabels([tr("Status"),tr("Source"),tr("BlastEvent"),tr("Type"),tr("Elevation"),tr("Revision"),tr("State"),tr("Spatial match")]); left_layout.addWidget(self.links_table); actions=QHBoxLayout()
+        for label,callback in (("Confirm",self.confirm_link),("Exclude",self.exclude_link),("Restore suggestion",self.restore_link),("Add manually",self.add_manual_link),("Recalculate links",self.recalculate_links)):
+            button=QPushButton(tr(label)); button.setEnabled(not self.read_only); button.clicked.connect(callback); actions.addWidget(button)
+        left_layout.addLayout(actions); self.links_splitter.addWidget(left)
+        self.link_preview=PlanGeometryWidget(); self.link_preview.setMinimumWidth(360); self.link_preview.reimport_button.hide(); self.links_splitter.addWidget(self.link_preview); self.links_splitter.setStretchFactor(0,3); self.links_splitter.setStretchFactor(1,2); self.links_splitter.setSizes([650,400]); layout.addWidget(self.links_splitter)
+        self.links_table.currentCellChanged.connect(lambda *_:self.refresh_link_preview()); self.tabs.addTab(page,tr("Linked events")); self.refresh_links()
     def refresh_links(self):
+        selected=self._selected_link(); selected_id=selected.id if selected else None
         links=self.area.links_for_revision(); self.links_table.setRowCount(len(links))
         for row,link in enumerate(links):
             event=self.controller.links.event(link.blast_event_id); candidate=self.controller.links.evaluate_event(self.area,event); values=(link.status,link.source,event.name,event.event_type,f"{event.elevation:g}",link.geometry_revision_id,"stale" if self.controller.links.is_stale(link) else "current","yes" if candidate.spatial_matches else "no")
             for col,value in enumerate(values):self.links_table.setItem(row,col,QTableWidgetItem(value))
+        row=next((index for index,item in enumerate(links) if item.id==selected_id),0 if links else -1)
+        if row>=0:self.links_table.setCurrentCell(row,0)
+        else:self.links_table.clearSelection(); self.refresh_link_preview()
     def _selected_link(self):
         row=self.links_table.currentRow(); links=self.area.links_for_revision(); return links[row] if 0<=row<len(links) else None
     def _change_link(self,method):
@@ -127,15 +134,15 @@ class AssessmentAreaPage(QWidget):
         if not self._ensure_editable():return
         events=[e for e in self.controller.state.blast_events if not e.is_archived]; labels=[f"{e.name} ({e.event_type}, {e.elevation:g})" for e in events]; selected,ok=QInputDialog.getItem(self,tr("Add linked event"),tr("BlastEvent"),labels,0,False)
         if ok and selected:self.controller.add_manual_event_link(self.area,events[labels.index(selected)].id); self.refresh_links(); self._refresh_overview_and_sidebar()
-    def show_link_on_plan(self):
+    def refresh_link_preview(self):
+        area_revision=self.area.active_geometry_revision(); dataset=next((d for d in self.controller.state.datasets if d.id==(area_revision.source_dataset_ids[0] if area_revision.source_dataset_ids else None)),None); project_lines=dataset.lines if dataset else []
         link=self._selected_link()
-        if not link:return
-        event=self.controller.links.event(link.blast_event_id)
-        revision=self.controller.links.linked_revision(event,link)
-        if revision is None:
-            QMessageBox.warning(self,tr("Data integrity error"),tr("The exact BlastEvent geometry revision referenced by this Assessment link is missing. The current geometry was not substituted."))
-            return
-        area_revision=self.area.active_geometry_revision(); dataset=next((d for d in self.controller.state.datasets if d.id==(area_revision.source_dataset_ids[0] if area_revision.source_dataset_ids else None)),None); self.plan.set_geometry(revision.plan_geometry,dataset.lines if dataset else [],f"{event.name} | {event.elevation:g}"); self.tabs.setCurrentIndex(0)
+        if not link:
+            self.link_preview.set_comparison_geometry(area_revision.final_geometry_frozen,None,project_lines,tr("Select a linked event to preview its geometry.")); return
+        event=self.controller.links.event(link.blast_event_id); revision=self.controller.links.linked_revision(event,link)
+        state=tr("Stale") if self.controller.links.is_stale(link) else tr("Current"); unavailable=tr("Referenced geometry revision is unavailable; current geometry was not substituted.") if revision is None else ""
+        context=(f"{tr('Assessment Area')} · {tr('Blast Event')}\n{tr('Event')}: {event.name} · {tr('Type')}: {event.event_type} · {tr('Elevation')}: {event.elevation:g}\n{tr('Link status')}: {link.status} · {tr('Referenced revision')}: {link.geometry_revision_id} · {tr('State')}: {state}"+(f"\n{unavailable}" if unavailable else ""))
+        self.link_preview.set_comparison_geometry(area_revision.final_geometry_frozen,revision.plan_geometry if revision else None,project_lines,context)
 
     def _attachment_tab(self,title):
         kind="photo" if title=="Photos" else "document"; from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget

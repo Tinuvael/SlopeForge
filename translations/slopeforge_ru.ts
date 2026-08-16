@@ -3130,5 +3130,13 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Confirmed contour blast link</source><translation>Подтвержденная связь с контурным взрывом</translation></message>
         <message><source>No confirmed contour blast link</source><translation>Подтвержденная связь с контурным взрывом отсутствует</translation></message>
         <message><source>Manual matrix selection</source><translation>Матрица выбрана вручную</translation></message>
+        <message><source>Blast Event</source><translation>Взрывное событие</translation></message>
+        <message><source>Current</source><translation>Актуально</translation></message>
+        <message><source>Event</source><translation>Событие</translation></message>
+        <message><source>Link status</source><translation>Статус связи</translation></message>
+        <message><source>Referenced geometry revision is unavailable; current geometry was not substituted.</source><translation>Указанная ревизия геометрии недоступна; текущая геометрия не была подставлена.</translation></message>
+        <message><source>Referenced revision</source><translation>Указанная ревизия</translation></message>
+        <message><source>Select a linked event to preview its geometry.</source><translation>Выберите связанное событие для просмотра его геометрии.</translation></message>
+        <message><source>Stale</source><translation>Устарело</translation></message>
     </context>
 </TS>
