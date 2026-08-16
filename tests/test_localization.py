@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QCoreApplication, QSettings
 import pytest
 
@@ -67,6 +69,7 @@ def test_english_installs_no_russian_translator(qapp, tmp_path):
 
 @pytest.mark.parametrize("catalog_contents", [None, "<TS><broken>"])
 def test_missing_or_malformed_ts_safely_falls_back(qapp, tmp_path, monkeypatch, caplog, catalog_contents):
+    caplog.set_level(logging.WARNING, logger=localization.__name__)
     catalog = tmp_path / "bad.ts"
     if catalog_contents is not None:
         catalog.write_text(catalog_contents, encoding="utf-8")
