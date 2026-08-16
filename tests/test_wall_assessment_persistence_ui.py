@@ -5,6 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 QtWidgets = pytest.importorskip("PySide6.QtWidgets", reason="Qt unavailable", exc_type=ImportError)
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from domain.geometry.types import PlanPoint, PlanPolygon
@@ -143,6 +144,8 @@ def test_manual_matrix_reason_is_only_available_for_manual_selection():
 def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
     app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
     editor=dialog.geometry_editors["bench_angle"]
+    native_base=editor._native_score_editor_palette.color(QPalette.ColorRole.Base)
+    assert editor.manual_score.objectName()=="AutomaticScore" and editor.manual_score.lineEdit().palette().color(QPalette.ColorRole.Base)==native_base
     assert not hasattr(editor,"override_panel") and not hasattr(editor,"override_toggle")
     assert editor.manual_score.maximum()==editor.criterion.maximum_score
     assert editor.manual_score.parentWidget() is editor and editor.help_button.toolTip()
@@ -154,6 +157,7 @@ def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
     assert dialog._preview.criterion_results[0].accepted_score==12
     assert isinstance(editor.manual_score,QtWidgets.QSpinBox) and editor.manual_score.singleStep()==1
     assert editor.manual_score.text().startswith("12 / 40") and editor.manual_score.styleSheet()==""
+    assert editor.manual_score.lineEdit().palette().color(QPalette.ColorRole.Base)==QColor("#fff4cc")
     editor.manual_score.stepUp(); assert editor.manual_score.value()==13 and editor._manual_value==13
     editor.manual_score.stepDown(); assert editor.manual_score.value()==12 and editor._manual_value==12
     QTest.keyClick(editor.manual_score,Qt.Key.Key_Up); assert editor.manual_score.value()==13
@@ -161,6 +165,7 @@ def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
     editor.manual_score.clear_value(); editor.manual_score.editingFinished.emit()
     assert editor.override_reason is None and dialog.shortfall.isEnabled()
     dialog.shortfall.clear_value(); dialog.refresh(False); assert editor.manual_score.objectName()=="MissingScore" and "Required" in editor.manual_score.toolTip()
+    assert editor.manual_score.lineEdit().palette().color(QPalette.ColorRole.Base)==QColor("#fff0f0")
     editor.manual_score.set_nullable_value(10); editor.manual_score.editingFinished.emit()
     assert editor._manual_value==10 and not dialog.shortfall.isEnabled() and prompts==[]
     dialog._allow_close=True; dialog.close()
