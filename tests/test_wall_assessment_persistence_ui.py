@@ -138,7 +138,7 @@ def test_manual_matrix_reason_is_only_available_for_manual_selection():
     assert not manual.override_reason.isHidden() and manual.override_reason.text()=="Engineering review"
     manual._allow_close=True; manual.close()
 
-def test_compact_manual_score_prompt_cancel_clear_and_geometry_control(monkeypatch):
+def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
     app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
     editor=dialog.geometry_editors["bench_angle"]
     assert not hasattr(editor,"override_panel") and not hasattr(editor,"override_toggle")
@@ -150,13 +150,17 @@ def test_compact_manual_score_prompt_cancel_clear_and_geometry_control(monkeypat
     editor.manual_score.set_nullable_value(12)
     assert prompts==[] and dialog.shortfall.isEnabled()
     editor.manual_score.editingFinished.emit()
-    assert editor.override_reason=="Survey review" and not dialog.shortfall.isEnabled()
+    assert prompts==[] and editor.override_reason is None and not dialog.shortfall.isEnabled()
     assert dialog._preview.criterion_results[0].accepted_score==12
+    assert isinstance(editor.manual_score,QtWidgets.QSpinBox) and editor.manual_score.singleStep()==1
+    assert editor.manual_score.text().startswith("12 / 40") and editor.manual_score.styleSheet()==""
+    editor.manual_score.stepUp(); assert editor.manual_score.value()==13  # native arrows remain functional
+    editor.manual_score.setValue(12)
     editor.manual_score.clear_value(); editor.manual_score.editingFinished.emit()
     assert editor.override_reason is None and dialog.shortfall.isEnabled()
-    monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:("",False))
+    dialog.shortfall.clear_value(); dialog.refresh(False); assert editor.manual_score.objectName()=="MissingScore" and "Required" in editor.manual_score.toolTip()
     editor.manual_score.set_nullable_value(10); editor.manual_score.editingFinished.emit()
-    assert editor._manual_value is None and dialog.shortfall.isEnabled()
+    assert editor._manual_value==10 and not dialog.shortfall.isEnabled() and prompts==[]
     dialog._allow_close=True; dialog.close()
 
 def test_storage_failure_does_not_report_success_or_create_revision(monkeypatch):

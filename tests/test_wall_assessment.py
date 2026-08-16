@@ -62,12 +62,10 @@ def test_categories_damage_and_manual_rules():
     r=AssessmentCriterionResult("damage","x",CONDITION,raw_numeric_value=3)
     assert score_result(r,t) is None
     r.manual_score=7
-    with pytest.raises(ValueError): score_result(r,t)
-    r.override_reason="осмотр"; assert score_result(r,t)==7
+    assert score_result(r,t)==7
     r=AssessmentCriterionResult("open_cracks","x",CONDITION,selected_option_id="many_open",manual_score=11,override_reason="x")
     with pytest.raises(ValueError): score_result(r,t)
-    r.manual_score=5; r.override_reason=""
-    with pytest.raises(ValueError): score_result(r,t)
+    r.manual_score=5; r.override_reason=""; assert score_result(r,t)==5
 
 def complete_revision(template_id="controlled_blasting_v1"):
     t=get_template(template_id); results=[]
@@ -85,6 +83,13 @@ def test_indices_quadrants_draft_and_completion():
     assert classify(.5,.5,t)[0]=="unacceptable"
     draft=deepcopy(r); draft.criterion_results=[]; calculate_revision(draft); assert draft.result_quadrant is None
     with pytest.raises(ValueError): calculate_revision(draft,True)
+
+def test_manual_scores_complete_without_reasons_while_mvp_flag_is_disabled():
+    assert REQUIRE_MANUAL_SCORE_REASON is False
+    revision=complete_revision()
+    for result in revision.criterion_results:result.override_reason=None
+    calculate_revision(revision,True)
+    assert revision.design_achievement_index==revision.face_condition_index==1
 
 def test_versioning_roundtrip_old_json_archive_and_geometry_history(area):
     state=AssessmentDomainState(assessment_areas=[area]); svc=AssessmentAreaEvaluationService(state); evaluation,draft=svc.new_evaluation(area)

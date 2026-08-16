@@ -9,6 +9,7 @@ from uuid import uuid4
 
 DESIGN = "design"
 CONDITION = "face_condition"
+REQUIRE_MANUAL_SCORE_REASON = False
 
 @dataclass(frozen=True)
 class AssessmentCriterionOption:
@@ -104,7 +105,7 @@ class AssessmentCriterionResult:
     def validate(self):
         if self.manual_score is not None:
             if not 0 <= self.manual_score <= self.maximum_score: raise ValueError("Ручной балл вне допустимого диапазона")
-            if not (self.override_reason or "").strip(): raise ValueError("Для ручного балла укажите причину")
+            if REQUIRE_MANUAL_SCORE_REASON and not (self.override_reason or "").strip(): raise ValueError("Для ручного балла укажите причину")
         self.is_manual_override=self.manual_score is not None
         self.accepted_score=self.manual_score if self.manual_score is not None else self.automatic_score
 

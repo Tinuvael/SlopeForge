@@ -5,16 +5,16 @@ from app.localization import tr
 
 from copy import deepcopy
 from PySide6.QtCore import QDate, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout,
     QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
-    QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QToolButton,
+    QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QToolButton,
     QVBoxLayout, QWidget,
 )
 
 from domain.assessment.evaluation import (
-    CONDITION, DESIGN, AssessmentCriterionResult, AssessmentMatrixTemplate,
+    CONDITION, DESIGN, REQUIRE_MANUAL_SCORE_REASON, AssessmentCriterionResult, AssessmentMatrixTemplate,
     calculate_revision,
 )
 from ui.presentation_labels import (
@@ -50,6 +50,18 @@ class NullableDoubleSpinBox(QDoubleSpinBox):
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             self.clear_value(); self.editingFinished.emit(); event.accept(); return
+        super().keyPressEvent(event)
+
+
+class NullableScoreSpinBox(QSpinBox):
+    """Integer score editor whose sentinel is displayed as an em dash."""
+    def __init__(self, maximum, parent=None):
+        super().__init__(parent); self.setRange(-1,int(maximum)); self.setSingleStep(1); self.setSpecialValueText("—"); self.setValue(-1)
+    def nullable_value(self): return None if self.value()<0 else int(self.value())
+    def set_nullable_value(self,value): self.setValue(-1 if value is None else int(round(value)))
+    def clear_value(self): self.set_nullable_value(None)
+    def keyPressEvent(self,event):
+        if event.key() in (Qt.Key.Key_Delete,Qt.Key.Key_Backspace): self.clear_value(); self.editingFinished.emit(); event.accept(); return
         super().keyPressEvent(event)
 
 
@@ -100,7 +112,7 @@ class CriterionEditor(QWidget):
         self.criterion = criterion
         self.setObjectName("CriterionCard")
         self._restoring = False; self._setting_score = False; self._manual_value = None; self._accepted_value = None; self.override_reason = None; self.notes = ""
-        root = QVBoxLayout(self); root.setContentsMargins(7, 3, 7, 3); root.setSpacing(1)
+        root = QVBoxLayout(self); root.setContentsMargins(7, 5, 7, 5); root.setSpacing(2)
         top = QHBoxLayout(); self.title = QLabel(f"<b>{compact_criterion_label(criterion.id, criterion.name)}</b>"); self.title.setWordWrap(True); top.addWidget(self.title, 1)
         self.help_button = QToolButton(); self.help_button.setText("?"); self.help_button.setAutoRaise(True); top.addWidget(self.help_button)
         if criterion.kind in ("numeric", "damage"):
@@ -116,7 +128,8 @@ class CriterionEditor(QWidget):
         help_text = criterion_label(criterion.id,criterion.name) + "\n" + CRITERION_HELP.get(criterion.id, criterion.help_text)
         if criterion.options: help_text += "\n" + "\n".join(f"{option_label(o.id,o.label)}: {o.score:g}" for o in criterion.options)
         self.title.setToolTip(help_text); self.help_button.setToolTip(help_text)
-        self.manual_score = NullableDoubleSpinBox(criterion.maximum_score); self.manual_score.setFixedWidth(105); self.manual_score.setSuffix(f" / {criterion.maximum_score:g}")
+        self.manual_score = NullableScoreSpinBox(criterion.maximum_score); self.manual_score.setFixedWidth(105); self.manual_score.setSuffix(f" / {criterion.maximum_score:g}")
+        self._native_score_palette=QPalette(self.manual_score.palette())
         self.manual_score.setToolTip(tr("Edit to override the automatic score. Delete or Backspace restores automatic scoring."))
         self.manual_score.editingFinished.connect(self._score_committed); top.addWidget(self.manual_score)
         root.addLayout(top)
@@ -144,23 +157,27 @@ class CriterionEditor(QWidget):
         if previous is None and self._accepted_value is not None and value == self._accepted_value:
             self._set_score_value(self._accepted_value); return
         if previous is not None and value == previous: return
-        reason, ok = QInputDialog.getText(self, tr("Override score"), tr("Reason for manual score"), QLineEdit.EchoMode.Normal, self.override_reason or "")
-        if not ok or not reason.strip():
-            self._set_score_value(previous if previous is not None else self._accepted_value); self._sync_primary(); return
-        self._manual_value=float(value); self.override_reason=reason.strip(); self._sync_primary(); self.changed.emit()
+        reason=self.override_reason
+        if REQUIRE_MANUAL_SCORE_REASON:
+            reason, ok = QInputDialog.getText(self, tr("Override score"), tr("Reason for manual score"), QLineEdit.EchoMode.Normal, reason or "")
+            if not ok or not reason.strip(): self._set_score_value(previous if previous is not None else self._accepted_value); self._sync_primary(); return
+        self._manual_value=int(value); self.override_reason=(reason or "").strip() or None; self._sync_primary(); self.changed.emit()
 
     def set_score(self, result):
         self._accepted_value=result.accepted_score
         self._set_score_value(result.accepted_score)
         if result.manual_score is not None:
-            self.manual_score.setObjectName("ManualScore"); self.manual_score.setStyleSheet("background:#fff4d6;border:1px solid #d6a23a")
+            self.manual_score.setObjectName("ManualScore"); self._set_score_palette(QColor("#fff4d6"))
             self.manual_score.setToolTip(f"{tr('Manual override')}\n{tr('Reason')}: {result.override_reason or '—'}")
         elif result.accepted_score is None:
-            self.manual_score.setObjectName("MissingScore"); self.manual_score.setStyleSheet("background:#fff1f1;border:1px solid #d99")
+            self.manual_score.setObjectName("MissingScore"); self._set_score_palette(QColor("#fff1f1"))
             self.manual_score.setToolTip(tr("Required for completion"))
         else:
-            self.manual_score.setObjectName("AutomaticScore"); self.manual_score.setStyleSheet("")
+            self.manual_score.setObjectName("AutomaticScore"); self.manual_score.setPalette(self._native_score_palette)
             self.manual_score.setToolTip(tr("Edit to override the automatic score. Delete or Backspace restores automatic scoring."))
+
+    def _set_score_palette(self, colour):
+        palette=QPalette(self.manual_score.palette()); palette.setColor(QPalette.ColorRole.Base,colour); self.manual_score.setPalette(palette)
 
     def restore(self, result):
         if result:
