@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 import os
 os.environ.setdefault("QT_QPA_PLATFORM","offscreen")
@@ -143,6 +144,7 @@ def test_completed_initial_result_uses_stored_values_then_live_edit_recalculates
     app()
     from copy import deepcopy
     from tests.test_wall_assessment_persistence_ui import make_state,filled_draft
+    from ui.presentation_labels import result_label
     import ui.editors.assessment_evaluation_editor as module
     state,area=make_state(); evaluation,draft=filled_draft(state,area); saved=evaluation.save_revision(draft,"completed"); historical=deepcopy(saved)
     original=module.calculate_revision; calls=[]; allow=False
@@ -154,7 +156,7 @@ def test_completed_initial_result_uses_stored_values_then_live_edit_recalculates
     dialog=module.AssessmentAreaEvaluationDialog(area,evaluation,saved,lambda *_:None)
     assert calls==[] and "DAI: 1.000" in dialog.summary.text()
     assert f"FCI: {saved.face_condition_index:.3f}" in dialog.summary.text()
-    assert saved.result_label in dialog.summary.text()
+    assert result_label(saved.result_label) in dialog.summary.text()
     allow=True; dialog.inspector.setText("Changed inspector")
     assert calls and dialog._preview is not saved
     assert saved.to_dict()==historical.to_dict() and len(evaluation.revisions)==1
@@ -324,7 +326,8 @@ def test_report_saved_file_is_opened_without_success_modal(monkeypatch,tmp_path)
     opened=[]; monkeypatch.setattr(module.QDesktopServices,"openUrl",lambda url:opened.append(url.toLocalFile()) or True)
     monkeypatch.setattr(module.QMessageBox,"information",lambda *_:pytest.fail("success modal is redundant"))
     dialog.generate()
-    assert opened==[str(target.resolve())] and dialog.result()==dialog.DialogCode.Accepted
+    assert len(opened)==1 and Path(opened[0]).resolve()==target.resolve()
+    assert dialog.result()==dialog.DialogCode.Accepted
 
 
 def test_report_open_failure_warns_but_keeps_saved_file(monkeypatch,tmp_path):
