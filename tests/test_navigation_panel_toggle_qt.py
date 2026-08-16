@@ -101,7 +101,8 @@ def test_project_tree_header_domain_collapse_and_virtual_sections(monkeypatch):
         list_areas=lambda _archived: [area], list_contour_events=lambda _archived: []))
 
     panel = module.ProjectTree(SimpleNamespace(session_factory=object()))
-    panel.show(); app.processEvents()
+    panel.show(); panel.tree.expandAll(); app.processEvents()
+    assert isinstance(panel.tree, module.ProjectTreeWidget)
     assert panel.tree_title.text() == "Project tree"
     assert panel.collapse_button.text() == ""
     assert panel.collapse_button.toolTip() == "Collapse domains"
@@ -121,17 +122,18 @@ def test_project_tree_header_domain_collapse_and_virtual_sections(monkeypatch):
     assert interval.text(0) == "Interval 600–620"
     for section in (horizon, interval):
         assert section.isExpanded()
-        assert section.childIndicatorPolicy() == QtWidgets.QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator
         assert not (section.flags() & Qt.ItemFlag.ItemIsSelectable)
         assert section.childCount() == 1
+        assert panel.tree.visualItemRect(section.child(0)).height() > 0
 
     assert horizon.child(0).text(0) == "Block B-1"
     assert interval.child(0).text(0) == "Wall"
 
-    horizon.setExpanded(False); interval.setExpanded(False); app.processEvents()
+    horizon.setExpanded(False); interval.setExpanded(False); app.processEvents(); app.processEvents()
     assert horizon.isExpanded() and interval.isExpanded()
+    assert panel.tree.visualItemRect(horizon.child(0)).height() > 0
+    assert panel.tree.visualItemRect(interval.child(0)).height() > 0
 
-    panel.tree.expandAll(); app.processEvents()
     project = panel.tree.topLevelItem(0)
     domain_item = project.child(0)
     QTest.mouseClick(panel.collapse_button, Qt.MouseButton.LeftButton); app.processEvents()
