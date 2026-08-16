@@ -21,10 +21,10 @@ from database.assessment_models import ProjectLinesDataset
 def polygon(offset=0):
     p=(PlanPoint(offset,0),PlanPoint(offset+2,0),PlanPoint(offset,2)); return PlanPolygon(p+(p[0],))
 
-@pytest.fixture(scope="module")
-def repository_context(tmp_path_factory):
+@pytest.fixture
+def repository_context(tmp_path):
     old_db,old_storage=os.getenv("DATABASE_URL"),os.getenv("STORAGE_ROOT")
-    os.environ["DATABASE_URL"]=URL; os.environ["STORAGE_ROOT"]=str(tmp_path_factory.mktemp("domain-geometry-storage"))
+    os.environ["DATABASE_URL"]=URL; os.environ["STORAGE_ROOT"]=str(tmp_path/"domain-geometry-storage")
     try: command.upgrade(Config("alembic.ini"),"head")
     finally:
         if old_db is None:os.environ.pop("DATABASE_URL",None)
@@ -36,12 +36,10 @@ def repository_context(tmp_path_factory):
         mine=Mine(name="Domain Geometry test mine"); session.add(mine); session.flush()
         site=Site(mine_id=mine.id,name="Domain Geometry test site"); session.add(site); session.flush()
         a=Domain(site_id=site.id,name="A"); b=Domain(site_id=site.id,name="B"); session.add_all((a,b)); session.flush(); ids=(mine.id,site.id,a.id,b.id)
-    yield DomainGeometryRepository(factory),factory,ids
-    with factory.begin() as session:
-        session.query(DomainGeometry).filter(DomainGeometry.domain_id.in_(ids[2:])).delete(synchronize_session=False)
-        session.query(ProjectLinesDataset).filter_by(site_id=ids[1]).delete()
-        session.query(Domain).filter(Domain.id.in_(ids[2:])).delete(synchronize_session=False); session.query(Site).filter_by(id=ids[1]).delete(); session.query(Mine).filter_by(id=ids[0]).delete()
-    engine.dispose()
+    try:
+        yield DomainGeometryRepository(factory),factory,ids
+    finally:
+        engine.dispose()
 
 
 def test_current_geometry_lifecycle_and_domain_isolation(repository_context):
@@ -77,7 +75,7 @@ def test_dashboard_domain_context_palette_and_project_lines(repository_context):
     repo,factory,(_,site,a,b)=repository_context
     repo.replace_drawn(a,0,[polygon()]); repo.replace_drawn(b,0,[polygon(10)])
     with factory.begin() as session:
-        session.add(ProjectLinesDataset(site_id=site,domain_id="LINES",name="Lines",imported_at=datetime.now(timezone.utc),source_file_name="lines.csv",is_active=True,is_archived=False,lines_json=[{"source_id":"L","points":[{"x":0,"y":0,"z":0,"source_row_number":1},{"x":2,"y":3,"z":0,"source_row_number":2}]}]))
+        session.add(ProjectLinesDataset(site_id=site,logical_id="LINES",name="Lines",imported_at=datetime.now(timezone.utc),source_file_name="lines.csv",is_active=True,is_archived=False,lines_json=[{"source_id":"L","points":[{"x":0,"y":0,"z":0,"source_row_number":1},{"x":2,"y":3,"z":0,"source_row_number":2}]}]))
     dashboard=DashboardRepository(factory); domain=dashboard.domain_snapshot(a)
     assert [(g.domain_name,g.palette_index,g.is_current) for g in domain.domain_geometries]==[("A",0,True),("B",1,False)]
     site_snapshot=dashboard.site_snapshot(site)
@@ -106,8 +104,6 @@ def test_site_project_lines_exist_without_domains(repository_context):
     _,factory,(mine,_,_,_)=repository_context
     with factory.begin() as session:
         site=Site(mine_id=mine,name="Lines without domains"); session.add(site); session.flush(); site_id=site.id
-        session.add(ProjectLinesDataset(site_id=site_id,domain_id="ONLY",name="Only",imported_at=datetime.now(timezone.utc),source_file_name="only.csv",is_active=True,is_archived=False,lines_json=[{"source_id":"L","points":[{"x":1,"y":1},{"x":2,"y":2}]}]))
+        session.add(ProjectLinesDataset(site_id=site_id,logical_id="ONLY",name="Only",imported_at=datetime.now(timezone.utc),source_file_name="only.csv",is_active=True,is_archived=False,lines_json=[{"source_id":"L","points":[{"x":1,"y":1},{"x":2,"y":2}]}]))
     snapshot=DashboardRepository(factory).site_snapshot(site_id)
     assert snapshot.domains==[] and len(snapshot.project_lines)==1
-    with factory.begin() as session:
-        session.query(ProjectLinesDataset).filter_by(site_id=site_id).delete(); session.query(Site).filter_by(id=site_id).delete()
