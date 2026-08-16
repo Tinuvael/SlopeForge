@@ -58,6 +58,9 @@ class PlanGeometryWidget(QWidget):
     def set_context_visible(self, visible):
         self.context.setVisible(visible)
 
+    def set_context(self, context):
+        self.context.setText(context)
+
     def set_geometry(self, geometry, project_lines=(), context="", *, focus_geometry=None):
         self.scene.clear()
         self._project_items = []
@@ -83,7 +86,8 @@ class PlanGeometryWidget(QWidget):
         self.scene.clear()
         self._project_items = []
         self.comparison_geometries = (primary_geometry, comparison_geometry)
-        self.context.setText(context)
+        if context:
+            self.context.setText(context)
         self._add_project_lines(project_lines)
         self._add_geometry(primary_geometry, "#1261a0", 2, QColor(18, 97, 160, 25))
         self._add_geometry(comparison_geometry, "#d97706", 2, QColor(217, 119, 6, 38))

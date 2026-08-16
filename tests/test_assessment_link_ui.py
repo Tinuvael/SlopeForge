@@ -61,6 +61,10 @@ def test_linked_events_uses_compact_master_detail_list_not_table():
     assert "QListWidget" in block and "links_list" in block
     assert "QTableWidget" not in block and "setHorizontalHeaderLabels" not in block
     assert "setMaximumWidth(380)" in block
+    assert "setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)" in block
+    assert "setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)" in block
+    assert "detail_layout.addWidget(legend)" not in block
+    assert "self.link_preview.set_context(legend)" in block
 
 
 @pytest.mark.parametrize("status,expected_color",[("suggested","#fff8e6"),("confirmed","#edf8f0"),("excluded","#f3f4f6")])

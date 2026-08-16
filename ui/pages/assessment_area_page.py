@@ -2,7 +2,7 @@ from app.localization import tr
 from domain.blasting.workflow import ASSESSMENT_PROGRESS_LABELS, assessment_progress_for
 """Normal, revision-safe page for one Assessment Area."""
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QFormLayout,QFrame,QGridLayout,QHBoxLayout,QInputDialog,QLabel,QListWidget,QListWidgetItem,QMessageBox,QPushButton,
+from PySide6.QtWidgets import (QAbstractItemView,QFormLayout,QFrame,QGridLayout,QHBoxLayout,QInputDialog,QLabel,QListWidget,QListWidgetItem,QMessageBox,QPushButton,
                                QSizePolicy,QSplitter,QTabWidget,QVBoxLayout,QWidget)
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
@@ -120,7 +120,7 @@ class AssessmentAreaPage(QWidget):
     def _linked_events(self):
         page=QWidget(); layout=QVBoxLayout(page); self.links_splitter=QSplitter(Qt.Orientation.Horizontal); self.links_splitter.setChildrenCollapsible(False)
         left=QWidget(); left.setMinimumWidth(300); left.setMaximumWidth(380); left_layout=QVBoxLayout(left); left_layout.setContentsMargins(0,0,4,0); left_layout.setSpacing(6)
-        self.links_list=QListWidget(); self.links_list.setSpacing(5); self.links_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection); left_layout.addWidget(self.links_list,1)
+        self.links_list=QListWidget(); self.links_list.setSpacing(5); self.links_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection); self.links_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel); self.links_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); left_layout.addWidget(self.links_list,1)
         selected_actions=QHBoxLayout(); global_actions=QHBoxLayout()
         self.link_action_buttons={}
         for label,callback in (("Confirm",self.confirm_link),("Exclude",self.exclude_link),("Restore suggestion",self.restore_link)):
@@ -132,8 +132,8 @@ class AssessmentAreaPage(QWidget):
         header=QHBoxLayout(); names=QVBoxLayout(); self.link_event_name=QLabel(tr("Select a linked event")); self.link_event_name.setObjectName("CardTitle"); self.link_event_detail=QLabel(); self.link_event_detail.setObjectName("MutedText"); names.addWidget(self.link_event_name); names.addWidget(self.link_event_detail); header.addLayout(names,1); self.link_event_type=QLabel(); self.link_event_type.setObjectName("MetaBadge"); header.addWidget(self.link_event_type); detail_layout.addLayout(header)
         self.link_status_line=QLabel(); self.link_status_line.setTextFormat(Qt.TextFormat.RichText); detail_layout.addWidget(self.link_status_line)
         self.link_warning=QLabel(); self.link_warning.setWordWrap(True); self.link_warning.setStyleSheet("background:#fff8e6;color:#8a5a00;border:1px solid #e5b94d;border-radius:4px;padding:5px"); self.link_warning.hide(); detail_layout.addWidget(self.link_warning)
-        legend=QLabel(f"<span style='color:#1261a0'>■</span> {tr('Assessment area')} &nbsp;&nbsp; <span style='color:#d97706'>■</span> {tr('Blast event')} &nbsp;&nbsp; <span style='color:#9ca3af'>━</span> {tr('Project Lines')}"); detail_layout.addWidget(legend)
-        self.link_preview=PlanGeometryWidget(); self.link_preview.reimport_button.hide(); self.link_preview.set_context_visible(False); self.link_preview.use_center_control(); detail_layout.addWidget(self.link_preview,1); self.links_splitter.addWidget(detail)
+        legend=f"<span style='color:#1261a0'>■</span> {tr('Assessment area')} &nbsp;&nbsp; <span style='color:#d97706'>■</span> {tr('Blast event')} &nbsp;&nbsp; <span style='color:#9ca3af'>━</span> {tr('Project Lines')}"
+        self.link_preview=PlanGeometryWidget(); self.link_preview.reimport_button.hide(); self.link_preview.set_context(legend); self.link_preview.use_center_control(); detail_layout.addWidget(self.link_preview,1); self.links_splitter.addWidget(detail)
         self.links_splitter.setStretchFactor(0,0); self.links_splitter.setStretchFactor(1,1); self.links_splitter.setSizes([340,760]); layout.addWidget(self.links_splitter)
         self.links_list.currentRowChanged.connect(self._link_selection_changed); self.tabs.addTab(page,tr("Linked events")); self._link_preview_initialized=False; self.refresh_links()
     def refresh_links(self):
