@@ -8,9 +8,11 @@ def test_tree_is_primary_navigation_without_project_lines_branch():
     tree=source("ui/widgets/project_tree.py")
     assert '"Project Lines"' not in tree
     assert '"type":"horizon"' in tree and '"type":"interval"' in tree
-    assert 'kind in {"folder","interval"}' in tree
-    assert 'if kind=="horizon": item.setExpanded(True); return' in tree
-    assert "DontShowIndicator" in tree
+    assert "class ProjectTreeWidget(QTreeWidget)" in tree
+    assert 'VIRTUAL_SECTION_TYPES = {"horizon", "interval"}' in tree
+    assert "def drawBranches" in tree and "self.VIRTUAL_SECTION_TYPES" in tree
+    assert "_keep_virtual_section_expanded" in tree and "item.setExpanded(True)" in tree
+    assert "DontShowIndicator" not in tree
 
 def test_project_and_domain_filters_are_user_facing():
     tree=source("ui/widgets/project_tree.py")
@@ -76,7 +78,7 @@ def test_area_page_is_focused_without_legacy_mode_switch():
     assert '"Linked events"' in area
     assert "Blast Events / Assessment Areas" not in area
     assert "AssessmentAreaEvaluationDialog" in area and "Matrix" in area and "assessment_splitter" in area
-    assert "Design Achievement Index" not in area  # calculated by reused dialog/QuadrantPlot
+    assert "Design Achievement Index" not in area
 
 def test_assessment_geometry_uses_direct_compact_inputs():
     editor=source("ui/editors/assessment_evaluation_editor.py")
@@ -95,7 +97,6 @@ def test_area_links_and_focused_creation_are_reused():
     main=source("ui/main_window.py")
     assert "AssessmentAreaCreationPage" in creation and "AssessmentGeometryEditorWidget" in creation
     assert "Blast Events" not in creation and "TechnicalCard" not in creation
-    main=source("ui/main_window.py")
     assert "AssessmentAreaCreationPage" in main and "_area_created" in main
 
 def test_entity_page_integration_corrections_are_visible():
