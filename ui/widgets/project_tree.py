@@ -63,6 +63,18 @@ class OptionalDateEdit(QDateEdit):
         super().keyPressEvent(event)
 
 
+class ProjectTreeWidget(QTreeWidget):
+    """Tree whose virtual grouping rows stay expanded but draw no disclosure arrow."""
+
+    VIRTUAL_SECTION_TYPES = {"horizon", "interval"}
+
+    def drawBranches(self, painter, rect, index):
+        payload = index.data(Qt.ItemDataRole.UserRole) or {}
+        if isinstance(payload, dict) and payload.get("type") in self.VIRTUAL_SECTION_TYPES:
+            return
+        super().drawBranches(painter, rect, index)
+
+
 class ProjectTree(QWidget):
     block_selected = Signal(int, int, int)
     site_selected = Signal(int, str)
@@ -71,7 +83,7 @@ class ProjectTree(QWidget):
     contour_event_selected = Signal(str, int, int, str)
     reset_search_requested = Signal()
 
-    _VIRTUAL_SECTION_TYPES = {"horizon", "interval"}
+    _VIRTUAL_SECTION_TYPES = ProjectTreeWidget.VIRTUAL_SECTION_TYPES
 
     def __init__(self, context):
         super().__init__(); self.context = context; self._search_query = ""
@@ -84,7 +96,7 @@ class ProjectTree(QWidget):
         self.collapse_button.setIcon(ui_icon("collapse")); self.collapse_button.setFixedSize(30,26)
         self.collapse_button.setToolTip(tr("Collapse domains")); self.collapse_button.setAccessibleName(self.collapse_button.toolTip())
         tree_header.addWidget(self.tree_title); tree_header.addStretch(); tree_header.addWidget(self.collapse_button); layout.addLayout(tree_header)
-        self.tree = QTreeWidget(); self.tree.setHeaderHidden(True); self.tree.itemClicked.connect(self._item_clicked); self.tree.itemCollapsed.connect(self._keep_virtual_section_expanded); layout.addWidget(self.tree)
+        self.tree = ProjectTreeWidget(); self.tree.setHeaderHidden(True); self.tree.itemClicked.connect(self._item_clicked); self.tree.itemCollapsed.connect(self._keep_virtual_section_expanded); layout.addWidget(self.tree)
         self.collapse_button.clicked.connect(self.collapse_domains)
         layout.addWidget(QLabel(tr("Filters")))
         self.project_filter = QComboBox(); self.domain_filter = QComboBox(); self.status_filter = QComboBox()
@@ -169,24 +181,13 @@ class ProjectTree(QWidget):
     def _keep_virtual_section_expanded(self, item):
         payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
         if payload.get("type") in self._VIRTUAL_SECTION_TYPES:
-            QTimer.singleShot(0, lambda target=item: self._force_virtual_section_open(target))
-
-    def _force_virtual_section_open(self, item):
-        """Expand a virtual section after it belongs to this QTreeWidget, then hide its arrow."""
-        if item.treeWidget() is not self.tree:
-            return
-        item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicatorWhenChildless)
-        self.tree.expandItem(item)
-        item.setExpanded(True)
-        item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
-        self.tree.expandItem(item)
-        item.setExpanded(True)
+            QTimer.singleShot(0, lambda target=item: target.setExpanded(True))
 
     def _expand_virtual_sections(self):
         def visit(item):
             payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
             if payload.get("type") in self._VIRTUAL_SECTION_TYPES:
-                self._force_virtual_section_open(item)
+                item.setExpanded(True)
             for index in range(item.childCount()): visit(item.child(index))
         for index in range(self.tree.topLevelItemCount()): visit(self.tree.topLevelItem(index))
 
@@ -261,7 +262,7 @@ class ProjectTree(QWidget):
     def _item_clicked(self, item, _column=0):
         p=item.data(0,Qt.ItemDataRole.UserRole) or {}; kind=p.get("type")
         if kind in self._VIRTUAL_SECTION_TYPES:
-            self._force_virtual_section_open(item); return
+            item.setExpanded(True); return
         if kind=="folder": item.setExpanded(not item.isExpanded()); return
         if kind=="site": self.site_selected.emit(p["id"],p["site_name"])
         elif kind=="domain": self.domain_selected.emit(p["domain_id"],p["domain_name"],p["site_id"],p["site_name"])
