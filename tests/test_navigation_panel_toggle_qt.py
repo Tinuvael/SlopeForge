@@ -79,7 +79,7 @@ def test_main_window_wires_header_toggle_without_rebuilding_tree():
     assert "set_search_query(" not in toggle
 
 
-def test_project_tree_header_collapse_and_always_open_horizon(monkeypatch):
+def test_project_tree_header_domain_collapse_and_always_open_horizon(monkeypatch):
     from ui.widgets import project_tree as module
 
     app = _app()
@@ -98,7 +98,9 @@ def test_project_tree_header_collapse_and_always_open_horizon(monkeypatch):
     panel = module.ProjectTree(SimpleNamespace(session_factory=object()))
     panel.show(); app.processEvents()
     assert panel.tree_title.text() == "Project tree"
-    assert panel.collapse_button.text() == "Collapse all"
+    assert panel.collapse_button.text() == ""
+    assert panel.collapse_button.toolTip() == "Collapse domains"
+    assert not panel.collapse_button.icon().isNull()
 
     def walk(item):
         yield item
@@ -118,7 +120,10 @@ def test_project_tree_header_collapse_and_always_open_horizon(monkeypatch):
     assert horizon.isExpanded()
 
     panel.tree.expandAll(); app.processEvents()
+    project = panel.tree.topLevelItem(0)
+    domain_item = project.child(0)
     QTest.mouseClick(panel.collapse_button, Qt.MouseButton.LeftButton); app.processEvents()
-    assert not panel.tree.topLevelItem(0).isExpanded()
+    assert project.isExpanded()
+    assert not domain_item.isExpanded()
     assert horizon.isExpanded()
     panel.close()
