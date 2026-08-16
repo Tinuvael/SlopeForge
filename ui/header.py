@@ -2,7 +2,7 @@
 from app.localization import tr
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMenu, QPushButton, QToolButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMenu, QPushButton, QWidget
 from ui.settings_dialog import SettingsDialog
 from app.icons.ui.ui_icons import ui_icon
 class SearchLineEdit(QLineEdit):
@@ -18,7 +18,9 @@ class Header(QWidget):
     add_project_requested=Signal(); add_domain_requested=Signal(); add_blast_event_requested=Signal(); add_assessment_area_requested=Signal(); archive_requested=Signal(); report_requested=Signal(); navigation_toggle_requested=Signal()
     def __init__(self, context):
         super().__init__(); self.context=context; self.setFixedHeight(60); layout=QHBoxLayout(self)
-        self.navigation_button=QToolButton(); self.navigation_button.setObjectName("navigationToggleButton"); self.navigation_button.setAutoRaise(True); self.navigation_button.setFixedSize(32,32); self.navigation_button.clicked.connect(self.navigation_toggle_requested); self.set_navigation_visible(True)
+        # Use a normal QPushButton so the navigation control has the same native
+        # border/hover/focus treatment as Add and Archive on Windows.
+        self.navigation_button=QPushButton(); self.navigation_button.setObjectName("navigationToggleButton"); self.navigation_button.setFixedSize(36,32); self.navigation_button.clicked.connect(self.navigation_toggle_requested); self.set_navigation_visible(True)
         self.add_button=QPushButton(tr("Add")); self.add_menu=QMenu(self)
         self.add_project_action=self.add_menu.addAction(tr("Add project")); self.add_domain_action=self.add_menu.addAction(tr("Add domain")); self.add_blast_event_action=self.add_menu.addAction(tr("Add blast event")); self.add_assessment_area_action=self.add_menu.addAction(tr("Add assessment area"))
         self.add_button.setIcon(ui_icon("add","blue")); self.add_project_action.setIcon(ui_icon("mine")); self.add_domain_action.setIcon(ui_icon("domain")); self.add_blast_event_action.setIcon(ui_icon("blast-blocks")); self.add_assessment_area_action.setIcon(ui_icon("assessment-area"))
