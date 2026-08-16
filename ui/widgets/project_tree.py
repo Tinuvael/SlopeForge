@@ -169,13 +169,24 @@ class ProjectTree(QWidget):
     def _keep_virtual_section_expanded(self, item):
         payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
         if payload.get("type") in self._VIRTUAL_SECTION_TYPES:
-            QTimer.singleShot(0, lambda target=item: target.setExpanded(True))
+            QTimer.singleShot(0, lambda target=item: self._force_virtual_section_open(target))
+
+    def _force_virtual_section_open(self, item):
+        """Expand a virtual section after it belongs to this QTreeWidget, then hide its arrow."""
+        if item.treeWidget() is not self.tree:
+            return
+        item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicatorWhenChildless)
+        self.tree.expandItem(item)
+        item.setExpanded(True)
+        item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
+        self.tree.expandItem(item)
+        item.setExpanded(True)
 
     def _expand_virtual_sections(self):
         def visit(item):
             payload = item.data(0, Qt.ItemDataRole.UserRole) or {}
             if payload.get("type") in self._VIRTUAL_SECTION_TYPES:
-                item.setExpanded(True)
+                self._force_virtual_section_open(item)
             for index in range(item.childCount()): visit(item.child(index))
         for index in range(self.tree.topLevelItemCount()): visit(self.tree.topLevelItem(index))
 
@@ -234,8 +245,6 @@ class ProjectTree(QWidget):
             if site_item.childCount(): self.tree.addTopLevelItem(site_item)
         self.tree.expandAll() if constrained else self.tree.expandToDepth(1)
         self._expand_virtual_sections()
-        # Windows can apply an internal collapse while polishing newly inserted
-        # tree items. Reassert virtual groups after the current event loop turn.
         QTimer.singleShot(0, self._expand_virtual_sections)
 
     @staticmethod
@@ -244,7 +253,6 @@ class ProjectTree(QWidget):
         icons={"site":"mine","domain":"domain","folder":"blast-blocks" if payload.get("folder_kind")=="blast_events" else "assessment-area","horizon":"horizon","block":"block","contour":"contour","interval":"layers","area":"assessment-area"}
         item.setIcon(0,ui_icon(icons.get(payload.get("type"),"folder-open")))
         if payload.get("type") in ProjectTree._VIRTUAL_SECTION_TYPES:
-            item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             font = item.font(0); font.setBold(True); item.setFont(0, font)
         if payload.get("archived"): item.setForeground(0,Qt.GlobalColor.gray)
@@ -253,7 +261,7 @@ class ProjectTree(QWidget):
     def _item_clicked(self, item, _column=0):
         p=item.data(0,Qt.ItemDataRole.UserRole) or {}; kind=p.get("type")
         if kind in self._VIRTUAL_SECTION_TYPES:
-            item.setExpanded(True); return
+            self._force_virtual_section_open(item); return
         if kind=="folder": item.setExpanded(not item.isExpanded()); return
         if kind=="site": self.site_selected.emit(p["id"],p["site_name"])
         elif kind=="domain": self.domain_selected.emit(p["domain_id"],p["domain_name"],p["site_id"],p["site_name"])
