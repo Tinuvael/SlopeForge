@@ -51,7 +51,6 @@ def test_new_evaluation_is_transient_and_empty_legacy_is_safe():
     state,area=make_state(); evaluation,draft=AssessmentAreaEvaluationService(state).new_evaluation(area)
     assert state.evaluations==[] and evaluation.active_revision() is None
     state.evaluations.append(evaluation)
-    # The window workflow can reuse this object; the domain method is safe.
     assert evaluation.active_revision() is None and draft.evaluation_id==evaluation.id
 
 def test_draft_revision_stores_all_inputs_and_is_independent():
@@ -84,14 +83,15 @@ def test_dialog_restores_without_mutating_source_and_nullable_zero():
     blank=NullableDoubleSpinBox(); assert blank.nullable_value() is None; blank.set_nullable_value(0); assert blank.nullable_value()==0
     dialog._allow_close=True; dialog.close()
 
-def test_damage_intermediate_manual_workflow_and_russian_table(monkeypatch):
+def test_damage_intermediate_range_requires_explicit_score(monkeypatch):
     app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
     editor=dialog.editors["damage"]; editor.input.set_nullable_value(1); editor.manual_score.clear_value(); editor.manual_score.editingFinished.emit(); dialog.refresh(False)
-    assert DAMAGE_WARNING in editor.validation.text() and dialog._preview.face_condition_index is None
-    monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:("Экспертный осмотр",True)); editor.manual_score.set_nullable_value(8); editor.manual_score.editingFinished.emit(); dialog.refresh(False)
-    assert dialog._preview.design_achievement_index==1 and dialog._preview.face_condition_index is not None and dialog.plot.design==1
-    assert "Несколько небольших блоков" in dialog.editors["loose_blocks"].input.currentText()
-    assert "Твёрдая подошва" in dialog.editors["face_profile"].input.currentText()
+    assert DAMAGE_WARNING in editor.help_button.toolTip() and dialog._preview.face_condition_index is None
+    prompts=[]; monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:(prompts.append(True) or "Expert review",True))
+    editor.manual_score.set_nullable_value(8); editor.manual_score.editingFinished.emit(); dialog.refresh(False)
+    assert prompts==[] and dialog._preview.design_achievement_index==1 and dialog._preview.face_condition_index is not None and dialog.plot.design==1
+    assert "Several small blocks" in dialog.editors["loose_blocks"].input.currentText()
+    assert "Hard toe" in dialog.editors["face_profile"].input.currentText()
     dialog._allow_close=True; dialog.close()
 
 def test_dialog_initialization_does_not_collect_before_restore(monkeypatch):
@@ -114,7 +114,8 @@ def test_direct_geometry_inputs_are_canonical_and_live_preview_does_not_save():
         "toe_offset_from_design_m":.8,
     }
     assert not ({"design_bench_face_angle_deg","actual_bench_face_angle_deg","design_berm_width_m","actual_berm_width_m"}&collected.design_inputs.keys())
-    assert calls==[] and dialog.angle_score.text()!="Required"
+    angle=next(result for result in dialog._preview.criterion_results if result.criterion_id=="bench_angle")
+    assert calls==[] and angle.accepted_score is not None
     assert not hasattr(dialog,"design_table") and not hasattr(dialog,"condition_table")
     assert not hasattr(dialog,"scoring_details")
     dialog._allow_close=True; dialog.close()
@@ -159,7 +160,7 @@ def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
     assert prompts==[] and editor.override_reason is None and not dialog.shortfall.isEnabled()
     assert dialog._preview.criterion_results[0].accepted_score==12
     assert isinstance(editor.manual_score,QtWidgets.QSpinBox) and editor.manual_score.singleStep()==1
-    assert editor.manual_score.text().startswith("12 / 40") and editor.manual_score.styleSheet()==""
+    assert editor.manual_score.text().startswith(f"12 / {editor.criterion.maximum_score:g}") and editor.manual_score.styleSheet()==""
     application.processEvents(); assert rendered("#fff4cc")
     editor.manual_score.stepUp(); assert editor.manual_score.value()==13 and editor._manual_value==13
     editor.manual_score.stepDown(); assert editor.manual_score.value()==12 and editor._manual_value==12
