@@ -100,7 +100,7 @@ def test_dialog_new_csv_and_event_type_refresh_auto_suggestion(tmp_path):
     dialog.csv.setText(str(tmp_path / "second.csv")); dialog._inspect(force_override=True)
     assert dialog.elevation.value() == 635 and not dialog.elevation_is_manual
     dialog.kind.setCurrentText("contour")
-    assert dialog.elevation.value() == 645 and "212 устьев" in dialog.auto_status.text()
+    assert dialog.elevation.value() == 645 and "212 collars" in dialog.auto_status.text()
     dialog.close(); assert app
 
 
@@ -133,7 +133,6 @@ def test_automatic_detection_and_import_prefer_sid_over_ptn(tmp_path):
     assert detect_columns(headers)["LINE_ID"] == "SID"
     source = tmp_path / "sid.csv"
     source.write_text("XP,YP,ZP,PTN,SID\n0,0,500,1,7\n1,1,490,2,7\n", encoding="utf-8")
-    # Even a stale/manual PTN mapping must not override an available SID.
     result = import_datamine_csv(source, {"X": "XP", "Y": "YP", "Z": "ZP", "LINE_ID": "PTN"})
     assert result.summary.column_mapping["LINE_ID"] == "SID"
     assert len(result.lines) == 1 and len(result.lines[0].points) == 2
