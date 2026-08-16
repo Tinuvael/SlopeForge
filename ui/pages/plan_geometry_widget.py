@@ -24,6 +24,7 @@ class PlanGeometryWidget(QWidget):
         self.comparison_geometries = (None, None)
         self.focus_geometry = None
         self.canonical_focus_rect = None
+        self._pending_center = False
 
         layout = QVBoxLayout(self)
         bar = QHBoxLayout()
@@ -71,11 +72,11 @@ class PlanGeometryWidget(QWidget):
         self.focus_geometry = focus_geometry
         if focus_geometry is None:
             self.canonical_focus_rect = None
+            self._pending_center = False
             self.fit()
         else:
             self._update_focus_rect()
             self.center_on_focus()
-            QTimer.singleShot(0, self.center_on_focus)
 
     def set_comparison_geometry(self, primary_geometry, comparison_geometry,
                                 project_lines=(), context="", *, focus_geometry=None,
@@ -96,7 +97,6 @@ class PlanGeometryWidget(QWidget):
             self._update_focus_rect()
         if recenter:
             self.center_on_focus()
-            QTimer.singleShot(0, self.center_on_focus)
         else:
             self.view.setTransform(transform)
             self.view.centerOn(center)
@@ -105,6 +105,7 @@ class PlanGeometryWidget(QWidget):
         rect = self._geometry_path(self.focus_geometry).boundingRect()
         if rect.isNull():
             self.canonical_focus_rect = None
+            self._pending_center = False
             return
         factor = sqrt(2.0)
         width, height = rect.width() * factor, rect.height() * factor
@@ -114,8 +115,21 @@ class PlanGeometryWidget(QWidget):
         )
 
     def center_on_focus(self):
-        if self.canonical_focus_rect is not None:
-            self.view.fit_to_rect(self.canonical_focus_rect)
+        if self.canonical_focus_rect is None:
+            return
+        viewport = self.view.viewport()
+        if not self.isVisible() or viewport.width() < 2 or viewport.height() < 2:
+            self._pending_center = True
+            return
+        self.view.fit_to_rect(self.canonical_focus_rect)
+        self._pending_center = False
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._pending_center:
+            # A hidden tab has only provisional viewport dimensions. Defer the
+            # canonical framing until Qt has completed the visible layout pass.
+            QTimer.singleShot(0, self.center_on_focus)
 
     def _add_project_lines(self, project_lines):
         pen = QPen(QColor("#aeb7c2"), 0)
