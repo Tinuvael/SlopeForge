@@ -77,7 +77,7 @@ def project_tree(monkeypatch):
 ])
 def test_searches_names_case_insensitively_and_preserves_hierarchy(project_tree, query, expected):
     tree, app = project_tree
-    assert tree.findChildren(QLineEdit) == []
+    assert not hasattr(tree, "search")  # the only user-facing search field belongs to Header
     tree.set_search_query(f"  {query}  "); app.processEvents()
     labels = _labels(tree); texts = [text for text, _expanded in labels]
     assert expected in texts
