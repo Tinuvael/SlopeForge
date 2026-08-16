@@ -71,18 +71,22 @@ def project_tree(monkeypatch):
     widget.close()
 
 
-@pytest.mark.parametrize("query, expected", [
-    ("quarr", "North Quarry"), ("NORTH1", "Block PB-101"), ("b-10", "Block PB-101"),
-    ("east tr", "Contour East Trim"), ("north wa", "North Wall"),
+@pytest.mark.parametrize("query, expected,project_match", [
+    ("quarr", "North Quarry", True), ("NORTH1", "Block PB-101", False), ("b-10", "Block PB-101", False),
+    ("east tr", "Contour East Trim", False), ("north wa", "North Wall", False),
 ])
-def test_searches_names_case_insensitively_and_preserves_hierarchy(project_tree, query, expected):
+def test_searches_names_case_insensitively_and_preserves_hierarchy(project_tree, query, expected, project_match):
     tree, app = project_tree
-    assert not hasattr(tree, "search")  # the only user-facing search field belongs to Header
+    assert not hasattr(tree, "search")
     tree.set_search_query(f"  {query}  "); app.processEvents()
     labels = _labels(tree); texts = [text for text, _expanded in labels]
     assert expected in texts
     assert "North Quarry" in texts and "North1" in texts
-    assert "West" not in texts and "South Project" not in texts
+    assert "South Project" not in texts
+    if project_match:
+        assert "West" in texts  # matching a Project preserves its contained hierarchy
+    else:
+        assert "West" not in texts
     expanded = {text: state for text, state in labels}
     assert expanded["North Quarry"] and expanded["North1"]
 
