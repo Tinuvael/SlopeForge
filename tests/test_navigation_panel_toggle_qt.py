@@ -21,7 +21,8 @@ def test_header_navigation_toggle_is_compact_and_changes_action_state():
     header.show(); app.processEvents()
 
     assert header.navigation_button.objectName() == "navigationToggleButton"
-    assert header.navigation_button.width() == 32
+    assert header.navigation_button.width() == 36
+    assert isinstance(header.navigation_button, QtWidgets.QPushButton)
     assert header.navigation_button.toolTip() == "Hide navigation"
 
     emitted = []
@@ -76,3 +77,48 @@ def test_main_window_wires_header_toggle_without_rebuilding_tree():
     assert "load_data(" not in toggle
     assert "reload_filters(" not in toggle
     assert "set_search_query(" not in toggle
+
+
+def test_project_tree_header_collapse_and_always_open_horizon(monkeypatch):
+    from ui.widgets import project_tree as module
+
+    app = _app()
+    site = SimpleNamespace(id=1, name="Project")
+    domain = SimpleNamespace(id=2, name="Domain")
+    block = SimpleNamespace(
+        id=10, domain_id=2, block_number="B-1", horizon_m=630,
+        planned_blast_date=None, status="planned", is_archived=False,
+    )
+    monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: [site]))
+    monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda _id: [domain]))
+    monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(list_blocks=lambda **_kwargs: [block]))
+    monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
+        list_areas=lambda _archived: [], list_contour_events=lambda _archived: []))
+
+    panel = module.ProjectTree(SimpleNamespace(session_factory=object()))
+    panel.show(); app.processEvents()
+    assert panel.tree_title.text() == "Project tree"
+    assert panel.collapse_button.text() == "Collapse all"
+
+    def walk(item):
+        yield item
+        for index in range(item.childCount()):
+            yield from walk(item.child(index))
+
+    items = []
+    for index in range(panel.tree.topLevelItemCount()):
+        items.extend(walk(panel.tree.topLevelItem(index)))
+    horizon = next(item for item in items if (item.data(0, Qt.ItemDataRole.UserRole) or {}).get("type") == "horizon")
+    assert horizon.text(0) == "Horizon 630"
+    assert horizon.isExpanded()
+    assert horizon.childIndicatorPolicy() == QtWidgets.QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator
+    assert not (horizon.flags() & Qt.ItemFlag.ItemIsSelectable)
+
+    horizon.setExpanded(False); app.processEvents()
+    assert horizon.isExpanded()
+
+    panel.tree.expandAll(); app.processEvents()
+    QTest.mouseClick(panel.collapse_button, Qt.MouseButton.LeftButton); app.processEvents()
+    assert not panel.tree.topLevelItem(0).isExpanded()
+    assert horizon.isExpanded()
+    panel.close()
