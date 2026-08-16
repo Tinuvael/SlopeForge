@@ -5,6 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 QtWidgets = pytest.importorskip("PySide6.QtWidgets", reason="Qt unavailable", exc_type=ImportError)
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from domain.geometry.types import PlanPoint, PlanPolygon
@@ -141,12 +142,16 @@ def test_manual_matrix_reason_is_only_available_for_manual_selection():
     manual._allow_close=True; manual.close()
 
 def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
-    app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None)
+    application=app(); state,area=make_state(); evaluation,draft=filled_draft(state,area); dialog=AssessmentAreaEvaluationDialog(area,evaluation,draft,lambda *_:None); dialog.show(); application.processEvents()
     editor=dialog.geometry_editors["bench_angle"]
+    def rendered(colour):
+        image=editor.manual_score.lineEdit().grab().toImage(); target=QColor(colour)
+        return any(abs(image.pixelColor(x,y).red()-target.red())<=12 and abs(image.pixelColor(x,y).green()-target.green())<=12 and abs(image.pixelColor(x,y).blue()-target.blue())<=12 for x in range(3,max(4,image.width()-3)) for y in range(3,max(4,image.height()-3)))
     assert editor.manual_score.objectName()=="AutomaticScore" and editor.manual_score.lineEdit().styleSheet()==""
+    assert not rendered("#fff4cc") and not rendered("#fff0f0")
     assert not hasattr(editor,"override_panel") and not hasattr(editor,"override_toggle")
     assert editor.manual_score.maximum()==editor.criterion.maximum_score
-    assert editor.manual_score.parentWidget() is editor and editor.help_button.toolTip()
+    assert editor.score_state_frame.isAncestorOf(editor.manual_score) and editor.help_button.toolTip()
     assert not [button for button in editor.findChildren(QtWidgets.QPushButton) if button.text() in {"Clear","Очистить"}]
     assert not [label for label in editor.findChildren(QtWidgets.QLabel) if label.text() in {"Required","Manual score","Обязательно","Ручной балл"}]
     prompts=[]; monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:(prompts.append(True) or "Survey review",True))
@@ -155,7 +160,7 @@ def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
     assert dialog._preview.criterion_results[0].accepted_score==12
     assert isinstance(editor.manual_score,QtWidgets.QSpinBox) and editor.manual_score.singleStep()==1
     assert editor.manual_score.text().startswith("12 / 40") and editor.manual_score.styleSheet()==""
-    app().processEvents(); assert "#fff4cc" in editor.manual_score.lineEdit().styleSheet()
+    application.processEvents(); assert rendered("#fff4cc")
     editor.manual_score.stepUp(); assert editor.manual_score.value()==13 and editor._manual_value==13
     editor.manual_score.stepDown(); assert editor.manual_score.value()==12 and editor._manual_value==12
     QTest.keyClick(editor.manual_score,Qt.Key.Key_Up); assert editor.manual_score.value()==13
@@ -163,7 +168,7 @@ def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
     editor.manual_score.clear_value(); editor.manual_score.editingFinished.emit()
     assert editor.override_reason is None and dialog.shortfall.isEnabled()
     dialog.shortfall.clear_value(); dialog.refresh(False); assert editor.manual_score.objectName()=="MissingScore" and "Required" in editor.manual_score.toolTip()
-    app().processEvents(); assert "#fff0f0" in editor.manual_score.lineEdit().styleSheet()
+    application.processEvents(); assert rendered("#fff0f0")
     editor.manual_score.set_nullable_value(10); editor.manual_score.editingFinished.emit()
     assert editor._manual_value==10 and not dialog.shortfall.isEnabled() and prompts==[]
     dialog._allow_close=True; dialog.close()
