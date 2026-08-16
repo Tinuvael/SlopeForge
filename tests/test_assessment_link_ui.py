@@ -9,9 +9,10 @@ except ImportError as exc:
 
 from application.services.assessment_event_links import AssessmentEventLinkService
 from application.state.assessment_domain_state import AssessmentDomainState
-from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
+from domain.assessment.entities import AssessmentArea
 from domain.blasting.entities import BlastEvent
 from domain.geometry.types import PlanPoint, PlanPolygon
+from tests.assessment_boundary_fixtures import geometry_revision
 
 
 def polygon(*coordinates):
@@ -21,9 +22,9 @@ def polygon(*coordinates):
 
 def scenario():
     area_geometry = polygon((0, 0), (10, 0), (10, 10), (0, 10))
-    area_revision = AssessmentAreaGeometryRevision(
-        "AA-R1", "AA", 1, datetime(2026, 1, 1, tzinfo=timezone.utc), "D-1",
-        area_geometry, area_geometry, 600, 630, (),
+    area_revision = geometry_revision(
+        "AA-R1", "AA", 1, datetime(2026, 1, 1, tzinfo=timezone.utc),
+        area_geometry, dataset_id="D-1", minimum=600, maximum=630,
     )
     area = AssessmentArea("AA", "Area", date(2026, 1, 1), [area_revision], area_revision.id)
     r1_geometry = polygon((1, 1), (3, 1), (3, 3), (1, 3))
