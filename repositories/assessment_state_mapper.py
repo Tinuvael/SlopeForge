@@ -5,7 +5,7 @@ This module deliberately knows nothing about SQLAlchemy sessions, Qt, or files.
 from __future__ import annotations
 
 import math
-from pathlib import PurePath
+from pathlib import PurePosixPath, PureWindowsPath
 
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.assessment.geometry import ProjectLineSpan, StraightConnector
@@ -162,8 +162,9 @@ def validate_assessment_state(state: AssessmentDomainState) -> None:
         owners = event_ids if attachment.owner_type == "blast_event" else evaluation_ids
         if attachment.owner_id not in owners:
             _fail("attachment owner does not exist")
-        path = PurePath(attachment.relative_path)
-        if path.is_absolute() or not attachment.relative_path.strip():
+        path_text = attachment.relative_path.strip()
+        if (not path_text or PurePosixPath(path_text).is_absolute()
+                or PureWindowsPath(path_text).is_absolute()):
             _fail("attachment path must be relative")
         if attachment.file_size_bytes < 0:
             _fail("attachment size must be non-negative")
