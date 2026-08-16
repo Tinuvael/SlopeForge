@@ -63,6 +63,9 @@ class NullableScoreSpinBox(QSpinBox):
     def keyPressEvent(self,event):
         if event.key() in (Qt.Key.Key_Delete,Qt.Key.Key_Backspace): self.clear_value(); self.editingFinished.emit(); event.accept(); return
         super().keyPressEvent(event)
+    def stepBy(self, steps):
+        if self.value()==0 and steps<0:return
+        super().stepBy(steps)
 
 
 class QuadrantPlot(QWidget):
@@ -132,6 +135,7 @@ class CriterionEditor(QWidget):
         self._native_score_palette=QPalette(self.manual_score.palette())
         self.manual_score.setToolTip(tr("Edit to override the automatic score. Delete or Backspace restores automatic scoring."))
         self.manual_score.editingFinished.connect(self._score_committed); top.addWidget(self.manual_score)
+        self.manual_score.valueChanged.connect(self._score_value_changed)
         root.addLayout(top)
         self.validation = QLabel(); self.validation.setWordWrap(True); self.validation.setStyleSheet("color:#a33"); self.validation.hide(); root.addWidget(self.validation)
         self.auto_score = QLabel(tr("—")); self.accepted = QLabel(tr("—"))
@@ -162,6 +166,9 @@ class CriterionEditor(QWidget):
             reason, ok = QInputDialog.getText(self, tr("Override score"), tr("Reason for manual score"), QLineEdit.EchoMode.Normal, reason or "")
             if not ok or not reason.strip(): self._set_score_value(previous if previous is not None else self._accepted_value); self._sync_primary(); return
         self._manual_value=int(value); self.override_reason=(reason or "").strip() or None; self._sync_primary(); self.changed.emit()
+
+    def _score_value_changed(self, _value):
+        if not REQUIRE_MANUAL_SCORE_REASON and not self._restoring and not self._setting_score:self._score_committed()
 
     def set_score(self, result):
         self._accepted_value=result.accepted_score

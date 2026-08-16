@@ -4,6 +4,8 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 QtWidgets = pytest.importorskip("PySide6.QtWidgets", reason="Qt unavailable", exc_type=ImportError)
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent
@@ -148,14 +150,14 @@ def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
     assert not [label for label in editor.findChildren(QtWidgets.QLabel) if label.text() in {"Required","Manual score","Обязательно","Ручной балл"}]
     prompts=[]; monkeypatch.setattr(QtWidgets.QInputDialog,"getText",lambda *_args,**_kwargs:(prompts.append(True) or "Survey review",True))
     editor.manual_score.set_nullable_value(12)
-    assert prompts==[] and dialog.shortfall.isEnabled()
-    editor.manual_score.editingFinished.emit()
     assert prompts==[] and editor.override_reason is None and not dialog.shortfall.isEnabled()
     assert dialog._preview.criterion_results[0].accepted_score==12
     assert isinstance(editor.manual_score,QtWidgets.QSpinBox) and editor.manual_score.singleStep()==1
     assert editor.manual_score.text().startswith("12 / 40") and editor.manual_score.styleSheet()==""
-    editor.manual_score.stepUp(); assert editor.manual_score.value()==13  # native arrows remain functional
-    editor.manual_score.setValue(12)
+    editor.manual_score.stepUp(); assert editor.manual_score.value()==13 and editor._manual_value==13
+    editor.manual_score.stepDown(); assert editor.manual_score.value()==12 and editor._manual_value==12
+    QTest.keyClick(editor.manual_score,Qt.Key.Key_Up); assert editor.manual_score.value()==13
+    QTest.keyClick(editor.manual_score,Qt.Key.Key_Down); assert editor.manual_score.value()==12
     editor.manual_score.clear_value(); editor.manual_score.editingFinished.emit()
     assert editor.override_reason is None and dialog.shortfall.isEnabled()
     dialog.shortfall.clear_value(); dialog.refresh(False); assert editor.manual_score.objectName()=="MissingScore" and "Required" in editor.manual_score.toolTip()

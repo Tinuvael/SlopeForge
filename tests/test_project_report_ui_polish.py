@@ -66,9 +66,11 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     assert page.evaluation_editor.date.isVisible() and page.evaluation_editor.date.isEnabled()
     assert page.evaluation_editor.inspector.isVisible() and page.evaluation_editor.inspector.isEnabled()
     assert page.evaluation_editor.inspector.text()=="Иванов"  # saved value is never overwritten
-    assert page.evaluation_editor.date.parentWidget() is inputs and page.evaluation_editor.inspector.parentWidget() is inputs
+    assert page.assessment_details_card.isVisible() and inputs.isAncestorOf(page.evaluation_editor.date) and inputs.isAncestorOf(page.evaluation_editor.inspector)
     assert page.assessment_right.width()/(inputs.width()+page.assessment_right.width())>.42
-    assert page.evaluation_editor.matrix_value.isVisible() and page.evaluation_editor.detected.isVisible()
+    assert page.assessment_basis_value.text()=="With contour drilling" or page.assessment_basis_value.text()=="Controlled blasting"
+    assert page.assessment_basis_detection.text()=="Confirmed contour blast link"
+    assert page.face_condition_divider.isVisible()
     assert not page.evaluation_editor.override_reason.isVisible()
     assert page.evaluation_editor.dai_value.isVisible()
     assert page.evaluation_editor.fci_value.isVisible()
@@ -128,6 +130,8 @@ def test_assessment_page_opens_real_new_draft_sources(monkeypatch,manual_overrid
     context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True,display_name="Current Inspector"))
     page=module.AssessmentAreaPage(context,1,"Domain",area.id); page.resize(1920,1080); page.show(); page.tabs.setCurrentWidget(page.assessment_tab); application.processEvents()
     assert page.evaluation_editor.inspector.text()=="Current Inspector"
+    assert page.assessment_basis_value.text()==("Controlled blasting" if manual_override else "Standard blasting")
+    assert page.assessment_basis_detection.text()==("Manual matrix selection" if manual_override else "No confirmed contour blast link")
     assert page.evaluation_editor.override_reason.isVisible() is manual_override
     assert page.evaluation_editor.collect().controlled_blasting_detection_source==draft.controlled_blasting_detection_source
     page.evaluation_editor.toe.set_nullable_value(.5); application.processEvents()

@@ -3123,5 +3123,12 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Manual override</source><translation>Ручная корректировка</translation></message>
         <message><source>Required for completion</source><translation>Обязательно для завершения</translation></message>
 
+        <message><source>Assessment details</source><translation>Данные оценки</translation></message>
+        <message><source>Assessment basis</source><translation>Основание оценки</translation></message>
+        <message><source>Controlled blasting</source><translation>Контурное взрывание</translation></message>
+        <message><source>Standard blasting</source><translation>Обычное взрывание</translation></message>
+        <message><source>Confirmed contour blast link</source><translation>Подтвержденная связь с контурным взрывом</translation></message>
+        <message><source>No confirmed contour blast link</source><translation>Подтвержденная связь с контурным взрывом отсутствует</translation></message>
+        <message><source>Manual matrix selection</source><translation>Матрица выбрана вручную</translation></message>
     </context>
 </TS>
