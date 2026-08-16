@@ -163,7 +163,7 @@ def test_concrete_report_query_preserves_actual_date_stored_scores_and_links(fac
         production.event_date = date(2026, 7, 1)
         contour.event_date = date(2026, 8, 7)
         actual = state.technical_cards[0].active_revision().actual_execution
-        actual.actual_blast_date = date(2026, 8, 6)
+        actual.actual_blast_date = date(2026, 8, 6).isoformat()
         actual.actual_block_volume_m3 = 1234
         actual.actual_total_explosive_mass_kg = 87
         actual.actual_total_drilling_length_m = 456
