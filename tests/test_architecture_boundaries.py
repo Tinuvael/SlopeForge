@@ -39,9 +39,6 @@ MINE_COMPATIBILITY_FILES = {
 
 RETIRED_ROOT_IMPORTS = ("reports", "widgets", "services", "database.database")
 
-# These three pre-Phase-7A application services directly select existing file
-# and geometry adapters. Replacing them requires real ports/composition work and
-# is explicitly outside this package-only follow-up; no other exception is allowed.
 APPLICATION_INFRASTRUCTURE_EXCEPTIONS = {
     "application/services/attachments.py",
     "application/services/blast_events.py",
@@ -82,8 +79,19 @@ def has_prefix(name: str, prefixes: tuple[str, ...]) -> bool:
     return any(name == prefix or name.startswith(prefix + ".") for prefix in prefixes)
 
 
+def _removed_source_path_exists(path: str) -> bool:
+    """Ignore empty/untracked local folders left behind by Git or __pycache__."""
+    target = ROOT / path
+    if target.is_file():
+        return True
+    if not target.is_dir():
+        return False
+    return any(candidate.is_file() and candidate.suffix in {".py", ".pyi"}
+               and "__pycache__" not in candidate.parts for candidate in target.rglob("*"))
+
+
 def test_permanently_removed_compatibility_paths_do_not_return() -> None:
-    assert not {path for path in PERMANENTLY_REMOVED_PATHS if (ROOT / path).exists()}
+    assert not {path for path in PERMANENTLY_REMOVED_PATHS if _removed_source_path_exists(path)}
 
 
 def test_production_and_tests_do_not_import_removed_prototype() -> None:
