@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 from PySide6.QtCore import QCoreApplication, QSettings
 import pytest
 
@@ -56,7 +54,7 @@ def test_russian_catalog_presentation_and_validation(qapp, tmp_path):
     assert result_label("Хорошие результаты") == "Хорошие результаты"
     assert technical_text("Скважины") == "Скважины"
     assert domain_message("Не заполнено: Дата оценки, Инспектор") == "Не заполнены обязательные поля: Дата оценки, Инспектор"
-    assert "main_pattern" == "main_pattern"  # presentation never mutates the persisted key
+    assert "main_pattern" == "main_pattern"
 
 
 def test_english_installs_no_russian_translator(qapp, tmp_path):
@@ -68,18 +66,19 @@ def test_english_installs_no_russian_translator(qapp, tmp_path):
 
 
 @pytest.mark.parametrize("catalog_contents", [None, "<TS><broken>"])
-def test_missing_or_malformed_ts_safely_falls_back(qapp, tmp_path, monkeypatch, caplog, catalog_contents):
-    caplog.set_level(logging.WARNING, logger=localization.__name__)
+def test_missing_or_malformed_ts_safely_falls_back(qapp, tmp_path, monkeypatch, catalog_contents):
     catalog = tmp_path / "bad.ts"
     if catalog_contents is not None:
         catalog.write_text(catalog_contents, encoding="utf-8")
     monkeypatch.setattr(localization, "resource_path", lambda _path: catalog if catalog.exists() else None)
+    warnings = []
+    monkeypatch.setattr(localization.logger, "warning", lambda message, *args, **kwargs: warnings.append(message))
     store = isolated_settings(tmp_path)
     save_language("ru", store)
     assert install_selected_translator(qapp, store) == "en"
     assert localization._translator is None
     assert tr("Add") == "Add"
-    assert "falling back to English" in caplog.text
+    assert warnings and "falling back to English" in warnings[-1]
 
 
 def test_unfinished_obsolete_and_empty_translations_are_ignored(qapp, tmp_path):
