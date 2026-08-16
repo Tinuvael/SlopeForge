@@ -1,7 +1,7 @@
 """Concrete regression tests for the focused BlastBlock archive adapter."""
 from __future__ import annotations
 
-from datetime import date, timezone
+from datetime import date
 from decimal import Decimal
 import os
 from uuid import uuid4
@@ -83,8 +83,9 @@ def test_concrete_archive_restore_changes_only_block_archive_fields(session_fact
         block = session.get(BlastBlock, block_id)
         production = session.get(BlastEvent, event_id)
         assert block.is_archived is True
+        # TIMESTAMPTZ represents one instant but psycopg renders it in the
+        # PostgreSQL session timezone, which need not be UTC on a developer PC.
         assert block.archived_at is not None and block.archived_at.tzinfo is not None
-        assert block.archived_at.utcoffset() == timezone.utc.utcoffset(block.archived_at)
         assert block.comment == "unchanged"
         assert production.is_archived is False and production.archived_at is None
         assert session.scalar(select(func.count()).select_from(AuditLogEntry).where(
