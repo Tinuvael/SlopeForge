@@ -534,16 +534,31 @@ class TechnicalCardDialog(QDialog):
             box=QGroupBox(display_name); box.setObjectName("actualDrillingGroupCard"); box.setCheckable(True); box.setChecked(group.included); box.setEnabled(True)
             outer=QVBoxLayout(box); identity=QFormLayout(); name=QLineEdit(display_name); name.setEnabled(not self.read_only); name.textChanged.connect(lambda value,g=group:setattr(g,"name",value)); identity.addRow(tr("Title"),name); outer.addLayout(identity)
             columns=QGridLayout(); columns.setColumnStretch(0,0); columns.setColumnStretch(1,1); box.setProperty("engineeringComposition","left-right")
-            drilling=QGroupBox(tr("Drilling / execution")); drilling.setObjectName("actualDrillingArea"); form=QFormLayout(drilling)
+
+            drilling=QGroupBox(tr("Drilling / execution")); drilling.setObjectName("actualDrillingArea")
+            field_grid=QGridLayout(drilling); field_grid.setHorizontalSpacing(10); field_grid.setVerticalSpacing(4)
+            field_grid.setColumnStretch(0,1); field_grid.setColumnStretch(1,0); field_grid.setColumnStretch(2,0); field_grid.setColumnStretch(3,0)
+            headers=((tr("Parameter"),0),(tr("Actual"),1),(tr("Plan"),2),("Δ",3))
+            for text,column in headers:
+                header=QLabel(text); header.setObjectName("actualComparisonHeader"); header.setStyleSheet("color: #6b7280; font-weight: 600;")
+                if column>0: header.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+                field_grid.addWidget(header,0,column)
+
             fields=[("Holes, count","hole_count",True),("Diameter, mm","diameter_mm",False),("Average depth, m","average_depth_m",False),("Subdrill, m","subdrill_m",False),("Inclination, °","inclination_deg",False),("Azimuth, °","azimuth_deg",False)]
             if self.blast_event.event_type=="production": fields += [(BURDEN_LABEL,"burden_m",False),(SPACING_LABEL,"spacing_m",False),("Rows","row_count",True),(TOE_LABEL,"toe_standoff_m",False)]
             else: fields += [("Design line / collar offset, m","line_offset_m",False)]
             state={"builder":None,"depth":group.average_depth_m,"status":None}
-            for label,attr,integer in fields:
-                row=QWidget(); row_layout=QHBoxLayout(row); row_layout.setContentsMargins(0,0,0,0); row_layout.setSpacing(6)
-                widget=_number(getattr(group,attr)); widget.setObjectName(attr); widget.setEnabled(not self.read_only); widget.setMinimumWidth(105); widget.setMaximumWidth(125); row_layout.addWidget(widget)
-                planned=getattr(design,attr) if design else None; annotation=QLabel(tr("Not in design") if design is None else self._comparison_text(planned,getattr(group,attr))); annotation.setObjectName("actualComparisonAnnotation"); annotation.setMinimumWidth(135); row_layout.addWidget(annotation); row_layout.addStretch(); form.addRow(tr(label),row)
-                def changed(value,g=group,a=attr,w=widget,p=planned,l=annotation,is_integer=integer,linked=design,st=state):
+            for row_index,(label,attr,integer) in enumerate(fields,1):
+                field_grid.addWidget(QLabel(tr(label)),row_index,0)
+                widget=_number(getattr(group,attr)); widget.setObjectName(attr); widget.setEnabled(not self.read_only); widget.setMinimumWidth(105); widget.setMaximumWidth(125)
+                if integer: widget.setDecimals(0)
+                field_grid.addWidget(widget,row_index,1)
+                planned=getattr(design,attr) if design else None
+                plan_label=QLabel(); plan_label.setObjectName(f"actualPlan_{attr}"); plan_label.setMinimumWidth(58); plan_label.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter); plan_label.setStyleSheet("color: #6b7280;")
+                delta_label=QLabel(); delta_label.setObjectName(f"actualDelta_{attr}"); delta_label.setMinimumWidth(48); delta_label.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+                self._set_comparison_labels(plan_label,delta_label,planned,getattr(group,attr),integer)
+                field_grid.addWidget(plan_label,row_index,2); field_grid.addWidget(delta_label,row_index,3)
+                def changed(value,g=group,a=attr,w=widget,p=planned,pl=plan_label,dl=delta_label,is_integer=integer,linked=design,st=state):
                     value=None if value==w.minimum() else (int(value) if is_integer else value)
                     builder=st["builder"]
                     if a=="average_depth_m" and builder and value is not None and not builder.set_hole_depth(value):
@@ -551,37 +566,84 @@ class TechnicalCardDialog(QDialog):
                     setattr(g,a,value)
                     if a=="average_depth_m": st["depth"]=value
                     if a=="diameter_mm" and builder: builder.set_hole_diameter(value)
-                    l.setText(tr("Not in design") if linked is None else self._comparison_text(p,value))
-                    if st["status"]: self._refresh_charge_comparison(st["status"],g,linked)
+                    self._set_comparison_labels(pl,dl,p,value,is_integer)
+                    if st["status"] is not None: self._refresh_charge_comparison(st["status"],g,linked)
                     else: self._refresh_actual_summary()
                 widget.valueChanged.connect(changed)
-            exceptions=QGroupBox(tr("Execution exceptions")); exception_grid=QGridLayout(exceptions)
+
+            exceptions=QGroupBox(tr("Execution exceptions")); exception_grid=QGridLayout(exceptions); exception_grid.setHorizontalSpacing(10); exception_grid.setVerticalSpacing(4); exception_grid.setColumnStretch(1,1)
             for index,(label,attr) in enumerate((("Rejected","rejected_hole_count"),("Redrilled","redrilled_hole_count"),("Wet","wet_hole_count"),("Uncharged","uncharged_hole_count"))):
                 spin=_number(getattr(group,attr)); spin.setDecimals(0); spin.setRange(-1,1000000); spin.setSpecialValueText("—"); spin.setMaximumWidth(90); spin.setEnabled(not self.read_only); spin.valueChanged.connect(lambda value,g=group,a=attr,w=spin:(setattr(g,a,None if value==w.minimum() else int(value)),self._refresh_actual_summary()))
-                row,column=divmod(index,2); exception_grid.addWidget(QLabel(tr(label)),row,column*2); exception_grid.addWidget(spin,row,column*2+1)
-            left=QVBoxLayout(); left.addWidget(drilling); left.addWidget(exceptions); left_host=QWidget(); left_host.setLayout(left); columns.addWidget(left_host,0,0,Qt.AlignmentFlag.AlignTop)
+                exception_grid.addWidget(QLabel(tr(label)),index,0); exception_grid.addWidget(spin,index,1,Qt.AlignmentFlag.AlignLeft)
+            left=QVBoxLayout(); left.setContentsMargins(0,0,0,0); left.addWidget(drilling); left.addWidget(exceptions); left_host=QWidget(); left_host.setLayout(left); columns.addWidget(left_host,0,0,Qt.AlignmentFlag.AlignTop)
+
             charge=QGroupBox(tr("Actual charge construction")); charge.setObjectName("actualChargeArea"); charge_layout=QVBoxLayout(charge)
             if group.average_depth_m and group.average_depth_m>0:
                 builder=BoreholeChargeBuilder(group.average_depth_m,group.diameter_mm,self.explosive_products,group.charge_components,self.read_only); builder.setObjectName("actualBoreholeChargeBuilder"); builder.setMinimumHeight(350); builder.setMaximumHeight(500); self._charge_builders.append(builder); state["builder"]=builder; charge_layout.addWidget(builder)
-                status=QLabel(); status.setObjectName("actualChargeComparison"); status.setWordWrap(True); state["status"]=status
-                builder.components_changed.connect(lambda values,g=group,d=design,s=status:(setattr(g,"charge_components",values),self._refresh_charge_comparison(s,g,d)))
-                self._refresh_charge_comparison(status,group,design); charge_layout.addWidget(status)
+                comparison=self._make_charge_comparison(); state["status"]=comparison
+                builder.components_changed.connect(lambda values,g=group,d=design,c=comparison:(setattr(g,"charge_components",values),self._refresh_charge_comparison(c,g,d)))
+                self._refresh_charge_comparison(comparison,group,design); charge_layout.addWidget(comparison["widget"])
             else: charge_layout.addWidget(QLabel(tr("Enter average hole depth to configure the charge construction.")))
             columns.addWidget(charge,0,1); outer.addLayout(columns)
             actions=QHBoxLayout(); duplicate=QPushButton(tr("Duplicate")); remove=QPushButton(tr("Delete")); duplicate.setEnabled(not self.read_only); remove.setEnabled(not self.read_only); duplicate.clicked.connect(lambda _=False,g=group:self._duplicate_actual(g)); remove.clicked.connect(lambda _=False,g=group:self._remove_actual(g)); actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions)
             box.toggled.connect(lambda checked,g=group:(setattr(g,"included",checked),self._refresh_actual_summary())); box.setCheckable(not self.read_only); self.actual_cards_layout.addWidget(box)
 
     @staticmethod
-    def _comparison_text(plan, actual, unit=""):
-        if plan is None: return tr("Plan —")
-        delta=None if actual is None else actual-plan; delta_text="—" if delta is None else ("0" if abs(delta)<1e-9 else f"{delta:+g}")
-        return f"{tr('Plan')} {plan:g}{unit}   Δ {delta_text}{unit}"
+    def _format_comparison_number(value, integer=False, decimals=3, signed=False):
+        if value is None: return "—"
+        if integer:
+            text=str(int(round(value)))
+        else:
+            text=f"{float(value):.{decimals}f}".rstrip("0").rstrip(".")
+        if signed and value>0: text=f"+{text}"
+        return text
 
-    def _refresh_charge_comparison(self,label,actual,design):
-        matches=actual.charge_matches(design); plan_per=design.explosive_mass_per_hole_kg() if design else None; fact_per=actual.explosive_mass_per_hole_kg(); plan_total=design.total_explosive_mass() if design else None; fact_total=actual.effective_charge_mass()
-        if matches: text=tr("Charge matches design")
-        else: text=f"{tr('Charge changed')}\n{tr('Mass / hole')}   {self._comparison_text(plan_per,fact_per,' kg')}\n{tr('Total mass')}   {self._comparison_text(plan_total,fact_total,' kg')}"
-        label.setText(text); self._refresh_actual_summary()
+    @classmethod
+    def _comparison_display(cls, plan, actual, integer=False):
+        plan_text=cls._format_comparison_number(plan,integer)
+        if plan is None or actual is None: return plan_text,"—",False
+        delta=actual-plan
+        if abs(delta)<1e-9: return plan_text,"—",False
+        return plan_text,cls._format_comparison_number(delta,integer,signed=True),True
+
+    @classmethod
+    def _set_comparison_labels(cls, plan_label, delta_label, plan, actual, integer=False):
+        plan_text,delta_text,changed=cls._comparison_display(plan,actual,integer)
+        plan_label.setText(plan_text); delta_label.setText(delta_text)
+        delta_label.setStyleSheet("color: #0b63ce; font-weight: 600;" if changed else "color: #9ca3af;")
+
+    def _make_charge_comparison(self):
+        widget=QWidget(); widget.setObjectName("actualChargeComparison"); layout=QVBoxLayout(widget); layout.setContentsMargins(0,4,0,0); layout.setSpacing(4)
+        status=QLabel(); status.setObjectName("actualChargeStatus"); layout.addWidget(status)
+        grid=QGridLayout(); grid.setHorizontalSpacing(12); grid.setVerticalSpacing(3); grid.setColumnStretch(0,1)
+        for text,column in ((tr("Plan"),1),(tr("Actual"),2),("Δ",3)):
+            header=QLabel(text); header.setObjectName("actualChargeComparisonHeader"); header.setAlignment(Qt.AlignmentFlag.AlignRight); header.setStyleSheet("color: #6b7280; font-weight: 600;"); grid.addWidget(header,0,column)
+        rows={}
+        for row_index,(title,key) in enumerate(((tr("Mass / hole"),"per"),(tr("Total mass"),"total")),1):
+            grid.addWidget(QLabel(title),row_index,0)
+            row={}
+            for column,name in ((1,"plan"),(2,"actual"),(3,"delta")):
+                value=QLabel("—"); value.setObjectName(f"actualCharge_{key}_{name}"); value.setMinimumWidth(72); value.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter); grid.addWidget(value,row_index,column); row[name]=value
+            rows[key]=row
+        layout.addLayout(grid)
+        return {"widget":widget,"status":status,"rows":rows}
+
+    @classmethod
+    def _set_charge_comparison_row(cls, row, plan, actual):
+        row["plan"].setText(cls._format_comparison_number(plan,decimals=1))
+        row["actual"].setText(cls._format_comparison_number(actual,decimals=1))
+        if plan is None or actual is None or abs(actual-plan)<1e-9:
+            row["delta"].setText("—"); row["delta"].setStyleSheet("color: #9ca3af;")
+        else:
+            row["delta"].setText(cls._format_comparison_number(actual-plan,decimals=1,signed=True)); row["delta"].setStyleSheet("color: #0b63ce; font-weight: 600;")
+
+    def _refresh_charge_comparison(self,comparison,actual,design):
+        matches=actual.charge_matches(design) if design else False
+        if design is None: comparison["status"].setText(tr("Not in design"))
+        else: comparison["status"].setText(tr("Charge matches design") if matches else tr("Charge changed"))
+        comparison["status"].setStyleSheet("color: #475569; font-weight: 600;" if matches else "color: #0b63ce; font-weight: 600;")
+        plan_per=design.explosive_mass_per_hole_kg() if design else None; fact_per=actual.explosive_mass_per_hole_kg(); plan_total=design.total_explosive_mass() if design else None; fact_total=actual.effective_charge_mass()
+        self._set_charge_comparison_row(comparison["rows"]["per"],plan_per,fact_per); self._set_charge_comparison_row(comparison["rows"]["total"],plan_total,fact_total); self._refresh_actual_summary()
 
     def _copy_all_actual(self):
         actual=self.revision.actual_execution
