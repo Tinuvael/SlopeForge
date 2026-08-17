@@ -1,13 +1,15 @@
 """Design/fact separation and backwards-compatibility regression tests."""
 from copy import deepcopy
+from dataclasses import replace
 import json
 
 import pytest
 
 from domain.blasting.technical_card import (
     ActualDrillingGroup, ActualExecution, BlastDrillingGroup,
-    BlastEventTechnicalCard, comparison_value,
+    BlastEventTechnicalCard, comparison_value, charge_engineering_content,
 )
+from domain.blasting.charge_design import ChargeComponent, ChargeComponentKind, ExplosiveProduct, ExplosiveProductKind
 from tests.test_technical_cards import event
 from domain.blasting.technical_card import new_technical_card
 
@@ -117,3 +119,25 @@ def test_second_revision_never_mutates_first_actual_snapshot():
     first = card.save_revision(draft); edit = deepcopy(first); edit.actual_execution.actual_drilling_groups[0].hole_count = 99
     second = card.save_revision(edit)
     assert first.actual_execution.actual_drilling_groups[0].hole_count != second.actual_execution.actual_drilling_groups[0].hole_count
+
+
+def test_actual_charge_is_a_deep_snapshot_and_uses_design_calculations():
+    product=ExplosiveProduct(7,"ANFO",ExplosiveProductKind.BULK,"#C87533",density_kg_m3=1000)
+    component=ChargeComponent("design-id",ChargeComponentKind.BULK_EXPLOSIVE,1,3,product.snapshot())
+    design=BlastDrillingGroup(id="DG",hole_count=4,diameter_mm=100,average_depth_m=5,charge_components=[component])
+    actual=ActualDrillingGroup.from_design(design)
+    assert actual.charge_components == design.charge_components
+    assert actual.charge_components is not design.charge_components
+    assert actual.effective_charge_mass() == pytest.approx(design.total_explosive_mass())
+    actual.charge_components[0]=replace(actual.charge_components[0],end_depth_m=4)
+    assert design.charge_components[0].end_depth_m == 3
+    assert not actual.charge_matches(design)
+
+
+def test_charge_comparison_ignores_component_ids_but_not_engineering_content():
+    product=ExplosiveProduct(8,"Emulsion",ExplosiveProductKind.BULK,"#112233",density_kg_m3=1100)
+    left=ChargeComponent("left",ChargeComponentKind.BULK_EXPLOSIVE,1,2,product.snapshot())
+    right=ChargeComponent("right",ChargeComponentKind.BULK_EXPLOSIVE,1,2,product.snapshot())
+    assert charge_engineering_content([left]) == charge_engineering_content([right])
+    right=replace(right,end_depth_m=2.5)
+    assert charge_engineering_content([left]) != charge_engineering_content([right])

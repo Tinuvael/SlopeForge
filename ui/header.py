@@ -15,6 +15,7 @@ class SearchLineEdit(QLineEdit):
         super().keyPressEvent(event)
 
 class Header(QWidget):
+    catalogue_changed=Signal()
     add_project_requested=Signal(); add_domain_requested=Signal(); add_blast_event_requested=Signal(); add_assessment_area_requested=Signal(); archive_requested=Signal(); analysis_requested=Signal(); report_requested=Signal(); navigation_toggle_requested=Signal()
     def __init__(self, context):
         super().__init__(); self.context=context; self.setFixedHeight(60); layout=QHBoxLayout(self)
@@ -43,7 +44,8 @@ class Header(QWidget):
         self.navigation_button.setIcon(ui_icon("hide" if visible else "eye"))
         self.navigation_button.setToolTip(tr("Hide navigation") if visible else tr("Show navigation"))
         self.navigation_button.setAccessibleName(self.navigation_button.toolTip())
-    def open_settings(self): SettingsDialog(self.context,self).exec()
+    def open_settings(self):
+        dialog=SettingsDialog(self.context,self); dialog.catalogue_changed.connect(self.catalogue_changed); dialog.exec()
     def focus_search(self):
         self.search.setFocus(Qt.FocusReason.ShortcutFocusReason)
         self.search.selectAll()

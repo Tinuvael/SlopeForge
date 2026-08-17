@@ -3154,5 +3154,13 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Structural screening details</source><translation>Детали структурного анализа</translation></message>
         <message><source>Wedge sliding</source><translation>Клиновое скольжение</translation></message>
         <message><source>Wedges</source><translation>Клинья</translation></message>
+        <message><source>Actual charge construction</source><translation>Фактическая конструкция заряда</translation></message>
+        <message><source>Charge changed</source><translation>Заряд изменён</translation></message>
+        <message><source>Charge matches design</source><translation>Заряд соответствует проекту</translation></message>
+        <message><source>Execution exceptions and notes</source><translation>Отклонения и примечания по выполнению</translation></message>
+        <message><source>Plan</source><translation>Проект</translation></message>
+        <message><source>Plan —</source><translation>Проект —</translation></message>
+        <message><source>Replace actual with current design?</source><translation>Заменить фактические данные текущим проектом?</translation></message>
+        <message><source>YYYY-MM-DD</source><translation>ГГГГ-ММ-ДД</translation></message>
     </context>
 </TS>

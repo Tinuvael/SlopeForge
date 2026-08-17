@@ -255,16 +255,29 @@ class ActualDrillingGroup:
     rejected_hole_count: int | None = None; redrilled_hole_count: int | None = None
     wet_hole_count: int | None = None; uncharged_hole_count: int | None = None
     deviations_text: str = ""; notes: str = ""
+    charge_components: list[ChargeComponent] = field(default_factory=list)
 
     def effective_drilling_length(self):
         if not self.included: return 0.0
+        # Compatibility-only override for historical factual payloads. New UI never edits it.
         if self.drilling_length_m is not None: return self.drilling_length_m
         return None if self.hole_count is None or self.average_depth_m is None else self.hole_count * self.average_depth_m
 
     def effective_charge_mass(self):
         if not self.included: return 0.0
+        if self.charge_components:
+            per_hole = self.explosive_mass_per_hole_kg()
+            return None if per_hole is None or self.hole_count is None else per_hole * self.hole_count
         if self.total_charge_mass_kg is not None: return self.total_charge_mass_kg
         return None if self.hole_count is None or self.charge_mass_per_hole_kg is None else self.hole_count * self.charge_mass_per_hole_kg
+
+    def explosive_mass_per_hole_kg(self):
+        if not self.charge_components: return 0.0
+        try: return sum(component_explosive_mass_kg(item, self.diameter_mm) for item in self.charge_components)
+        except ValueError: return None
+
+    def charge_matches(self, design: BlastDrillingGroup | None) -> bool:
+        return design is not None and charge_engineering_content(self.charge_components) == charge_engineering_content(design.charge_components)
 
     @classmethod
     def from_design(cls, group: BlastDrillingGroup, revision_id: str | None = None):
@@ -277,12 +290,23 @@ class ActualDrillingGroup:
         target.total_charge_mass_kg = group.total_explosive_mass()
         target.stemming_length_m = group.stemming_total_m()
         target.explosive_type = group.explosive_names()
+        target.charge_components = deepcopy(group.charge_components)
         return target
 
 
 _DESIGN_COPY_FIELDS = ("group_type", "custom_type_name", "name", "sequence_order", "included", "hole_count",
     "diameter_mm", "average_depth_m", "subdrill_m", "burden_m", "spacing_m", "row_count", "inclination_deg",
     "azimuth_deg", "line_offset_m", "toe_standoff_m", "initiation_sequence", "delay_ms")
+
+
+def charge_engineering_content(components: list[ChargeComponent]) -> tuple:
+    """Canonical charge content comparison, deliberately excluding component UUIDs."""
+    def snapshot_value(snapshot):
+        if snapshot is None: return None
+        return tuple(getattr(snapshot, item.name) for item in fields(ExplosiveProductSnapshot))
+    return tuple((component.kind, component.start_depth_m, component.end_depth_m,
+                  component.cartridge_pitch_m, snapshot_value(component.product_snapshot))
+                 for component in components)
 
 
 @dataclass
@@ -573,7 +597,13 @@ def _card_from_dict(d):
         raw_actual.pop("actual_hole_count", None); raw_actual.pop("actual_drilling_length_m", None)
         actual_group_data = raw_actual.pop("actual_drilling_groups", [])
         actual = _construct(ActualExecution, raw_actual)
-        actual.actual_drilling_groups = [_construct(ActualDrillingGroup, g) for g in actual_group_data]
+        actual.actual_drilling_groups = []
+        for raw_group in actual_group_data:
+            migrated_group = dict(raw_group)
+            migrated_group["charge_components"] = [
+                _charge_component_from_dict(item) for item in migrated_group.get("charge_components", [])
+            ]
+            actual.actual_drilling_groups.append(_construct(ActualDrillingGroup, migrated_group))
         for group in groups:
             if group.legacy_actual_drilling_length_m is None: continue
             target = next((g for g in actual.actual_drilling_groups if g.design_group_id == group.id), None)

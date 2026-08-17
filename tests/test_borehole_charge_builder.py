@@ -86,6 +86,16 @@ def test_products_are_snapshotted_and_cartridge_pitch_updates_count():
     assert widget.count_label.text() == "3" and widget.components()[1].cartridge_pitch_m == 1
 
 
+def test_catalogue_refresh_changes_choices_without_mutating_components():
+    existing=bulk(); replacement=ExplosiveProduct(9,"New bulk",ExplosiveProductKind.BULK,"#123456",density_kg_m3=1200)
+    component=ChargeComponent("frozen",ChargeComponentKind.BULK_EXPLOSIVE,1,2,existing.snapshot())
+    widget=BoreholeChargeBuilder(4,100,[existing],[component]); before=widget.components()[0].product_snapshot
+    widget.set_products([replacement])
+    assert widget.components()[0].product_snapshot == before
+    assert widget.components()[0].product_snapshot.name == "Bulk A"
+    assert [product.name for product in widget._products] == ["New bulk"]
+
+
 def test_numeric_sync_overlap_and_hole_depth_rejection():
     app(); a = ChargeComponent("a", ChargeComponentKind.STEMMING, 0, 2)
     b = ChargeComponent("b", ChargeComponentKind.STEMMING, 3, 5)
