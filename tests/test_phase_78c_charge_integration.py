@@ -127,8 +127,9 @@ def test_compact_builder_ui_and_no_legacy_design_controls(monkeypatch):
     for legacy in ("charge_mass_per_hole_kg","charge_concentration_kg_per_m","total_charge_mass_kg",
                    "stemming_length_m","air_deck_count","planned_drilling_length_m"):
         assert group.findChild(widgets.QDoubleSpinBox,legacy) is None
+    # The validated integer control intentionally bounds azimuth to 0..359.
     dialog.design_slope_azimuth.setValue(360); dialog._save("draft")
-    assert draft.design_slope_orientation.azimuth_deg==0
+    assert draft.design_slope_orientation.azimuth_deg==359
 
 
 def test_preset_load_cancel_preserves_components_and_replace_applies(monkeypatch):
