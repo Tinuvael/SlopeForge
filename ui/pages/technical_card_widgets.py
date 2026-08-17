@@ -31,14 +31,16 @@ class BlastDesignEditorWidget(_SectionWidget): pass
 class ActualExecutionEditorWidget(_SectionWidget):
     def __init__(self,page,parent=None):
         super().__init__(page,parent)
-        # Do not style or overlay the reusable BoreholeChargeBuilder legend: its
-        # own layout already places the legend correctly below the graphics view,
-        # exactly as in Blast design. Production Actual has an extra mass
-        # comparison footer, so give that footer a little more top breathing room
-        # instead of touching the legend itself.
+        # BoreholeChargeBuilder contains a 330 px minimum graphics viewport plus
+        # its add-component row, legend, margins and spacing.  The editor-level
+        # 350 px minimum is therefore too small: with several factual groups Qt
+        # can compress the builder until the toe label and legend visually
+        # collide.  Reserve the real content height for production Actual and let
+        # the outer Execution fact scroll area grow instead of squeezing it.
+        # The selector also applies to builders created later by Copy/Add/Replace.
         if page.property("blastEventType") == "production":
-            for comparison in page.findChildren(QWidget, "actualChargeComparison"):
-                layout = comparison.layout()
-                if layout is not None:
-                    margins = layout.contentsMargins()
-                    layout.setContentsMargins(margins.left(), 12, margins.right(), margins.bottom())
+            self.setStyleSheet("""
+                QWidget#actualBoreholeChargeBuilder {
+                    min-height: 400px;
+                }
+            """)
