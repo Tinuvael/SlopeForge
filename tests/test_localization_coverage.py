@@ -9,7 +9,7 @@ from app.localization import RUSSIAN_RUNTIME_FALLBACKS
 
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVE = [ROOT / "main.py", *sorted((ROOT / "app").rglob("*.py")), *sorted((ROOT / "ui").rglob("*.py")), *sorted((ROOT / "widgets").rglob("*.py"))]
-INVARIANTS = {"SlopeForge", "DAI", "FCI", "UCS", "RQD", "MPa", "m", "mm", "kg", "ms", "m²", "m³", "%", "—"}
+INVARIANTS = {"SlopeForge", "DAI", "FCI", "UCS", "RQD", "GSI", "FF", "Jn", "Jr", "Ja", "Jw", "Q′", "MPa", "m", "mm", "kg", "ms", "m²", "m³", "%", "—"}
 UI_CALLS = {"QLabel", "QPushButton", "QCheckBox", "QGroupBox", "setWindowTitle", "setToolTip", "setPlaceholderText", "addAction", "addTab", "addRow", "setHorizontalHeaderLabels", "addItem"}
 SELF_READABLE_LANGUAGE_ITEMS = {"English", "Русский", "en", "ru"}
 
