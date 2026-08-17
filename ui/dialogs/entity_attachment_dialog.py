@@ -7,7 +7,7 @@ from ui.presentation_labels import domain_message
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QDate, QEvent, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QImageReader, QKeySequence, QPainter, QPainterPath, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
@@ -199,6 +199,8 @@ class EntityAttachmentManagerWidget(QWidget):
         self.service, self.owner_type, self.owner_id, self.kind = service, owner_type, owner_id, kind
         self.read_only, self.unsaved, self.ensure_owner = read_only, unsaved, ensure_owner
         self.current_attachment_id = None
+        self._gallery_layout_signature = None
+        self._gallery_reflow_pending = False
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
 
@@ -250,7 +252,9 @@ class EntityAttachmentManagerWidget(QWidget):
         self.gallery_grid.setContentsMargins(4, 6, 4, 6)
         self.gallery_grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.gallery_grid.setHorizontalSpacing(16); self.gallery_grid.setVerticalSpacing(16)
-        self.gallery_scroll.setWidget(self.gallery_content); gallery_root.addWidget(self.gallery_scroll)
+        self.gallery_scroll.setWidget(self.gallery_content)
+        self.gallery_scroll.viewport().installEventFilter(self)
+        gallery_root.addWidget(self.gallery_scroll)
         self.stack.addWidget(self.gallery_page)
 
         self.viewer_page = QWidget(); viewer_root = QVBoxLayout(self.viewer_page); viewer_root.setContentsMargins(0, 0, 0, 0)
@@ -283,6 +287,40 @@ class EntityAttachmentManagerWidget(QWidget):
         root.addWidget(self.stack, 1)
         self.escape_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         self.escape_shortcut.activated.connect(self._show_gallery)
+
+    def eventFilter(self, watched, event):
+        if (self.kind == "photo" and hasattr(self, "gallery_scroll")
+                and watched is self.gallery_scroll.viewport()
+                and event.type() == QEvent.Type.Resize):
+            self._schedule_gallery_reflow()
+        return super().eventFilter(watched, event)
+
+    def _schedule_gallery_reflow(self):
+        if self._gallery_reflow_pending:
+            return
+        self._gallery_reflow_pending = True
+        QTimer.singleShot(0, self._reflow_photo_gallery)
+
+    def _reflow_photo_gallery(self):
+        self._gallery_reflow_pending = False
+        if self.kind != "photo" or not self.stack or self.stack.currentWidget() is not self.gallery_page:
+            return
+        signature = self._gallery_metrics()
+        if signature != self._gallery_layout_signature:
+            self._refresh_photo_gallery()
+
+    def _gallery_metrics(self):
+        margins = self.gallery_grid.contentsMargins()
+        spacing = max(0, self.gallery_grid.horizontalSpacing())
+        available = max(1, self.gallery_scroll.viewport().width() - margins.left() - margins.right())
+        # Aim for roughly 190–220 px cards, then distribute the complete row
+        # width evenly so the gallery never leaves a large unused strip.
+        minimum = 185
+        columns = max(1, int((available + spacing) // (minimum + spacing)))
+        tile_width = max(150, int((available - spacing * (columns - 1)) / columns))
+        image_height = max(96, int(tile_width * 0.63))
+        wrapper_height = image_height + 30
+        return columns, tile_width, image_height, wrapper_height
 
     def _items(self):
         if not self.owner_id:
@@ -347,15 +385,17 @@ class EntityAttachmentManagerWidget(QWidget):
         return QIcon(pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
                                    Qt.TransformationMode.SmoothTransformation))
 
-    def _photo_tile(self, item):
-        wrapper = QWidget(); wrapper.setFixedSize(198, 156)
+    def _photo_tile(self, item, tile_width, image_height, wrapper_height):
+        wrapper = QWidget(); wrapper.setFixedSize(tile_width, wrapper_height)
         layout = QVBoxLayout(wrapper); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(6)
         title = QLabel(item.title or Path(item.original_filename).stem)
         title.setObjectName("PhotoTileTitle"); title.setToolTip(item.original_filename)
         title.setStyleSheet("color:#374151;font-weight:500;")
         layout.addWidget(title)
         tile = QToolButton(); tile.setObjectName("PhotoTile"); tile.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        tile.setFixedSize(198, 126); tile.setIconSize(QSize(194, 122)); tile.setIcon(self._thumbnail(item, QSize(194, 122), cover=True))
+        tile.setFixedSize(tile_width, image_height)
+        icon_size = QSize(max(1, tile_width - 4), max(1, image_height - 4))
+        tile.setIconSize(icon_size); tile.setIcon(self._thumbnail(item, icon_size, cover=True))
         tile.setStyleSheet("QToolButton#PhotoTile{background:transparent;border:0;padding:0;margin:0;} QToolButton#PhotoTile:hover{background:#eef4fb;border:2px solid #9bc2ea;border-radius:11px;}")
         tile.setToolTip(item.original_filename)
         tile.clicked.connect(lambda _checked=False, ident=item.id: self._open_photo_id(ident))
@@ -364,6 +404,8 @@ class EntityAttachmentManagerWidget(QWidget):
 
     def _refresh_photo_gallery(self):
         items = self._items(); self._clear_layout(self.gallery_grid)
+        columns, tile_width, image_height, wrapper_height = self._gallery_metrics()
+        self._gallery_layout_signature = (columns, tile_width, image_height, wrapper_height)
         if not items:
             empty = QLabel(tr("No photos yet")); empty.setObjectName("MutedText")
             self.gallery_grid.addWidget(empty, 0, 0)
@@ -374,7 +416,10 @@ class EntityAttachmentManagerWidget(QWidget):
         if self.current_attachment_id not in ids:
             self.current_attachment_id = items[0].id
         for index, item in enumerate(items):
-            self.gallery_grid.addWidget(self._photo_tile(item), index // 4, index % 4)
+            self.gallery_grid.addWidget(
+                self._photo_tile(item, tile_width, image_height, wrapper_height),
+                index // columns, index % columns,
+            )
         if self.stack.currentWidget() is self.viewer_page:
             self._show_photo(self.current_attachment_id)
 
@@ -463,6 +508,7 @@ class EntityAttachmentManagerWidget(QWidget):
     def _show_gallery(self):
         if self.kind == "photo" and self.stack:
             self.stack.setCurrentWidget(self.gallery_page)
+            self._schedule_gallery_reflow()
 
     def _open_photo_id(self, attachment_id):
         self.current_attachment_id = attachment_id
