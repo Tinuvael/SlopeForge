@@ -135,19 +135,19 @@ class TechnicalCardDialog(QDialog):
 
     def _section_panel(self, title, object_name):
         panel = QWidget(); panel.setObjectName(object_name)
-        panel_layout = QVBoxLayout(panel); panel_layout.setContentsMargins(0, 0, 0, 0); panel_layout.setSpacing(4)
+        panel_layout = QVBoxLayout(panel); panel_layout.setContentsMargins(0, 0, 0, 0); panel_layout.setSpacing(8)
         panel_layout.addWidget(self._section_title(title))
         return panel, panel_layout
 
     def _geomechanics_tab(self):
         page = QWidget(); page.setObjectName("geomechanicsWorkspace")
-        layout = QGridLayout(page); layout.setContentsMargins(18, 12, 18, 12); layout.setHorizontalSpacing(72); layout.setVerticalSpacing(26)
-        layout.setColumnStretch(0, 1); layout.setColumnStretch(1, 1)
+        layout = QGridLayout(page); layout.setContentsMargins(18, 14, 18, 12); layout.setHorizontalSpacing(48); layout.setVerticalSpacing(22)
+        layout.setColumnStretch(0, 2); layout.setColumnStretch(1, 3)
         layout.setRowStretch(0, 0); layout.setRowStretch(1, 0); layout.setRowStretch(2, 0); layout.setRowStretch(3, 1)
         self.tabs.addTab(page, tr("Geomechanics")); geo = self.revision.geomechanical_parameters
 
         rock_panel, rock = self._section_panel("Rock mass", "rockMassSection")
-        identity = QGridLayout(); identity.setHorizontalSpacing(12); identity.setVerticalSpacing(2)
+        identity = QGridLayout(); identity.setHorizontalSpacing(12); identity.setVerticalSpacing(3)
         self.lithology = QLineEdit(geo.lithology); self.lithology.setMaximumWidth(250)
         self.domain_value = QLabel(self.domain_name or "—"); self.domain_value.setObjectName("geomechanicsDomainValue")
         identity.addWidget(QLabel(tr("Lithology")), 0, 0); identity.addWidget(QLabel(tr("Domain")), 0, 1)
@@ -181,10 +181,18 @@ class TechnicalCardDialog(QDialog):
         self.jr = _rating_combo(geo.jr, BARTON_JR_VALUES); self.jr.setObjectName("qSystemJr")
         self.ja = _rating_combo(geo.ja, BARTON_JA_VALUES); self.ja.setObjectName("qSystemJa")
         self.jw = _rating_combo(geo.jw, BARTON_JW_VALUES); self.jw.setObjectName("qSystemJw")
+        jw_help_text = tr("Reference parameter — not used in Q′ or structural screening")
         for column, (label, widget) in enumerate((("RQD", self.rqd), ("Jn", self.jn), ("Jr", self.jr), ("Ja", self.ja), ("Jw", self.jw))):
-            widget.setFixedWidth(88); qgrid.addWidget(QLabel(label), 0, column); qgrid.addWidget(widget, 1, column)
-        helper = QLabel(tr("Reference parameter — not used in Q′ or structural screening")); helper.setObjectName("MutedText")
-        qgrid.addWidget(helper, 2, 0, 1, 5); q_section.addLayout(qgrid)
+            widget.setFixedWidth(88)
+            if label == "Jw":
+                header = QWidget(); header_row = QHBoxLayout(header); header_row.setContentsMargins(0, 0, 0, 0); header_row.setSpacing(4)
+                header_row.addWidget(QLabel("Jw")); jw_help = QLabel("?"); jw_help.setObjectName("HelpDot"); jw_help.setToolTip(jw_help_text)
+                jw_help.setAlignment(Qt.AlignmentFlag.AlignCenter); jw_help.setFixedSize(15, 15); header_row.addWidget(jw_help); header_row.addStretch()
+                qgrid.addWidget(header, 0, column)
+            else:
+                qgrid.addWidget(QLabel(label), 0, column)
+            qgrid.addWidget(widget, 1, column)
+        q_section.addLayout(qgrid)
         values = QHBoxLayout(); self.q_prime_value = QLabel("—"); self.friction_value = QLabel("—"); self.cohesion_value = QLabel("—")
         for label, value in (("Q′", self.q_prime_value), ("Estimated joint friction angle", self.friction_value), ("Indicative cohesion", self.cohesion_value)):
             column = QVBoxLayout(); column.setSpacing(2); caption = QLabel(tr(label)); caption.setObjectName("CalculatedCaption"); value.setObjectName("CalculatedValue")
@@ -193,9 +201,9 @@ class TechnicalCardDialog(QDialog):
 
         screening_panel, screening = self._section_panel("Structural screening", "structuralScreeningSection")
         slope_row = QHBoxLayout(); slope_row.addWidget(QLabel(tr("Design slope"))); self.design_slope_value = QLabel("—"); self.design_slope_value.setObjectName("designSlopeReadOnly")
-        slope_row.addWidget(self.design_slope_value); source = QLabel(tr("From Blast design")); source.setObjectName("MutedText"); slope_row.addWidget(source); slope_row.addStretch(); screening.addLayout(slope_row)
+        slope_row.addWidget(self.design_slope_value); slope_row.addStretch(); screening.addLayout(slope_row)
         summaries = QGridLayout(); self.planar_status = QLabel(tr("Incomplete")); self.planar_sets = QLabel(""); self.wedge_status = QLabel(tr("Incomplete")); self.wedge_pairs = QLabel("")
-        summaries.setHorizontalSpacing(28)
+        summaries.setHorizontalSpacing(32)
         summaries.addWidget(QLabel(tr("Planar sliding")), 0, 0); summaries.addWidget(QLabel(tr("Wedge sliding")), 0, 1)
         summaries.addWidget(self.planar_status, 1, 0); summaries.addWidget(self.wedge_status, 1, 1)
         summaries.addWidget(self.planar_sets, 2, 0); summaries.addWidget(self.wedge_pairs, 2, 1); screening.addLayout(summaries)
@@ -208,9 +216,9 @@ class TechnicalCardDialog(QDialog):
         layout.addWidget(screening_panel, 1, 1, Qt.AlignmentFlag.AlignTop)
 
         notes_panel = QWidget(); notes_panel.setObjectName("geomechanicsNotes")
-        notes = QVBoxLayout(notes_panel); notes.setContentsMargins(0, 0, 0, 0); notes.setSpacing(4)
-        notes_label = QLabel(tr("Notes")); notes_label.setObjectName("EngineeringInlineLabel"); notes_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        notes.addWidget(notes_label, 0, Qt.AlignmentFlag.AlignRight)
+        notes = QVBoxLayout(notes_panel); notes.setContentsMargins(0, 0, 0, 0); notes.setSpacing(5)
+        notes_label = QLabel(tr("Notes")); notes_label.setObjectName("EngineeringInlineLabel"); notes_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        notes.addWidget(notes_label, 0, Qt.AlignmentFlag.AlignLeft)
         self.geo_notes = QTextEdit(geo.notes); self.geo_notes.setFixedHeight(58); notes.addWidget(self.geo_notes)
         layout.addWidget(notes_panel, 2, 0, 1, 2, Qt.AlignmentFlag.AlignTop)
 
@@ -221,8 +229,9 @@ class TechnicalCardDialog(QDialog):
         for combo in (self.jn, self.jr, self.ja): combo.currentIndexChanged.connect(self._refresh_geomechanics)
         for widget in [x for row in self.joint_set_rows for x in row]: widget.valueChanged.connect(self._refresh_geomechanics)
         page.setStyleSheet("""
-            #EngineeringSectionTitle { font-weight: 600; color: #1f2937; padding-bottom: 3px; border-bottom: 1px solid #e5e7eb; }
-            #EngineeringInlineLabel { font-weight: 600; color: #1f2937; padding-top: 2px; }
+            #EngineeringSectionTitle { font-weight: 600; color: #1f2937; }
+            #EngineeringInlineLabel { font-weight: 600; color: #1f2937; }
+            #HelpDot { color: #64748b; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 10px; font-weight: 600; }
             #CalculatedCaption, #MutedText { color: #6b7280; font-size: 11px; }
             #CalculatedValue { color: #0b63ce; font-size: 17px; font-weight: 600; }
             QComboBox, QLineEdit, QTextEdit { min-height: 26px; border: 1px solid #d6dbe3; border-radius: 6px; background: white; padding: 2px 6px; }
