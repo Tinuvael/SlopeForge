@@ -25,6 +25,8 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Collapse domains": "Свернуть домены",
     "Hide navigation": "Скрыть навигацию",
     "Show navigation": "Показать навигацию",
+    "Analysis": "Анализ",
+    "Analysis section is under development.": "Раздел анализа находится в разработке.",
 }
 
 # Qt asks the installed translator for platform-theme captions in contexts such
