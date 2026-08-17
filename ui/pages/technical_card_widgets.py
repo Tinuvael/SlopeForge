@@ -26,4 +26,18 @@ class _SectionWidget(QWidget):
         super().__init__(parent); self.page=page; page.setParent(self); QVBoxLayout(self).addWidget(page); page.setVisible(True)
 class GeomechanicsEditorWidget(_SectionWidget): pass
 class BlastDesignEditorWidget(_SectionWidget): pass
-class ActualExecutionEditorWidget(_SectionWidget): pass
+class ActualExecutionEditorWidget(_SectionWidget):
+    def __init__(self,page,parent=None):
+        super().__init__(page,parent)
+        # The compact Plan/Actual comparison below the factual charge builder can
+        # reduce the vertical slack available to the reusable builder on Block
+        # pages. Reserve an explicit footer band so the legend remains visually
+        # below the graphics view instead of touching/overlapping the borehole.
+        self.setStyleSheet("""
+            QLabel#chargeLegend {
+                min-height: 24px;
+                margin-top: 6px;
+                padding-top: 2px;
+                background: #ffffff;
+            }
+        """)
