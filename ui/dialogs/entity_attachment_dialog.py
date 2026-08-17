@@ -7,14 +7,15 @@ from ui.presentation_labels import domain_message
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QSize, Qt, Signal
-from PySide6.QtGui import QIcon, QKeySequence, QPixmap, QShortcut
+from PySide6.QtCore import QDate, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QKeySequence, QPainter, QPainterPath, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QDialog,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsView,
@@ -235,25 +236,39 @@ class EntityAttachmentManagerWidget(QWidget):
     def _build_photo_pages(self, root):
         self.stack = QStackedWidget()
         self.gallery_page = QWidget(); gallery_root = QVBoxLayout(self.gallery_page)
-        self.gallery_scroll = QScrollArea(); self.gallery_scroll.setWidgetResizable(True)
+        gallery_root.setContentsMargins(0, 0, 0, 0)
+        self.gallery_scroll = QScrollArea(); self.gallery_scroll.setWidgetResizable(True); self.gallery_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.gallery_content = QWidget(); self.gallery_grid = QGridLayout(self.gallery_content)
+        self.gallery_grid.setContentsMargins(4, 6, 4, 6)
         self.gallery_grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        self.gallery_grid.setHorizontalSpacing(12); self.gallery_grid.setVerticalSpacing(12)
+        self.gallery_grid.setHorizontalSpacing(16); self.gallery_grid.setVerticalSpacing(16)
         self.gallery_scroll.setWidget(self.gallery_content); gallery_root.addWidget(self.gallery_scroll)
         self.stack.addWidget(self.gallery_page)
 
-        self.viewer_page = QWidget(); viewer_root = QVBoxLayout(self.viewer_page)
+        self.viewer_page = QWidget(); viewer_root = QVBoxLayout(self.viewer_page); viewer_root.setContentsMargins(0, 0, 0, 0)
         viewer_header = QHBoxLayout()
         self.back_button = QPushButton(tr("Back")); self.back_button.clicked.connect(self._show_gallery)
         self.viewer_title = QLabel(); self.viewer_title.setObjectName("PhotoViewerTitle")
-        self.viewer_title.setStyleSheet("font-size:16px;font-weight:600;")
+        self.viewer_title.setStyleSheet("font-size:16px;font-weight:600;color:#111827;")
         fit_button = QPushButton(tr("Fit")); fit_button.clicked.connect(lambda: self.photo_view.fit_photo())
         viewer_header.addWidget(self.back_button); viewer_header.addWidget(self.viewer_title); viewer_header.addStretch(); viewer_header.addWidget(fit_button)
         viewer_root.addLayout(viewer_header)
-        viewer_body = QHBoxLayout(); self.photo_view = PhotoGraphicsView(); viewer_body.addWidget(self.photo_view, 1)
-        self.thumb_scroll = QScrollArea(); self.thumb_scroll.setWidgetResizable(True); self.thumb_scroll.setFixedWidth(165)
-        self.thumb_content = QWidget(); self.thumb_layout = QVBoxLayout(self.thumb_content); self.thumb_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.thumb_scroll.setWidget(self.thumb_content); viewer_body.addWidget(self.thumb_scroll)
+
+        viewer_body = QHBoxLayout(); viewer_body.setSpacing(14)
+        self.photo_view = PhotoGraphicsView(); viewer_body.addWidget(self.photo_view, 1)
+        side = QWidget(); side.setFixedWidth(180); side_layout = QVBoxLayout(side); side_layout.setContentsMargins(0, 0, 0, 0); side_layout.setSpacing(10)
+        self.viewer_metadata = QFrame(); self.viewer_metadata.setObjectName("PhotoMetadataCard")
+        self.viewer_metadata.setStyleSheet("QFrame#PhotoMetadataCard{background:#f8fafc;border:1px solid #dfe3ea;border-radius:8px;} QLabel#PhotoMetadataLabel{color:#6b7280;font-size:11px;} QLabel#PhotoMetadataValue{color:#111827;font-weight:500;}")
+        metadata = QGridLayout(self.viewer_metadata); metadata.setContentsMargins(10, 9, 10, 9); metadata.setHorizontalSpacing(8); metadata.setVerticalSpacing(4)
+        self.viewer_category = QLabel(); self.viewer_date = QLabel(); self.viewer_file = QLabel(); self.viewer_file.setWordWrap(True)
+        for row, (caption, value) in enumerate((("Category", self.viewer_category), ("Date", self.viewer_date), ("File", self.viewer_file))):
+            label = QLabel(tr(caption)); label.setObjectName("PhotoMetadataLabel"); value.setObjectName("PhotoMetadataValue")
+            metadata.addWidget(label, row, 0, Qt.AlignmentFlag.AlignTop); metadata.addWidget(value, row, 1)
+        side_layout.addWidget(self.viewer_metadata)
+        self.thumb_scroll = QScrollArea(); self.thumb_scroll.setWidgetResizable(True); self.thumb_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.thumb_content = QWidget(); self.thumb_layout = QVBoxLayout(self.thumb_content); self.thumb_layout.setContentsMargins(0, 0, 0, 0); self.thumb_layout.setSpacing(8); self.thumb_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.thumb_scroll.setWidget(self.thumb_content); side_layout.addWidget(self.thumb_scroll, 1)
+        viewer_body.addWidget(side)
         viewer_root.addLayout(viewer_body, 1)
         self.stack.addWidget(self.viewer_page)
         root.addWidget(self.stack, 1)
@@ -297,14 +312,46 @@ class EntityAttachmentManagerWidget(QWidget):
             elif item.layout():
                 self._clear_layout(item.layout())
 
-    def _thumbnail(self, item, size: QSize) -> QIcon:
+    @staticmethod
+    def _rounded_cover(pixmap: QPixmap, size: QSize, radius: float = 10.0) -> QPixmap:
+        if pixmap.isNull():
+            return QPixmap()
+        scaled = pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                               Qt.TransformationMode.SmoothTransformation)
+        x = max(0, (scaled.width() - size.width()) // 2)
+        y = max(0, (scaled.height() - size.height()) // 2)
+        cropped = scaled.copy(x, y, size.width(), size.height())
+        output = QPixmap(size); output.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(output); painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath(); path.addRoundedRect(QRectF(0, 0, size.width(), size.height()), radius, radius)
+        painter.setClipPath(path); painter.drawPixmap(0, 0, cropped); painter.end()
+        return output
+
+    def _thumbnail(self, item, size: QSize, *, cover=False) -> QIcon:
         if self.service.is_missing(item):
             return QIcon()
         pixmap = QPixmap(str(self.service.resolve_path(item)))
         if pixmap.isNull():
             return QIcon()
+        if cover:
+            return QIcon(self._rounded_cover(pixmap, size))
         return QIcon(pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
                                    Qt.TransformationMode.SmoothTransformation))
+
+    def _photo_tile(self, item):
+        wrapper = QWidget(); wrapper.setFixedSize(198, 156)
+        layout = QVBoxLayout(wrapper); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(6)
+        title = QLabel(item.title or Path(item.original_filename).stem)
+        title.setObjectName("PhotoTileTitle"); title.setToolTip(item.original_filename)
+        title.setStyleSheet("color:#374151;font-weight:500;")
+        layout.addWidget(title)
+        tile = QToolButton(); tile.setObjectName("PhotoTile"); tile.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        tile.setFixedSize(198, 126); tile.setIconSize(QSize(194, 122)); tile.setIcon(self._thumbnail(item, QSize(194, 122), cover=True))
+        tile.setStyleSheet("QToolButton#PhotoTile{background:transparent;border:0;padding:0;margin:0;} QToolButton#PhotoTile:hover{background:#eef4fb;border:2px solid #9bc2ea;border-radius:11px;}")
+        tile.setToolTip(item.original_filename)
+        tile.clicked.connect(lambda _checked=False, ident=item.id: self._open_photo_id(ident))
+        layout.addWidget(tile)
+        return wrapper
 
     def _refresh_photo_gallery(self):
         items = self._items(); self._clear_layout(self.gallery_grid)
@@ -318,12 +365,7 @@ class EntityAttachmentManagerWidget(QWidget):
         if self.current_attachment_id not in ids:
             self.current_attachment_id = items[0].id
         for index, item in enumerate(items):
-            tile = QToolButton(); tile.setObjectName("PhotoTile"); tile.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            tile.setIcon(self._thumbnail(item, QSize(180, 118))); tile.setIconSize(QSize(180, 118))
-            tile.setText(item.title or Path(item.original_filename).stem); tile.setFixedSize(205, 160)
-            tile.setToolTip(item.original_filename)
-            tile.clicked.connect(lambda _checked=False, ident=item.id: self._open_photo_id(ident))
-            self.gallery_grid.addWidget(tile, index // 4, index % 4)
+            self.gallery_grid.addWidget(self._photo_tile(item), index // 4, index % 4)
         if self.stack.currentWidget() is self.viewer_page:
             self._show_photo(self.current_attachment_id)
 
@@ -372,8 +414,6 @@ class EntityAttachmentManagerWidget(QWidget):
                 if editor.exec() != QDialog.DialogCode.Accepted:
                     return
                 values = editor.values()
-                # Keep the automatic filename-derived title even if the user
-                # clears the field while reviewing a batch.
                 values["title"] = values["title"] or Path(path).stem
                 reviewed.append((path, values))
         else:
@@ -393,9 +433,6 @@ class EntityAttachmentManagerWidget(QWidget):
             if add_per_file:
                 added = add_per_file(self.owner_type, self.owner_id, self.kind, reviewed)
             else:
-                # Compatibility fallback for old/mock services. Documents keep
-                # one shared metadata set; photo services in production expose
-                # add_files_with_metadata.
                 if self.kind == "photo" and len(reviewed) > 1:
                     raise RuntimeError("Attachment service does not support reviewed photo batches")
                 added = self.service.add_files(
@@ -423,6 +460,12 @@ class EntityAttachmentManagerWidget(QWidget):
         self._show_photo(attachment_id)
         self.stack.setCurrentWidget(self.viewer_page)
 
+    def _category_label(self, item):
+        labels = dict(ATTACHMENT_CATEGORIES.get((self.owner_type, self.kind), []))
+        if item.subtype == "other" and item.custom_subtype:
+            return item.custom_subtype
+        return labels.get(item.subtype, item.subtype or "—")
+
     def _show_photo(self, attachment_id):
         items = [a for a in self._items() if not self.service.is_missing(a)]
         item = next((a for a in items if a.id == attachment_id), None)
@@ -430,14 +473,17 @@ class EntityAttachmentManagerWidget(QWidget):
             self._show_gallery(); return
         self.current_attachment_id = item.id
         self.viewer_title.setText(item.title or Path(item.original_filename).stem)
+        self.viewer_category.setText(self._category_label(item))
+        self.viewer_date.setText(item.file_date.isoformat())
+        self.viewer_file.setText(item.original_filename)
         self.photo_view.set_photo(QPixmap(str(self.service.resolve_path(item))))
         self._clear_layout(self.thumb_layout)
         for photo in items:
-            thumb = QToolButton(); thumb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            thumb.setIcon(self._thumbnail(photo, QSize(118, 78))); thumb.setIconSize(QSize(118, 78))
-            thumb.setText(photo.title or Path(photo.original_filename).stem); thumb.setFixedSize(135, 112)
-            if photo.id == item.id:
-                thumb.setStyleSheet("border:2px solid #0b63ce;border-radius:5px;")
+            thumb = QToolButton(); thumb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+            thumb.setIcon(self._thumbnail(photo, QSize(148, 92), cover=True)); thumb.setIconSize(QSize(148, 92)); thumb.setFixedSize(154, 98)
+            thumb.setToolTip(photo.title or photo.original_filename)
+            border = "2px solid #0b63ce" if photo.id == item.id else "1px solid transparent"
+            thumb.setStyleSheet(f"border:{border};border-radius:10px;padding:2px;background:transparent;")
             thumb.clicked.connect(lambda _checked=False, ident=photo.id: self._show_photo(ident))
             self.thumb_layout.addWidget(thumb)
 
