@@ -17,6 +17,8 @@ from ui.pages.block_page import BlockPage
 from ui.widgets.project_tree import ProjectTree
 
 class MainWindow(QMainWindow):
+    analysis_page = None
+
     def __init__(self, context: AppContext):
         super().__init__(); self.context=context; self.setWindowTitle(f"{APP_NAME} — {APP_VERSION}"); apply_window_icon(self); self.resize(1600,900)
         self.selected_site_id=None; self.selected_site_name=None; self.selected_domain_id=None; self.selected_domain_name=None; self.selected_block_id=None; self.selected_contour_event_id=None; self.selected_assessment_area_id=None
