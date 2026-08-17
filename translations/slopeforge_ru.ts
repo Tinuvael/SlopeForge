@@ -3162,5 +3162,10 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Plan —</source><translation>Проект —</translation></message>
         <message><source>Replace actual with current design?</source><translation>Заменить фактические данные текущим проектом?</translation></message>
         <message><source>YYYY-MM-DD</source><translation>ГГГГ-ММ-ДД</translation></message>
+        <message><source>Actual indicators</source><translation>Фактические показатели</translation></message>
+        <message><source>Drilling / execution</source><translation>Бурение / выполнение</translation></message>
+        <message><source>Execution exceptions</source><translation>Отклонения при выполнении</translation></message>
+        <message><source>Mass / hole</source><translation>Масса / скважину</translation></message>
+        <message><source>Total mass</source><translation>Общая масса</translation></message>
     </context>
 </TS>

@@ -188,10 +188,10 @@ class BoreholeChargeBuilder(QWidget):
         body.addWidget(panel)
         self.legend = QLabel(); self.legend.setObjectName("chargeLegend"); self.legend.setTextFormat(Qt.TextFormat.RichText)
         root.addWidget(self.legend)
-        self.start_spin.editingFinished.connect(lambda: self._numeric_edit("start"))
-        self.end_spin.editingFinished.connect(lambda: self._numeric_edit("end"))
-        self.length_spin.editingFinished.connect(lambda: self._numeric_edit("length"))
-        self.pitch_spin.editingFinished.connect(self._pitch_edit)
+        self.start_spin.valueChanged.connect(lambda: self._numeric_edit("start"))
+        self.end_spin.valueChanged.connect(lambda: self._numeric_edit("end"))
+        self.length_spin.valueChanged.connect(lambda: self._numeric_edit("length"))
+        self.pitch_spin.valueChanged.connect(self._pitch_edit)
         self.product_combo.currentIndexChanged.connect(self._product_changed)
 
     def _depth_spin(self, name):

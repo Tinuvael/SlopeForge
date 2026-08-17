@@ -96,6 +96,21 @@ def test_catalogue_refresh_changes_choices_without_mutating_components():
     assert [product.name for product in widget._products] == ["New bulk"]
 
 
+def test_spinbox_value_changes_update_component_immediately():
+    product=cartridge(); component=ChargeComponent("c",ChargeComponentKind.CARTRIDGE_EXPLOSIVE,1,3,product.snapshot(),.5)
+    widget=BoreholeChargeBuilder(6,100,[product],[component]); widget.select_component("c")
+    emissions=[]; widget.components_changed.connect(lambda values:emissions.append(values))
+    widget.start_spin.setValue(1.2)
+    assert widget.components()[0].start_depth_m == 1.2
+    widget.end_spin.setValue(3.2)
+    assert widget.components()[0].end_depth_m == 3.2
+    widget.length_spin.setValue(2.5)
+    assert widget.components()[0].end_depth_m == 3.7
+    widget.pitch_spin.setValue(.75)
+    assert widget.components()[0].cartridge_pitch_m == .75
+    assert len(emissions) == 4
+
+
 def test_numeric_sync_overlap_and_hole_depth_rejection():
     app(); a = ChargeComponent("a", ChargeComponentKind.STEMMING, 0, 2)
     b = ChargeComponent("b", ChargeComponentKind.STEMMING, 3, 5)

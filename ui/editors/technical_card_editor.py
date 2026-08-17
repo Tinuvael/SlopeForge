@@ -7,7 +7,7 @@ from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox,
     QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QScrollArea, QSpinBox, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QToolButton, QVBoxLayout, QWidget,
-    QInputDialog, QSizePolicy, QHeaderView)
+    QInputDialog, QSizePolicy, QHeaderView, QMenu, QWidgetAction)
 
 from domain.blasting.technical_card import (BARTON_JA_VALUES, BARTON_JN_VALUES, BARTON_JR_VALUES,
     BARTON_JW_VALUES, CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS, PRODUCTION_GROUP_TYPES,
@@ -494,23 +494,35 @@ class TechnicalCardDialog(QDialog):
 
     def _actual_tab(self):
         layout = self._scroll_tab(tr("Execution fact")); actual=self.revision.actual_execution
-        top=QHBoxLayout(); top.addWidget(QLabel(tr("Actual blast date"))); self.actual_date=QLineEdit(actual.actual_blast_date or ""); self.actual_date.setPlaceholderText(tr("YYYY-MM-DD")); top.addWidget(self.actual_date)
-        copy_all=QPushButton(tr("Copy design to actual")); copy_all.setObjectName("copyProjectToActualButton"); copy_all.setEnabled(not self.read_only); copy_all.clicked.connect(self._copy_all_actual); top.addWidget(copy_all); top.addStretch(); layout.addLayout(top)
+        top=QHBoxLayout(); top.setSpacing(8); top.addWidget(QLabel(tr("Actual blast date")))
+        self.actual_date=QDateEdit(); self.actual_date.setObjectName("actualBlastDate"); self.actual_date.setCalendarPopup(True)
+        stored=QDate.fromString(actual.actual_blast_date or "",Qt.DateFormat.ISODate)
+        self.actual_date.setDate(stored if stored.isValid() else QDate.currentDate()); self.actual_date.setEnabled(not self.read_only); top.addWidget(self.actual_date)
+        copy_all=QPushButton(tr("Copy design to actual")); copy_all.setObjectName("copyProjectToActualButton"); copy_all.setEnabled(not self.read_only); copy_all.clicked.connect(self._copy_all_actual); top.addWidget(copy_all)
+        self.actual_indicators_button=QPushButton(tr("Actual indicators")); self.actual_indicators_button.setObjectName("actualIndicatorsButton"); self.actual_indicators_button.setCheckable(True); self.actual_indicators_button.toggled.connect(self._toggle_actual_indicators); top.addWidget(self.actual_indicators_button); top.addStretch(); layout.addLayout(top)
+        self._build_actual_indicators_popup()
         self.completion_status = QComboBox(); planned_status,completed_status="planned","completed"; self.completion_status.addItem(tr("Planned"),planned_status); self.completion_status.addItem(tr("Completed"),completed_status); self.completion_status.setCurrentIndex(max(0,self.completion_status.findData(actual.completion_status))); self.completion_status.hide()
-        self.execution_notes=QTextEdit(actual.execution_notes); self.execution_notes.setMaximumHeight(70); self.execution_notes.setReadOnly(self.read_only)
-        summary=QGroupBox(tr("B. Actual summary")); grid=QFormLayout(summary); self.actual_summary_widgets={}
-        for label,attr in (("Actual area, m²","actual_drilling_area_m2"),("Accepted block volume, m³","actual_block_volume_m3"),
-            ("Total holes","actual_total_hole_count"),("Total drilling length, m","actual_total_drilling_length_m"),
-            ("Total explosive mass, kg","actual_total_explosive_mass_kg"),("Average depth, m","actual_average_depth_m"),
-            ("Rock yield, m³/m","actual_rock_yield_m3_per_drilling_m"),("Specific drilling, m/m³","actual_specific_drilling_m_per_m3"),
-            ("Powder factor, kg/m³","actual_powder_factor_kg_per_m3"),("Rejected holes","rejected_hole_count"),
-            ("Redrilled holes","redrilled_hole_count"),("Wet holes","wet_hole_count"),("Uncharged holes","uncharged_hole_count")):
-            self.actual_summary_widgets[attr]=self._add_number(grid,label,actual,attr)
-        layout.addWidget(summary)
+        self.actual_cards=QWidget(); self.actual_cards_layout=QVBoxLayout(self.actual_cards); self.actual_cards_layout.setContentsMargins(0,0,0,0); layout.addWidget(self.actual_cards)
         controls=QHBoxLayout(); add=QPushButton(tr("+ Add actual group")); add.setEnabled(not self.read_only); add.clicked.connect(self._add_actual_group); controls.addWidget(add); controls.addStretch(); layout.addLayout(controls)
-        section=QGroupBox(tr("C. Actual drilling and charging groups")); self.actual_cards_layout=QVBoxLayout(section); layout.addWidget(section)
-        notes=QGroupBox(tr("Notes")); notes_layout=QVBoxLayout(notes); notes_layout.addWidget(self.execution_notes); layout.addWidget(notes)
+        notes=QGroupBox(tr("Notes")); notes_layout=QVBoxLayout(notes); self.execution_notes=QTextEdit(actual.execution_notes); self.execution_notes.setObjectName("actualExecutionNotes"); self.execution_notes.setMaximumHeight(76); self.execution_notes.setReadOnly(self.read_only); notes_layout.addWidget(self.execution_notes); layout.addWidget(notes)
         self._render_actual_groups(); self._refresh_actual_summary()
+
+    def _build_actual_indicators_popup(self):
+        self.actual_indicators_menu=QMenu(self); self.actual_indicators_menu.setObjectName("actualIndicatorsPopup")
+        panel=QWidget(); form=QFormLayout(panel); form.setContentsMargins(12,8,12,8); self.actual_indicator_labels={}
+        specs=[("Area, m²","actual_drilling_area_m2"),("Average hole depth, m","actual_average_depth_m"),("Volume, m³","actual_block_volume_m3"),
+            ("Total holes","actual_total_hole_count"),("Total drilling length, m","actual_total_drilling_length_m"),("Total explosive mass, kg","actual_total_explosive_mass_kg")]
+        if self.blast_event.event_type=="production": specs += [("Rock yield, m³/m","actual_rock_yield_m3_per_drilling_m"),("Powder factor, kg/m³","actual_powder_factor_kg_per_m3")]
+        else: specs=specs[3:]
+        specs += [("Rejected holes","rejected_hole_count"),("Redrilled holes","redrilled_hole_count"),("Wet holes","wet_hole_count"),("Uncharged holes","uncharged_hole_count")]
+        for title,attr in specs:
+            value=QLabel("—"); value.setObjectName(f"actualIndicator_{attr}"); value.setAlignment(Qt.AlignmentFlag.AlignRight); form.addRow(tr(title),value); self.actual_indicator_labels[attr]=value
+        action=QWidgetAction(self.actual_indicators_menu); action.setDefaultWidget(panel); self.actual_indicators_menu.addAction(action)
+        self.actual_indicators_menu.aboutToHide.connect(lambda:self.actual_indicators_button.setChecked(False))
+
+    def _toggle_actual_indicators(self, visible):
+        if not visible: self.actual_indicators_menu.hide(); return
+        self._refresh_actual_summary(); self.actual_indicators_menu.popup(self.actual_indicators_button.mapToGlobal(self.actual_indicators_button.rect().bottomLeft()))
 
     def _render_actual_groups(self):
         while self.actual_cards_layout.count():
@@ -518,105 +530,88 @@ class TechnicalCardDialog(QDialog):
             if item.widget(): item.widget().deleteLater()
         designs={g.id:g for g in self.revision.drilling_groups}
         for group in self.revision.actual_execution.actual_drilling_groups:
-            design=designs.get(group.design_group_id); flags=[]
-            if group.copied_from_design: flags.append("Copied from design")
-            if group.design_group_id is None: flags.append("Not in design")
-            display_name=technical_group_label(group.group_type, group.name)
-            box=QGroupBox(display_name + (f"  [{'; '.join(tr(flag) for flag in flags)}]" if flags else "")); box.setCheckable(True); box.setChecked(True)
-            design_name=technical_group_label(design.group_type, design.name) if design else "—"
-            outer=QVBoxLayout(box); outer.addWidget(QLabel(f"{tr('Linked design group')}: {design_name}"))
-            drilling=QGroupBox(tr("Drilling")); f=QFormLayout(drilling)
-            for label,attr,integer in (("Holes, count","hole_count",True),("Diameter, mm","diameter_mm",False),("Average depth, m","average_depth_m",False),
-                ("Subdrill, m","subdrill_m",False),(BURDEN_LABEL,"burden_m",False),(SPACING_LABEL,"spacing_m",False),("Rows","row_count",True),
-                ("Inclination, °","inclination_deg",False),("Azimuth, °","azimuth_deg",False),(TOE_LABEL,"toe_standoff_m",False)):
-                row=QWidget(); row_layout=QHBoxLayout(row); row_layout.setContentsMargins(0,0,0,0)
-                widget=_number(getattr(group,attr)); widget.setEnabled(not self.read_only); widget.setObjectName(attr); row_layout.addWidget(widget)
-                planned=getattr(design,attr) if design else None; annotation=QLabel(tr("Not in design") if design is None else self._comparison_text(planned,getattr(group,attr))); annotation.setObjectName("actualComparisonAnnotation"); row_layout.addWidget(annotation); row_layout.addStretch(); f.addRow(tr(label),row)
-                def changed(value,g=group,a=attr,w=widget,p=planned,l=annotation,is_integer=integer,linked=design):
-                    value=None if value==w.minimum() else (int(value) if is_integer else value); setattr(g,a,value); l.setText(tr("Not in design") if linked is None else self._comparison_text(p,value)); self._refresh_actual_summary()
+            design=designs.get(group.design_group_id); display_name=technical_group_label(group.group_type,group.name)
+            box=QGroupBox(display_name); box.setObjectName("actualDrillingGroupCard"); box.setCheckable(True); box.setChecked(group.included); box.setEnabled(True)
+            outer=QVBoxLayout(box); identity=QFormLayout(); name=QLineEdit(display_name); name.setEnabled(not self.read_only); name.textChanged.connect(lambda value,g=group:setattr(g,"name",value)); identity.addRow(tr("Title"),name); outer.addLayout(identity)
+            columns=QGridLayout(); columns.setColumnStretch(0,0); columns.setColumnStretch(1,1); box.setProperty("engineeringComposition","left-right")
+            drilling=QGroupBox(tr("Drilling / execution")); drilling.setObjectName("actualDrillingArea"); form=QFormLayout(drilling)
+            fields=[("Holes, count","hole_count",True),("Diameter, mm","diameter_mm",False),("Average depth, m","average_depth_m",False),("Subdrill, m","subdrill_m",False),("Inclination, °","inclination_deg",False),("Azimuth, °","azimuth_deg",False)]
+            if self.blast_event.event_type=="production": fields += [(BURDEN_LABEL,"burden_m",False),(SPACING_LABEL,"spacing_m",False),("Rows","row_count",True),(TOE_LABEL,"toe_standoff_m",False)]
+            else: fields += [("Design line / collar offset, m","line_offset_m",False)]
+            state={"builder":None,"depth":group.average_depth_m,"status":None}
+            for label,attr,integer in fields:
+                row=QWidget(); row_layout=QHBoxLayout(row); row_layout.setContentsMargins(0,0,0,0); row_layout.setSpacing(6)
+                widget=_number(getattr(group,attr)); widget.setObjectName(attr); widget.setEnabled(not self.read_only); widget.setMinimumWidth(105); widget.setMaximumWidth(125); row_layout.addWidget(widget)
+                planned=getattr(design,attr) if design else None; annotation=QLabel(tr("Not in design") if design is None else self._comparison_text(planned,getattr(group,attr))); annotation.setObjectName("actualComparisonAnnotation"); annotation.setMinimumWidth(135); row_layout.addWidget(annotation); row_layout.addStretch(); form.addRow(tr(label),row)
+                def changed(value,g=group,a=attr,w=widget,p=planned,l=annotation,is_integer=integer,linked=design,st=state):
+                    value=None if value==w.minimum() else (int(value) if is_integer else value)
+                    builder=st["builder"]
+                    if a=="average_depth_m" and builder and value is not None and not builder.set_hole_depth(value):
+                        w.blockSignals(True); w.setValue(st["depth"] if st["depth"] is not None else w.minimum()); w.blockSignals(False); return
+                    setattr(g,a,value)
+                    if a=="average_depth_m": st["depth"]=value
+                    if a=="diameter_mm" and builder: builder.set_hole_diameter(value)
+                    l.setText(tr("Not in design") if linked is None else self._comparison_text(p,value))
+                    if st["status"]: self._refresh_charge_comparison(st["status"],g,linked)
+                    else: self._refresh_actual_summary()
                 widget.valueChanged.connect(changed)
-            outer.addWidget(drilling); charging=QGroupBox(tr("Actual charge construction")); charge_layout=QVBoxLayout(charging)
-            if group.average_depth_m and group.average_depth_m > 0:
-                builder=BoreholeChargeBuilder(group.average_depth_m,group.diameter_mm,self.explosive_products,group.charge_components,self.read_only); builder.setObjectName("actualBoreholeChargeBuilder"); builder.setMinimumHeight(350); builder.setMaximumHeight(500); self._charge_builders.append(builder); charge_layout.addWidget(builder)
-                status=QLabel(); status.setObjectName("actualChargeComparison")
-                def charge_changed(values,g=group,d=design,s=status): setattr(g,"charge_components",values) or self._refresh_charge_comparison(s,g,d)
-                builder.components_changed.connect(charge_changed); self._refresh_charge_comparison(status,group,design); charge_layout.addWidget(status)
+            exceptions=QGroupBox(tr("Execution exceptions")); exception_grid=QGridLayout(exceptions)
+            for index,(label,attr) in enumerate((("Rejected","rejected_hole_count"),("Redrilled","redrilled_hole_count"),("Wet","wet_hole_count"),("Uncharged","uncharged_hole_count"))):
+                spin=_number(getattr(group,attr)); spin.setDecimals(0); spin.setRange(-1,1000000); spin.setSpecialValueText("—"); spin.setMaximumWidth(90); spin.setEnabled(not self.read_only); spin.valueChanged.connect(lambda value,g=group,a=attr,w=spin:(setattr(g,a,None if value==w.minimum() else int(value)),self._refresh_actual_summary()))
+                row,column=divmod(index,2); exception_grid.addWidget(QLabel(tr(label)),row,column*2); exception_grid.addWidget(spin,row,column*2+1)
+            left=QVBoxLayout(); left.addWidget(drilling); left.addWidget(exceptions); left_host=QWidget(); left_host.setLayout(left); columns.addWidget(left_host,0,0,Qt.AlignmentFlag.AlignTop)
+            charge=QGroupBox(tr("Actual charge construction")); charge.setObjectName("actualChargeArea"); charge_layout=QVBoxLayout(charge)
+            if group.average_depth_m and group.average_depth_m>0:
+                builder=BoreholeChargeBuilder(group.average_depth_m,group.diameter_mm,self.explosive_products,group.charge_components,self.read_only); builder.setObjectName("actualBoreholeChargeBuilder"); builder.setMinimumHeight(350); builder.setMaximumHeight(500); self._charge_builders.append(builder); state["builder"]=builder; charge_layout.addWidget(builder)
+                status=QLabel(); status.setObjectName("actualChargeComparison"); status.setWordWrap(True); state["status"]=status
+                builder.components_changed.connect(lambda values,g=group,d=design,s=status:(setattr(g,"charge_components",values),self._refresh_charge_comparison(s,g,d)))
+                self._refresh_charge_comparison(status,group,design); charge_layout.addWidget(status)
             else: charge_layout.addWidget(QLabel(tr("Enter average hole depth to configure the charge construction.")))
-            outer.addWidget(charging); deviation=QGroupBox(tr("Execution exceptions and notes")); df=QFormLayout(deviation)
-            for label,attr in (("Rejected holes","rejected_hole_count"),("Redrilled holes","redrilled_hole_count"),("Wet holes","wet_hole_count"),("Uncharged holes","uncharged_hole_count")):
-                self._add_number(df,label,group,attr,integer=True)
-            for label,attr in (("Deviation description","deviations_text"),("Notes","notes")):
-                edit=QLineEdit(getattr(group,attr)); edit.setReadOnly(self.read_only); edit.textChanged.connect(lambda v,g=group,a=attr:setattr(g,a,v)); df.addRow(tr(label),edit)
-            outer.addWidget(deviation); actions=QHBoxLayout(); copy=QPushButton(tr("Copy from design")); duplicate=QPushButton(tr("Duplicate")); remove=QPushButton(tr("Delete"))
-            copy.setEnabled(design is not None); copy.clicked.connect(lambda _=False,d=design,a=group:self._copy_one_actual(d,a)); duplicate.clicked.connect(lambda _=False,g=group:self._duplicate_actual(g)); remove.clicked.connect(lambda _=False,g=group:self._remove_actual(g))
-            for button in (copy,duplicate,remove): button.setEnabled(button.isEnabled() and not self.read_only); actions.addWidget(button)
-            outer.addLayout(actions); self.actual_cards_layout.addWidget(box)
-        self._refresh_actual_summary()
+            columns.addWidget(charge,0,1); outer.addLayout(columns)
+            actions=QHBoxLayout(); duplicate=QPushButton(tr("Duplicate")); remove=QPushButton(tr("Delete")); duplicate.setEnabled(not self.read_only); remove.setEnabled(not self.read_only); duplicate.clicked.connect(lambda _=False,g=group:self._duplicate_actual(g)); remove.clicked.connect(lambda _=False,g=group:self._remove_actual(g)); actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions)
+            box.toggled.connect(lambda checked,g=group:(setattr(g,"included",checked),self._refresh_actual_summary())); box.setCheckable(not self.read_only); self.actual_cards_layout.addWidget(box)
 
     @staticmethod
     def _comparison_text(plan, actual, unit=""):
         if plan is None: return tr("Plan —")
-        delta = None if actual is None else actual-plan
-        delta_text = "—" if delta is None else f"{delta:+g}"
+        delta=None if actual is None else actual-plan; delta_text="—" if delta is None else ("0" if abs(delta)<1e-9 else f"{delta:+g}")
         return f"{tr('Plan')} {plan:g}{unit}   Δ {delta_text}{unit}"
 
     def _refresh_charge_comparison(self,label,actual,design):
-        matches=actual.charge_matches(design); plan=design.explosive_mass_per_hole_kg() if design else None; fact=actual.explosive_mass_per_hole_kg()
-        label.setText(tr("Charge matches design") if matches else tr("Charge changed") + "   " + self._comparison_text(plan,fact," kg/hole"))
-        self._refresh_actual_summary()
+        matches=actual.charge_matches(design); plan_per=design.explosive_mass_per_hole_kg() if design else None; fact_per=actual.explosive_mass_per_hole_kg(); plan_total=design.total_explosive_mass() if design else None; fact_total=actual.effective_charge_mass()
+        if matches: text=tr("Charge matches design")
+        else: text=f"{tr('Charge changed')}\n{tr('Mass / hole')}   {self._comparison_text(plan_per,fact_per,' kg')}\n{tr('Total mass')}   {self._comparison_text(plan_total,fact_total,' kg')}"
+        label.setText(text); self._refresh_actual_summary()
 
     def _copy_all_actual(self):
         actual=self.revision.actual_execution
         if actual.actual_drilling_groups and QMessageBox.question(self,tr("Replace actual with current design?"),tr("Replace actual with current design?"),QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.Cancel,QMessageBox.StandardButton.Cancel)!=QMessageBox.StandardButton.Yes:return
         actual.copy_from_design(self.revision.drilling_groups,self.revision.id or None,"replace"); self._render_actual_groups(); self._refresh_actual_summary()
 
-    def _copy_one_actual(self, design, actual):
-        if design is None: return
-        labels=["Fill empty fields only","Replace group","Cancel"]
-        choice,ok=QInputDialog.getItem(self,tr("Copy from design"),tr("Actual values may already be populated:"),labels,0,False)
-        if not ok or choice==labels[2]: return
-        mode="fill_empty" if choice==labels[0] else "replace"
-        self.revision.actual_execution.copy_one(design,actual,self.revision.id or None,mode)
-        self.revision.actual_execution.recalculate(); self._render_actual_groups(); self._refresh_actual_summary()
-
     def _add_actual_group(self):
-        catalogue=PRODUCTION_GROUP_TYPES if self.blast_event.event_type=="production" else CONTOUR_GROUP_TYPES
-        keys=list(catalogue); names=[technical_group_label(key) for key in keys]; choice,ok=QInputDialog.getItem(self,tr("Actual group"),tr("Group type:"),names,0,False)
+        catalogue=PRODUCTION_GROUP_TYPES if self.blast_event.event_type=="production" else CONTOUR_GROUP_TYPES; keys=list(catalogue); names=[technical_group_label(key) for key in keys]; choice,ok=QInputDialog.getItem(self,tr("Actual group"),tr("Group type:"),names,0,False)
         if not ok:return
-        kind=keys[names.index(choice)]
-        self.revision.actual_execution.actual_drilling_groups.append(ActualDrillingGroup(design_group_id=None,group_type=kind,name=choice,sequence_order=len(self.revision.actual_execution.actual_drilling_groups)+1))
-        self._render_actual_groups(); self._refresh_actual_summary()
+        kind=keys[names.index(choice)]; self.revision.actual_execution.actual_drilling_groups.append(ActualDrillingGroup(design_group_id=None,group_type=kind,name=choice,sequence_order=len(self.revision.actual_execution.actual_drilling_groups)+1)); self._render_actual_groups(); self._refresh_actual_summary()
 
     def _duplicate_actual(self, group):
         from copy import deepcopy
         from uuid import uuid4
-        copied=deepcopy(group); copied.id=f"AG-{uuid4().hex}"; copied.design_group_id=None; copied.copied_from_design=False; copied.copied_from_technical_revision_id=None; copied.copied_at=None; copied.name += " (copy)"
-        self.revision.actual_execution.actual_drilling_groups.append(copied); self._render_actual_groups()
+        copied=deepcopy(group); copied.id=f"AG-{uuid4().hex}"; copied.design_group_id=None; copied.copied_from_design=False; copied.copied_from_technical_revision_id=None; copied.copied_at=None; copied.name += " (copy)"; copied.drilling_length_m=None
+        self.revision.actual_execution.actual_drilling_groups.append(copied); self._render_actual_groups(); self._refresh_actual_summary()
 
     def _remove_actual(self, group):
         self.revision.actual_execution.actual_drilling_groups.remove(group); self._render_actual_groups(); self._refresh_actual_summary()
 
     def _refresh_actual_summary(self):
-        actual=self.revision.actual_execution; actual.recalculate()
-        for attr,widget in self.actual_summary_widgets.items():
-            value=getattr(actual,attr); widget.blockSignals(True); widget.setValue(value if value is not None else widget.minimum()); widget.blockSignals(False)
-        self._render_comparison()
-
-    def _render_comparison(self):
-        if not hasattr(self,"comparison_table"): return
-        rows=self.revision.comparison_rows(); table=self.comparison_table; table.setRowCount(len(rows)); table.setColumnCount(6)
-        table.setHorizontalHeaderLabels([tr("Group"),tr("Parameter"),tr("Design"),tr("Execution fact"),tr("Absolute deviation"),tr("Relative deviation, %")])
-        def display(value,unit=""): return "—" if value is None else f"{value:g} {unit}".strip()
-        for row,data in enumerate(rows):
-            unit = technical_text(data["unit"])
-            values=(technical_text(data["group"]),technical_text(data["parameter"]),display(data["project"],unit),display(data["actual"],unit),display(data["absolute_deviation"],unit),display(data["relative_deviation_percent"],"%"))
-            for column,value in enumerate(values): table.setItem(row,column,QTableWidgetItem(value))
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.resizeColumnsToContents()
+        actual=self.revision.actual_execution; area=None
+        if self.revision.production_parameters: area=self.revision.production_parameters.drilling_area_m2.calculated_value
+        actual.recalculate(geometry_area_m2=area,production=self.blast_event.event_type=="production")
+        for attr,label in getattr(self,"actual_indicator_labels",{}).items():
+            value=getattr(actual,attr); label.setText("—" if value is None else f"{value:g}")
 
     def set_explosive_products(self, products):
         """Refresh available choices only; builders preserve frozen component snapshots."""
-        self.explosive_products=list(products)
-        live=[]
+        self.explosive_products=list(products); live=[]
         for builder in self._charge_builders:
             try: builder.set_products(self.explosive_products); live.append(builder)
             except RuntimeError: pass
@@ -641,7 +636,7 @@ class TechnicalCardDialog(QDialog):
                 self.revision.geomechanical_parameters = self._geomechanics_from_form()
         except ValueError as exc:
             QMessageBox.warning(self, tr("Technical Card validation"), domain_message(str(exc))); return False
-        actual=self.revision.actual_execution; actual.completion_status=self.completion_status.currentData(); actual.actual_blast_date=self.actual_date.text().strip() or None; actual.execution_notes=self.execution_notes.toPlainText(); actual.recalculate()
+        actual=self.revision.actual_execution; actual.completion_status=self.completion_status.currentData(); actual.actual_blast_date=self.actual_date.date().toString(Qt.DateFormat.ISODate); actual.execution_notes=self.execution_notes.toPlainText(); self._refresh_actual_summary()
         planned_date = self.planned_date.date().toPython() if self.has_planned_date.isChecked() else None
         try: self.save_callback(self.card, self.revision, status, planned_date)
         except ValueError as exc: QMessageBox.warning(self, tr("Technical Card validation"), domain_message(str(exc))); return False

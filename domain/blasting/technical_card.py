@@ -259,17 +259,12 @@ class ActualDrillingGroup:
 
     def effective_drilling_length(self):
         if not self.included: return 0.0
-        # Compatibility-only override for historical factual payloads. New UI never edits it.
-        if self.drilling_length_m is not None: return self.drilling_length_m
         return None if self.hole_count is None or self.average_depth_m is None else self.hole_count * self.average_depth_m
 
     def effective_charge_mass(self):
         if not self.included: return 0.0
-        if self.charge_components:
-            per_hole = self.explosive_mass_per_hole_kg()
-            return None if per_hole is None or self.hole_count is None else per_hole * self.hole_count
-        if self.total_charge_mass_kg is not None: return self.total_charge_mass_kg
-        return None if self.hole_count is None or self.charge_mass_per_hole_kg is None else self.hole_count * self.charge_mass_per_hole_kg
+        per_hole = self.explosive_mass_per_hole_kg()
+        return None if per_hole is None or self.hole_count is None else per_hole * self.hole_count
 
     def explosive_mass_per_hole_kg(self):
         if not self.charge_components: return 0.0
@@ -285,9 +280,11 @@ class ActualDrillingGroup:
                      copied_from_technical_revision_id=revision_id, copied_at=utc_now().isoformat())
         for name in _DESIGN_COPY_FIELDS:
             setattr(target, name, deepcopy(getattr(group, name)))
-        target.drilling_length_m = group.drilling_length()
-        target.charge_mass_per_hole_kg = group.explosive_mass_per_hole_kg()
-        target.total_charge_mass_kg = group.total_explosive_mass()
+        # The compatibility scalar is intentionally not copied: factual length
+        # always follows the editable factual hole count and depth.
+        target.drilling_length_m = None
+        target.charge_mass_per_hole_kg = None
+        target.total_charge_mass_kg = None
         target.stemming_length_m = group.stemming_total_m()
         target.explosive_type = group.explosive_names()
         target.charge_components = deepcopy(group.charge_components)
@@ -332,18 +329,21 @@ class ActualExecution:
     @actual_drilling_length_m.setter
     def actual_drilling_length_m(self, value): self.actual_total_drilling_length_m = value
 
-    def recalculate(self):
-        """Groups are the explicit source of truth when they exist; old summaries survive otherwise."""
+    def recalculate(self, *, geometry_area_m2: float | None = None, production: bool = False):
+        """Rebuild every factual indicator from included factual groups."""
         groups = [g for g in self.actual_drilling_groups if g.included]
-        if not groups: return
         self.actual_total_hole_count = sum(g.hole_count or 0 for g in groups)
         lengths = [g.effective_drilling_length() for g in groups]
         masses = [g.effective_charge_mass() for g in groups]
         self.actual_total_drilling_length_m = None if any(v is None for v in lengths) else sum(lengths)
         self.actual_total_explosive_mass_kg = None if any(v is None for v in masses) else sum(masses)
-        weighted = [(g.hole_count, g.average_depth_m) for g in groups if g.hole_count and g.average_depth_m is not None]
-        count = sum(v[0] for v in weighted)
-        self.actual_average_depth_m = sum(n * d for n, d in weighted) / count if count else None
+        self.actual_average_depth_m = _ratio(self.actual_total_drilling_length_m, self.actual_total_hole_count)
+        if production:
+            self.actual_drilling_area_m2 = geometry_area_m2
+            self.actual_block_volume_m3 = (geometry_area_m2 * self.actual_average_depth_m
+                if geometry_area_m2 is not None and self.actual_average_depth_m is not None else None)
+        else:
+            self.actual_drilling_area_m2 = None; self.actual_block_volume_m3 = None
         volume, length = self.actual_block_volume_m3, self.actual_total_drilling_length_m
         self.actual_rock_yield_m3_per_drilling_m = _ratio(volume, length)
         self.actual_specific_drilling_m_per_m3 = _ratio(length, volume)
@@ -372,7 +372,7 @@ class ActualExecution:
         if mode == "replace":
             index = self.actual_drilling_groups.index(actual); fresh.id = actual.id
             self.actual_drilling_groups[index] = fresh; return fresh
-        for name in _DESIGN_COPY_FIELDS + ("drilling_length_m",):
+        for name in _DESIGN_COPY_FIELDS:
             if getattr(actual, name) in (None, "", []): setattr(actual, name, deepcopy(getattr(fresh, name)))
         actual.design_group_id = design.id
         return actual
@@ -466,7 +466,10 @@ class BlastEventTechnicalCard:
         saved.revision_number = number; saved.created_at = utc_now(); saved.status = status; saved.change_reason = change_reason
         if status == "completed" and saved.validate_completion(): raise ValueError("; ".join(saved.validate_completion()))
         if saved.production_parameters: saved.production_parameters.recalculate(saved.drilling_groups)
-        saved.actual_execution.recalculate()
+        area = (saved.production_parameters.drilling_area_m2.calculated_value
+                if saved.production_parameters else None)
+        saved.actual_execution.recalculate(
+            geometry_area_m2=area, production=saved.event_type == "production")
         self.revisions.append(saved); self.active_revision_id = saved.id
         return saved
 
@@ -611,7 +614,9 @@ def _card_from_dict(d):
                 target = ActualDrillingGroup.from_design(group, x.get("id")); actual.actual_drilling_groups.append(target)
             if target.drilling_length_m is None or not actual_group_data: target.drilling_length_m = group.legacy_actual_drilling_length_m
             actual.migration_warnings.append(f"Перенесён старый фактический метраж группы «{group.name}»")
-        if actual.actual_drilling_groups: actual.recalculate()
+        if actual.actual_drilling_groups:
+            area = prod.drilling_area_m2.calculated_value if prod else None
+            actual.recalculate(geometry_area_m2=area, production=x["event_type"] == "production")
         card.revisions.append(BlastEventTechnicalCardRevision(
             id=x["id"], technical_card_id=x["technical_card_id"], revision_number=x["revision_number"],
             created_at=datetime.fromisoformat(x["created_at"]), geometry_revision_id=x["geometry_revision_id"],
