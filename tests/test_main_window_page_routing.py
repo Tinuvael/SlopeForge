@@ -199,3 +199,18 @@ def test_successful_area_edit_has_dedicated_unguarded_completion_path():
     assert "removeWidget(edit_page)" in finish and "deleteLater()" in finish
     cancel=main[main.index("def _cancel_area_boundary_edit"):main.index("def _edit_area_boundaries")]
     assert "open_area_from_tree" in cancel
+
+
+def test_analysis_button_opens_persistent_placeholder_before_report():
+    header=source("ui/header.py")
+    main=source("ui/main_window.py")
+    page=source("ui/pages/analysis_page.py")
+    assert "analysis_requested=Signal()" in header
+    assert 'self.analysis_button=QPushButton(tr("Analysis"))' in header
+    assert 'self.analysis_button.setIcon(ui_icon("analytics"))' in header
+    assert header.index("layout.addWidget(self.analysis_button)") < header.index("layout.addWidget(self.report_button)")
+    assert "AnalysisPlaceholderPage" in main
+    assert "analysis_requested.connect(self._open_analysis)" in main
+    assert "self._activate_page(self.analysis_page)" in main
+    assert "current is self.analysis_page" in main
+    assert 'tr("Analysis section is under development.")' in page
