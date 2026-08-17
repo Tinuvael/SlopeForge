@@ -36,8 +36,17 @@ CONTROLLED_BLASTING_METHODS = {
     "line_drilling": "Бурение по линии незаряженных скважин", "other": "Другой метод",
 }
 
+# Canonical Barton Q-system ratings exposed by the active Geomechanics UI.
+# Keep these values centralized so UI choices and persisted-domain validation cannot drift.
+BARTON_JN_VALUES = (0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 9.0, 12.0, 15.0, 20.0)
+BARTON_JR_VALUES = (0.5, 1.0, 1.5, 2.0, 3.0, 4.0)
+BARTON_JA_VALUES = (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 9.0, 10.0, 12.0, 13.0, 20.0)
+BARTON_JW_VALUES = (1.0, 0.66, 0.5, 0.33, 0.2, 0.1)
+
+
 def _new_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex}"
+
 
 def polygon_area_m2(polygon: PlanPolygon | None) -> float | None:
     """Shoelace area in domain X/Y coordinates (never scene coordinates)."""
@@ -45,11 +54,17 @@ def polygon_area_m2(polygon: PlanPolygon | None) -> float | None:
         return None
     return abs(sum(a.x * b.y - b.x * a.y for a, b in zip(polygon.ring, polygon.ring[1:]))) / 2
 
+
 def _ratio(numerator: float | None, denominator: float | None) -> float | None:
     if numerator is None or denominator in (None, 0):
         return None
     value = numerator / denominator
     return value if isfinite(value) else None
+
+
+def _is_allowed_rating(value: float, allowed: tuple[float, ...]) -> bool:
+    return any(abs(value - candidate) <= 1e-9 for candidate in allowed)
+
 
 @dataclass
 class ManualValue:
@@ -60,11 +75,13 @@ class ManualValue:
     def accepted_value(self) -> float | None:
         return self.manual_value if self.manual_value is not None else self.calculated_value
 
+
 @dataclass
 class CommonParameters:
     project_date: str | None = None; blast_date: str | None = None; block_name: str = ""
     mine_area: str = ""; wall_sector: str = ""; bench: str = ""; working_horizon: float | None = None
     block_type: str = ""; source_geometry_revision_id: str = ""; source_csv: str = ""; comments: str = ""
+
 
 @dataclass
 class DesignSlopeOrientation:
@@ -76,6 +93,7 @@ class DesignSlopeOrientation:
             raise ValueError("Design slope azimuth must be at least 0 and less than 360 degrees")
         if self.angle_deg is not None and (not isfinite(self.angle_deg) or not 0 <= self.angle_deg <= 90):
             raise ValueError("Design slope angle must be between 0 and 90 degrees")
+
 
 @dataclass
 class JointSetOrientation:
@@ -97,6 +115,7 @@ class GeomechanicalParameters:
     q_value: float | None = field(default=None, repr=False)
     rqd_percent: float | None = None
     gsi: float | None = None
+    ff: float | None = None
     joint_sets: list[JointSetOrientation] = field(default_factory=list)
     jw: float | None = None
     jn: float | None = None
@@ -107,17 +126,32 @@ class GeomechanicalParameters:
     def __post_init__(self) -> None:
         if len(self.joint_sets) > 5:
             raise ValueError("Geomechanics may contain at most five joint sets")
-        for name in ("ucs_mpa", "q_value", "rqd_percent", "gsi", "jw", "jn", "jr", "ja"):
+        for name in ("ucs_mpa", "q_value", "rqd_percent", "gsi", "ff", "jw", "jn", "jr", "ja"):
             value = getattr(self, name)
             if value is not None and not isfinite(value):
                 raise ValueError(f"{name} must be finite")
+        if self.ucs_mpa is not None and self.ucs_mpa < 0:
+            raise ValueError("UCS must be non-negative")
         if self.rqd_percent is not None and not 0 <= self.rqd_percent <= 100:
             raise ValueError("RQD must be between 0 and 100 percent")
+        if self.gsi is not None and not 1 <= self.gsi <= 100:
+            raise ValueError("GSI must be between 1 and 100")
+        if self.ff is not None and self.ff < 0:
+            raise ValueError("FF must be non-negative")
+        for name, allowed in (
+            ("Jn", BARTON_JN_VALUES), ("Jr", BARTON_JR_VALUES),
+            ("Ja", BARTON_JA_VALUES), ("Jw", BARTON_JW_VALUES),
+        ):
+            value = getattr(self, name.lower())
+            if value is not None and not _is_allowed_rating(value, allowed):
+                choices = ", ".join(f"{item:g}" for item in allowed)
+                raise ValueError(f"{name} must be one of: {choices}")
 
     def minimum_complete(self) -> bool:
         return self.ucs_mpa is not None and any(
-            value is not None for value in (self.rqd_percent, self.gsi, self.jn, self.jr, self.ja)
+            value is not None for value in (self.rqd_percent, self.gsi, self.ff, self.jn, self.jr, self.ja)
         )
+
 
 @dataclass
 class BlastDrillingGroup:
@@ -156,6 +190,7 @@ class BlastDrillingGroup:
     def explosive_names(self) -> str:
         return ", ".join(dict.fromkeys(item.product_snapshot.name for item in self.charge_components if item.product_snapshot))
 
+
 @dataclass
 class ProductionParameters:
     drilling_area_m2: ManualValue = field(default_factory=ManualValue)
@@ -183,6 +218,7 @@ class ProductionParameters:
         self.specific_drilling_m_per_m3 = _ratio(length, volume)
         self.powder_factor_kg_per_m3 = _ratio(self.total_explosive_mass_kg, volume)
 
+
 @dataclass
 class ContourParameters:
     controlled_blasting_method: str = ""; custom_method_name: str = ""
@@ -199,6 +235,7 @@ class ContourParameters:
         self.controlled_blasting_method = method
         self.unloaded_holes = method == "line_drilling"
         self.decoupled_charge = method in {"presplit", "midsplit"}
+
 
 @dataclass
 class ActualDrillingGroup:
@@ -242,9 +279,11 @@ class ActualDrillingGroup:
         target.explosive_type = group.explosive_names()
         return target
 
+
 _DESIGN_COPY_FIELDS = ("group_type", "custom_type_name", "name", "sequence_order", "included", "hole_count",
     "diameter_mm", "average_depth_m", "subdrill_m", "burden_m", "spacing_m", "row_count", "inclination_deg",
     "azimuth_deg", "line_offset_m", "toe_standoff_m", "initiation_sequence", "delay_ms")
+
 
 @dataclass
 class ActualExecution:
@@ -323,6 +362,7 @@ class ActualExecution:
         if not self.actual_total_drilling_length_m: warnings.append("Не указан фактический метраж бурения")
         return warnings
 
+
 @dataclass
 class BlastEventTechnicalCardRevision:
     id: str; technical_card_id: str; revision_number: int; created_at: datetime
@@ -380,11 +420,13 @@ class BlastEventTechnicalCardRevision:
         rows.extend(comparison_value("ИТОГО", label, unit, project, actual) for label, unit, project, actual in totals)
         return rows
 
+
 def comparison_value(group, parameter, unit, project, actual):
     absolute = actual - project if actual is not None and project is not None else None
     relative = absolute / project * 100 if absolute is not None and project not in (None, 0) else None
     return {"group": group, "parameter": parameter, "unit": unit, "project": project, "actual": actual,
             "absolute_deviation": absolute, "relative_deviation_percent": relative}
+
 
 @dataclass
 class BlastEventTechnicalCard:
@@ -411,8 +453,10 @@ class BlastEventTechnicalCard:
         revision.drilling_groups.remove(group)
 
     def to_dict(self): return _encode(self)
+
     @classmethod
     def from_dict(cls, data): return _card_from_dict(data)
+
 
 def new_technical_card(event: BlastEvent) -> tuple[BlastEventTechnicalCard, BlastEventTechnicalCardRevision]:
     geometry = event.active_geometry_revision()
@@ -429,6 +473,7 @@ def new_technical_card(event: BlastEvent) -> tuple[BlastEventTechnicalCard, Blas
         production, contour, GeomechanicalParameters() if production else None)
     return card, revision
 
+
 class TechnicalCardService:
     def __init__(self, state): self.state = state
     def card_for_event(self, event_id): return next((c for c in self.state.technical_cards if c.blast_event_id == event_id), None)
@@ -439,6 +484,7 @@ class TechnicalCardService:
             fresh, revision = new_technical_card(event); revision.technical_card_id = card.id
             return card, revision
         card, revision = new_technical_card(event); self.state.technical_cards.append(card); return card, revision
+
 
 def _encode(value):
     if isinstance(value, datetime): return value.isoformat()
@@ -455,8 +501,10 @@ def _encode(value):
     if isinstance(value, list): return [_encode(v) for v in value]
     return value
 
+
 def _construct(cls, data):
     return cls(**{f.name: data[f.name] for f in fields(cls) if f.name in data})
+
 
 def _charge_component_from_dict(data):
     raw = dict(data); snapshot = raw.get("product_snapshot")
@@ -470,6 +518,7 @@ def _charge_component_from_dict(data):
     raw["kind"] = ChargeComponentKind(raw["kind"])
     return _construct(ChargeComponent, raw)
 
+
 def _geomechanics_from_dict(data):
     """Read the canonical payload, conservatively falling back to representatives."""
     migrated = dict(data)
@@ -479,11 +528,26 @@ def _geomechanics_from_dict(data):
         migrated["rqd_percent"] = migrated.get("rqd_representative_percent")
     if "notes" not in migrated:
         migrated["notes"] = migrated.get("geomechanical_notes", "")
+    # PR #113 briefly allowed free-form Barton ratings. Treat those disposable
+    # development payload values as missing rather than making an old draft
+    # impossible to open after the canonical rating validation lands.
+    for name, allowed in (
+        ("jn", BARTON_JN_VALUES), ("jr", BARTON_JR_VALUES),
+        ("ja", BARTON_JA_VALUES), ("jw", BARTON_JW_VALUES),
+    ):
+        value = migrated.get(name)
+        if value is not None and (not isfinite(value) or not _is_allowed_rating(value, allowed)):
+            migrated[name] = None
+    if migrated.get("gsi") is not None and not 1 <= migrated["gsi"] <= 100:
+        migrated["gsi"] = None
+    if migrated.get("ff") is not None and migrated["ff"] < 0:
+        migrated["ff"] = None
     migrated["joint_sets"] = [
         item if isinstance(item, JointSetOrientation) else _construct(JointSetOrientation, item)
         for item in migrated.get("joint_sets", [])
     ]
     return _construct(GeomechanicalParameters, migrated)
+
 
 def _card_from_dict(d):
     card = BlastEventTechnicalCard(d["id"], d["blast_event_id"], active_revision_id=d.get("active_revision_id"), is_archived=d.get("is_archived", False))
