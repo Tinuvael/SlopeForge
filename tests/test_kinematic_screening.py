@@ -61,8 +61,24 @@ def test_supplied_wedge_geometry_regression_and_friction_gate():
     slope = Orientation(75, 120, "Slope")
     first, second = Orientation(26, 83, "J1"), Orientation(76, 234, "J2")
     geometry = wedge_geometry(slope, first, second)
+
+    assert geometry.line is not None
+    assert geometry.line.trend_deg == pytest.approx(147.0502839, abs=1e-7)
+    assert geometry.line.plunge_deg == pytest.approx(12.04749380, abs=1e-7)
+    assert geometry.criterion_values == pytest.approx((
+        -0.04252404977,
+        -3.771958657,
+        -0.9659258263,
+    ), abs=1e-9)
     assert geometry.criterion_passes == (True, True, True)
-    assert wedge_geometry(slope, second, first).criterion_passes == geometry.criterion_passes
+
+    reverse = wedge_geometry(slope, second, first)
+    assert reverse.criterion_values == pytest.approx(geometry.criterion_values, abs=1e-12)
+    assert reverse.criterion_passes == geometry.criterion_passes
+    assert reverse.line is not None
+    assert reverse.line.trend_deg == pytest.approx(geometry.line.trend_deg)
+    assert reverse.line.plunge_deg == pytest.approx(geometry.line.plunge_deg)
+
     assert wedge_screening(slope, [first, second], 10)[0].potential is True
     gated = wedge_screening(slope, [first, second], 15)[0]
     assert gated.criterion_passes == (True, True, True)
