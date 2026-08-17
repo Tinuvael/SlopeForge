@@ -8,7 +8,7 @@ from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QIcon, QKeySequence, QPainter, QPainterPath, QPixmap, QShortcut
+from PySide6.QtGui import QIcon, QImageReader, QKeySequence, QPainter, QPainterPath, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -39,6 +39,14 @@ from PySide6.QtWidgets import (
 from application.services.attachments import ATTACHMENT_CATEGORIES, PHOTO_EXTENSIONS
 
 
+def _load_photo_pixmap(path: str | Path) -> QPixmap:
+    """Load a photo with EXIF orientation applied, matching normal Windows viewers."""
+    reader = QImageReader(str(path))
+    reader.setAutoTransform(True)
+    image = reader.read()
+    return QPixmap.fromImage(image) if not image.isNull() else QPixmap()
+
+
 class AttachmentMetadataDialog(QDialog):
     def __init__(self, owner_type, kind, attachment=None, parent=None, *, source_path=None,
                  batch_index: int | None = None, batch_count: int | None = None):
@@ -56,7 +64,7 @@ class AttachmentMetadataDialog(QDialog):
             preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
             preview.setMinimumHeight(260)
             preview.setStyleSheet("background:#f3f4f6;border:1px solid #dfe3ea;border-radius:6px;")
-            pixmap = QPixmap(str(source_path))
+            pixmap = _load_photo_pixmap(source_path)
             if not pixmap.isNull():
                 preview.setPixmap(pixmap.scaled(480, 300, Qt.AspectRatioMode.KeepAspectRatio,
                                                  Qt.TransformationMode.SmoothTransformation))
@@ -174,7 +182,7 @@ class PhotoViewer(QDialog):
             return
         attachment = self.photos[self.current]
         self.setWindowTitle(attachment.title)
-        self.view.set_photo(QPixmap(str(self.service.resolve_path(attachment))))
+        self.view.set_photo(_load_photo_pixmap(self.service.resolve_path(attachment)))
 
     def fit(self): self.view.fit_photo()
     def previous(self): self.current = (self.current - 1) % len(self.photos); self.show_photo()
@@ -256,11 +264,12 @@ class EntityAttachmentManagerWidget(QWidget):
 
         viewer_body = QHBoxLayout(); viewer_body.setSpacing(14)
         self.photo_view = PhotoGraphicsView(); viewer_body.addWidget(self.photo_view, 1)
-        side = QWidget(); side.setFixedWidth(180); side_layout = QVBoxLayout(side); side_layout.setContentsMargins(0, 0, 0, 0); side_layout.setSpacing(10)
+        side = QWidget(); side.setFixedWidth(235); side_layout = QVBoxLayout(side); side_layout.setContentsMargins(0, 0, 0, 0); side_layout.setSpacing(10)
         self.viewer_metadata = QFrame(); self.viewer_metadata.setObjectName("PhotoMetadataCard")
         self.viewer_metadata.setStyleSheet("QFrame#PhotoMetadataCard{background:#f8fafc;border:1px solid #dfe3ea;border-radius:8px;} QLabel#PhotoMetadataLabel{color:#6b7280;font-size:11px;} QLabel#PhotoMetadataValue{color:#111827;font-weight:500;}")
-        metadata = QGridLayout(self.viewer_metadata); metadata.setContentsMargins(10, 9, 10, 9); metadata.setHorizontalSpacing(8); metadata.setVerticalSpacing(4)
-        self.viewer_category = QLabel(); self.viewer_date = QLabel(); self.viewer_file = QLabel(); self.viewer_file.setWordWrap(True)
+        metadata = QGridLayout(self.viewer_metadata); metadata.setContentsMargins(10, 9, 10, 9); metadata.setHorizontalSpacing(8); metadata.setVerticalSpacing(5); metadata.setColumnStretch(1,1)
+        self.viewer_category = QLabel(); self.viewer_category.setWordWrap(True)
+        self.viewer_date = QLabel(); self.viewer_file = QLabel(); self.viewer_file.setWordWrap(True)
         for row, (caption, value) in enumerate((("Category", self.viewer_category), ("Date", self.viewer_date), ("File", self.viewer_file))):
             label = QLabel(tr(caption)); label.setObjectName("PhotoMetadataLabel"); value.setObjectName("PhotoMetadataValue")
             metadata.addWidget(label, row, 0, Qt.AlignmentFlag.AlignTop); metadata.addWidget(value, row, 1)
@@ -298,7 +307,7 @@ class EntityAttachmentManagerWidget(QWidget):
             missing = self.service.is_missing(item); preview = QLabel(tr("File is missing") if missing else "")
             self.table.setCellWidget(row, 0, preview)
             category = item.custom_subtype if item.subtype == "other" and item.custom_subtype else labels.get(item.subtype, item.subtype)
-            for column, value in enumerate((item.title, item.file_date.isoformat(), category, item.original_filename,
+            for column, value in enumerate((item.title, item.file_date.strftime("%d.%m.%Y"), category, item.original_filename,
                                             item.description, self._size(item.file_size_bytes)), 1):
                 cell = QTableWidgetItem(value); cell.setData(Qt.ItemDataRole.UserRole, item.id)
                 self.table.setItem(row, column, cell)
@@ -330,7 +339,7 @@ class EntityAttachmentManagerWidget(QWidget):
     def _thumbnail(self, item, size: QSize, *, cover=False) -> QIcon:
         if self.service.is_missing(item):
             return QIcon()
-        pixmap = QPixmap(str(self.service.resolve_path(item)))
+        pixmap = _load_photo_pixmap(self.service.resolve_path(item))
         if pixmap.isNull():
             return QIcon()
         if cover:
@@ -474,13 +483,13 @@ class EntityAttachmentManagerWidget(QWidget):
         self.current_attachment_id = item.id
         self.viewer_title.setText(item.title or Path(item.original_filename).stem)
         self.viewer_category.setText(self._category_label(item))
-        self.viewer_date.setText(item.file_date.isoformat())
+        self.viewer_date.setText(item.file_date.strftime("%d.%m.%Y"))
         self.viewer_file.setText(item.original_filename)
-        self.photo_view.set_photo(QPixmap(str(self.service.resolve_path(item))))
+        self.photo_view.set_photo(_load_photo_pixmap(self.service.resolve_path(item)))
         self._clear_layout(self.thumb_layout)
         for photo in items:
             thumb = QToolButton(); thumb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-            thumb.setIcon(self._thumbnail(photo, QSize(148, 92), cover=True)); thumb.setIconSize(QSize(148, 92)); thumb.setFixedSize(154, 98)
+            thumb.setIcon(self._thumbnail(photo, QSize(198, 118), cover=True)); thumb.setIconSize(QSize(198, 118)); thumb.setFixedSize(204, 124)
             thumb.setToolTip(photo.title or photo.original_filename)
             border = "2px solid #0b63ce" if photo.id == item.id else "1px solid transparent"
             thumb.setStyleSheet(f"border:{border};border-radius:10px;padding:2px;background:transparent;")
