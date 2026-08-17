@@ -104,8 +104,24 @@ def plane_unit_normal(orientation: Orientation) -> tuple[float, float, float]:
     return (-sin(dip) * sin(azimuth), -sin(dip) * cos(azimuth), cos(dip))
 
 
+def _worksheet_unit_normal(orientation: Orientation) -> tuple[float, float, float]:
+    """Normal convention used by the supplied Maple/Wyllie-Mah worksheet.
+
+    The worksheet defines Nx=sin(dip)sin(azimuth), Ny=sin(dip)cos(azimuth),
+    Nz=cos(dip).  Keep this convention local to the wedge-formation criteria so
+    their signed numeric regression remains directly auditable against the
+    supplied calculation.
+    """
+    dip, azimuth = radians(orientation.dip_deg), radians(orientation.dip_direction_deg)
+    return (sin(dip) * sin(azimuth), sin(dip) * cos(azimuth), cos(dip))
+
+
 def _cross(a, b):
     return (a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0])
+
+
+def _dot(a, b):
+    return sum(first * second for first, second in zip(a, b))
 
 
 def intersection_line(first: Orientation, second: Orientation, tolerance: float = 1e-10) -> IntersectionLine | None:
@@ -124,27 +140,54 @@ def intersection_line(first: Orientation, second: Orientation, tolerance: float 
     return IntersectionLine(trend, plunge, vector)
 
 
-def wedge_geometry(slope: Orientation, first: Orientation, second: Orientation) -> WedgeResult:
-    """Apply the three comprehensive bench-wedge formation conditions.
+def wedge_geometry(slope: Orientation, first: Orientation, second: Orientation,
+                   tolerance: float = 1e-10) -> WedgeResult:
+    """Apply the three supplied Maple/Wyllie-Mah bench-wedge criteria exactly.
 
-    For the MVP bench, eta=+1 and the upper surface is horizontal.  The
-    conditions respectively test outward intersection direction, daylight at
-    the dipping face, and that the face ray is bounded by the two joint planes.
-    Values are retained so the UI can expose an auditable diagnostic table.
+    The source worksheet uses a non-overhanging face (eta=+1), a horizontal
+    upper surface (dipU=0), and upper-surface azimuth aligned with the face.
+    Its three signed criteria are retained verbatim in vector form and a wedge
+    is geometrically formed only when every value is strictly negative.
     """
     names = sorted((first.name, second.name))
-    line = intersection_line(first, second)
+    line = intersection_line(first, second, tolerance)
     if line is None:
         return WedgeResult(names[0], names[1], None, (None, None, None), (False, False, False), False)
-    delta = radians(circular_azimuth_difference(line.trend_deg, slope.dip_direction_deg))
-    criterion_1 = cos(delta)  # eta=+1: line points through the non-overhanging face
-    criterion_2 = tan(radians(slope.dip_deg)) * criterion_1 - tan(radians(line.plunge_deg))
-    # Face dip direction must fall between the two planes on the outward side.
-    def signed(azimuth):
-        return sin(radians((azimuth - slope.dip_direction_deg + 180) % 360 - 180))
-    criterion_3 = -signed(first.dip_direction_deg) * signed(second.dip_direction_deg)
-    passes = (criterion_1 >= 0.0, criterion_2 >= 0.0, criterion_3 >= 0.0)
-    return WedgeResult(names[0], names[1], line, (criterion_1, criterion_2, criterion_3), passes, False)
+
+    # Worksheet notation: B=bench face, U=upper surface, 1/2=joint planes.
+    normal_b = _worksheet_unit_normal(slope)
+    upper = Orientation(0.0, slope.dip_direction_deg, "Upper")
+    normal_u = _worksheet_unit_normal(upper)
+    normal_1 = _worksheet_unit_normal(first)
+    normal_2 = _worksheet_unit_normal(second)
+
+    # iix/iiy/iiz in the worksheet are the unnormalised N2 x N1 vector.
+    intersection_raw = _cross(normal_2, normal_1)
+    iiz = intersection_raw[2]
+    if not isfinite(iiz) or abs(iiz) <= tolerance:
+        return WedgeResult(names[0], names[1], line, (None, None, None), (False, False, False), False)
+
+    # gg = NB x N1; p = i . NU; q = gg . N2.
+    gg = _cross(normal_b, normal_1)
+    p = _dot(intersection_raw, normal_u)
+    q = _dot(gg, normal_2)
+
+    eta = 1.0
+    slope_dip = radians(slope.dip_deg)
+    upper_dip = radians(upper.dip_deg)
+
+    # Exact signed criteria from the supplied worksheet (page 4).
+    criterion_1 = -iiz * p
+    criterion_2 = eta * q / (-iiz)
+    criterion_3 = (
+        eta * (cos(slope_dip) - q / (-iiz)) * tan(upper_dip)
+        - sqrt(max(0.0, 1.0 - cos(slope_dip) ** 2))
+    )
+    values = (criterion_1, criterion_2, criterion_3)
+    if not all(isfinite(value) for value in values):
+        return WedgeResult(names[0], names[1], line, values, (False, False, False), False)
+    passes = tuple(value < 0.0 for value in values)
+    return WedgeResult(names[0], names[1], line, values, passes, False)
 
 
 def wedge_screening(slope: Orientation, joints: list[Orientation], friction_angle_deg: float) -> list[WedgeResult]:
