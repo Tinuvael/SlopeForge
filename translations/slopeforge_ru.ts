@@ -3139,5 +3139,20 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Confirmed</source><translation>Подтверждено</translation></message>
         <message><source>Excluded</source><translation>Исключено</translation></message>
         <message><source>Automatic</source><translation>Автоматически</translation></message>
+        <message><source>Design slope</source><translation>Проектный откос</translation></message>
+        <message><source>Details…</source><translation>Подробнее…</translation></message>
+        <message><source>From Blast design</source><translation>Из раздела «Параметры взрыва»</translation></message>
+        <message><source>Incomplete</source><translation>Недостаточно данных</translation></message>
+        <message><source>Insufficient joint sets</source><translation>Недостаточно систем трещин</translation></message>
+        <message><source>Not indicated</source><translation>Не выявлено</translation></message>
+        <message><source>Planar</source><translation>Плоское скольжение</translation></message>
+        <message><source>Planar sliding</source><translation>Плоское скольжение</translation></message>
+        <message><source>Potential</source><translation>Потенциально</translation></message>
+        <message><source>Preliminary kinematic screening using representative joint-set orientations. Does not account for orientation scatter, persistence, spacing, water pressure or factor of safety.</source><translation>Предварительный кинематический анализ по представительному ориентированию систем трещин. Не учитывает разброс ориентирования, протяжённость, шаг, давление воды и коэффициент запаса.</translation></message>
+        <message><source>Reference parameter — not used in Q′ or structural screening</source><translation>Справочный параметр — не используется в Q′ и структурном анализе</translation></message>
+        <message><source>Slope orientation or strength inputs missing</source><translation>Не заданы ориентирование откоса или параметры прочности</translation></message>
+        <message><source>Structural screening details</source><translation>Детали структурного анализа</translation></message>
+        <message><source>Wedge sliding</source><translation>Клиновое скольжение</translation></message>
+        <message><source>Wedges</source><translation>Клинья</translation></message>
     </context>
 </TS>

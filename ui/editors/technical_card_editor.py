@@ -6,11 +6,13 @@ from app.localization import tr
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox,
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QTabWidget,
-    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QInputDialog, QSizePolicy)
+    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QInputDialog, QSizePolicy, QHeaderView)
 
 from domain.blasting.technical_card import (CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS,
     PRODUCTION_GROUP_TYPES, ActualDrillingGroup, BlastDrillingGroup, DesignSlopeOrientation,
     GeomechanicalParameters, JointSetOrientation)
+from domain.geomechanics.kinematic_screening import (Orientation, estimated_joint_friction_angle,
+    indicative_cohesion_kpa, planar_screening, q_prime, wedge_screening)
 from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
 from ui.presentation_labels import (
     CONTROLLED_BLASTING_LABELS, domain_message, technical_group_label, technical_text,
@@ -77,36 +79,119 @@ class TechnicalCardDialog(QDialog):
             self.method.setCurrentIndex(max(0, self.method.findData(contour.controlled_blasting_method)))
             self.method.currentIndexChanged.connect(self._method_changed); f.addRow(tr("Method"), self.method); layout.addWidget(method)
 
-    def _geomechanics_tab(self):
-        layout = self._scroll_tab(tr("Geomechanics")); geo = self.revision.geomechanical_parameters
-        rock = QGroupBox(tr("Rock mass")); form = QFormLayout(rock)
-        self.lithology = QLineEdit(geo.lithology)
-        self.domain_value = QLabel(self.domain_name or "—"); self.domain_value.setObjectName("geomechanicsDomainValue")
-        self.ucs = _number(geo.ucs_mpa); self.q_value = _number(geo.q_value)
-        self.rqd = _number(geo.rqd_percent); self.gsi = _number(geo.gsi); self.jw = _number(geo.jw)
-        for widget in (self.lithology, self.ucs, self.q_value, self.rqd, self.gsi, self.jw):
-            widget.setEnabled(not self.read_only)
-        form.addRow(tr("Lithology"), self.lithology); form.addRow(tr("Domain"), self.domain_value)
-        form.addRow(tr("UCS, MPa"), self.ucs); form.addRow(tr("Q"), self.q_value)
-        form.addRow(tr("RQD, %"), self.rqd); form.addRow(tr("GSI"), self.gsi); form.addRow(tr("Jw"), self.jw)
-        layout.addWidget(rock)
+    def _section_title(self, text):
+        label = QLabel(tr(text)); label.setObjectName("EngineeringSectionTitle")
+        return label
 
-        orientations = QGroupBox(tr("Joint / discontinuity sets")); grid = QGridLayout(orientations)
-        grid.addWidget(QLabel(tr("Set")), 0, 0); grid.addWidget(QLabel(tr("Dip, °")), 0, 1)
-        grid.addWidget(QLabel(tr("Dip direction, °")), 0, 2)
+    def _geomechanics_tab(self):
+        page = QWidget(); page.setObjectName("geomechanicsWorkspace")
+        layout = QGridLayout(page); layout.setContentsMargins(18, 14, 18, 12); layout.setHorizontalSpacing(28); layout.setVerticalSpacing(10)
+        self.tabs.addTab(page, tr("Geomechanics")); geo = self.revision.geomechanical_parameters
+
+        left = QVBoxLayout(); left.setSpacing(8); left.addWidget(self._section_title("Rock mass"))
+        identity = QGridLayout(); identity.setHorizontalSpacing(12); identity.setVerticalSpacing(4)
+        self.lithology = QLineEdit(geo.lithology); self.lithology.setMaximumWidth(250)
+        self.domain_value = QLabel(self.domain_name or "—"); self.domain_value.setObjectName("geomechanicsDomainValue")
+        identity.addWidget(QLabel(tr("Lithology")), 0, 0); identity.addWidget(QLabel(tr("Domain")), 0, 1)
+        identity.addWidget(self.lithology, 1, 0); identity.addWidget(self.domain_value, 1, 1)
+        self.ucs = _number(geo.ucs_mpa); self.rqd = _number(geo.rqd_percent); self.gsi = _number(geo.gsi)
+        for column, (label, widget, unit) in enumerate((("UCS", self.ucs, "MPa"), ("RQD", self.rqd, "%"), ("GSI", self.gsi, ""))):
+            widget.setFixedWidth(96); identity.addWidget(QLabel(tr(label)), 2, column)
+            identity.addWidget(widget, 3, column); identity.addWidget(QLabel(unit), 4, column)
+        left.addLayout(identity); left.addSpacing(5); left.addWidget(self._section_title("Joint / discontinuity sets"))
+        joint_grid = QGridLayout(); joint_grid.setHorizontalSpacing(10); joint_grid.setVerticalSpacing(4)
+        for column, label in enumerate(("Set", "Dip, °", "Dip direction, °")): joint_grid.addWidget(QLabel(tr(label)), 0, column)
         self.joint_set_rows = []
         for index in range(5):
             dip = _number(geo.joint_sets[index].dip_deg if index < len(geo.joint_sets) else None)
             direction = _number(geo.joint_sets[index].dip_direction_deg if index < len(geo.joint_sets) else None)
             dip.setObjectName(f"jointSetDip{index + 1}"); direction.setObjectName(f"jointSetDirection{index + 1}")
-            dip.setEnabled(not self.read_only); direction.setEnabled(not self.read_only)
-            grid.addWidget(QLabel(str(index + 1)), index + 1, 0); grid.addWidget(dip, index + 1, 1)
-            grid.addWidget(direction, index + 1, 2); self.joint_set_rows.append((dip, direction))
-        layout.addWidget(orientations)
+            dip.setFixedWidth(96); direction.setFixedWidth(110)
+            joint_grid.addWidget(QLabel(f"J{index + 1}"), index + 1, 0); joint_grid.addWidget(dip, index + 1, 1); joint_grid.addWidget(direction, index + 1, 2)
+            self.joint_set_rows.append((dip, direction))
+        left.addLayout(joint_grid); left.addStretch()
 
-        notes_group = QGroupBox(tr("Notes")); notes_layout = QVBoxLayout(notes_group)
-        self.geo_notes = QTextEdit(geo.notes); self.geo_notes.setMaximumHeight(90); self.geo_notes.setReadOnly(self.read_only)
-        notes_layout.addWidget(self.geo_notes); layout.addWidget(notes_group)
+        right = QVBoxLayout(); right.setSpacing(8); right.addWidget(self._section_title("Q-system / discontinuity strength"))
+        qgrid = QGridLayout(); qgrid.setHorizontalSpacing(12)
+        self.jn = _number(geo.jn); self.jr = _number(geo.jr); self.ja = _number(geo.ja); self.jw = _number(geo.jw)
+        for column, (label, widget) in enumerate((("Jn", self.jn), ("Jr", self.jr), ("Ja", self.ja), ("Jw", self.jw))):
+            widget.setFixedWidth(88); qgrid.addWidget(QLabel(label), 0, column); qgrid.addWidget(widget, 1, column)
+        helper = QLabel(tr("Reference parameter — not used in Q′ or structural screening")); helper.setObjectName("MutedText")
+        qgrid.addWidget(helper, 2, 0, 1, 4); right.addLayout(qgrid)
+        values = QHBoxLayout(); self.q_prime_value = QLabel("—"); self.friction_value = QLabel("—"); self.cohesion_value = QLabel("—")
+        for label, value in (("Q′", self.q_prime_value), ("Estimated joint friction angle", self.friction_value), ("Indicative cohesion", self.cohesion_value)):
+            column = QVBoxLayout(); caption = QLabel(tr(label)); caption.setObjectName("CalculatedCaption"); value.setObjectName("CalculatedValue")
+            column.addWidget(caption); column.addWidget(value); values.addLayout(column); values.addStretch()
+        right.addLayout(values); right.addSpacing(5); right.addWidget(self._section_title("Structural screening"))
+        slope_row = QHBoxLayout(); slope_row.addWidget(QLabel(tr("Design slope"))); self.design_slope_value = QLabel("—"); self.design_slope_value.setObjectName("designSlopeReadOnly")
+        slope_row.addWidget(self.design_slope_value); source = QLabel(tr("From Blast design")); source.setObjectName("MutedText"); slope_row.addWidget(source); slope_row.addStretch(); right.addLayout(slope_row)
+        summaries = QGridLayout(); self.planar_status = QLabel(tr("Incomplete")); self.planar_sets = QLabel(""); self.wedge_status = QLabel(tr("Incomplete")); self.wedge_pairs = QLabel("")
+        summaries.addWidget(QLabel(tr("Planar sliding")), 0, 0); summaries.addWidget(QLabel(tr("Wedge sliding")), 0, 1)
+        summaries.addWidget(self.planar_status, 1, 0); summaries.addWidget(self.wedge_status, 1, 1)
+        summaries.addWidget(self.planar_sets, 2, 0); summaries.addWidget(self.wedge_pairs, 2, 1); right.addLayout(summaries)
+        details = QPushButton(tr("Details…")); details.setMaximumWidth(100); details.clicked.connect(self._show_screening_details); right.addWidget(details, 0, Qt.AlignmentFlag.AlignRight)
+        limitation = QLabel(tr("Preliminary kinematic screening using representative joint-set orientations. Does not account for orientation scatter, persistence, spacing, water pressure or factor of safety.")); limitation.setWordWrap(True); limitation.setObjectName("MutedText"); right.addWidget(limitation); right.addStretch()
+        layout.addLayout(left, 0, 0); layout.addLayout(right, 0, 1); layout.setColumnStretch(0, 1); layout.setColumnStretch(1, 1)
+        notes = QVBoxLayout(); notes.addWidget(self._section_title("Notes")); self.geo_notes = QTextEdit(geo.notes); self.geo_notes.setFixedHeight(64); notes.addWidget(self.geo_notes)
+        layout.addLayout(notes, 1, 0, 1, 2)
+        for widget in (self.lithology, self.ucs, self.rqd, self.gsi, self.jn, self.jr, self.ja, self.jw): widget.setEnabled(not self.read_only)
+        self.geo_notes.setReadOnly(self.read_only)
+        for dip, direction in self.joint_set_rows: dip.setEnabled(not self.read_only); direction.setEnabled(not self.read_only)
+        for widget in (self.rqd, self.jn, self.jr, self.ja, *[x for row in self.joint_set_rows for x in row]): widget.valueChanged.connect(self._refresh_geomechanics)
+        page.setStyleSheet("""
+            #EngineeringSectionTitle { font-weight: 600; color: #1f2937; padding-bottom: 3px; border-bottom: 1px solid #e5e7eb; }
+            #CalculatedCaption, #MutedText { color: #6b7280; font-size: 11px; }
+            #CalculatedValue { color: #0b63ce; font-size: 17px; font-weight: 600; }
+            QDoubleSpinBox, QLineEdit, QTextEdit { min-height: 26px; border: 1px solid #d6dbe3; border-radius: 6px; background: white; padding: 2px 6px; }
+            QDoubleSpinBox:focus, QLineEdit:focus, QTextEdit:focus { border-color: #0b63ce; }
+        """)
+        self._refresh_geomechanics()
+
+    def _screening_inputs(self):
+        joints = []
+        for index, (dip, direction) in enumerate(self.joint_set_rows, 1):
+            dip_value, direction_value = self._optional_number(dip), self._optional_number(direction)
+            if dip_value is not None and direction_value is not None:
+                joints.append(Orientation(dip_value, direction_value % 360, f"J{index}"))
+        if hasattr(self, "design_slope_azimuth"):
+            azimuth, angle = self._optional_number(self.design_slope_azimuth), self._optional_number(self.design_slope_angle)
+        else:
+            slope = self.revision.design_slope_orientation; azimuth, angle = slope.azimuth_deg, slope.angle_deg
+        slope = Orientation(angle, azimuth, "Slope") if angle is not None and azimuth is not None else None
+        friction = estimated_joint_friction_angle(self._optional_number(self.jr), self._optional_number(self.ja))
+        return slope, joints, friction
+
+    def _refresh_geomechanics(self, *_):
+        q = q_prime(self._optional_number(self.rqd), self._optional_number(self.jn), self._optional_number(self.jr), self._optional_number(self.ja))
+        friction = estimated_joint_friction_angle(self._optional_number(self.jr), self._optional_number(self.ja)); cohesion = indicative_cohesion_kpa(friction)
+        self.q_prime_value.setText("—" if q is None else f"{q:.2f}"); self.friction_value.setText("—" if friction is None else f"{friction:.1f}°"); self.cohesion_value.setText("—" if cohesion is None else f"{cohesion:.1f} kPa")
+        slope, joints, friction = self._screening_inputs(); self._planar_results = []; self._wedge_results = []
+        self.design_slope_value.setText("—" if slope is None else f"{slope.dip_direction_deg:g}° / {slope.dip_deg:g}°")
+        if slope is None or friction is None:
+            self.planar_status.setText(tr("Incomplete")); self.planar_sets.setText(tr("Slope orientation or strength inputs missing")); self.wedge_status.setText(tr("Incomplete")); self.wedge_pairs.setText(tr("Slope orientation or strength inputs missing")); return
+        self._planar_results = planar_screening(slope, joints, friction); potentials = [x.joint for x in self._planar_results if x.potential]
+        self.planar_status.setText(tr("Potential") if potentials else tr("Not indicated")); self.planar_sets.setText(", ".join(potentials))
+        if len(joints) < 2:
+            self.wedge_status.setText(tr("Incomplete")); self.wedge_pairs.setText(tr("Insufficient joint sets")); return
+        self._wedge_results = wedge_screening(slope, joints, friction); pairs = [f"{x.first} × {x.second}" for x in self._wedge_results if x.potential]
+        self.wedge_status.setText(tr("Potential") if pairs else tr("Not indicated")); self.wedge_pairs.setText(", ".join(pairs))
+        for status in (self.planar_status, self.wedge_status):
+            potential = status.text() == tr("Potential")
+            status.setStyleSheet("color: #8a5a00; font-weight: 600;" if potential else "color: #475569; font-weight: 600;")
+
+    def _show_screening_details(self):
+        dialog = QDialog(self); dialog.setWindowTitle(tr("Structural screening details")); dialog.resize(900, 420)
+        layout = QVBoxLayout(dialog); tabs = QTabWidget(); layout.addWidget(tabs)
+        planar = QTableWidget(len(self._planar_results), 7); planar.setHorizontalHeaderLabels([tr(x) for x in ("Set", "Dip / Dip direction", "Δaz", "Δaz <= 20°", "φj < dip", "dip < slope", "Result")])
+        for row, result in enumerate(self._planar_results):
+            values = (result.joint, f"{result.dip_deg:g}° / {result.dip_direction_deg:g}°", f"{result.azimuth_difference_deg:.1f}°", result.azimuth_pass, result.friction_pass, result.daylight_pass, tr("Potential") if result.potential else tr("Not indicated"))
+            for column, value in enumerate(values): planar.setItem(row, column, QTableWidgetItem("✓" if value is True else "✗" if value is False else str(value)))
+        wedge = QTableWidget(len(self._wedge_results), 8); wedge.setHorizontalHeaderLabels([tr(x) for x in ("Pair", "Trend", "Plunge", "Criterion 1", "Criterion 2", "Criterion 3", "Plunge > φj", "Result")])
+        for row, result in enumerate(self._wedge_results):
+            line = result.line; values = (f"{result.first} × {result.second}", "—" if line is None else f"{line.trend_deg:.2f}°", "—" if line is None else f"{line.plunge_deg:.2f}°", *result.criterion_passes, result.friction_pass, tr("Potential") if result.potential else tr("Not indicated"))
+            for column, value in enumerate(values): wedge.setItem(row, column, QTableWidgetItem("✓" if value is True else "✗" if value is False else str(value)))
+        for table in (planar, wedge): table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        tabs.addTab(planar, tr("Planar")); tabs.addTab(wedge, tr("Wedges")); close = QPushButton(tr("Close")); close.clicked.connect(dialog.accept); layout.addWidget(close, 0, Qt.AlignmentFlag.AlignRight); dialog.exec()
 
     @staticmethod
     def _optional_number(widget):
@@ -126,9 +211,9 @@ class TechnicalCardDialog(QDialog):
             joint_sets.append(JointSetOrientation(dip, direction))
         return GeomechanicalParameters(
             lithology=self.lithology.text(), ucs_mpa=self._optional_number(self.ucs),
-            q_value=self._optional_number(self.q_value), rqd_percent=self._optional_number(self.rqd),
-            gsi=self._optional_number(self.gsi), joint_sets=joint_sets,
-            jw=self._optional_number(self.jw), notes=self.geo_notes.toPlainText(),
+            rqd_percent=self._optional_number(self.rqd), gsi=self._optional_number(self.gsi), joint_sets=joint_sets,
+            jw=self._optional_number(self.jw), jn=self._optional_number(self.jn), jr=self._optional_number(self.jr),
+            ja=self._optional_number(self.ja), notes=self.geo_notes.toPlainText(),
         )
 
     def _drilling_tab(self, title):
@@ -145,7 +230,7 @@ class TechnicalCardDialog(QDialog):
         slope=self.revision.design_slope_orientation
         self.design_slope_azimuth=_number(slope.azimuth_deg); self.design_slope_azimuth.setRange(-1,360); self.design_slope_azimuth.setSpecialValueText("—"); self.design_slope_azimuth.setObjectName("designSlopeAzimuth")
         self.design_slope_angle=_number(slope.angle_deg); self.design_slope_angle.setRange(-1,90); self.design_slope_angle.setSpecialValueText("—"); self.design_slope_angle.setObjectName("designSlopeAngle")
-        for spin in (self.design_slope_azimuth,self.design_slope_angle): spin.setMaximumWidth(160); spin.setEnabled(not self.read_only)
+        for spin in (self.design_slope_azimuth,self.design_slope_angle): spin.setMaximumWidth(160); spin.setEnabled(not self.read_only); spin.valueChanged.connect(self._refresh_geomechanics)
         planned_form.addRow(tr("Design slope azimuth, °"),self.design_slope_azimuth); planned_form.addRow(tr("Design slope angle, °"),self.design_slope_angle)
         self.drilling_layout.addWidget(planned)
         self.group_cards = QWidget(); self.group_cards_layout = QVBoxLayout(self.group_cards)

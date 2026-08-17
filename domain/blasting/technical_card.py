@@ -93,17 +93,21 @@ class JointSetOrientation:
 class GeomechanicalParameters:
     lithology: str = ""
     ucs_mpa: float | None = None
-    q_value: float | None = None
+    # Compatibility-only reader for pre-#102 payloads; never emitted or edited.
+    q_value: float | None = field(default=None, repr=False)
     rqd_percent: float | None = None
     gsi: float | None = None
     joint_sets: list[JointSetOrientation] = field(default_factory=list)
     jw: float | None = None
+    jn: float | None = None
+    jr: float | None = None
+    ja: float | None = None
     notes: str = ""
 
     def __post_init__(self) -> None:
         if len(self.joint_sets) > 5:
             raise ValueError("Geomechanics may contain at most five joint sets")
-        for name in ("ucs_mpa", "q_value", "rqd_percent", "gsi", "jw"):
+        for name in ("ucs_mpa", "q_value", "rqd_percent", "gsi", "jw", "jn", "jr", "ja"):
             value = getattr(self, name)
             if value is not None and not isfinite(value):
                 raise ValueError(f"{name} must be finite")
@@ -112,7 +116,7 @@ class GeomechanicalParameters:
 
     def minimum_complete(self) -> bool:
         return self.ucs_mpa is not None and any(
-            value is not None for value in (self.q_value, self.rqd_percent, self.gsi)
+            value is not None for value in (self.rqd_percent, self.gsi, self.jn, self.jr, self.ja)
         )
 
 @dataclass
@@ -444,6 +448,8 @@ def _encode(value):
             "charge_concentration_kg_per_m", "total_charge_mass_kg", "stemming_length_m",
             "charge_construction_text", "air_deck_count", "deck_notes", "planned_drilling_length_m"}
         return {f.name: _encode(getattr(value, f.name)) for f in fields(value) if f.name not in legacy}
+    if isinstance(value, GeomechanicalParameters):
+        return {f.name: _encode(getattr(value, f.name)) for f in fields(value) if f.name != "q_value"}
     if hasattr(value, "__dataclass_fields__"): return {f.name: _encode(getattr(value, f.name)) for f in fields(value)}
     if isinstance(value, dict): return {k: _encode(v) for k, v in value.items()}
     if isinstance(value, list): return [_encode(v) for v in value]

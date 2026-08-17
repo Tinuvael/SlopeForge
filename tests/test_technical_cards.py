@@ -98,7 +98,7 @@ def test_production_and_contour_required_sections_differ():
 
 
 @pytest.mark.parametrize("values,complete", [
-    ({}, False), ({"ucs_mpa": 100}, False), ({"ucs_mpa": 100, "q_value": 2}, True),
+    ({}, False), ({"ucs_mpa": 100}, False), ({"ucs_mpa": 100, "q_value": 2}, False),
     ({"ucs_mpa": 100, "rqd_percent": 50}, True), ({"ucs_mpa": 100, "gsi": 40}, True),
     ({"q_value": 2, "rqd_percent": 50, "gsi": 40}, False),
 ])
@@ -149,9 +149,19 @@ def test_new_geomechanics_payload_round_trip_and_precedence():
         representative_ucs_mpa=1, rqd_representative_percent=2, geomechanical_notes="old")
     geo = type(card).from_dict(payload).active_revision().geomechanical_parameters
     assert (geo.lithology, geo.ucs_mpa, geo.q_value, geo.rqd_percent, geo.gsi, geo.jw, geo.notes) == (
-        "Granodiorite", 145, 6.5, 78, 62, 0.66, "Moderately jointed")
+        "Granodiorite", 145, None, 78, 62, 0.66, "Moderately jointed")
     assert geo.joint_sets == [JointSetOrientation(70, 110), JointSetOrientation(45, 250)]
     assert all(isinstance(item, JointSetOrientation) for item in geo.joint_sets)
+
+
+def test_q_system_sources_round_trip_without_persisting_manual_q():
+    blast = event(); card, draft = new_technical_card(blast)
+    draft.geomechanical_parameters = GeomechanicalParameters(
+        rqd_percent=72, jn=6, jr=3, ja=2, jw=0.8, q_value=99)
+    card.save_revision(draft)
+    payload = card.to_dict()["revisions"][0]["geomechanical_parameters"]
+    assert (payload["jn"], payload["jr"], payload["ja"], payload["jw"]) == (6, 3, 2, 0.8)
+    assert "q_value" not in payload
 
 
 def test_json_roundtrip_and_old_json_compatibility():
@@ -203,7 +213,7 @@ def test_real_embedded_production_editor_controls_and_ucs_persistence():
     assert embedded.editor.group_cards_layout.count() >= 1
     assert embedded.editor.completion_status is not None
     embedded.editor.ucs.setValue(123.0)
-    embedded.editor.q_value.setValue(2.5)
+    embedded.editor.jn.setValue(6); embedded.editor.jr.setValue(3); embedded.editor.ja.setValue(2)
     assert embedded.save_draft() is True
     restored = AssessmentDomainState.from_dict(json.loads(json.dumps(state.to_dict())))
     assert restored.technical_cards[0].active_revision().geomechanical_parameters.ucs_mpa == 123.0
@@ -217,11 +227,14 @@ def test_real_geomechanics_ui_is_compact_and_domain_is_read_only():
     blast = event(); card, draft = new_technical_card(blast)
     dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None, domain_name="North")
     labels = {item.text() for item in dialog.findChildren(widgets.QLabel)}
-    required = {"Lithology", "Domain", "UCS, MPa", "Q", "RQD, %", "GSI", "Jw",
+    required = {"Lithology", "Domain", "UCS", "RQD", "GSI", "Jn", "Jr", "Ja", "Jw", "Q′",
                 "Set", "Dip, °", "Dip direction, °", "North"}
     assert required <= labels
     assert len(dialog.joint_set_rows) == 5
     assert isinstance(dialog.domain_value, widgets.QLabel)
+    workspace = dialog.findChild(widgets.QWidget, "geomechanicsWorkspace")
+    assert workspace is not None and not isinstance(workspace, widgets.QScrollArea)
+    assert not hasattr(dialog, "q_value")
     removed = {"Geotechnical domain", "Local strength class", "Representative UCS",
         "Minimum UCS", "Maximum UCS", "Representative RQD", "Minimum RQD", "Maximum RQD",
         "Rock mass description", "Fracturing", "Water conditions"}
