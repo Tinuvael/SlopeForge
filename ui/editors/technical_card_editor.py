@@ -6,7 +6,7 @@ from app.localization import tr
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox,
     QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
-    QScrollArea, QSpinBox, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
+    QScrollArea, QSpinBox, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QToolButton, QVBoxLayout, QWidget,
     QInputDialog, QSizePolicy, QHeaderView)
 
 from domain.blasting.technical_card import (BARTON_JA_VALUES, BARTON_JN_VALUES, BARTON_JR_VALUES,
@@ -186,9 +186,9 @@ class TechnicalCardDialog(QDialog):
             widget.setFixedWidth(88)
             if label == "Jw":
                 header = QWidget(); header_row = QHBoxLayout(header); header_row.setContentsMargins(0, 0, 0, 0); header_row.setSpacing(4)
-                header_row.addWidget(QLabel("Jw")); jw_help = QLabel("?"); jw_help.setObjectName("HelpDot"); jw_help.setToolTip(jw_help_text)
-                jw_help.setAlignment(Qt.AlignmentFlag.AlignCenter); jw_help.setFixedSize(15, 15); header_row.addWidget(jw_help); header_row.addStretch()
-                qgrid.addWidget(header, 0, column)
+                jw_label = QLabel("Jw"); jw_label.setToolTip(jw_help_text); header_row.addWidget(jw_label)
+                self.jw_help_button = QToolButton(); self.jw_help_button.setText("?"); self.jw_help_button.setAutoRaise(True); self.jw_help_button.setToolTip(jw_help_text)
+                header_row.addWidget(self.jw_help_button); header_row.addStretch(); qgrid.addWidget(header, 0, column)
             else:
                 qgrid.addWidget(QLabel(label), 0, column)
             qgrid.addWidget(widget, 1, column)
@@ -231,7 +231,6 @@ class TechnicalCardDialog(QDialog):
         page.setStyleSheet("""
             #EngineeringSectionTitle { font-weight: 600; color: #1f2937; }
             #EngineeringInlineLabel { font-weight: 600; color: #1f2937; }
-            #HelpDot { color: #64748b; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 10px; font-weight: 600; }
             #CalculatedCaption, #MutedText { color: #6b7280; font-size: 11px; }
             #CalculatedValue { color: #0b63ce; font-size: 17px; font-weight: 600; }
             QComboBox, QLineEdit, QTextEdit { min-height: 26px; border: 1px solid #d6dbe3; border-radius: 6px; background: white; padding: 2px 6px; }
