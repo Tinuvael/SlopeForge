@@ -12,6 +12,7 @@ from application.use_cases.create_domain import CreateDomainCommand
 from application.use_cases.create_project import CreateProjectCommand
 from app.context import AppContext
 from ui.header import Header
+from ui.pages.analysis_page import AnalysisPlaceholderPage
 from ui.pages.block_page import BlockPage
 from ui.widgets.project_tree import ProjectTree
 
@@ -20,14 +21,14 @@ class MainWindow(QMainWindow):
         super().__init__(); self.context=context; self.setWindowTitle(f"{APP_NAME} — {APP_VERSION}"); apply_window_icon(self); self.resize(1600,900)
         self.selected_site_id=None; self.selected_site_name=None; self.selected_domain_id=None; self.selected_domain_name=None; self.selected_block_id=None; self.selected_contour_event_id=None; self.selected_assessment_area_id=None
         self.assessment_page=None; self.assessment_domain_id=None; self.assessment_site_id=None
-        self.tree=ProjectTree(context); self.tree.setMaximumWidth(320); self.block_page=BlockPage(context); self.page=self.block_page; self.page_stack=QStackedWidget(); self.page_stack.addWidget(self.block_page)
+        self.tree=ProjectTree(context); self.tree.setMaximumWidth(320); self.block_page=BlockPage(context); self.analysis_page=AnalysisPlaceholderPage(); self.page=self.block_page; self.page_stack=QStackedWidget(); self.page_stack.addWidget(self.block_page); self.page_stack.addWidget(self.analysis_page)
         self.header=Header(context); self._navigation_visible=True; self.create_blast_event=create_blast_event_use_case(context)
         self.create_project=create_project_use_case(context); self.create_domain=create_domain_use_case(context)
         self.navigation_queries=create_project_navigation_queries(context)
         self.generate_project_report=create_generate_project_report_use_case(context)
         self.tree.site_selected.connect(self.select_site); self.tree.domain_selected.connect(self.select_domain); self.tree.block_selected.connect(self.open_block_from_tree); self.tree.contour_event_selected.connect(self.open_contour_from_tree); self.tree.assessment_area_selected.connect(self.open_area_from_tree)
         self.header.add_project_requested.connect(self._add_project); self.header.add_domain_requested.connect(self._add_domain); self.header.add_blast_event_requested.connect(self._add_blast_event); self.header.add_assessment_area_requested.connect(self._add_area)
-        self.header.report_requested.connect(self._project_report)
+        self.header.analysis_requested.connect(self._open_analysis); self.header.report_requested.connect(self._project_report)
         self.header.navigation_toggle_requested.connect(self._toggle_navigation)
         self.header.search.textChanged.connect(self.tree.set_search_query)
         self.tree.reset_search_requested.connect(self.header.search.clear)
@@ -39,6 +40,11 @@ class MainWindow(QMainWindow):
         self._navigation_visible=not self._navigation_visible
         self.tree.setVisible(self._navigation_visible)
         self.header.set_navigation_visible(self._navigation_visible)
+    def _open_analysis(self):
+        if not self._guard_leave(): return False
+        self._activate_page(self.analysis_page)
+        self.header.set_archive_context(False)
+        return True
     def _show(self,page):
         if not self._guard_leave(): return False
         self._activate_page(page)
@@ -49,7 +55,7 @@ class MainWindow(QMainWindow):
         self.page_stack.setCurrentWidget(page)
     def _dispose_transient_page(self, incoming):
         current = self.page_stack.currentWidget()
-        if current is None or current is incoming or current is self.block_page or current is self.assessment_page:
+        if current is None or current is incoming or current is self.block_page or current is self.analysis_page or current is self.assessment_page:
             return
         self.page_stack.removeWidget(current)
         current.deleteLater()
