@@ -59,18 +59,38 @@ class EntityAttachmentService:
 
     def add_files(self, owner_type: str, owner_id: str, attachment_kind: str,
                   source_paths: Iterable[str | Path], metadata: dict | None = None) -> list[EntityAttachment]:
-        self._validate(owner_type, owner_id, attachment_kind)
+        """Add one batch using shared metadata.
+
+        Retained for document imports and compatibility callers. Photo review may
+        supply independent metadata for each selected file through
+        :meth:`add_files_with_metadata`.
+        """
         metadata = metadata or {}
+        return self.add_files_with_metadata(
+            owner_type, owner_id, attachment_kind,
+            ((source, metadata) for source in source_paths),
+        )
+
+    def add_files_with_metadata(self, owner_type: str, owner_id: str, attachment_kind: str,
+                                entries: Iterable[tuple[str | Path, dict | None]]) -> list[EntityAttachment]:
+        """Atomically add files whose metadata can differ per file.
+
+        Files are copied and appended to state as one logical batch. If any copy
+        or persistence callback fails, every attachment and copied destination
+        from this batch is rolled back. This lets the photo UI review/category
+        each selected image individually without weakening the existing
+        filesystem rollback guarantee.
+        """
+        self._validate(owner_type, owner_id, attachment_kind)
         added: list[EntityAttachment] = []
         destinations: list[Path] = []
         try:
-            for raw_source in source_paths:
+            for raw_source, raw_metadata in entries:
+                metadata = raw_metadata or {}
                 source = Path(raw_source)
                 if not source.is_file():
                     raise FileNotFoundError(source)
                 destination = self._destination(owner_type, owner_id, attachment_kind, source.name)
-                # The destination did not exist when selected by _destination, so it
-                # is safe to remove it if this batch later fails.
                 destinations.append(destination)
                 self.file_storage.copy(source, destination)
                 relative = destination.relative_to(self.data_root).as_posix()
