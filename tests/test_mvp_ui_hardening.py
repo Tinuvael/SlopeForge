@@ -420,7 +420,7 @@ def test_assessment_attachment_ui_has_no_saved_revision_gate():
 
 def test_block_attachment_tabs_are_real_and_ordered():
     block = source("ui/pages/block_page.py")
-    expected = ["General information", "Geomechanics", "Blast design", "Execution fact", "Photos", "Documents", "History"]
+    expected = ["General information", "Blast design", "Geomechanics", "Execution fact", "Photos", "Documents", "History"]
     positions = [block.index(f'"{title}"') for title in expected]
     assert positions == sorted(positions)
     assert 'self.tabs.addTab(self.photos_tab, tr("Photos"))' in block
