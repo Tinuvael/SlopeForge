@@ -16,7 +16,9 @@ class TechnicalCardEditorWidget(QWidget):
     def take_tab(self,title):
         for index in range(self.tabs.count()):
             if self.tabs.tabText(index)==title:
-                page=self.tabs.widget(index); self.tabs.removeTab(index); return page
+                page=self.tabs.widget(index); self.tabs.removeTab(index)
+                page.setProperty("blastEventType",self.editor.blast_event.event_type)
+                return page
         return QWidget()
     def save_draft(self): return False if self.editor.read_only else self.editor._save("draft")
     def complete(self): return False if self.editor.read_only else self.editor._save("completed")
@@ -29,12 +31,11 @@ class BlastDesignEditorWidget(_SectionWidget): pass
 class ActualExecutionEditorWidget(_SectionWidget):
     def __init__(self,page,parent=None):
         super().__init__(page,parent)
-        # The compact Plan/Actual comparison below the factual charge builder can
-        # reduce the vertical slack available to the reusable builder on Block
-        # pages. Reserve an explicit footer band so the legend remains visually
-        # below the graphics view instead of touching/overlapping the borehole.
+        # The production Execution fact comparison footer leaves less vertical
+        # slack than the contour layout. Reserve a small footer band only there
+        # so the reusable charge legend stays below the graphics view.
         self.setStyleSheet("""
-            QLabel#chargeLegend {
+            QScrollArea[blastEventType="production"] QLabel#chargeLegend {
                 min-height: 24px;
                 margin-top: 6px;
                 padding-top: 2px;
