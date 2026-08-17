@@ -1,8 +1,8 @@
 from app.localization import tr
 from domain.blasting.workflow import ASSESSMENT_PROGRESS_LABELS, assessment_progress_for
 """Normal, revision-safe page for one Assessment Area."""
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QFormLayout,QFrame,QGridLayout,QHBoxLayout,QInputDialog,QLabel,QMessageBox,QPushButton,QTableWidget,QTableWidgetItem,
+from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtWidgets import (QAbstractItemView,QFormLayout,QFrame,QGridLayout,QHBoxLayout,QInputDialog,QLabel,QListWidget,QListWidgetItem,QMessageBox,QPushButton,
                                QSizePolicy,QSplitter,QTabWidget,QVBoxLayout,QWidget)
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
@@ -12,6 +12,21 @@ from ui.presentation_labels import format_assessment_elevation_interval, result_
 
 
 def _value(value): return "—" if value in (None,"") else str(value)
+
+class AssessmentLinkListItem(QFrame):
+    STATUS_COLORS={"suggested":("#fff8e6","#d6a632"),"confirmed":("#edf8f0","#58a66a"),"excluded":("#f3f4f6","#9ca3af")}
+    def __init__(self,event,link,stale,parent=None):
+        super().__init__(parent); self.workflow_status=link.status; self.is_stale=stale; self.setObjectName("AssessmentLinkItem")
+        layout=QVBoxLayout(self); layout.setContentsMargins(9,7,9,7); layout.setSpacing(3)
+        title=QLabel(event.name); title.setStyleSheet("font-weight:600"); layout.addWidget(title); detail=QLabel(f"{tr(event.event_type.title())} · {event.elevation:g} m"); detail.setObjectName("MutedText"); layout.addWidget(detail)
+        badges=QHBoxLayout(); status=QLabel(tr(link.status.title())); status.setObjectName("LinkStatusBadge"); badges.addWidget(status)
+        if stale:
+            stale_badge=QLabel(tr("Stale")); stale_badge.setObjectName("StaleBadge"); badges.addWidget(stale_badge)
+        badges.addStretch(); source=QLabel(f"{tr(link.source.title())} · {link.geometry_revision_id}"); source.setObjectName("MutedText"); badges.addWidget(source); layout.addLayout(badges)
+        self.set_selected(False)
+    def set_selected(self,selected):
+        background,accent=self.STATUS_COLORS[self.workflow_status]; border="#2563a6" if selected else accent; width=2 if selected else 1
+        self.setStyleSheet(f"QFrame#AssessmentLinkItem{{background:{background};border:{width}px solid {border};border-radius:5px}} QLabel#LinkStatusBadge{{font-weight:600;color:#374151}} QLabel#StaleBadge{{background:#fff1c2;color:#8a5a00;border:1px solid #e5b94d;border-radius:4px;padding:1px 4px}}")
 
 class AssessmentAreaPage(QWidget):
     edit_boundaries_requested=Signal(str)
@@ -78,7 +93,7 @@ class AssessmentAreaPage(QWidget):
 
     def _overview(self):
         page=QWidget(); layout=QVBoxLayout(page); rev=self.area.active_geometry_revision(); top=QHBoxLayout(); self.info_card=CardFrame("General information"); self.info_grid=QGridLayout(); self.info_card.layout.addLayout(self.info_grid); top.addWidget(self.info_card,3)
-        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation); self.plan=PlanGeometryWidget(); dataset=next((d for d in self.controller.state.datasets if d.id==(rev.source_dataset_ids[0] if rev.source_dataset_ids else None)),None); self.plan.set_geometry(rev.final_geometry_frozen,dataset.lines if dataset else [],f"{tr('Elevation interval')}: {interval}"); top.addWidget(self.plan,2); layout.addLayout(top)
+        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation); self.plan=PlanGeometryWidget(); dataset=next((d for d in self.controller.state.datasets if d.id==(rev.source_dataset_ids[0] if rev.source_dataset_ids else None)),None); self.plan.use_center_control(); self.plan.set_geometry(rev.final_geometry_frozen,dataset.lines if dataset else [],f"{tr('Elevation interval')}: {interval}",focus_geometry=rev.final_geometry_frozen); top.addWidget(self.plan,2); layout.addLayout(top)
         cards=QHBoxLayout(); self.result_card,self.links_card,self.geometry_card=(CardFrame(x) for x in ("Assessment result","Linked events","Geometry")); self.result_text=QLabel(); self.links_text=QLabel(); self.geometry_text=QLabel();
         for card,label in ((self.result_card,self.result_text),(self.links_card,self.links_text),(self.geometry_card,self.geometry_text)):label.setWordWrap(True); card.layout.addWidget(label); cards.addWidget(card)
         layout.addLayout(cards); bottom=QHBoxLayout(); self.comments_card=CardFrame("Comments / recommendations"); self.comments_text=QLabel(); self.comments_text.setWordWrap(True); self.comments_card.layout.addWidget(self.comments_text); self.recent_card=CardFrame("Recent history"); self.recent_text=QLabel(); self.recent_text.setWordWrap(True); self.recent_card.layout.addWidget(self.recent_text); bottom.addWidget(self.comments_card,3); bottom.addWidget(self.recent_card,2); layout.addLayout(bottom)
@@ -103,17 +118,48 @@ class AssessmentAreaPage(QWidget):
         persisted=self.evaluation in self.controller.state.evaluations; photos=self.controller.attachments.list_for_owner("assessment_evaluation",self.evaluation.id,"photo") if persisted else []; documents=self.controller.attachments.list_for_owner("assessment_evaluation",self.evaluation.id,"document") if persisted else []; self.photo_preview.set_items(photos,tr("No photos yet")); self.document_preview.set_items(documents,tr("No documents yet")); self.photo_preview.add_button.setEnabled(True); self.document_preview.add_button.setEnabled(True)
 
     def _linked_events(self):
-        page=QWidget(); layout=QVBoxLayout(page); self.links_table=QTableWidget(0,8); self.links_table.setHorizontalHeaderLabels([tr("Status"),tr("Source"),tr("BlastEvent"),tr("Type"),tr("Elevation"),tr("Revision"),tr("State"),tr("Spatial match")]); layout.addWidget(self.links_table); actions=QHBoxLayout()
-        for label,callback in (("Confirm",self.confirm_link),("Exclude",self.exclude_link),("Restore suggestion",self.restore_link),("Add manually",self.add_manual_link),("Recalculate links",self.recalculate_links),("Show on plan",self.show_link_on_plan)):
-            button=QPushButton(tr(label)); button.setEnabled(label=="Show on plan" or not self.read_only); button.clicked.connect(callback); actions.addWidget(button)
-        layout.addLayout(actions); self.tabs.addTab(page,tr("Linked events")); self.refresh_links()
+        page=QWidget(); layout=QVBoxLayout(page); self.links_splitter=QSplitter(Qt.Orientation.Horizontal); self.links_splitter.setChildrenCollapsible(False)
+        left=QWidget(); left.setMinimumWidth(300); left.setMaximumWidth(380); left_layout=QVBoxLayout(left); left_layout.setContentsMargins(0,0,4,0); left_layout.setSpacing(6)
+        self.links_list=QListWidget(); self.links_list.setSpacing(5); self.links_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection); self.links_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel); self.links_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); left_layout.addWidget(self.links_list,1)
+        selected_actions=QHBoxLayout(); global_actions=QHBoxLayout()
+        self.link_action_buttons={}
+        for label,callback in (("Confirm",self.confirm_link),("Exclude",self.exclude_link),("Restore suggestion",self.restore_link)):
+            button=QPushButton(tr(label)); button.setEnabled(not self.read_only); button.clicked.connect(callback); selected_actions.addWidget(button); self.link_action_buttons[label]=button
+        for label,callback in (("Add manually",self.add_manual_link),("Recalculate links",self.recalculate_links)):
+            button=QPushButton(tr(label)); button.setEnabled(not self.read_only); button.clicked.connect(callback); global_actions.addWidget(button); self.link_action_buttons[label]=button
+        left_layout.addLayout(selected_actions); left_layout.addLayout(global_actions); self.links_splitter.addWidget(left)
+        detail=QFrame(); detail.setObjectName("CriterionCard"); detail_layout=QVBoxLayout(detail); detail_layout.setContentsMargins(8,6,8,8); detail_layout.setSpacing(5)
+        header=QHBoxLayout(); names=QVBoxLayout(); self.link_event_name=QLabel(tr("Select a linked event")); self.link_event_name.setObjectName("CardTitle"); self.link_event_detail=QLabel(); self.link_event_detail.setObjectName("MutedText"); names.addWidget(self.link_event_name); names.addWidget(self.link_event_detail); header.addLayout(names,1); self.link_event_type=QLabel(); self.link_event_type.setObjectName("MetaBadge"); header.addWidget(self.link_event_type); detail_layout.addLayout(header)
+        self.link_status_line=QLabel(); self.link_status_line.setTextFormat(Qt.TextFormat.RichText); detail_layout.addWidget(self.link_status_line)
+        self.link_warning=QLabel(); self.link_warning.setWordWrap(True); self.link_warning.setStyleSheet("background:#fff8e6;color:#8a5a00;border:1px solid #e5b94d;border-radius:4px;padding:5px"); self.link_warning.hide(); detail_layout.addWidget(self.link_warning)
+        legend=f"<span style='color:#1261a0'>■</span> {tr('Assessment area')} &nbsp;&nbsp; <span style='color:#d97706'>■</span> {tr('Blast event')} &nbsp;&nbsp; <span style='color:#9ca3af'>━</span> {tr('Project Lines')}"
+        self.link_preview=PlanGeometryWidget(); self.link_preview.reimport_button.hide(); self.link_preview.set_context(legend); self.link_preview.use_center_control(); detail_layout.addWidget(self.link_preview,1); self.links_splitter.addWidget(detail)
+        self.links_splitter.setStretchFactor(0,0); self.links_splitter.setStretchFactor(1,1); layout.addWidget(self.links_splitter)
+        self.linked_events_tab=page; self._links_splitter_initialized=False
+        self.links_list.currentRowChanged.connect(self._link_selection_changed); self.tabs.currentChanged.connect(self._linked_tab_changed); self.tabs.addTab(page,tr("Linked events")); self._link_preview_initialized=False; self.refresh_links()
+    def _linked_tab_changed(self,index):
+        if self.tabs.widget(index) is self.linked_events_tab and not self._links_splitter_initialized:
+            QTimer.singleShot(0,self._initialize_links_splitter)
+    def _initialize_links_splitter(self):
+        if self._links_splitter_initialized or not self.links_splitter.isVisible():return
+        total=self.links_splitter.width()
+        if total<=0:
+            QTimer.singleShot(0,self._initialize_links_splitter); return
+        left_width=max(300,min(340,total//3)); right_width=max(1,total-left_width-self.links_splitter.handleWidth())
+        self.links_splitter.setSizes([left_width,right_width]); self._links_splitter_initialized=True
+        QTimer.singleShot(0,self.link_preview.center_on_focus)
     def refresh_links(self):
-        links=self.area.links_for_revision(); self.links_table.setRowCount(len(links))
-        for row,link in enumerate(links):
-            event=self.controller.links.event(link.blast_event_id); candidate=self.controller.links.evaluate_event(self.area,event); values=(link.status,link.source,event.name,event.event_type,f"{event.elevation:g}",link.geometry_revision_id,"stale" if self.controller.links.is_stale(link) else "current","yes" if candidate.spatial_matches else "no")
-            for col,value in enumerate(values):self.links_table.setItem(row,col,QTableWidgetItem(value))
+        selected=self._selected_link(); selected_id=selected.id if selected else None; links=self.area.links_for_revision(); self.links_list.clear(); self._link_item_widgets=[]
+        for link in links:
+            event=self.controller.links.event(link.blast_event_id); widget=AssessmentLinkListItem(event,link,self.controller.links.is_stale(link)); item=QListWidgetItem(); item.setSizeHint(widget.sizeHint()); item.setData(Qt.ItemDataRole.UserRole,link.id); self.links_list.addItem(item); self.links_list.setItemWidget(item,widget); self._link_item_widgets.append(widget)
+        row=next((index for index,item in enumerate(links) if item.id==selected_id),0 if links else -1)
+        if row>=0:self.links_list.setCurrentRow(row)
+        else:self.refresh_link_preview()
+    def _link_selection_changed(self,_row):
+        for row,widget in enumerate(self._link_item_widgets):widget.set_selected(row==self.links_list.currentRow())
+        self.refresh_link_preview()
     def _selected_link(self):
-        row=self.links_table.currentRow(); links=self.area.links_for_revision(); return links[row] if 0<=row<len(links) else None
+        row=self.links_list.currentRow() if hasattr(self,"links_list") else -1; links=self.area.links_for_revision(); return links[row] if 0<=row<len(links) else None
     def _change_link(self,method):
         if not self._ensure_editable():return
         link=self._selected_link()
@@ -127,15 +173,17 @@ class AssessmentAreaPage(QWidget):
         if not self._ensure_editable():return
         events=[e for e in self.controller.state.blast_events if not e.is_archived]; labels=[f"{e.name} ({e.event_type}, {e.elevation:g})" for e in events]; selected,ok=QInputDialog.getItem(self,tr("Add linked event"),tr("BlastEvent"),labels,0,False)
         if ok and selected:self.controller.add_manual_event_link(self.area,events[labels.index(selected)].id); self.refresh_links(); self._refresh_overview_and_sidebar()
-    def show_link_on_plan(self):
-        link=self._selected_link()
-        if not link:return
-        event=self.controller.links.event(link.blast_event_id)
-        revision=self.controller.links.linked_revision(event,link)
-        if revision is None:
-            QMessageBox.warning(self,tr("Data integrity error"),tr("The exact BlastEvent geometry revision referenced by this Assessment link is missing. The current geometry was not substituted."))
-            return
-        area_revision=self.area.active_geometry_revision(); dataset=next((d for d in self.controller.state.datasets if d.id==(area_revision.source_dataset_ids[0] if area_revision.source_dataset_ids else None)),None); self.plan.set_geometry(revision.plan_geometry,dataset.lines if dataset else [],f"{event.name} | {event.elevation:g}"); self.tabs.setCurrentIndex(0)
+    def refresh_link_preview(self):
+        area_revision=self.area.active_geometry_revision(); dataset=next((d for d in self.controller.state.datasets if d.id==(area_revision.source_dataset_ids[0] if area_revision.source_dataset_ids else None)),None); project_lines=dataset.lines if dataset else []; link=self._selected_link()
+        if not link:
+            self.link_event_name.setText(tr("Select a linked event")); self.link_event_detail.clear(); self.link_event_type.clear(); self.link_status_line.clear(); self.link_warning.hide(); self.link_preview.set_comparison_geometry(area_revision.final_geometry_frozen,None,project_lines,focus_geometry=area_revision.final_geometry_frozen,recenter=not self._link_preview_initialized); self._link_preview_initialized=True; return
+        event=self.controller.links.event(link.blast_event_id); revision=self.controller.links.linked_revision(event,link); stale=self.controller.links.is_stale(link); candidate=self.controller.links.evaluate_event(self.area,event)
+        self.link_event_name.setText(event.name); self.link_event_type.setText(tr(event.event_type.title())); self.link_event_detail.setText(f"{event.elevation:g} m · {tr('Revision')} {link.geometry_revision_id}")
+        badges=[tr(link.status.title()),tr("Stale") if stale else tr("Current")]
+        if candidate.spatial_matches:badges.append(tr("Spatial match"))
+        self.link_status_line.setText(" &nbsp; ".join(f"<span style='background:#eef2f7;border:1px solid #d5dbe3;border-radius:4px;padding:2px 5px'><b>{value}</b></span>" for value in badges))
+        self.link_warning.setText(tr("Referenced geometry revision is unavailable. Current event geometry was not substituted.")); self.link_warning.setVisible(revision is None)
+        self.link_preview.set_comparison_geometry(area_revision.final_geometry_frozen,revision.plan_geometry if revision else None,project_lines,focus_geometry=area_revision.final_geometry_frozen,recenter=not self._link_preview_initialized); self._link_preview_initialized=True
 
     def _attachment_tab(self,title):
         kind="photo" if title=="Photos" else "document"; from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget

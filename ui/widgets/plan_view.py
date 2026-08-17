@@ -101,4 +101,9 @@ class PrototypePlanView(QGraphicsView):
         rect = self.scene().itemsBoundingRect()
         if not rect.isNull():
             margin = max(min(max(rect.width(), rect.height()) * 0.03, 100.0), 1.0)
-            self.fitInView(rect.adjusted(-margin, -margin, margin, margin), Qt.AspectRatioMode.KeepAspectRatio)
+            self.fit_to_rect(rect.adjusted(-margin, -margin, margin, margin))
+
+    def fit_to_rect(self, rect):
+        """Use one aspect-ratio-preserving framing path for every plan view."""
+        if not rect.isNull():
+            self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
