@@ -4,13 +4,15 @@ from __future__ import annotations
 from app.localization import tr
 
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QTabWidget,
-    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QInputDialog, QSizePolicy, QHeaderView)
+from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox,
+    QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
+    QScrollArea, QSpinBox, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
+    QInputDialog, QSizePolicy, QHeaderView)
 
-from domain.blasting.technical_card import (CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS,
-    PRODUCTION_GROUP_TYPES, ActualDrillingGroup, BlastDrillingGroup, DesignSlopeOrientation,
-    GeomechanicalParameters, JointSetOrientation)
+from domain.blasting.technical_card import (BARTON_JA_VALUES, BARTON_JN_VALUES, BARTON_JR_VALUES,
+    BARTON_JW_VALUES, CONTOUR_GROUP_TYPES, CONTROLLED_BLASTING_METHODS, PRODUCTION_GROUP_TYPES,
+    ActualDrillingGroup, BlastDrillingGroup, DesignSlopeOrientation, GeomechanicalParameters,
+    JointSetOrientation)
 from domain.geomechanics.kinematic_screening import (Orientation, estimated_joint_friction_angle,
     indicative_cohesion_kpa, planar_screening, q_prime, wedge_screening)
 from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
@@ -30,6 +32,30 @@ def _number(value, suffix=""):
     widget.setSpecialValueText("—"); widget.setValue(value if value is not None else widget.minimum())
     if suffix: widget.setSuffix(f" {suffix}")
     return widget
+
+
+def _integer_number(value, valid_minimum, valid_maximum, suffix=""):
+    """Compact integer engineering input with one sentinel value for an empty draft field."""
+    widget = QSpinBox()
+    widget.setRange(valid_minimum - 1, valid_maximum)
+    widget.setSingleStep(1)
+    widget.setSpecialValueText("—")
+    widget.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.UpDownArrows)
+    valid = value is not None and valid_minimum <= value <= valid_maximum
+    widget.setValue(int(round(value)) if valid else widget.minimum())
+    if suffix: widget.setSuffix(f" {suffix}")
+    return widget
+
+
+def _rating_combo(value, allowed_values):
+    """Barton ratings are catalogue values, not arbitrary floating-point inputs."""
+    combo = QComboBox(); combo.addItem("—", None)
+    for rating in allowed_values:
+        combo.addItem(f"{rating:g}", float(rating))
+    if value is not None:
+        index = next((i for i in range(1, combo.count()) if abs(combo.itemData(i) - value) <= 1e-9), 0)
+        combo.setCurrentIndex(index)
+    return combo
 
 
 class TechnicalCardDialog(QDialog):
@@ -94,17 +120,20 @@ class TechnicalCardDialog(QDialog):
         self.domain_value = QLabel(self.domain_name or "—"); self.domain_value.setObjectName("geomechanicsDomainValue")
         identity.addWidget(QLabel(tr("Lithology")), 0, 0); identity.addWidget(QLabel(tr("Domain")), 0, 1)
         identity.addWidget(self.lithology, 1, 0); identity.addWidget(self.domain_value, 1, 1)
-        self.ucs = _number(geo.ucs_mpa); self.rqd = _number(geo.rqd_percent); self.gsi = _number(geo.gsi)
-        for column, (label, widget, unit) in enumerate((("UCS", self.ucs, "MPa"), ("RQD", self.rqd, "%"), ("GSI", self.gsi, ""))):
-            widget.setFixedWidth(96); identity.addWidget(QLabel(tr(label)), 2, column)
+        self.ucs = _integer_number(geo.ucs_mpa, 0, 1_000_000); self.ucs.setObjectName("rockMassUCS")
+        self.ff = _integer_number(geo.ff, 0, 1_000_000); self.ff.setObjectName("rockMassFF")
+        self.gsi = _integer_number(geo.gsi, 1, 100); self.gsi.setObjectName("rockMassGSI")
+        for column, (label, widget, unit) in enumerate((("UCS", self.ucs, "MPa"), ("FF", self.ff, ""), ("GSI", self.gsi, ""))):
+            widget.setFixedWidth(96); identity.addWidget(QLabel(label if label == "FF" else tr(label)), 2, column)
             identity.addWidget(widget, 3, column); identity.addWidget(QLabel(unit), 4, column)
         left.addLayout(identity); left.addSpacing(5); left.addWidget(self._section_title("Joint / discontinuity sets"))
         joint_grid = QGridLayout(); joint_grid.setHorizontalSpacing(10); joint_grid.setVerticalSpacing(4)
         for column, label in enumerate(("Set", "Dip, °", "Dip direction, °")): joint_grid.addWidget(QLabel(tr(label)), 0, column)
         self.joint_set_rows = []
         for index in range(5):
-            dip = _number(geo.joint_sets[index].dip_deg if index < len(geo.joint_sets) else None)
-            direction = _number(geo.joint_sets[index].dip_direction_deg if index < len(geo.joint_sets) else None)
+            stored = geo.joint_sets[index] if index < len(geo.joint_sets) else None
+            dip = _integer_number(stored.dip_deg if stored else None, 0, 90)
+            direction = _integer_number(stored.dip_direction_deg if stored else None, 0, 359)
             dip.setObjectName(f"jointSetDip{index + 1}"); direction.setObjectName(f"jointSetDirection{index + 1}")
             dip.setFixedWidth(96); direction.setFixedWidth(110)
             joint_grid.addWidget(QLabel(f"J{index + 1}"), index + 1, 0); joint_grid.addWidget(dip, index + 1, 1); joint_grid.addWidget(direction, index + 1, 2)
@@ -112,12 +141,16 @@ class TechnicalCardDialog(QDialog):
         left.addLayout(joint_grid); left.addStretch()
 
         right = QVBoxLayout(); right.setSpacing(8); right.addWidget(self._section_title("Q-system / discontinuity strength"))
-        qgrid = QGridLayout(); qgrid.setHorizontalSpacing(12)
-        self.jn = _number(geo.jn); self.jr = _number(geo.jr); self.ja = _number(geo.ja); self.jw = _number(geo.jw)
-        for column, (label, widget) in enumerate((("Jn", self.jn), ("Jr", self.jr), ("Ja", self.ja), ("Jw", self.jw))):
+        qgrid = QGridLayout(); qgrid.setHorizontalSpacing(12); qgrid.setVerticalSpacing(4)
+        self.rqd = _integer_number(geo.rqd_percent, 0, 100, "%"); self.rqd.setObjectName("qSystemRQD")
+        self.jn = _rating_combo(geo.jn, BARTON_JN_VALUES); self.jn.setObjectName("qSystemJn")
+        self.jr = _rating_combo(geo.jr, BARTON_JR_VALUES); self.jr.setObjectName("qSystemJr")
+        self.ja = _rating_combo(geo.ja, BARTON_JA_VALUES); self.ja.setObjectName("qSystemJa")
+        self.jw = _rating_combo(geo.jw, BARTON_JW_VALUES); self.jw.setObjectName("qSystemJw")
+        for column, (label, widget) in enumerate((("RQD", self.rqd), ("Jn", self.jn), ("Jr", self.jr), ("Ja", self.ja), ("Jw", self.jw))):
             widget.setFixedWidth(88); qgrid.addWidget(QLabel(label), 0, column); qgrid.addWidget(widget, 1, column)
         helper = QLabel(tr("Reference parameter — not used in Q′ or structural screening")); helper.setObjectName("MutedText")
-        qgrid.addWidget(helper, 2, 0, 1, 4); right.addLayout(qgrid)
+        qgrid.addWidget(helper, 2, 0, 1, 5); right.addLayout(qgrid)
         values = QHBoxLayout(); self.q_prime_value = QLabel("—"); self.friction_value = QLabel("—"); self.cohesion_value = QLabel("—")
         for label, value in (("Q′", self.q_prime_value), ("Estimated joint friction angle", self.friction_value), ("Indicative cohesion", self.cohesion_value)):
             column = QVBoxLayout(); caption = QLabel(tr(label)); caption.setObjectName("CalculatedCaption"); value.setObjectName("CalculatedValue")
@@ -134,16 +167,18 @@ class TechnicalCardDialog(QDialog):
         layout.addLayout(left, 0, 0); layout.addLayout(right, 0, 1); layout.setColumnStretch(0, 1); layout.setColumnStretch(1, 1)
         notes = QVBoxLayout(); notes.addWidget(self._section_title("Notes")); self.geo_notes = QTextEdit(geo.notes); self.geo_notes.setFixedHeight(64); notes.addWidget(self.geo_notes)
         layout.addLayout(notes, 1, 0, 1, 2)
-        for widget in (self.lithology, self.ucs, self.rqd, self.gsi, self.jn, self.jr, self.ja, self.jw): widget.setEnabled(not self.read_only)
+        for widget in (self.lithology, self.ucs, self.ff, self.gsi, self.rqd, self.jn, self.jr, self.ja, self.jw): widget.setEnabled(not self.read_only)
         self.geo_notes.setReadOnly(self.read_only)
         for dip, direction in self.joint_set_rows: dip.setEnabled(not self.read_only); direction.setEnabled(not self.read_only)
-        for widget in (self.rqd, self.jn, self.jr, self.ja, *[x for row in self.joint_set_rows for x in row]): widget.valueChanged.connect(self._refresh_geomechanics)
+        self.rqd.valueChanged.connect(self._refresh_geomechanics)
+        for combo in (self.jn, self.jr, self.ja): combo.currentIndexChanged.connect(self._refresh_geomechanics)
+        for widget in [x for row in self.joint_set_rows for x in row]: widget.valueChanged.connect(self._refresh_geomechanics)
         page.setStyleSheet("""
             #EngineeringSectionTitle { font-weight: 600; color: #1f2937; padding-bottom: 3px; border-bottom: 1px solid #e5e7eb; }
             #CalculatedCaption, #MutedText { color: #6b7280; font-size: 11px; }
             #CalculatedValue { color: #0b63ce; font-size: 17px; font-weight: 600; }
-            QDoubleSpinBox, QLineEdit, QTextEdit { min-height: 26px; border: 1px solid #d6dbe3; border-radius: 6px; background: white; padding: 2px 6px; }
-            QDoubleSpinBox:focus, QLineEdit:focus, QTextEdit:focus { border-color: #0b63ce; }
+            QSpinBox, QComboBox, QLineEdit, QTextEdit { min-height: 26px; border: 1px solid #d6dbe3; border-radius: 6px; background: white; padding: 2px 6px; }
+            QSpinBox:focus, QComboBox:focus, QLineEdit:focus, QTextEdit:focus { border-color: #0b63ce; }
         """)
         self._refresh_geomechanics()
 
@@ -152,18 +187,18 @@ class TechnicalCardDialog(QDialog):
         for index, (dip, direction) in enumerate(self.joint_set_rows, 1):
             dip_value, direction_value = self._optional_number(dip), self._optional_number(direction)
             if dip_value is not None and direction_value is not None:
-                joints.append(Orientation(dip_value, direction_value % 360, f"J{index}"))
+                joints.append(Orientation(dip_value, direction_value, f"J{index}"))
         if hasattr(self, "design_slope_azimuth"):
             azimuth, angle = self._optional_number(self.design_slope_azimuth), self._optional_number(self.design_slope_angle)
         else:
             slope = self.revision.design_slope_orientation; azimuth, angle = slope.azimuth_deg, slope.angle_deg
         slope = Orientation(angle, azimuth, "Slope") if angle is not None and azimuth is not None else None
-        friction = estimated_joint_friction_angle(self._optional_number(self.jr), self._optional_number(self.ja))
+        friction = estimated_joint_friction_angle(self._optional_rating(self.jr), self._optional_rating(self.ja))
         return slope, joints, friction
 
     def _refresh_geomechanics(self, *_):
-        q = q_prime(self._optional_number(self.rqd), self._optional_number(self.jn), self._optional_number(self.jr), self._optional_number(self.ja))
-        friction = estimated_joint_friction_angle(self._optional_number(self.jr), self._optional_number(self.ja)); cohesion = indicative_cohesion_kpa(friction)
+        q = q_prime(self._optional_number(self.rqd), self._optional_rating(self.jn), self._optional_rating(self.jr), self._optional_rating(self.ja))
+        friction = estimated_joint_friction_angle(self._optional_rating(self.jr), self._optional_rating(self.ja)); cohesion = indicative_cohesion_kpa(friction)
         self.q_prime_value.setText("—" if q is None else f"{q:.2f}"); self.friction_value.setText("—" if friction is None else f"{friction:.1f}°"); self.cohesion_value.setText("—" if cohesion is None else f"{cohesion:.1f} kPa")
         slope, joints, friction = self._screening_inputs(); self._planar_results = []; self._wedge_results = []
         self.design_slope_value.setText("—" if slope is None else f"{slope.dip_direction_deg:g}° / {slope.dip_deg:g}°")
@@ -197,6 +232,10 @@ class TechnicalCardDialog(QDialog):
     def _optional_number(widget):
         return None if widget.value() == widget.minimum() else widget.value()
 
+    @staticmethod
+    def _optional_rating(widget):
+        return widget.currentData()
+
     def _geomechanics_from_form(self):
         joint_sets = []
         for index, (dip_widget, direction_widget) in enumerate(self.joint_set_rows, start=1):
@@ -205,15 +244,12 @@ class TechnicalCardDialog(QDialog):
                 raise ValueError(f"Joint set {index} requires both dip and dip direction")
             if dip is None:
                 continue
-            if direction == 360:
-                direction = 0.0
-                direction_widget.setValue(0.0)
             joint_sets.append(JointSetOrientation(dip, direction))
         return GeomechanicalParameters(
             lithology=self.lithology.text(), ucs_mpa=self._optional_number(self.ucs),
-            rqd_percent=self._optional_number(self.rqd), gsi=self._optional_number(self.gsi), joint_sets=joint_sets,
-            jw=self._optional_number(self.jw), jn=self._optional_number(self.jn), jr=self._optional_number(self.jr),
-            ja=self._optional_number(self.ja), notes=self.geo_notes.toPlainText(),
+            rqd_percent=self._optional_number(self.rqd), gsi=self._optional_number(self.gsi), ff=self._optional_number(self.ff),
+            joint_sets=joint_sets, jw=self._optional_rating(self.jw), jn=self._optional_rating(self.jn),
+            jr=self._optional_rating(self.jr), ja=self._optional_rating(self.ja), notes=self.geo_notes.toPlainText(),
         )
 
     def _drilling_tab(self, title):
@@ -228,8 +264,8 @@ class TechnicalCardDialog(QDialog):
         date_row = QHBoxLayout(); date_row.addWidget(self.has_planned_date); date_row.addWidget(self.planned_date)
         planned_form.addRow(tr("Planned blast date"), date_row)
         slope=self.revision.design_slope_orientation
-        self.design_slope_azimuth=_number(slope.azimuth_deg); self.design_slope_azimuth.setRange(-1,360); self.design_slope_azimuth.setSpecialValueText("—"); self.design_slope_azimuth.setObjectName("designSlopeAzimuth")
-        self.design_slope_angle=_number(slope.angle_deg); self.design_slope_angle.setRange(-1,90); self.design_slope_angle.setSpecialValueText("—"); self.design_slope_angle.setObjectName("designSlopeAngle")
+        self.design_slope_azimuth=_integer_number(slope.azimuth_deg, 0, 359); self.design_slope_azimuth.setObjectName("designSlopeAzimuth")
+        self.design_slope_angle=_integer_number(slope.angle_deg, 0, 90); self.design_slope_angle.setObjectName("designSlopeAngle")
         for spin in (self.design_slope_azimuth,self.design_slope_angle): spin.setMaximumWidth(160); spin.setEnabled(not self.read_only); spin.valueChanged.connect(self._refresh_geomechanics)
         planned_form.addRow(tr("Design slope azimuth, °"),self.design_slope_azimuth); planned_form.addRow(tr("Design slope angle, °"),self.design_slope_angle)
         self.drilling_layout.addWidget(planned)
@@ -329,8 +365,10 @@ class TechnicalCardDialog(QDialog):
         if selected is not None:
             index=next((i for i in range(combo.count()) if combo.itemData(i).id==selected),-1)
             if index>=0: combo.setCurrentIndex(index)
+
     def _refresh_all_preset_combos(self,selected=None):
         for combo in self.group_cards.findChildren(QComboBox,"chargePresetCombo"): self._refresh_preset_combo(combo,selected)
+
     def _load_preset(self,combo,group,state,refresh):
         preset=combo.currentData()
         if not preset or not group.average_depth_m:return
@@ -345,12 +383,14 @@ class TechnicalCardDialog(QDialog):
         group.charge_components=values
         if state["builder"]: state["builder"].set_components(values)
         refresh()
+
     def _save_preset(self,combo,group):
         name,ok=QInputDialog.getText(self,tr("Save charge preset"),tr("Preset name"))
         if not ok:return
         try:preset=self.charge_presets.create(name,group.charge_components,self.explosive_products)
         except Exception as exc:self._show_preset_error(exc); return
         self._refresh_all_preset_combos(preset.id)
+
     def _update_preset(self,combo,group):
         preset=combo.currentData()
         if not preset:return
@@ -359,6 +399,7 @@ class TechnicalCardDialog(QDialog):
         try:updated=self.charge_presets.update(preset.id,preset.name,group.charge_components,self.explosive_products)
         except Exception as exc:self._show_preset_error(exc); return
         self._refresh_all_preset_combos(updated.id)
+
     def _delete_preset(self,combo):
         preset=combo.currentData()
         if not preset:return
@@ -367,6 +408,7 @@ class TechnicalCardDialog(QDialog):
         try:self.charge_presets.delete(preset.id)
         except Exception as exc:self._show_preset_error(exc); return
         self._refresh_all_preset_combos()
+
     def _show_preset_error(self,exc):
         safe=str(exc) if isinstance(exc,(ValueError,LookupError,PermissionError)) else tr("Could not save the charge preset.")
         QMessageBox.warning(self,tr("Charge preset"),safe)
@@ -462,7 +504,7 @@ class TechnicalCardDialog(QDialog):
             choice,ok=QInputDialog.getItem(self,tr("Copy design"),tr("Choose a safe copy mode:"),labels,0,False)
             if not ok or choice=="Cancel": return
             mode={labels[0]:"fill_empty",labels[1]:"add_missing",labels[2]:"replace"}[choice]
-            if mode=="replace" and QMessageBox.warning(self,tr("Replace actuals"),tr("All entered actual values will be replaced with design values."),QMessageBox.StandardButton.Ok|QMessageBox.StandardButton.Cancel,QMessageBox.StandardButton.Cancel)!=QMessageBox.StandardButton.Ok: return
+            if mode=="replace" and QMessageBox.warning(self,tr("Replace actuals"),tr("All entered actual values will be replaced with design values."),QMessageBox.StandardButton.Ok|QMessageBox.StandardButton.Cancel,QMessageBox.StandardButton.Cancel)!=QMessageBox.StandardButton.Ok:return
         actual.copy_from_design(self.revision.drilling_groups,self.revision.id or None,mode); self._render_actual_groups(); self._refresh_actual_summary()
 
     def _copy_one_actual(self, design, actual):
@@ -520,9 +562,8 @@ class TechnicalCardDialog(QDialog):
             return False
         self.revision.common_parameters.block_name = self.block_name.text(); self.revision.common_parameters.comments = self.comments.text()
         try:
-            azimuth=self._optional_number(self.design_slope_azimuth)
-            if azimuth==360: azimuth=0.0; self.design_slope_azimuth.setValue(0.0)
-            self.revision.design_slope_orientation=DesignSlopeOrientation(azimuth,self._optional_number(self.design_slope_angle))
+            self.revision.design_slope_orientation=DesignSlopeOrientation(
+                self._optional_number(self.design_slope_azimuth), self._optional_number(self.design_slope_angle))
             if self.revision.production_parameters:
                 p=self.revision.production_parameters; p.design_bench_height_m=None if self.bench_height.value()==self.bench_height.minimum() else self.bench_height.value()
                 self.revision.geomechanical_parameters = self._geomechanics_from_form()
