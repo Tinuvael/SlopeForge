@@ -31,14 +31,14 @@ class BlastDesignEditorWidget(_SectionWidget): pass
 class ActualExecutionEditorWidget(_SectionWidget):
     def __init__(self,page,parent=None):
         super().__init__(page,parent)
-        # The production Execution fact comparison footer leaves less vertical
-        # slack than the contour layout. Reserve a small footer band only there
-        # so the reusable charge legend stays below the graphics view.
-        self.setStyleSheet("""
-            QScrollArea[blastEventType="production"] QLabel#chargeLegend {
-                min-height: 24px;
-                margin-top: 6px;
-                padding-top: 2px;
-                background: #ffffff;
-            }
-        """)
+        # Do not style or overlay the reusable BoreholeChargeBuilder legend: its
+        # own layout already places the legend correctly below the graphics view,
+        # exactly as in Blast design. Production Actual has an extra mass
+        # comparison footer, so give that footer a little more top breathing room
+        # instead of touching the legend itself.
+        if page.property("blastEventType") == "production":
+            for comparison in page.findChildren(QWidget, "actualChargeComparison"):
+                layout = comparison.layout()
+                if layout is not None:
+                    margins = layout.contentsMargins()
+                    layout.setContentsMargins(margins.left(), 12, margins.right(), margins.bottom())
