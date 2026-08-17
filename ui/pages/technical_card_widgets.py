@@ -16,7 +16,9 @@ class TechnicalCardEditorWidget(QWidget):
     def take_tab(self,title):
         for index in range(self.tabs.count()):
             if self.tabs.tabText(index)==title:
-                page=self.tabs.widget(index); self.tabs.removeTab(index); return page
+                page=self.tabs.widget(index); self.tabs.removeTab(index)
+                page.setProperty("blastEventType",self.editor.blast_event.event_type)
+                return page
         return QWidget()
     def save_draft(self): return False if self.editor.read_only else self.editor._save("draft")
     def complete(self): return False if self.editor.read_only else self.editor._save("completed")
@@ -26,4 +28,19 @@ class _SectionWidget(QWidget):
         super().__init__(parent); self.page=page; page.setParent(self); QVBoxLayout(self).addWidget(page); page.setVisible(True)
 class GeomechanicsEditorWidget(_SectionWidget): pass
 class BlastDesignEditorWidget(_SectionWidget): pass
-class ActualExecutionEditorWidget(_SectionWidget): pass
+class ActualExecutionEditorWidget(_SectionWidget):
+    def __init__(self,page,parent=None):
+        super().__init__(page,parent)
+        # BoreholeChargeBuilder contains a 330 px minimum graphics viewport plus
+        # its add-component row, legend, margins and spacing.  The editor-level
+        # 350 px minimum is therefore too small: with several factual groups Qt
+        # can compress the builder until the toe label and legend visually
+        # collide.  Reserve the real content height for production Actual and let
+        # the outer Execution fact scroll area grow instead of squeezing it.
+        # The selector also applies to builders created later by Copy/Add/Replace.
+        if page.property("blastEventType") == "production":
+            self.setStyleSheet("""
+                QWidget#actualBoreholeChargeBuilder {
+                    min-height: 400px;
+                }
+            """)

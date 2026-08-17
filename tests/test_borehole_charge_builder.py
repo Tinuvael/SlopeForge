@@ -86,6 +86,31 @@ def test_products_are_snapshotted_and_cartridge_pitch_updates_count():
     assert widget.count_label.text() == "3" and widget.components()[1].cartridge_pitch_m == 1
 
 
+def test_catalogue_refresh_changes_choices_without_mutating_components():
+    existing=bulk(); replacement=ExplosiveProduct(9,"New bulk",ExplosiveProductKind.BULK,"#123456",density_kg_m3=1200)
+    component=ChargeComponent("frozen",ChargeComponentKind.BULK_EXPLOSIVE,1,2,existing.snapshot())
+    widget=BoreholeChargeBuilder(4,100,[existing],[component]); before=widget.components()[0].product_snapshot
+    widget.set_products([replacement])
+    assert widget.components()[0].product_snapshot == before
+    assert widget.components()[0].product_snapshot.name == "Bulk A"
+    assert [product.name for product in widget._products] == ["New bulk"]
+
+
+def test_spinbox_value_changes_update_component_immediately():
+    product=cartridge(); component=ChargeComponent("c",ChargeComponentKind.CARTRIDGE_EXPLOSIVE,1,3,product.snapshot(),.5)
+    widget=BoreholeChargeBuilder(6,100,[product],[component]); widget.select_component("c")
+    emissions=[]; widget.components_changed.connect(lambda values:emissions.append(values))
+    widget.start_spin.setValue(1.2)
+    assert widget.components()[0].start_depth_m == 1.2
+    widget.end_spin.setValue(3.2)
+    assert widget.components()[0].end_depth_m == 3.2
+    widget.length_spin.setValue(2.5)
+    assert widget.components()[0].end_depth_m == 3.7
+    widget.pitch_spin.setValue(.75)
+    assert widget.components()[0].cartridge_pitch_m == .75
+    assert len(emissions) == 4
+
+
 def test_numeric_sync_overlap_and_hole_depth_rejection():
     app(); a = ChargeComponent("a", ChargeComponentKind.STEMMING, 0, 2)
     b = ChargeComponent("b", ChargeComponentKind.STEMMING, 3, 5)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
@@ -116,6 +116,7 @@ class ExplosiveProductDialog(QDialog):
 
 
 class EngineeringCataloguesPage(QWidget):
+    catalogue_changed = Signal()
     HEADERS = ("Name", "Charge form", "Explosive class", "Color", "Density, kg/m³", "Cartridge diameter, mm",
                "Cartridge mass, kg", "Cartridge length, mm", "Default pitch, m", "Status")
 
@@ -174,6 +175,7 @@ class EngineeringCataloguesPage(QWidget):
             except (ValueError, LookupError) as exc:
                 QMessageBox.warning(self, tr("Catalogue update failed"), str(exc)); return
             self.reload()
+            self.catalogue_changed.emit()
 
     def _add(self): self._run_dialog()
     def _edit(self):
@@ -183,4 +185,4 @@ class EngineeringCataloguesPage(QWidget):
         if product:
             try: self.catalogue.set_product_enabled(product.id, not product.enabled)
             except (ValueError, LookupError) as exc: QMessageBox.warning(self, tr("Catalogue update failed"), str(exc))
-            else: self.reload()
+            else: self.reload(); self.catalogue_changed.emit()

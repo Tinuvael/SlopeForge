@@ -32,6 +32,7 @@ class MainWindow(QMainWindow):
         self.header.add_project_requested.connect(self._add_project); self.header.add_domain_requested.connect(self._add_domain); self.header.add_blast_event_requested.connect(self._add_blast_event); self.header.add_assessment_area_requested.connect(self._add_area)
         self.header.analysis_requested.connect(self._open_analysis); self.header.report_requested.connect(self._project_report)
         self.header.navigation_toggle_requested.connect(self._toggle_navigation)
+        self.header.catalogue_changed.connect(self._refresh_explosive_catalogue)
         self.header.search.textChanged.connect(self.tree.set_search_query)
         self.tree.reset_search_requested.connect(self.header.search.clear)
         self.header.archive_requested.connect(self._archive_selected)
@@ -42,6 +43,14 @@ class MainWindow(QMainWindow):
         self._navigation_visible=not self._navigation_visible
         self.tree.setVisible(self._navigation_visible)
         self.header.set_navigation_visible(self._navigation_visible)
+    def _refresh_explosive_catalogue(self):
+        from app.use_case_factory import create_explosive_catalogue
+        products=create_explosive_catalogue(self.context).list_enabled_products()
+        editors=[]
+        if self.block_page.technical_card_editor is not None: editors.append(self.block_page.technical_card_editor)
+        contour=getattr(self,"contour_page",None)
+        if contour is not None: editors.append(contour.editor)
+        for editor in editors: editor.editor.set_explosive_products(products)
     def _open_analysis(self):
         if not self._guard_leave(): return False
         self._activate_page(self.analysis_page)

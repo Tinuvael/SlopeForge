@@ -27,6 +27,8 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Show navigation": "Показать навигацию",
     "Analysis": "Анализ",
     "Analysis section is under development.": "Раздел анализа находится в разработке.",
+    "Parameter": "Параметр",
+    "Actual": "Факт",
 }
 
 # Qt asks the installed translator for platform-theme captions in contexts such

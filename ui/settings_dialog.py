@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.localization import save_language, selected_language, tr
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QStackedWidget, QVBoxLayout, QWidget
 
@@ -17,6 +17,7 @@ from app.use_case_factory import create_explosive_catalogue
 
 
 class SettingsDialog(QDialog):
+    catalogue_changed = Signal()
     def __init__(self, context: AppContext | None = None, parent=None):
         super().__init__(parent)
         apply_window_icon(self)
@@ -33,6 +34,7 @@ class SettingsDialog(QDialog):
             self.catalogues_page = EngineeringCataloguesPage(
                 create_explosive_catalogue(context), can_edit=context.current_user.can_edit)
             self._add_page(tr("Engineering catalogues"), self.catalogues_page)
+            self.catalogues_page.catalogue_changed.connect(self.catalogue_changed)
         if context and context.current_user.role == "admin":
             self._add_page(tr("Users"), UserAdminPage(context))
         self._add_page(tr("About"), self.about_page())

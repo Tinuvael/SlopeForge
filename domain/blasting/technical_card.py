@@ -255,16 +255,24 @@ class ActualDrillingGroup:
     rejected_hole_count: int | None = None; redrilled_hole_count: int | None = None
     wet_hole_count: int | None = None; uncharged_hole_count: int | None = None
     deviations_text: str = ""; notes: str = ""
+    charge_components: list[ChargeComponent] = field(default_factory=list)
 
     def effective_drilling_length(self):
         if not self.included: return 0.0
-        if self.drilling_length_m is not None: return self.drilling_length_m
         return None if self.hole_count is None or self.average_depth_m is None else self.hole_count * self.average_depth_m
 
     def effective_charge_mass(self):
         if not self.included: return 0.0
-        if self.total_charge_mass_kg is not None: return self.total_charge_mass_kg
-        return None if self.hole_count is None or self.charge_mass_per_hole_kg is None else self.hole_count * self.charge_mass_per_hole_kg
+        per_hole = self.explosive_mass_per_hole_kg()
+        return None if per_hole is None or self.hole_count is None else per_hole * self.hole_count
+
+    def explosive_mass_per_hole_kg(self):
+        if not self.charge_components: return 0.0
+        try: return sum(component_explosive_mass_kg(item, self.diameter_mm) for item in self.charge_components)
+        except ValueError: return None
+
+    def charge_matches(self, design: BlastDrillingGroup | None) -> bool:
+        return design is not None and charge_engineering_content(self.charge_components) == charge_engineering_content(design.charge_components)
 
     @classmethod
     def from_design(cls, group: BlastDrillingGroup, revision_id: str | None = None):
@@ -272,17 +280,30 @@ class ActualDrillingGroup:
                      copied_from_technical_revision_id=revision_id, copied_at=utc_now().isoformat())
         for name in _DESIGN_COPY_FIELDS:
             setattr(target, name, deepcopy(getattr(group, name)))
-        target.drilling_length_m = group.drilling_length()
-        target.charge_mass_per_hole_kg = group.explosive_mass_per_hole_kg()
-        target.total_charge_mass_kg = group.total_explosive_mass()
+        # The compatibility scalar is intentionally not copied: factual length
+        # always follows the editable factual hole count and depth.
+        target.drilling_length_m = None
+        target.charge_mass_per_hole_kg = None
+        target.total_charge_mass_kg = None
         target.stemming_length_m = group.stemming_total_m()
         target.explosive_type = group.explosive_names()
+        target.charge_components = deepcopy(group.charge_components)
         return target
 
 
 _DESIGN_COPY_FIELDS = ("group_type", "custom_type_name", "name", "sequence_order", "included", "hole_count",
     "diameter_mm", "average_depth_m", "subdrill_m", "burden_m", "spacing_m", "row_count", "inclination_deg",
     "azimuth_deg", "line_offset_m", "toe_standoff_m", "initiation_sequence", "delay_ms")
+
+
+def charge_engineering_content(components: list[ChargeComponent]) -> tuple:
+    """Canonical charge content comparison, deliberately excluding component UUIDs."""
+    def snapshot_value(snapshot):
+        if snapshot is None: return None
+        return tuple(getattr(snapshot, item.name) for item in fields(ExplosiveProductSnapshot))
+    return tuple((component.kind, component.start_depth_m, component.end_depth_m,
+                  component.cartridge_pitch_m, snapshot_value(component.product_snapshot))
+                 for component in components)
 
 
 @dataclass
@@ -308,18 +329,21 @@ class ActualExecution:
     @actual_drilling_length_m.setter
     def actual_drilling_length_m(self, value): self.actual_total_drilling_length_m = value
 
-    def recalculate(self):
-        """Groups are the explicit source of truth when they exist; old summaries survive otherwise."""
+    def recalculate(self, *, geometry_area_m2: float | None = None, production: bool = False):
+        """Rebuild every factual indicator from included factual groups."""
         groups = [g for g in self.actual_drilling_groups if g.included]
-        if not groups: return
         self.actual_total_hole_count = sum(g.hole_count or 0 for g in groups)
         lengths = [g.effective_drilling_length() for g in groups]
         masses = [g.effective_charge_mass() for g in groups]
         self.actual_total_drilling_length_m = None if any(v is None for v in lengths) else sum(lengths)
         self.actual_total_explosive_mass_kg = None if any(v is None for v in masses) else sum(masses)
-        weighted = [(g.hole_count, g.average_depth_m) for g in groups if g.hole_count and g.average_depth_m is not None]
-        count = sum(v[0] for v in weighted)
-        self.actual_average_depth_m = sum(n * d for n, d in weighted) / count if count else None
+        self.actual_average_depth_m = _ratio(self.actual_total_drilling_length_m, self.actual_total_hole_count)
+        if production:
+            self.actual_drilling_area_m2 = geometry_area_m2
+            self.actual_block_volume_m3 = (geometry_area_m2 * self.actual_average_depth_m
+                if geometry_area_m2 is not None and self.actual_average_depth_m is not None else None)
+        else:
+            self.actual_drilling_area_m2 = None; self.actual_block_volume_m3 = None
         volume, length = self.actual_block_volume_m3, self.actual_total_drilling_length_m
         self.actual_rock_yield_m3_per_drilling_m = _ratio(volume, length)
         self.actual_specific_drilling_m_per_m3 = _ratio(length, volume)
@@ -348,7 +372,7 @@ class ActualExecution:
         if mode == "replace":
             index = self.actual_drilling_groups.index(actual); fresh.id = actual.id
             self.actual_drilling_groups[index] = fresh; return fresh
-        for name in _DESIGN_COPY_FIELDS + ("drilling_length_m",):
+        for name in _DESIGN_COPY_FIELDS:
             if getattr(actual, name) in (None, "", []): setattr(actual, name, deepcopy(getattr(fresh, name)))
         actual.design_group_id = design.id
         return actual
@@ -442,7 +466,10 @@ class BlastEventTechnicalCard:
         saved.revision_number = number; saved.created_at = utc_now(); saved.status = status; saved.change_reason = change_reason
         if status == "completed" and saved.validate_completion(): raise ValueError("; ".join(saved.validate_completion()))
         if saved.production_parameters: saved.production_parameters.recalculate(saved.drilling_groups)
-        saved.actual_execution.recalculate()
+        area = (saved.production_parameters.drilling_area_m2.calculated_value
+                if saved.production_parameters else None)
+        saved.actual_execution.recalculate(
+            geometry_area_m2=area, production=saved.event_type == "production")
         self.revisions.append(saved); self.active_revision_id = saved.id
         return saved
 
@@ -573,7 +600,13 @@ def _card_from_dict(d):
         raw_actual.pop("actual_hole_count", None); raw_actual.pop("actual_drilling_length_m", None)
         actual_group_data = raw_actual.pop("actual_drilling_groups", [])
         actual = _construct(ActualExecution, raw_actual)
-        actual.actual_drilling_groups = [_construct(ActualDrillingGroup, g) for g in actual_group_data]
+        actual.actual_drilling_groups = []
+        for raw_group in actual_group_data:
+            migrated_group = dict(raw_group)
+            migrated_group["charge_components"] = [
+                _charge_component_from_dict(item) for item in migrated_group.get("charge_components", [])
+            ]
+            actual.actual_drilling_groups.append(_construct(ActualDrillingGroup, migrated_group))
         for group in groups:
             if group.legacy_actual_drilling_length_m is None: continue
             target = next((g for g in actual.actual_drilling_groups if g.design_group_id == group.id), None)
@@ -581,7 +614,9 @@ def _card_from_dict(d):
                 target = ActualDrillingGroup.from_design(group, x.get("id")); actual.actual_drilling_groups.append(target)
             if target.drilling_length_m is None or not actual_group_data: target.drilling_length_m = group.legacy_actual_drilling_length_m
             actual.migration_warnings.append(f"Перенесён старый фактический метраж группы «{group.name}»")
-        if actual.actual_drilling_groups: actual.recalculate()
+        if actual.actual_drilling_groups:
+            area = prod.drilling_area_m2.calculated_value if prod else None
+            actual.recalculate(geometry_area_m2=area, production=x["event_type"] == "production")
         card.revisions.append(BlastEventTechnicalCardRevision(
             id=x["id"], technical_card_id=x["technical_card_id"], revision_number=x["revision_number"],
             created_at=datetime.fromisoformat(x["created_at"]), geometry_revision_id=x["geometry_revision_id"],

@@ -1,13 +1,15 @@
 """Design/fact separation and backwards-compatibility regression tests."""
 from copy import deepcopy
+from dataclasses import replace
 import json
 
 import pytest
 
 from domain.blasting.technical_card import (
     ActualDrillingGroup, ActualExecution, BlastDrillingGroup,
-    BlastEventTechnicalCard, comparison_value,
+    BlastEventTechnicalCard, comparison_value, charge_engineering_content,
 )
+from domain.blasting.charge_design import ChargeComponent, ChargeComponentKind, ExplosiveProduct, ExplosiveProductKind
 from tests.test_technical_cards import event
 from domain.blasting.technical_card import new_technical_card
 
@@ -68,12 +70,13 @@ def test_unplanned_group_and_actual_calculations():
     execution.recalculate()
     assert execution.actual_drilling_groups[0].design_group_id is None
     assert execution.actual_total_hole_count == 12
-    assert execution.actual_total_drilling_length_m == 140
-    assert execution.actual_total_explosive_mass_kg == 230
+    assert execution.actual_total_drilling_length_m == 136
+    assert execution.actual_total_explosive_mass_kg == 0
     assert execution.actual_average_depth_m == pytest.approx(136 / 12)
-    assert execution.actual_rock_yield_m3_per_drilling_m == pytest.approx(1000 / 140)
-    assert execution.actual_specific_drilling_m_per_m3 == pytest.approx(140 / 1000)
-    assert execution.actual_powder_factor_kg_per_m3 == pytest.approx(230 / 1000)
+    assert execution.actual_block_volume_m3 is None
+    assert execution.actual_rock_yield_m3_per_drilling_m is None
+    assert execution.actual_specific_drilling_m_per_m3 is None
+    assert execution.actual_powder_factor_kg_per_m3 is None
     assert (execution.rejected_hole_count, execution.redrilled_hole_count,
             execution.wet_hole_count, execution.uncharged_hole_count) == (1, 1, 2, 1)
 
@@ -117,3 +120,43 @@ def test_second_revision_never_mutates_first_actual_snapshot():
     first = card.save_revision(draft); edit = deepcopy(first); edit.actual_execution.actual_drilling_groups[0].hole_count = 99
     second = card.save_revision(edit)
     assert first.actual_execution.actual_drilling_groups[0].hole_count != second.actual_execution.actual_drilling_groups[0].hole_count
+
+
+def test_actual_charge_is_a_deep_snapshot_and_uses_design_calculations():
+    product=ExplosiveProduct(7,"ANFO",ExplosiveProductKind.BULK,"#C87533",density_kg_m3=1000)
+    component=ChargeComponent("design-id",ChargeComponentKind.BULK_EXPLOSIVE,1,3,product.snapshot())
+    design=BlastDrillingGroup(id="DG",hole_count=4,diameter_mm=100,average_depth_m=5,charge_components=[component])
+    actual=ActualDrillingGroup.from_design(design)
+    assert actual.charge_components == design.charge_components
+    assert actual.charge_components is not design.charge_components
+    assert actual.effective_charge_mass() == pytest.approx(design.total_explosive_mass())
+    actual.charge_components[0]=replace(actual.charge_components[0],end_depth_m=4)
+    assert design.charge_components[0].end_depth_m == 3
+    assert not actual.charge_matches(design)
+
+
+def test_charge_comparison_ignores_component_ids_but_not_engineering_content():
+    product=ExplosiveProduct(8,"Emulsion",ExplosiveProductKind.BULK,"#112233",density_kg_m3=1100)
+    left=ChargeComponent("left",ChargeComponentKind.BULK_EXPLOSIVE,1,2,product.snapshot())
+    right=ChargeComponent("right",ChargeComponentKind.BULK_EXPLOSIVE,1,2,product.snapshot())
+    assert charge_engineering_content([left]) == charge_engineering_content([right])
+    right=replace(right,end_depth_m=2.5)
+    assert charge_engineering_content([left]) != charge_engineering_content([right])
+
+
+def test_actual_indicators_derive_from_groups_and_geometry_area():
+    product=ExplosiveProduct(9,"ANFO",ExplosiveProductKind.BULK,"#C87533",density_kg_m3=1000)
+    charge=ChargeComponent("charge",ChargeComponentKind.BULK_EXPLOSIVE,0,2,product.snapshot())
+    first=ActualDrillingGroup(hole_count=10,average_depth_m=8,diameter_mm=100,drilling_length_m=999,
+        charge_components=[charge],rejected_hole_count=1,wet_hole_count=2)
+    second=ActualDrillingGroup(hole_count=5,average_depth_m=10,diameter_mm=100,
+        charge_components=[charge],redrilled_hole_count=3,uncharged_hole_count=4)
+    actual=ActualExecution(actual_drilling_groups=[first,second]); actual.recalculate(geometry_area_m2=200,production=True)
+    assert actual.actual_total_hole_count == 15
+    assert actual.actual_total_drilling_length_m == 130
+    assert actual.actual_average_depth_m == pytest.approx(130/15)
+    assert actual.actual_drilling_area_m2 == 200
+    assert actual.actual_block_volume_m3 == pytest.approx(200*130/15)
+    assert actual.actual_rock_yield_m3_per_drilling_m == pytest.approx(actual.actual_block_volume_m3/130)
+    assert actual.actual_powder_factor_kg_per_m3 == pytest.approx(actual.actual_total_explosive_mass_kg/actual.actual_block_volume_m3)
+    assert (actual.rejected_hole_count,actual.redrilled_hole_count,actual.wet_hole_count,actual.uncharged_hole_count)==(1,3,2,4)

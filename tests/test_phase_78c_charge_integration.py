@@ -57,8 +57,10 @@ def test_cartridge_count_mass_and_design_to_actual_compatibility():
         cartridge().snapshot(),0.5),ChargeComponent("stem",ChargeComponentKind.STEMMING,0,1)]
     assert group.explosive_mass_per_hole_kg()==1.5
     actual=draft.actual_execution.copy_one(group)
-    assert actual.drilling_length_m==30 and actual.charge_mass_per_hole_kg==1.5
-    assert actual.total_charge_mass_kg==4.5 and actual.stemming_length_m==1
+    assert actual.drilling_length_m is None and actual.effective_drilling_length()==30
+    assert actual.charge_mass_per_hole_kg is None and actual.explosive_mass_per_hole_kg()==1.5
+    assert actual.total_charge_mass_kg is None and actual.effective_charge_mass()==4.5
+    assert actual.charge_components is not group.charge_components and actual.stemming_length_m==1
 
 
 class MemoryPersistence:
