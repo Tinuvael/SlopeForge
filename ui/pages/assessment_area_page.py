@@ -1,7 +1,7 @@
 from app.localization import tr
 from domain.blasting.workflow import ASSESSMENT_PROGRESS_LABELS, assessment_progress_for
 """Normal, revision-safe page for one Assessment Area."""
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (QAbstractItemView,QFormLayout,QFrame,QGridLayout,QHBoxLayout,QInputDialog,QLabel,QListWidget,QListWidgetItem,QMessageBox,QPushButton,
                                QSizePolicy,QSplitter,QTabWidget,QVBoxLayout,QWidget)
 from ui.pages.entity_page_controller import EntityPageController
@@ -134,8 +134,20 @@ class AssessmentAreaPage(QWidget):
         self.link_warning=QLabel(); self.link_warning.setWordWrap(True); self.link_warning.setStyleSheet("background:#fff8e6;color:#8a5a00;border:1px solid #e5b94d;border-radius:4px;padding:5px"); self.link_warning.hide(); detail_layout.addWidget(self.link_warning)
         legend=f"<span style='color:#1261a0'>■</span> {tr('Assessment area')} &nbsp;&nbsp; <span style='color:#d97706'>■</span> {tr('Blast event')} &nbsp;&nbsp; <span style='color:#9ca3af'>━</span> {tr('Project Lines')}"
         self.link_preview=PlanGeometryWidget(); self.link_preview.reimport_button.hide(); self.link_preview.set_context(legend); self.link_preview.use_center_control(); detail_layout.addWidget(self.link_preview,1); self.links_splitter.addWidget(detail)
-        self.links_splitter.setStretchFactor(0,0); self.links_splitter.setStretchFactor(1,1); self.links_splitter.setSizes([340,760]); layout.addWidget(self.links_splitter)
-        self.links_list.currentRowChanged.connect(self._link_selection_changed); self.tabs.addTab(page,tr("Linked events")); self._link_preview_initialized=False; self.refresh_links()
+        self.links_splitter.setStretchFactor(0,0); self.links_splitter.setStretchFactor(1,1); layout.addWidget(self.links_splitter)
+        self.linked_events_tab=page; self._links_splitter_initialized=False
+        self.links_list.currentRowChanged.connect(self._link_selection_changed); self.tabs.currentChanged.connect(self._linked_tab_changed); self.tabs.addTab(page,tr("Linked events")); self._link_preview_initialized=False; self.refresh_links()
+    def _linked_tab_changed(self,index):
+        if self.tabs.widget(index) is self.linked_events_tab and not self._links_splitter_initialized:
+            QTimer.singleShot(0,self._initialize_links_splitter)
+    def _initialize_links_splitter(self):
+        if self._links_splitter_initialized or not self.links_splitter.isVisible():return
+        total=self.links_splitter.width()
+        if total<=0:
+            QTimer.singleShot(0,self._initialize_links_splitter); return
+        left_width=max(300,min(340,total//3)); right_width=max(1,total-left_width-self.links_splitter.handleWidth())
+        self.links_splitter.setSizes([left_width,right_width]); self._links_splitter_initialized=True
+        QTimer.singleShot(0,self.link_preview.center_on_focus)
     def refresh_links(self):
         selected=self._selected_link(); selected_id=selected.id if selected else None; links=self.area.links_for_revision(); self.links_list.clear(); self._link_item_widgets=[]
         for link in links:
