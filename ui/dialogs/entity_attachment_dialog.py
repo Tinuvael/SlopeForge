@@ -7,13 +7,15 @@ from ui.presentation_labels import domain_message
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QEvent, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QDate, QEvent, QFileInfo, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QImageReader, QKeySequence, QPainter, QPainterPath, QPixmap, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDateEdit,
     QDialog,
     QFileDialog,
+    QFileIconProvider,
     QFormLayout,
     QFrame,
     QGraphicsPixmapItem,
@@ -21,6 +23,7 @@ from PySide6.QtWidgets import (
     QGraphicsView,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -117,6 +120,103 @@ class AttachmentMetadataDialog(QDialog):
         )
 
 
+class DocumentBatchDialog(QDialog):
+    """Review one or many documents without forcing one modal per file."""
+    def __init__(self, owner_type: str, source_paths, parent=None):
+        super().__init__(parent)
+        self.owner_type = owner_type
+        self.source_paths = [Path(path) for path in source_paths]
+        self.row_editors = []
+        self.setWindowTitle(tr("Add documents"))
+        self.resize(960, min(700, 250 + 52 * max(1, len(self.source_paths))))
+        root = QVBoxLayout(self)
+
+        count = len(self.source_paths)
+        heading = QLabel(f"{count} {tr('document') if count == 1 else tr('documents')} {tr('selected')}")
+        heading.setStyleSheet("font-size:16px;font-weight:600;color:#111827;")
+        helper = QLabel(tr("Titles are filled automatically from file names. Review categories and dates before importing."))
+        helper.setWordWrap(True); helper.setStyleSheet("color:#6b7280;")
+        root.addWidget(heading); root.addWidget(helper)
+
+        bulk = QFrame(); bulk.setObjectName("DocumentBatchBulk")
+        bulk.setStyleSheet("QFrame#DocumentBatchBulk{background:#f8fafc;border:1px solid #dfe3ea;border-radius:8px;}")
+        bulk_layout = QHBoxLayout(bulk); bulk_layout.setContentsMargins(10, 8, 10, 8)
+        bulk_layout.addWidget(QLabel(tr("Apply to all:")))
+        self.bulk_category = self._category_combo()
+        apply_category = QPushButton(tr("Apply category")); apply_category.clicked.connect(self._apply_category)
+        self.bulk_date = QDateEdit(); self.bulk_date.setCalendarPopup(True); self.bulk_date.setDisplayFormat("dd.MM.yyyy"); self.bulk_date.setDate(QDate.currentDate())
+        apply_date = QPushButton(tr("Apply date")); apply_date.clicked.connect(self._apply_date)
+        bulk_layout.addWidget(self.bulk_category); bulk_layout.addWidget(apply_category)
+        bulk_layout.addSpacing(12); bulk_layout.addWidget(self.bulk_date); bulk_layout.addWidget(apply_date); bulk_layout.addStretch()
+        root.addWidget(bulk)
+
+        self.table = QTableWidget(len(self.source_paths), 4)
+        self.table.setHorizontalHeaderLabels([tr("File"), tr("Title"), tr("Category"), tr("Date")])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setStyleSheet("QTableWidget{background:white;border:1px solid #dfe3ea;border-radius:7px;} QHeaderView::section{background:#f8fafc;border:0;border-bottom:1px solid #dfe3ea;padding:7px;font-weight:600;} QTableWidget::item{border-bottom:1px solid #edf0f4;}")
+
+        for row, path in enumerate(self.source_paths):
+            self.table.setRowHeight(row, 46)
+            file_label = QLabel(path.name); file_label.setToolTip(str(path)); file_label.setStyleSheet("padding-left:6px;color:#374151;")
+            title = QLineEdit(path.stem)
+            category = self._category_combo()
+            file_date = QDateEdit(); file_date.setCalendarPopup(True); file_date.setDisplayFormat("dd.MM.yyyy")
+            try:
+                value = date.fromtimestamp(path.stat().st_mtime)
+            except OSError:
+                value = date.today()
+            file_date.setDate(QDate(value.year, value.month, value.day))
+            self.table.setCellWidget(row, 0, file_label)
+            self.table.setCellWidget(row, 1, title)
+            self.table.setCellWidget(row, 2, category)
+            self.table.setCellWidget(row, 3, file_date)
+            self.row_editors.append((path, title, category, file_date))
+        root.addWidget(self.table, 1)
+
+        buttons = QHBoxLayout(); cancel = QPushButton(tr("Cancel")); add = QPushButton(tr("Add documents"))
+        cancel.clicked.connect(self.reject); add.clicked.connect(self.accept)
+        buttons.addStretch(); buttons.addWidget(cancel); buttons.addWidget(add); root.addLayout(buttons)
+
+    def _category_combo(self):
+        combo = QComboBox()
+        for code, label in ATTACHMENT_CATEGORIES[(self.owner_type, "document")]:
+            combo.addItem(label, code)
+        return combo
+
+    def _apply_category(self):
+        code = self.bulk_category.currentData()
+        for _path, _title, category, _file_date in self.row_editors:
+            index = category.findData(code)
+            if index >= 0:
+                category.setCurrentIndex(index)
+
+    def _apply_date(self):
+        qdate = self.bulk_date.date()
+        for _path, _title, _category, file_date in self.row_editors:
+            file_date.setDate(qdate)
+
+    def entries(self):
+        result = []
+        for path, title, category, file_date in self.row_editors:
+            qdate = file_date.date()
+            result.append((path, dict(
+                title=title.text().strip() or path.stem,
+                file_date=date(qdate.year(), qdate.month(), qdate.day()),
+                subtype=category.currentData(),
+                custom_subtype="",
+                description="",
+            )))
+        return result
+
+
 class PhotoGraphicsView(QGraphicsView):
     """Contained photo viewer with mouse-wheel zoom and drag panning."""
     def __init__(self, parent=None):
@@ -201,6 +301,7 @@ class EntityAttachmentManagerWidget(QWidget):
         self.current_attachment_id = None
         self._gallery_layout_signature = None
         self._gallery_reflow_pending = False
+        self._file_icon_provider = QFileIconProvider() if kind == "document" else None
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
 
@@ -211,12 +312,17 @@ class EntityAttachmentManagerWidget(QWidget):
 
         self.table = None
         self.stack = None
+        self.mutation_buttons = []
         if self.kind == "photo":
             self._build_photo_pages(root)
+            self._build_photo_actions(root)
         else:
+            self._build_document_actions(root)
             self._build_document_table(root)
+        self.refresh()
 
-        actions = QHBoxLayout(); self.mutation_buttons = []
+    def _build_photo_actions(self, root):
+        actions = QHBoxLayout()
         for text_, handler, mutation in (
             ("Add", self.add, True),
             ("Open", self.open_selected, False),
@@ -225,23 +331,40 @@ class EntityAttachmentManagerWidget(QWidget):
             ("Delete", self.delete, True),
         ):
             button = QPushButton(tr(text_)); button.clicked.connect(handler)
-            button.setEnabled(not mutation or (not read_only and not unsaved))
+            button.setEnabled(not mutation or (not self.read_only and not self.unsaved))
             actions.addWidget(button)
             if mutation:
                 self.mutation_buttons.append(button)
         actions.addStretch(); root.addLayout(actions)
-        self.refresh()
+
+    def _build_document_actions(self, root):
+        actions = QHBoxLayout()
+        add = QPushButton(tr("Add documents")); add.clicked.connect(self.add); add.setEnabled(not self.read_only and not self.unsaved)
+        open_button = QPushButton(tr("Open")); open_button.clicked.connect(self.open_selected)
+        folder = QPushButton(tr("Open folder")); folder.clicked.connect(self.open_folder)
+        edit = QPushButton(tr("Edit metadata")); edit.clicked.connect(self.edit); edit.setEnabled(not self.read_only and not self.unsaved)
+        delete = QPushButton(tr("Delete")); delete.clicked.connect(self.delete); delete.setEnabled(not self.read_only and not self.unsaved)
+        actions.addWidget(add); actions.addWidget(open_button); actions.addWidget(folder); actions.addStretch(); actions.addWidget(edit); actions.addWidget(delete)
+        self.mutation_buttons.extend((add, edit, delete))
+        root.addLayout(actions)
 
     def _build_document_table(self, root):
-        self.table = QTableWidget(); self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels([
-            tr("Preview"), tr("Title"), tr("Date"), tr("Category"), tr("Original file"),
-            tr("Description"), tr("Size")
-        ])
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table = QTableWidget(); self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels([tr("Document"), tr("Category"), tr("Date"), tr("Size")])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
+        self.table.setAlternatingRowColors(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.cellDoubleClicked.connect(lambda row, _col: self.open_selected(row))
-        root.addWidget(self.table)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setStyleSheet("QTableWidget{background:white;border:1px solid #dfe3ea;border-radius:7px;outline:0;} QHeaderView::section{background:#f8fafc;border:0;border-bottom:1px solid #dfe3ea;padding:8px;font-weight:600;color:#374151;} QTableWidget::item{border-bottom:1px solid #edf0f4;padding:8px;} QTableWidget::item:selected{background:#eef4fb;color:#111827;}")
+        root.addWidget(self.table, 1)
 
     def _build_photo_pages(self, root):
         self.stack = QStackedWidget()
@@ -313,8 +436,6 @@ class EntityAttachmentManagerWidget(QWidget):
         margins = self.gallery_grid.contentsMargins()
         spacing = max(0, self.gallery_grid.horizontalSpacing())
         available = max(1, self.gallery_scroll.viewport().width() - margins.left() - margins.right())
-        # Aim for roughly 190–220 px cards, then distribute the complete row
-        # width evenly so the gallery never leaves a large unused strip.
         minimum = 185
         columns = max(1, int((available + spacing) // (minimum + spacing)))
         tile_width = max(150, int((available - spacing * (columns - 1)) / columns))
@@ -338,18 +459,34 @@ class EntityAttachmentManagerWidget(QWidget):
         else:
             self._refresh_document_table()
 
+    def _document_name_widget(self, item):
+        wrapper = QWidget(); wrapper.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout = QHBoxLayout(wrapper); layout.setContentsMargins(7, 4, 7, 4); layout.setSpacing(10)
+        icon_label = QLabel(); icon_label.setFixedSize(38, 38); icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        path = self.service.resolve_path(item)
+        icon = self._file_icon_provider.icon(QFileInfo(str(path if path.exists() else item.original_filename)))
+        icon_label.setPixmap(icon.pixmap(32, 32))
+        text = QVBoxLayout(); text.setContentsMargins(0, 0, 0, 0); text.setSpacing(1)
+        title = QLabel(item.title or Path(item.original_filename).stem); title.setStyleSheet("font-weight:600;color:#111827;")
+        filename = QLabel(item.original_filename); filename.setStyleSheet("color:#6b7280;font-size:11px;")
+        text.addWidget(title); text.addWidget(filename); layout.addWidget(icon_label); layout.addLayout(text, 1)
+        if item.description:
+            wrapper.setToolTip(item.description)
+        return wrapper
+
     def _refresh_document_table(self):
-        labels = dict(sum(ATTACHMENT_CATEGORIES.values(), [])); items = self._items()
-        self.table.setRowCount(len(items))
+        items = self._items(); self.table.setRowCount(len(items))
         for row, item in enumerate(items):
-            missing = self.service.is_missing(item); preview = QLabel(tr("File is missing") if missing else "")
-            self.table.setCellWidget(row, 0, preview)
-            category = item.custom_subtype if item.subtype == "other" and item.custom_subtype else labels.get(item.subtype, item.subtype)
-            for column, value in enumerate((item.title, item.file_date.strftime("%d.%m.%Y"), category, item.original_filename,
-                                            item.description, self._size(item.file_size_bytes)), 1):
+            self.table.setRowHeight(row, 58)
+            id_cell = QTableWidgetItem(); id_cell.setData(Qt.ItemDataRole.UserRole, item.id)
+            self.table.setItem(row, 0, id_cell); self.table.setCellWidget(row, 0, self._document_name_widget(item))
+            category = self._category_label(item)
+            for column, value in ((1, category), (2, item.file_date.strftime("%d.%m.%Y")), (3, self._size(item.file_size_bytes))):
                 cell = QTableWidgetItem(value); cell.setData(Qt.ItemDataRole.UserRole, item.id)
+                if column in (2, 3): cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(row, column, cell)
-        self.table.resizeColumnsToContents()
+        if items and self.table.currentRow() < 0:
+            self.table.selectRow(0)
 
     def _clear_layout(self, layout):
         while layout.count():
@@ -431,9 +568,9 @@ class EntityAttachmentManagerWidget(QWidget):
         if self.kind == "photo":
             return next((a for a in self._items() if a.id == self.current_attachment_id), None)
         row = self.table.currentRow() if row is None or isinstance(row, bool) else row
-        if row < 0 or not self.table.item(row, 1):
+        if row < 0 or not self.table.item(row, 0):
             return None
-        ident = self.table.item(row, 1).data(Qt.ItemDataRole.UserRole)
+        ident = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
         return next((a for a in self._items() if a.id == ident), None)
 
     def _ensure_owner(self):
@@ -467,14 +604,13 @@ class EntityAttachmentManagerWidget(QWidget):
                 )
                 if editor.exec() != QDialog.DialogCode.Accepted:
                     return
-                values = editor.values()
-                values["title"] = values["title"] or Path(path).stem
+                values = editor.values(); values["title"] = values["title"] or Path(path).stem
                 reviewed.append((path, values))
         else:
-            editor = AttachmentMetadataDialog(self.owner_type, self.kind, parent=self)
+            editor = DocumentBatchDialog(self.owner_type, paths, self)
             if editor.exec() != QDialog.DialogCode.Accepted:
                 return
-            reviewed = [(path, editor.values()) for path in paths]
+            reviewed = editor.entries()
 
         try:
             ready, rollback_owner = self._ensure_owner()
@@ -487,8 +623,8 @@ class EntityAttachmentManagerWidget(QWidget):
             if add_per_file:
                 added = add_per_file(self.owner_type, self.owner_id, self.kind, reviewed)
             else:
-                if self.kind == "photo" and len(reviewed) > 1:
-                    raise RuntimeError("Attachment service does not support reviewed photo batches")
+                if len(reviewed) > 1:
+                    raise RuntimeError("Attachment service does not support reviewed batches")
                 added = self.service.add_files(
                     self.owner_type, self.owner_id, self.kind,
                     [path for path, _metadata in reviewed], reviewed[0][1],
