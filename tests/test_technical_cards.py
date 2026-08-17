@@ -7,9 +7,9 @@ import pytest
 from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent, BlastEventGeometryRevision
 from application.state.assessment_domain_state import AssessmentDomainState
-from domain.blasting.technical_card import (BlastDrillingGroup, ContourParameters,
-    GeomechanicalParameters, JointSetOrientation, TechnicalCardService,
-    new_technical_card, polygon_area_m2)
+from domain.blasting.technical_card import (BARTON_JA_VALUES, BARTON_JN_VALUES, BARTON_JR_VALUES,
+    BARTON_JW_VALUES, BlastDrillingGroup, ContourParameters, GeomechanicalParameters,
+    JointSetOrientation, TechnicalCardService, new_technical_card, polygon_area_m2)
 
 
 def event(kind="production"):
@@ -100,7 +100,7 @@ def test_production_and_contour_required_sections_differ():
 @pytest.mark.parametrize("values,complete", [
     ({}, False), ({"ucs_mpa": 100}, False), ({"ucs_mpa": 100, "q_value": 2}, False),
     ({"ucs_mpa": 100, "rqd_percent": 50}, True), ({"ucs_mpa": 100, "gsi": 40}, True),
-    ({"q_value": 2, "rqd_percent": 50, "gsi": 40}, False),
+    ({"ucs_mpa": 100, "ff": 8}, True), ({"q_value": 2, "rqd_percent": 50, "gsi": 40}, False),
 ])
 def test_geomechanics_minimum_complete(values, complete):
     assert GeomechanicalParameters(**values).minimum_complete() is complete
@@ -122,6 +122,25 @@ def test_joint_set_count_and_orientation_validation():
         JointSetOrientation(45, 360)
 
 
+def test_geomechanics_barton_catalogue_gsi_ff_and_ucs_validation():
+    assert GeomechanicalParameters(gsi=1, ff=0, ucs_mpa=0).gsi == 1
+    assert GeomechanicalParameters(gsi=100, ff=12, ucs_mpa=250).ff == 12
+    for value in (0, 101):
+        with pytest.raises(ValueError, match="GSI"):
+            GeomechanicalParameters(gsi=value)
+    with pytest.raises(ValueError, match="FF"):
+        GeomechanicalParameters(ff=-1)
+    with pytest.raises(ValueError, match="UCS"):
+        GeomechanicalParameters(ucs_mpa=-1)
+
+    for name, allowed in (("jn", BARTON_JN_VALUES), ("jr", BARTON_JR_VALUES),
+                          ("ja", BARTON_JA_VALUES), ("jw", BARTON_JW_VALUES)):
+        for value in allowed:
+            assert getattr(GeomechanicalParameters(**{name: value}), name) == value
+        with pytest.raises(ValueError, match=name.title()):
+            GeomechanicalParameters(**{name: 999})
+
+
 def test_legacy_geomechanics_payload_uses_only_representative_fallbacks():
     blast = event(); card, draft = new_technical_card(blast); card.save_revision(draft)
     payload = card.to_dict(); payload["revisions"][0]["geomechanical_parameters"] = {
@@ -134,7 +153,7 @@ def test_legacy_geomechanics_payload_uses_only_representative_fallbacks():
     }
     geo = type(card).from_dict(payload).active_revision().geomechanical_parameters
     assert (geo.lithology, geo.ucs_mpa, geo.rqd_percent, geo.notes) == ("Granite", 125, 72, "Legacy note")
-    assert geo.q_value is None and geo.gsi is None and geo.jw is None and geo.joint_sets == []
+    assert geo.q_value is None and geo.gsi is None and geo.ff is None and geo.jw is None and geo.joint_sets == []
     assert not hasattr(geo, "geotechnical_domain")
 
 
@@ -142,14 +161,14 @@ def test_new_geomechanics_payload_round_trip_and_precedence():
     blast = event(); card, draft = new_technical_card(blast)
     draft.geomechanical_parameters = GeomechanicalParameters(
         lithology="Granodiorite", ucs_mpa=145, q_value=6.5, rqd_percent=78,
-        gsi=62, joint_sets=[JointSetOrientation(70, 110), JointSetOrientation(45, 250)],
+        gsi=62, ff=9, joint_sets=[JointSetOrientation(70, 110), JointSetOrientation(45, 250)],
         jw=0.66, notes="Moderately jointed")
     card.save_revision(draft); payload = json.loads(json.dumps(card.to_dict()))
     payload["revisions"][0]["geomechanical_parameters"].update(
         representative_ucs_mpa=1, rqd_representative_percent=2, geomechanical_notes="old")
     geo = type(card).from_dict(payload).active_revision().geomechanical_parameters
-    assert (geo.lithology, geo.ucs_mpa, geo.q_value, geo.rqd_percent, geo.gsi, geo.jw, geo.notes) == (
-        "Granodiorite", 145, None, 78, 62, 0.66, "Moderately jointed")
+    assert (geo.lithology, geo.ucs_mpa, geo.q_value, geo.rqd_percent, geo.gsi, geo.ff, geo.jw, geo.notes) == (
+        "Granodiorite", 145, None, 78, 62, 9, 0.66, "Moderately jointed")
     assert geo.joint_sets == [JointSetOrientation(70, 110), JointSetOrientation(45, 250)]
     assert all(isinstance(item, JointSetOrientation) for item in geo.joint_sets)
 
@@ -157,11 +176,20 @@ def test_new_geomechanics_payload_round_trip_and_precedence():
 def test_q_system_sources_round_trip_without_persisting_manual_q():
     blast = event(); card, draft = new_technical_card(blast)
     draft.geomechanical_parameters = GeomechanicalParameters(
-        rqd_percent=72, jn=6, jr=3, ja=2, jw=0.8, q_value=99)
+        rqd_percent=72, ff=10, jn=6, jr=3, ja=2, jw=0.66, q_value=99)
     card.save_revision(draft)
     payload = card.to_dict()["revisions"][0]["geomechanical_parameters"]
-    assert (payload["jn"], payload["jr"], payload["ja"], payload["jw"]) == (6, 3, 2, 0.8)
+    assert (payload["rqd_percent"], payload["ff"], payload["jn"], payload["jr"], payload["ja"], payload["jw"]) == (
+        72, 10, 6, 3, 2, 0.66)
     assert "q_value" not in payload
+
+
+def test_invalid_free_form_barton_values_from_brief_pr_draft_load_as_missing():
+    blast = event(); card, draft = new_technical_card(blast); card.save_revision(draft)
+    payload = card.to_dict(); geo = payload["revisions"][0]["geomechanical_parameters"]
+    geo.update(jn=23, jr=23, ja=8, jw=0.8)
+    restored = type(card).from_dict(payload).active_revision().geomechanical_parameters
+    assert (restored.jn, restored.jr, restored.ja, restored.jw) == (None, None, None, None)
 
 
 def test_json_roundtrip_and_old_json_compatibility():
@@ -212,11 +240,13 @@ def test_real_embedded_production_editor_controls_and_ucs_persistence():
     assert embedded.editor.ucs is not None
     assert embedded.editor.group_cards_layout.count() >= 1
     assert embedded.editor.completion_status is not None
-    embedded.editor.ucs.setValue(123.0)
-    embedded.editor.jn.setValue(6); embedded.editor.jr.setValue(3); embedded.editor.ja.setValue(2)
+    embedded.editor.ucs.setValue(123); embedded.editor.ff.setValue(8); embedded.editor.rqd.setValue(72)
+    for combo, value in ((embedded.editor.jn, 6), (embedded.editor.jr, 3), (embedded.editor.ja, 2)):
+        combo.setCurrentIndex(combo.findData(float(value)))
     assert embedded.save_draft() is True
     restored = AssessmentDomainState.from_dict(json.loads(json.dumps(state.to_dict())))
-    assert restored.technical_cards[0].active_revision().geomechanical_parameters.ucs_mpa == 123.0
+    geo = restored.technical_cards[0].active_revision().geomechanical_parameters
+    assert (geo.ucs_mpa, geo.ff, geo.rqd_percent, geo.jn, geo.jr, geo.ja) == (123, 8, 72, 6, 3, 2)
     embedded.deleteLater(); app.processEvents()
 
 
@@ -227,13 +257,15 @@ def test_real_geomechanics_ui_is_compact_and_domain_is_read_only():
     blast = event(); card, draft = new_technical_card(blast)
     dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None, domain_name="North")
     labels = {item.text() for item in dialog.findChildren(widgets.QLabel)}
-    required = {"Lithology", "Domain", "UCS", "RQD", "GSI", "Jn", "Jr", "Ja", "Jw", "Q′",
+    required = {"Lithology", "Domain", "UCS", "FF", "RQD", "GSI", "Jn", "Jr", "Ja", "Jw", "Q′",
                 "Set", "Dip, °", "Dip direction, °", "North"}
     assert required <= labels
     assert len(dialog.joint_set_rows) == 5
     assert isinstance(dialog.domain_value, widgets.QLabel)
     workspace = dialog.findChild(widgets.QWidget, "geomechanicsWorkspace")
     assert workspace is not None and not isinstance(workspace, widgets.QScrollArea)
+    assert dialog.findChild(widgets.QSpinBox, "rockMassFF") is dialog.ff
+    assert dialog.findChild(widgets.QSpinBox, "qSystemRQD") is dialog.rqd
     assert not hasattr(dialog, "q_value")
     removed = {"Geotechnical domain", "Local strength class", "Representative UCS",
         "Minimum UCS", "Maximum UCS", "Representative RQD", "Minimum RQD", "Maximum RQD",
@@ -242,20 +274,34 @@ def test_real_geomechanics_ui_is_compact_and_domain_is_read_only():
     dialog.close(); app.processEvents()
 
 
-def test_geomechanics_ui_joint_validation_and_exact_360_normalization():
+def test_geomechanics_ui_uses_integer_ranges_and_barton_catalogues():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.editors.technical_card_editor import TechnicalCardDialog
     app = widgets.QApplication.instance() or widgets.QApplication([])
     blast = event(); card, draft = new_technical_card(blast)
     dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None)
+
+    assert isinstance(dialog.ucs, widgets.QSpinBox)
+    assert isinstance(dialog.ff, widgets.QSpinBox)
+    assert isinstance(dialog.gsi, widgets.QSpinBox)
+    assert isinstance(dialog.rqd, widgets.QSpinBox)
+    assert dialog.gsi.minimum() == 0 and dialog.gsi.maximum() == 100  # 0 is the empty sentinel
+    assert dialog.rqd.minimum() == -1 and dialog.rqd.maximum() == 100
+    assert dialog.gsi.buttonSymbols() == widgets.QAbstractSpinBox.ButtonSymbols.UpDownArrows
+
     dip, direction = dialog.joint_set_rows[0]
-    dip.setValue(45); direction.setValue(360)
-    geo = dialog._geomechanics_from_form()
-    assert geo.joint_sets == [JointSetOrientation(45, 0)] and direction.value() == 0
-    direction.setValue(360.001)
-    with pytest.raises(ValueError, match="direction"):
-        dialog._geomechanics_from_form()
-    direction.setValue(direction.minimum())
+    assert isinstance(dip, widgets.QSpinBox) and (dip.minimum(), dip.maximum()) == (-1, 90)
+    assert isinstance(direction, widgets.QSpinBox) and (direction.minimum(), direction.maximum()) == (-1, 359)
+    dip.setValue(118); direction.setValue(500)
+    assert (dip.value(), direction.value()) == (90, 359)
+
+    for combo, allowed in ((dialog.jn, BARTON_JN_VALUES), (dialog.jr, BARTON_JR_VALUES),
+                           (dialog.ja, BARTON_JA_VALUES), (dialog.jw, BARTON_JW_VALUES)):
+        assert isinstance(combo, widgets.QComboBox)
+        assert [combo.itemData(i) for i in range(1, combo.count())] == list(allowed)
+        assert combo.itemData(0) is None
+
+    dip.setValue(45); direction.setValue(direction.minimum())
     with pytest.raises(ValueError, match="requires both"):
         dialog._geomechanics_from_form()
     dialog.close(); app.processEvents()
