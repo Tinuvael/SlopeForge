@@ -85,10 +85,21 @@ def test_photo_manager_reviews_each_selected_file_and_uses_embedded_gallery(tmp_
     assert manager.table is None
 
     tiles = manager.findChildren(widgets.QToolButton, "PhotoTile")
+    titles = manager.findChildren(widgets.QLabel, "PhotoTileTitle")
     assert len(tiles) == 2
+    assert {label.text() for label in titles} == {"before", "after"}
+    assert all(not tile.text() for tile in tiles)
+
     tiles[0].click()
     app.processEvents()
     assert manager.stack.currentWidget() is manager.viewer_page
+    selected = manager._selected()
+    assert selected is not None
+    assert manager.viewer_title.text() == selected.title
+    assert manager.viewer_category.text()
+    assert manager.viewer_date.text() == selected.file_date.isoformat()
+    assert manager.viewer_file.text() == selected.original_filename
+
     manager._show_gallery()
     assert manager.stack.currentWidget() is manager.gallery_page
 
