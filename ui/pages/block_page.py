@@ -80,11 +80,18 @@ class BlockPage(QWidget):
         self.history_tab = AuditPreviewWidget("Change history")
         self.tabs.addTab(self.history_tab, tr("History"))
         left.addWidget(self.tabs)
-        engineering_actions = QHBoxLayout(); engineering_actions.addStretch()
+
+        self.engineering_actions_widget = QWidget()
+        engineering_actions = QHBoxLayout(self.engineering_actions_widget)
+        engineering_actions.setContentsMargins(0,0,0,0)
+        engineering_actions.addStretch()
         self.save_engineering_draft = QPushButton(tr("Save draft")); self.complete_engineering = QPushButton(tr("Complete"))
         self.save_engineering_draft.setEnabled(False); self.complete_engineering.setEnabled(False)
         self.save_engineering_draft.clicked.connect(self._save_technical_card_draft); self.complete_engineering.clicked.connect(self._complete_technical_card)
-        engineering_actions.addWidget(self.save_engineering_draft); engineering_actions.addWidget(self.complete_engineering); left.addLayout(engineering_actions)
+        engineering_actions.addWidget(self.save_engineering_draft); engineering_actions.addWidget(self.complete_engineering)
+        left.addWidget(self.engineering_actions_widget)
+        self.tabs.currentChanged.connect(self._sync_engineering_actions_visibility)
+
         body.addLayout(left, 1)
 
         right = QVBoxLayout()
@@ -116,6 +123,7 @@ class BlockPage(QWidget):
             QTabBar::tab:selected { color: #0b63ce; }
             """
         )
+        self._sync_engineering_actions_visibility()
         self.refresh()
 
     def _make_attachment_tab(self,kind):
@@ -125,6 +133,9 @@ class BlockPage(QWidget):
         if kind=="photo":self.photo_manager=manager
         else:self.document_manager=manager
         return page,QLabel(),manager.mutation_buttons[0]
+
+    def _sync_engineering_actions_visibility(self, *_args):
+        self.engineering_actions_widget.setVisible(self.tabs.currentIndex() in (1,2,3))
 
     def set_filters(self, filters: dict) -> None:
         self.filters = filters
@@ -200,6 +211,7 @@ class BlockPage(QWidget):
         self.audit_preview.set_entries(audit_entries)
         self.history_tab.set_entries(audit_entries, limit=200)
         self._render_engineering(block)
+        self._sync_engineering_actions_visibility()
 
     def _open_attachments(self, kind):
         self.tabs.setCurrentWidget(self.photos_tab if kind=="photo" else self.documents_tab)
