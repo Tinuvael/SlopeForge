@@ -69,6 +69,9 @@ class EntityPageController:
     def update_contour_metadata(self, event, **values):
         return self.editing.update_contour_metadata(event, **values)
 
+    def update_contour_comment(self, event, comment):
+        return self.editing.update_contour_comment(event, comment)
+
     def update_assessment_area_metadata(self, area, **values):
         return self.editing.update_assessment_area_metadata(area, **values)
 
