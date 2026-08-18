@@ -40,13 +40,14 @@ def test_missing_project_lines_warning_and_no_drawing_before_check():
     assert "Load Project Lines for the project first." in area
     assert area.index("project_has_active_lines") < area.index("AssessmentAreaCreationPage")
 
-def test_block_creation_reuses_blast_event_dialog_and_links_event():
+def test_block_creation_reuses_blast_event_dialog_and_single_event_identity():
     main=source("ui/main_window.py")
     block=main[main.index("def _add_blast_event"):main.index("def _add_area")]
     assert "BlastEventDialog" in block
     assert "CreateBlastEventCommand" in block
     assert "self.create_blast_event.execute" in block
     assert "result.event_type==\"contour\"" in block
+    assert "open_block_from_tree(result.event_id" in block
     for forbidden in ("EntityPageController", "BlastEventService", "create_block", "controller.save", "session_factory", "BlastBlock"):
         assert forbidden not in block
 
@@ -56,15 +57,15 @@ def test_site_dashboard_owns_project_lines_management():
     assert "Import / Update Project Lines" in pages
     assert "ProjectLinesRepository" in pages
 
-def test_archive_button_and_block_service_are_connected():
+def test_archive_button_and_production_event_service_are_connected():
     assert "archive_button" in source("ui/header.py")
     main=source("ui/main_window.py")
     assert "archive_requested.connect(self._archive_selected)" in main
-    assert "set_archived" in source("infrastructure/services/blast_block_service.py")
+    assert "set_archived" in source("infrastructure/services/production_blast_service.py")
 
 def test_block_page_embeds_geometry_and_revision_safe_technical_card_tabs():
     block=source("ui/pages/block_page.py")
-    assert "event_for_block" in block and "active_geometry_revision" in block
+    assert "production_event" in block and "active_geometry_revision" in block
     assert "TechnicalCardEditorWidget" in block
     assert 'take_tab(tr("Geomechanics"))' in block
     assert 'take_tab(tr("Drilling and charging"))' in block
@@ -126,9 +127,9 @@ def test_refresh_reloads_filters_and_area_construction_is_guarded():
     assert "Could not start assessment area creation" in main
     assert "Could not open boundary editing" in main
 
-def test_existing_block_dialog_preserves_zero_and_allows_versioned_domain_move():
+def test_existing_block_dialog_uses_required_horizon_and_allows_versioned_domain_move():
     dialog=source("ui/block_dialog.py")
-    assert '"" if block.horizon_m is None else str(block.horizon_m)' in dialog
+    assert "self.horizon.setText(str(block.horizon_m))" in dialog
     assert "planned_date" not in dialog and "self.status" not in dialog
     assert "target_expected_version=target_version" in dialog
     assert "self.domain.setEnabled(self.domain.count()>1" in dialog
