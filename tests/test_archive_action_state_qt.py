@@ -63,7 +63,7 @@ def test_block_open_synchronizes_archive_action(app, archived):
     block = SimpleNamespace(is_archived=archived)
     window.block_page.open_block_id = lambda _id: setattr(window.block_page, "current_block", block)
 
-    assert window.open_block_from_tree(10, 2, 1)
+    assert window.open_block_from_tree("BE-10", 2, 1)
     _assert_archive_button(window.header, archived)
     window.close()
 
@@ -147,23 +147,19 @@ def test_successful_block_archive_command_reopens_with_new_header_state(
 ):
     window = _window(app)
     block = SimpleNamespace(
-        id=10, domain_id=2, site_id=1, block_number="P-10",
+        id="BE-P-10", domain_id=2, site_id=1, block_number="P-10",
         is_archived=initial, domain_version=3,
     )
     window.block_page.current_block = block
     window.block_page.entity_controller = SimpleNamespace(expected_version=3)
+    window.block_page.block_service = SimpleNamespace(
+        set_archived=lambda event_id, archived, user, expected_version: setattr(block, "is_archived", archived)
+    )
     window.selected_block_id = block.id
     window.selected_assessment_area_id = None; window.selected_contour_event_id = None
     window.refresh_project_data = lambda: None
     window.open_block_from_tree = lambda *_args: window.header.set_archive_context(True, block.is_archived)
     monkeypatch.setattr("ui.main_window.QMessageBox.question", lambda *_args: QtWidgets.QMessageBox.StandardButton.Yes)
-    import app.use_case_factory as factory
-    monkeypatch.setattr(
-        factory, "create_set_blast_block_archived_use_case",
-        lambda _context: SimpleNamespace(
-            execute=lambda command: setattr(block, "is_archived", command.archived)
-        ),
-    )
 
     window.header.set_archive_context(True, initial)
     window._archive_selected()
