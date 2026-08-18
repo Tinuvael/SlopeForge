@@ -131,14 +131,21 @@ def test_attachment_manager_opens_current_kind_folder():
     photo.close(); document.close(); app.processEvents()
 
 
-def test_shared_entity_attachment_tab_and_native_scrollbar_contract():
+def test_shared_entity_attachment_tab_and_native_scrollbar_contract(monkeypatch):
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    core = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     from ui.pages.entity_tabs import ENTITY_TABS_STYLE, create_attachment_tab_page, create_entity_tabs
 
     app = widgets.QApplication.instance() or widgets.QApplication([])
 
     class StubService:
         def list_for_owner(self, *_args): return []
+
+    # The photo manager normally schedules a zero-delay gallery reflow for the
+    # real Qt event loop. This structural test never shows the widget, so running
+    # that resize/reflow timer during pytest teardown is unnecessary and can make
+    # processEvents() chase headless layout events indefinitely on Windows.
+    monkeypatch.setattr(core.QTimer, "singleShot", staticmethod(lambda *_args, **_kwargs: None))
 
     tabs = create_entity_tabs()
     page, manager = create_attachment_tab_page(StubService(), "blast_event", "BE-X", "photo")
@@ -150,4 +157,4 @@ def test_shared_entity_attachment_tab_and_native_scrollbar_contract():
     assert manager.gallery_scroll.styleSheet() == ""
     assert manager.gallery_scroll.verticalScrollBar().styleSheet() == ""
 
-    tabs.close(); app.processEvents()
+    tabs.close()
