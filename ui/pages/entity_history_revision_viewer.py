@@ -16,8 +16,9 @@ def _lock_technical_revision(editor: TechnicalCardEditorWidget) -> None:
     """Lock controls inside the reparented Technical Card tabs themselves."""
     # TechnicalCardEditorWidget reparents the QTabWidget out of TechnicalCardDialog,
     # so searching editor.editor misses the actual controls. Search the wrapper.
-    for control in editor.findChildren((QLineEdit, QTextEdit, QAbstractSpinBox, QComboBox, QCheckBox)):
-        control.setEnabled(False)
+    for control_type in (QLineEdit, QTextEdit, QAbstractSpinBox, QComboBox, QCheckBox):
+        for control in editor.findChildren(control_type):
+            control.setEnabled(False)
 
 
 def _take_optional_tab(dialog: AssessmentAreaEvaluationDialog, title: str, parent=None):
