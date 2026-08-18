@@ -4,6 +4,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFileDialog,QGridLayout,QHBoxLayout,QLabel,QMessageBox,QPushButton,QVBoxLayout,QWidget
 from repositories.entity_history_repository import EntityHistoryRepository
 from ui.pages.entity_history_widget import EntityHistoryWidget
+from ui.pages.entity_history_revision_viewer import open_geometry_revision,open_technical_card_revision
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
@@ -24,7 +25,7 @@ class ContourEventPage(QWidget):
             explosive_products=create_explosive_catalogue(context).list_enabled_products(),charge_presets=create_charge_presets(context,self.controller.site_id))
         root=QVBoxLayout(self); self._header(root); body=QHBoxLayout(); left=QVBoxLayout(); self.tabs=create_entity_tabs(); left.addWidget(self.tabs)
         self.engineering_actions_widget=QWidget(); actions=QHBoxLayout(self.engineering_actions_widget); actions.setContentsMargins(0,0,0,0); actions.addStretch(); self.draft_button=QPushButton(tr("Save draft")); self.complete_button=QPushButton(tr("Complete")); self.draft_button.setEnabled(not self.read_only); self.complete_button.setEnabled(not self.read_only); self.draft_button.clicked.connect(self.save_draft); self.complete_button.clicked.connect(self.complete); actions.addWidget(self.draft_button); actions.addWidget(self.complete_button); left.addWidget(self.engineering_actions_widget); body.addLayout(left,4); self._sidebar(body); root.addLayout(body)
-        self._general(); self.tabs.addTab(BlastDesignEditorWidget(self.editor.take_tab(tr("Contour drilling"))),tr("Blast design")); self.tabs.addTab(ActualExecutionEditorWidget(self.editor.take_tab(tr("Execution fact"))),tr("Execution fact")); self.photos_tab=self._attachments("Photos"); self.documents_tab=self._attachments("Documents"); self.tabs.addTab(self.photos_tab,tr("Photos")); self.tabs.addTab(self.documents_tab,tr("Documents")); self.history=EntityHistoryWidget(); self.tabs.addTab(self.history,tr("History")); self.tabs.currentChanged.connect(self._sync_engineering_actions_visibility); self._sync_engineering_actions_visibility(); self._refresh_sidebar(); self._refresh_history()
+        self._general(); self.tabs.addTab(BlastDesignEditorWidget(self.editor.take_tab(tr("Contour drilling"))),tr("Blast design")); self.tabs.addTab(ActualExecutionEditorWidget(self.editor.take_tab(tr("Execution fact"))),tr("Execution fact")); self.photos_tab=self._attachments("Photos"); self.documents_tab=self._attachments("Documents"); self.tabs.addTab(self.photos_tab,tr("Photos")); self.tabs.addTab(self.documents_tab,tr("Documents")); self.history=EntityHistoryWidget(); self.history.entryActivated.connect(self._open_history_entry); self.tabs.addTab(self.history,tr("History")); self.tabs.currentChanged.connect(self._sync_engineering_actions_visibility); self._sync_engineering_actions_visibility(); self._refresh_sidebar(); self._refresh_history()
         self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
     def _sync_engineering_actions_visibility(self,*_args):
         self.engineering_actions_widget.setVisible(self.tabs.currentIndex() in (1,2))
@@ -80,6 +81,18 @@ class ContourEventPage(QWidget):
         self._refresh_sidebar(); self._refresh_history()
     def _refresh_history(self):
         self.history.set_entries(self.history_repo.for_blast_event(self.blast_event.id))
+    def _open_history_entry(self,entry):
+        if entry.source_type=="blast_geometry":
+            revision=next((item for item in self.blast_event.geometry_revisions if item.id==entry.source_id),None)
+            if revision is not None:
+                dataset=self.controller.state.active_dataset(); open_geometry_revision(self,revision=revision,project_lines=dataset.lines if dataset else [])
+            return
+        if entry.source_type=="technical_card":
+            revision=next((item for item in self.card.revisions if item.id==entry.source_id),None)
+            if revision is not None:
+                from app.use_case_factory import create_charge_presets,create_explosive_catalogue
+                open_technical_card_revision(self,event=self.blast_event,card=self.card,revision=revision,domain_name=self.domain_name,
+                    explosive_products=create_explosive_catalogue(self.context).list_enabled_products(),charge_presets=create_charge_presets(self.context,self.controller.site_id))
     def _refresh_sidebar(self):
         photos=self.controller.attachments.list_for_owner("blast_event",self.blast_event.id,"photo"); documents=self.controller.attachments.list_for_owner("blast_event",self.blast_event.id,"document"); active=self.card.active_revision(); rows=(("Status",tr(WORKFLOW_LABELS[blast_workflow_for(self.controller.state,self.blast_event)])),("Archive",tr("Archived") if self.blast_event.is_archived else "—"),("Planned blast date",self.blast_event.event_date or "—"),("Horizon",f"{self.blast_event.elevation:g} m"),("Geometry revision",self.rev.revision_number if self.rev else "—"),("Technical Card revision",active.revision_number if active else "—"),("Technical Card status",active.status if active else self.draft.status),("Photos",len(photos)),("Documents",len(documents)),("History records",len(self.history_repo.for_blast_event(self.blast_event.id))))
         while self.summary_grid.count():
