@@ -48,16 +48,16 @@ def test_attachment_owner_ids_are_the_domain_owner_ids():
     contour = source("ui/pages/contour_event_page.py")
     area = source("ui/pages/assessment_area_page.py")
     assert '"blast_event", event.id' in block
-    assert '"blast_event",self.blast_event.id' in contour
-    assert '"assessment_evaluation",owner_id' in area
+    assert '"blast_event", self.blast_event.id' in contour
+    assert '"assessment_evaluation",' in area and "owner_id" in area
     assert "AttachmentRepository" not in block
 
 
-def test_transient_page_lifecycle_is_bounded_and_disconnect_is_targeted():
+def test_transient_page_lifecycle_is_bounded_and_geometry_signal_is_wired_once():
     main = source("ui/main_window.py")
     assert "removeWidget(current)" in main and "current.deleteLater()" in main
     block = source("ui/pages/block_page.py")
-    assert "disconnect(callback)" in block
+    assert "self.geometry_card.reimport_requested.connect(self._reimport_current_geometry)" in block
     assert "reimport_requested.disconnect()" not in block
 
 
@@ -188,7 +188,7 @@ def _block_page(monkeypatch, *, can_edit, archived):
         updated_at=None, author_name="Engineer", planned_blast_date=None, comment=None,
         domain_version=0,
     )
-    event = SimpleNamespace(id="BE-P-7")
+    event = SimpleNamespace(id="BE-P-7", active_geometry_revision=lambda: None)
     attachments = SimpleNamespace(
         list_for_owner=lambda *_args: [], counts=lambda *_args: (0, 0)
     )
@@ -198,7 +198,9 @@ def _block_page(monkeypatch, *, can_edit, archived):
     monkeypatch.setattr(module, "ProductionBlastService", lambda *_args: SimpleNamespace(
         list_blocks=lambda **_kwargs: [block], get_block=lambda _id: block
     ))
-    monkeypatch.setattr(module, "AuditLogRepository", lambda _factory: SimpleNamespace(list_for_blast_event=lambda _id: []))
+    monkeypatch.setattr(module, "EntityHistoryRepository", lambda _factory: SimpleNamespace(
+        for_blast_event=lambda _id: []
+    ))
     monkeypatch.setattr(module, "EntityPageController", lambda *_args: controller)
     monkeypatch.setattr(module.BlockPage, "_render_engineering", lambda self, _block: None)
     context = SimpleNamespace(
@@ -211,8 +213,9 @@ def _block_page(monkeypatch, *, can_edit, archived):
 def test_editable_block_attachment_controls_are_enabled(monkeypatch):
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     page = _block_page(monkeypatch, can_edit=True, archived=False)
-    assert page.photos.add_button.text() == "Manage"
+    assert page.photos.add_button.text() == "Add"
     assert page.photos.add_button.isEnabled()
+    assert page.photos.open_button.isEnabled()
     assert page.documents.add_button.isEnabled()
     assert not page.photo_manager.read_only and not page.document_manager.read_only
     assert all(button.isEnabled() for button in page.photo_manager.mutation_buttons)
@@ -222,14 +225,16 @@ def test_editable_block_attachment_controls_are_enabled(monkeypatch):
 def test_archived_and_viewer_block_attachment_managers_are_read_only(monkeypatch):
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     archived = _block_page(monkeypatch, can_edit=True, archived=True)
-    assert archived.photos.add_button.isEnabled()
+    assert not archived.photos.add_button.isEnabled()
+    assert archived.photos.open_button.isEnabled()
     assert archived.photo_manager.read_only and archived.document_manager.read_only
     assert all(not button.isEnabled() for button in archived.photo_manager.mutation_buttons)
     archived._open_attachments("photo")
     assert archived.tabs.currentWidget() is archived.photos_tab
 
     viewer = _block_page(monkeypatch, can_edit=False, archived=False)
-    assert viewer.documents.add_button.isEnabled()
+    assert not viewer.documents.add_button.isEnabled()
+    assert viewer.documents.open_button.isEnabled()
     assert viewer.photo_manager.read_only and viewer.document_manager.read_only
     assert all(not button.isEnabled() for button in viewer.document_manager.mutation_buttons)
     viewer._open_attachments("document")
