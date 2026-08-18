@@ -4,7 +4,7 @@ from app.localization import tr
 from ui.presentation_labels import domain_message
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from app.context import AppContext
 from repositories.audit_log_repository import AuditLogRepository
@@ -23,6 +23,7 @@ from ui.pages.block_card_widgets import (
     EmptySection,
 )
 from ui.pages.entity_page_controller import EntityPageController
+from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.technical_card_widgets import (ActualExecutionEditorWidget,
     BlastDesignEditorWidget, GeomechanicsEditorWidget, TechnicalCardEditorWidget)
 
@@ -54,7 +55,7 @@ class BlockPage(QWidget):
 
         body = QHBoxLayout()
         left = QVBoxLayout()
-        self.tabs = QTabWidget()
+        self.tabs = create_entity_tabs()
         self.overview_tab = QWidget()
         overview_layout = QVBoxLayout(self.overview_tab)
         self.overview = BlockOverviewWidget()
@@ -119,16 +120,13 @@ class BlockPage(QWidget):
             #MetaBadge { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 5px; padding: 4px 8px; }
             #MutedText { color: #6b7280; }
             #SchemePlaceholder { background: #111827; color: #f9fafb; border: 1px solid #334155; border-radius: 6px; font-size: 16px; font-weight: 600; }
-            QTabWidget::pane { border: 1px solid #dfe3ea; border-radius: 6px; }
-            QTabBar::tab:selected { color: #0b63ce; }
             """
         )
         self._sync_engineering_actions_visibility()
         self.refresh()
 
     def _make_attachment_tab(self,kind):
-        from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget
-        page=QWidget(); layout=QVBoxLayout(page); manager=EntityAttachmentManagerWidget(_NullAttachmentService(),"blast_event",None,kind,page,read_only=True); layout.addWidget(manager)
+        page,manager=create_attachment_tab_page(_NullAttachmentService(),"blast_event",None,kind,read_only=True)
         manager.changed.connect(lambda:self._render_current_block())
         if kind=="photo":self.photo_manager=manager
         else:self.document_manager=manager
