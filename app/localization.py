@@ -73,6 +73,11 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Change": "Изменение",
     "Details": "Подробности",
     "No history yet": "Истории пока нет",
+    "Open revision": "Открыть ревизию",
+    "Double-click to open this historical revision.": "Дважды щёлкните, чтобы открыть эту историческую ревизию.",
+    "Assessment geometry": "Геометрия участка оценки",
+    "Blast geometry": "Геометрия взрывного события",
+    "Historical revision is read-only.": "Историческая ревизия доступна только для просмотра.",
 }
 
 # Qt asks the installed translator for platform-theme captions in contexts such
