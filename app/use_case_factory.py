@@ -35,7 +35,7 @@ def create_entity_editing_session(context, domain_id):
         domain_id,
         actor_id=user.id,
         can_edit=user.can_edit,
-        writes=SqlAlchemyAssessmentWrites(context.session_factory),
+        writes=SqlAlchemyAssessmentWrites(context.session_factory, actor_id=user.id),
     )
 
 
