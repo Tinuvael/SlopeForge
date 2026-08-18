@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid
 
 from application.services.attachments import ATTACHMENT_CATEGORIES, PHOTO_EXTENSIONS
 
@@ -379,13 +380,14 @@ class EntityAttachmentManagerWidget(QWidget):
         # Do not set a palette or stylesheet on QScrollArea itself. On Windows
         # that can alter how its native scrollbars are drawn. Only the viewport
         # and content need the neutral workspace background.
-        _apply_workspace_palette(self.gallery_scroll.viewport())
+        self._gallery_viewport = self.gallery_scroll.viewport()
+        _apply_workspace_palette(self._gallery_viewport)
         self.gallery_content = QWidget(); _apply_workspace_palette(self.gallery_content); self.gallery_grid = QGridLayout(self.gallery_content)
         self.gallery_grid.setContentsMargins(4, 6, 4, 6)
         self.gallery_grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.gallery_grid.setHorizontalSpacing(16); self.gallery_grid.setVerticalSpacing(16)
         self.gallery_scroll.setWidget(self.gallery_content)
-        self.gallery_scroll.viewport().installEventFilter(self)
+        self._gallery_viewport.installEventFilter(self)
         gallery_root.addWidget(self.gallery_scroll)
         self.stack.addWidget(self.gallery_page)
 
@@ -421,21 +423,34 @@ class EntityAttachmentManagerWidget(QWidget):
         self.escape_shortcut.activated.connect(self._show_gallery)
 
     def eventFilter(self, watched, event):
-        if (self.kind == "photo" and hasattr(self, "gallery_scroll")
-                and watched is self.gallery_scroll.viewport()
+        # Qt can deliver a final viewport resize while a transient page is being
+        # torn down. The Python wrapper may still exist after its C++ children
+        # have already been destroyed, so never dereference them blindly here.
+        if not isValid(self):
+            return False
+        if (self.kind == "photo"
+                and watched is getattr(self, "_gallery_viewport", None)
                 and event.type() == QEvent.Type.Resize):
             self._schedule_gallery_reflow()
-        return super().eventFilter(watched, event)
+        return QWidget.eventFilter(self, watched, event)
 
     def _schedule_gallery_reflow(self):
-        if self._gallery_reflow_pending:
+        if not isValid(self) or self._gallery_reflow_pending:
             return
         self._gallery_reflow_pending = True
         QTimer.singleShot(0, self._reflow_photo_gallery)
 
     def _reflow_photo_gallery(self):
         self._gallery_reflow_pending = False
-        if self.kind != "photo" or not self.stack or self.stack.currentWidget() is not self.gallery_page:
+        stack = getattr(self, "stack", None)
+        page = getattr(self, "gallery_page", None)
+        viewport = getattr(self, "_gallery_viewport", None)
+        scroll = getattr(self, "gallery_scroll", None)
+        grid = getattr(self, "gallery_grid", None)
+        if (not isValid(self) or self.kind != "photo" or stack is None or page is None
+                or viewport is None or scroll is None or grid is None
+                or not all(isValid(obj) for obj in (stack, page, viewport, scroll))
+                or stack.currentWidget() is not page):
             return
         signature = self._gallery_metrics()
         if signature != self._gallery_layout_signature:
@@ -444,7 +459,7 @@ class EntityAttachmentManagerWidget(QWidget):
     def _gallery_metrics(self):
         margins = self.gallery_grid.contentsMargins()
         spacing = max(0, self.gallery_grid.horizontalSpacing())
-        available = max(1, self.gallery_scroll.viewport().width() - margins.left() - margins.right())
+        available = max(1, self._gallery_viewport.width() - margins.left() - margins.right())
         minimum = 185
         columns = max(1, int((available + spacing) // (minimum + spacing)))
         tile_width = max(150, int((available - spacing * (columns - 1)) / columns))
