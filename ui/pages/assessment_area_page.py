@@ -7,15 +7,43 @@ from PySide6.QtWidgets import (QAbstractItemView,QFormLayout,QFrame,QGridLayout,
 from repositories.entity_history_repository import EntityHistoryRepository
 from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_history_revision_viewer import open_assessment_revision,open_geometry_revision
+from ui.pages.entity_overview_widgets import AssessmentMatrixPreview,EntityHeaderWidget,QuickAttachmentPreview
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
-from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame,apply_workflow_badge_style
+from ui.pages.block_card_widgets import CardFrame
 from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog
 from ui.presentation_labels import format_assessment_elevation_interval, result_label
 
 
 def _value(value): return "—" if value in (None,"") else str(value)
+
+
+def _face_condition_value(revision, criterion_id, unit=""):
+    if revision is None:return "—"
+    result=next((item for item in revision.criterion_results if item.criterion_id==criterion_id),None)
+    if result is None:return "—"
+    if result.raw_numeric_value is not None:
+        return f"{result.raw_numeric_value:g}{unit}"
+    if result.raw_text_value:
+        return str(result.raw_text_value)
+    option_id=result.selected_option_id
+    if not option_id:return "—"
+    option_labels={
+        "none":"None",
+        "several_small":"Several small blocks",
+        "large":"Large blocks",
+        "many":"Many blocks",
+        "straight":"Straight",
+        "hard_toe":"Hard toe",
+        "hanging_face":"Hanging face",
+        "hanging_crest":"Hanging crest",
+        "irregular":"Irregular",
+        "closed":"None / closed",
+        "many_open":"Many open cracks",
+    }
+    return tr(option_labels.get(option_id,option_id.replace("_"," ").title()))
+
 
 class AssessmentLinkListItem(QFrame):
     STATUS_COLORS={"suggested":("#fff8e6","#d6a632"),"confirmed":("#edf8f0","#58a66a"),"excluded":("#f3f4f6","#9ca3af")}
@@ -39,17 +67,17 @@ class AssessmentAreaPage(QWidget):
         super().__init__(parent); self.context=context; self.domain_id=domain_id; self.domain_name=domain_name; self.area_id=area_id; self.controller=EntityPageController(context,domain_id); factory=getattr(context,"session_factory",None); self.history_repo=EntityHistoryRepository(factory) if callable(factory) else None; self.area=self.controller.area(area_id); self.read_only=not context.current_user.can_edit or self.area.is_archived
         self._build_editor()
         root=QVBoxLayout(self); self._header(root); body=QHBoxLayout(); left=QVBoxLayout(); self.tabs=create_entity_tabs(); left.addWidget(self.tabs); body.addLayout(left,4); self._sidebar(body); root.addLayout(body)
-        self._overview(); self.tabs.addTab(self.assessment_tab,tr("Assessment")); self._linked_events(); self._attachment_tab("Photos"); self._attachment_tab("Documents"); self.tabs.addTab(self.history,tr("History")); self._refresh_overview_and_sidebar(); self._refresh_history()
-        self.setStyleSheet("#CardFrame,#CriterionCard,#ResultCard{background:white;border:1px solid #dfe3ea;border-radius:6px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
+        self._overview(); self.tabs.addTab(self.assessment_tab,tr("Assessment")); self._linked_events(); self._attachment_tab("Photos"); self._attachment_tab("Documents"); self.tabs.addTab(self.history,tr("History")); self._wire_sidebar_actions(); self._refresh_overview_and_sidebar(); self._refresh_history()
+        self.setStyleSheet("#CardFrame,#CriterionCard,#ResultCard{background:white;border:1px solid #dfe3ea;border-radius:6px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
 
     def _header(self,root):
-        card=CardFrame(); top=QHBoxLayout(); title=QLabel(self.area.name); title.setObjectName("EntityTitle"); self.header_status=QLabel(); apply_workflow_badge_style(self.header_status); top.addWidget(title); top.addWidget(self.header_status)
-        if self.area.is_archived: top.addWidget(QLabel(tr("Archived")))
-        top.addStretch(); self.edit_button=QPushButton(tr("Edit")); self.edit_button.setEnabled(not self.read_only); self.edit_button.clicked.connect(self.edit_metadata); top.addWidget(self.edit_button); card.layout.addLayout(top); rev=self.area.active_geometry_revision(); meta=QHBoxLayout()
-        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation)
-        for text in (f"{tr('ID')}: {self.area.id}",f"{tr('Domain')}: {self.domain_name}",f"{tr('Assessment date')}: {self.area.assessment_date}",f"{tr('Elevation interval')}: {interval}",f"{tr('Revision')}: {rev.revision_number}"):
-            badge=QLabel(text); badge.setObjectName("MetaBadge"); meta.addWidget(badge)
-        meta.addStretch(); card.layout.addLayout(meta); root.addWidget(card)
+        self.header=EntityHeaderWidget(); self.header.edit_button.clicked.connect(self.edit_metadata); root.addWidget(self.header)
+
+    def _wire_sidebar_actions(self):
+        self.photo_preview.add_requested.connect(lambda:self.photo_manager.add())
+        self.document_preview.add_requested.connect(lambda:self.document_manager.add())
+        self.photo_preview.open_page_requested.connect(lambda:self.tabs.setCurrentWidget(self.photos_tab))
+        self.document_preview.open_page_requested.connect(lambda:self.tabs.setCurrentWidget(self.documents_tab))
 
     def edit_metadata(self):
         from repositories.domain_repository import DomainRepository
@@ -93,14 +121,16 @@ class AssessmentAreaPage(QWidget):
 
     def _sidebar(self,body):
         right=QVBoxLayout(); self.summary_card=CardFrame("Summary"); self.summary_grid=QGridLayout(); self.summary_card.layout.addLayout(self.summary_grid); right.addWidget(self.summary_card)
-        self.photo_preview=AttachmentPreviewWidget("Photos"); self.document_preview=AttachmentPreviewWidget("Documents"); self.photo_preview.add_button.clicked.connect(lambda:self.tabs.setCurrentWidget(self.photos_tab)); self.document_preview.add_button.clicked.connect(lambda:self.tabs.setCurrentWidget(self.documents_tab)); right.addWidget(self.photo_preview); right.addWidget(self.document_preview); right.addStretch(); body.addLayout(right,1)
+        self.photo_preview=QuickAttachmentPreview("Photos","photo"); self.document_preview=QuickAttachmentPreview("Documents","document"); right.addWidget(self.photo_preview); right.addWidget(self.document_preview); right.addStretch(); body.addLayout(right,1)
 
     def _overview(self):
         page=QWidget(); layout=QVBoxLayout(page); rev=self.area.active_geometry_revision(); top=QHBoxLayout(); self.info_card=CardFrame("General information"); self.info_grid=QGridLayout(); self.info_card.layout.addLayout(self.info_grid); top.addWidget(self.info_card,3)
         interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation); self.plan=PlanGeometryWidget(); dataset=next((d for d in self.controller.state.datasets if d.id==(rev.source_dataset_ids[0] if rev.source_dataset_ids else None)),None); self.plan.use_center_control(); self.plan.set_geometry(rev.final_geometry_frozen,dataset.lines if dataset else [],f"{tr('Elevation interval')}: {interval}",focus_geometry=rev.final_geometry_frozen); top.addWidget(self.plan,2); layout.addLayout(top)
-        cards=QHBoxLayout(); self.result_card,self.links_card,self.geometry_card=(CardFrame(x) for x in ("Assessment result","Linked events","Geometry")); self.result_text=QLabel(); self.links_text=QLabel(); self.geometry_text=QLabel();
-        for card,label in ((self.result_card,self.result_text),(self.links_card,self.links_text),(self.geometry_card,self.geometry_text)):label.setWordWrap(True); card.layout.addWidget(label); cards.addWidget(card)
-        layout.addLayout(cards); bottom=QHBoxLayout(); self.comments_card=CardFrame("Comments / recommendations"); self.comments_text=QLabel(); self.comments_text.setWordWrap(True); self.comments_card.layout.addWidget(self.comments_text); self.recent_card=CardFrame("Recent history"); self.recent_text=QLabel(); self.recent_text.setWordWrap(True); self.recent_card.layout.addWidget(self.recent_text); bottom.addWidget(self.comments_card,3); bottom.addWidget(self.recent_card,2); layout.addLayout(bottom)
+        cards=QHBoxLayout(); self.result_card=CardFrame("Assessment result"); self.face_card=CardFrame("Face condition"); self.matrix_card=CardFrame("Assessment matrix"); self.result_text=QLabel(); self.face_text=QLabel(); self.matrix_preview=AssessmentMatrixPreview(); self.matrix_basis_text=QLabel(); self.matrix_basis_text.setObjectName("MutedText")
+        for label in (self.result_text,self.face_text):label.setWordWrap(True)
+        self.result_card.layout.addWidget(self.result_text); self.face_card.layout.addWidget(self.face_text); self.matrix_card.layout.addWidget(self.matrix_preview,1); self.matrix_card.layout.addWidget(self.matrix_basis_text)
+        cards.addWidget(self.result_card); cards.addWidget(self.face_card); cards.addWidget(self.matrix_card); layout.addLayout(cards)
+        bottom=QHBoxLayout(); self.links_card=CardFrame("Linked events"); self.links_text=QLabel(); self.links_text.setWordWrap(True); self.links_card.layout.addWidget(self.links_text); self.comments_card=CardFrame("Comments / recommendations"); self.comments_text=QLabel(); self.comments_text.setWordWrap(True); self.comments_card.layout.addWidget(self.comments_text); self.recent_card=CardFrame("Recent history"); self.recent_text=QLabel(); self.recent_text.setWordWrap(True); self.recent_card.layout.addWidget(self.recent_text); bottom.addWidget(self.links_card,1); bottom.addWidget(self.comments_card,2); bottom.addWidget(self.recent_card,1); layout.addLayout(bottom)
         self.edit_boundaries_button=QPushButton(tr("Edit boundaries")); self.edit_boundaries_button.setEnabled(not self.read_only); self.edit_boundaries_button.clicked.connect(self._request_edit_boundaries); layout.addWidget(self.edit_boundaries_button); self.tabs.addTab(page,tr("Overview"))
 
     def _history_entries(self):
@@ -122,22 +152,27 @@ class AssessmentAreaPage(QWidget):
                 open_assessment_revision(self,area=self.area,evaluation=self.evaluation,revision=revision,attachment_service=self.controller.attachments)
 
     def _refresh_overview_and_sidebar(self):
-        rev=self.area.active_geometry_revision(); active=self.evaluation.active_revision(); confirmed=[x for x in self.area.links_for_revision() if x.status=="confirmed"]; prod=sum(self.controller.links.event(x.blast_event_id).event_type=="production" for x in confirmed); contour=len(confirmed)-prod; status=tr(ASSESSMENT_PROGRESS_LABELS[assessment_progress_for(self.area,self.evaluation)]); self.header_status.setText(status + ((" · " + tr("Archived")) if self.area.is_archived else ""))
+        rev=self.area.active_geometry_revision(); active=self.evaluation.active_revision(); confirmed=[x for x in self.area.links_for_revision() if x.status=="confirmed"]; prod=sum(self.controller.links.event(x.blast_event_id).event_type=="production" for x in confirmed); contour=len(confirmed)-prod; progress=assessment_progress_for(self.area,self.evaluation); status=tr(ASSESSMENT_PROGRESS_LABELS[progress]); interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation)
+        self.header.set_content(title=self.area.name,status_text=status,status_state=progress,archived=self.area.is_archived,can_edit=not self.read_only,meta_values=(f"{tr('ID')}: {self.area.id}",f"{tr('Domain')}: {self.domain_name}",f"{tr('Assessment date')}: {self.area.assessment_date}",f"{tr('Elevation interval')}: {interval}",f"{tr('Revision')}: {rev.revision_number}"))
         while self.info_grid.count():
             item=self.info_grid.takeAt(0)
             if item.widget():item.widget().deleteLater()
-        interval=format_assessment_elevation_interval(rev.min_elevation,rev.max_elevation); rows=(("Name",self.area.name),("ID",self.area.id),("Domain",self.domain_name),("Assessment date",self.area.assessment_date),("Status",status),("Archive",tr("Archived") if self.area.is_archived else "—"),("Elevation interval",interval),("Active geometry revision",rev.revision_number),("Project Lines Dataset",', '.join(rev.source_dataset_ids) or 'Free boundary'))
+        rows=(("Name",self.area.name),("ID",self.area.id),("Domain",self.domain_name),("Assessment date",self.area.assessment_date),("Status",status),("Archive",tr("Archived") if self.area.is_archived else "—"),("Elevation interval",interval),("Active geometry revision",rev.revision_number),("Project Lines Dataset",', '.join(rev.source_dataset_ids) or 'Free boundary'))
         self.general_information={}
         for row,(name,value) in enumerate(rows):left=QLabel(tr(name)); left.setObjectName("MutedText"); right=QLabel(_value(value)); self.general_information[name]=right; self.info_grid.addWidget(left,row,0); self.info_grid.addWidget(right,row,1)
         evaluation_status=active.status if active else "—"; dai=f"{active.design_achievement_index:.3f}" if active and active.design_achievement_index is not None else "—"; fci=f"{active.face_condition_index:.3f}" if active and active.face_condition_index is not None else "—"; quadrant=result_label(active.result_label) if active else "—"
-        self.result_text.setText(f"{tr('Evaluation status')}: {evaluation_status}\nDAI: {dai}\nFCI: {fci}\n{tr('Result')}: {_value(quadrant)}"); self.links_text.setText(f"{tr('Production blasts')}: {prod}\n{tr('Contour blasts')}: {contour}\n{tr('Total confirmed')}: {len(confirmed)}"); self.geometry_text.setText(f"{tr('Elevation interval')}: {interval}\n{tr('Revision')}: {rev.revision_number}\n{tr('Project Lines Dataset')}: {', '.join(rev.source_dataset_ids) or 'Free boundary'}")
-        comments=((active.comments or "")+("\n" if active and active.comments and active.recommendations else "")+(active.recommendations or "")) if active else ""; self.comments_text.setText(comments or tr("No comments or recommendations")); history_entries=self._history_entries(); self.recent_text.setText("\n".join(f"{entry.timestamp.date()}: {entry.title}" for entry in history_entries[:6]) or tr("No history"))
+        self.result_text.setText(f"{tr('Evaluation status')}: {evaluation_status}\nDAI: {dai}\nFCI: {fci}\n{tr('Result')}: {_value(quadrant)}")
+        face_rows=(("Contour hole traces",_face_condition_value(active,"visible_drillhole_traces"," %")),("Loose blocks",_face_condition_value(active,"loose_blocks")),("Face profile",_face_condition_value(active,"face_profile")),("Crest loss",_face_condition_value(active,"crest_loss"," m")),("Blast damage",_face_condition_value(active,"damage"," /m²")),("Blast cracks",_face_condition_value(active,"open_cracks")))
+        visible_face=[f"{tr(name)}: {value}" for name,value in face_rows if value!="—"]; self.face_text.setText("\n".join(visible_face) or tr("No face-condition data yet"))
+        snapshot=active.matrix_template_snapshot if active else {}; dai_threshold=snapshot.get("design_achievement_threshold",.65) if snapshot else .65; fci_threshold=snapshot.get("face_condition_threshold",.60) if snapshot else .60; self.matrix_preview.set_result(dai=active.design_achievement_index if active else None,fci=active.face_condition_index if active else None,dai_threshold=dai_threshold,fci_threshold=fci_threshold); controlled=bool(active and active.controlled_blasting_present); self.matrix_basis_text.setText(tr("Controlled blasting") if controlled else tr("Standard blasting"))
+        self.links_text.setText(f"{tr('Production blasts')}: {prod}\n{tr('Contour blasts')}: {contour}\n{tr('Total confirmed')}: {len(confirmed)}")
+        comments=((active.comments or "")+("\n" if active and active.comments and active.recommendations else "")+(active.recommendations or "")) if active else ""; self.comments_text.setText(comments or tr("No comments or recommendations")); history_entries=self._history_entries(); self.recent_text.setText("\n".join(f"{entry.timestamp.date()}: {entry.title}" for entry in history_entries[:5]) or tr("No history"))
         while self.summary_grid.count():
             item=self.summary_grid.takeAt(0)
             if item.widget():item.widget().deleteLater()
         summary=(("Status",status),("Assessment date",self.area.assessment_date),("Evaluation status",evaluation_status),("DAI",dai),("FCI",fci),("Linked events",len(confirmed)),("Geometry revisions",len(self.area.geometry_revisions)),("Evaluation revisions",len(self.evaluation.revisions)),("History records",len(history_entries)))
         for row,(name,value) in enumerate(summary):self.summary_grid.addWidget(QLabel(tr(name)),row,0); self.summary_grid.addWidget(QLabel(_value(value)),row,1)
-        persisted=self.evaluation in self.controller.state.evaluations; photos=self.controller.attachments.list_for_owner("assessment_evaluation",self.evaluation.id,"photo") if persisted else []; documents=self.controller.attachments.list_for_owner("assessment_evaluation",self.evaluation.id,"document") if persisted else []; self.photo_preview.set_items(photos,tr("No photos yet")); self.document_preview.set_items(documents,tr("No documents yet")); self.photo_preview.add_button.setEnabled(True); self.document_preview.add_button.setEnabled(True)
+        persisted=self.evaluation in self.controller.state.evaluations; photos=self.controller.attachments.list_for_owner("assessment_evaluation",self.evaluation.id,"photo") if persisted else []; documents=self.controller.attachments.list_for_owner("assessment_evaluation",self.evaluation.id,"document") if persisted else []; self.photo_preview.set_items(self.controller.attachments,photos,"No photos yet",can_add=not self.read_only); self.document_preview.set_items(self.controller.attachments,documents,"No documents yet",can_add=not self.read_only)
 
     def _linked_events(self):
         page=QWidget(); layout=QVBoxLayout(page); self.links_splitter=QSplitter(Qt.Orientation.Horizontal); self.links_splitter.setChildrenCollapsible(False)
@@ -214,8 +249,8 @@ class AssessmentAreaPage(QWidget):
             owner,rollback=self.controller.prepare_evaluation_attachment_owner(self.area,self.evaluation); self.evaluation=owner
             return owner,rollback
         page,manager=create_attachment_tab_page(self.controller.attachments,"assessment_evaluation",owner_id,kind,read_only=self.read_only,ensure_owner=ensure_owner); manager.changed.connect(self._after_attachment_change); self.attachment_controls=getattr(self,"attachment_controls",[]); self.attachment_controls.append((kind,manager)); self.tabs.addTab(page,tr(title));
-        if kind=="photo":self.photos_tab=page
-        else:self.documents_tab=page
+        if kind=="photo":self.photos_tab=page; self.photo_manager=manager
+        else:self.documents_tab=page; self.document_manager=manager
     def _after_attachment_change(self):
         self._refresh_overview_and_sidebar(); self._refresh_history()
     def _save_evaluation(self,status):
