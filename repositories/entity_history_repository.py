@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -65,6 +64,15 @@ def _meaningful(value: Any) -> bool:
     return True
 
 
+def _execution_content(payload: dict[str, Any]) -> dict[str, Any]:
+    """Strip default-only execution state so an untouched fact is not 'created'."""
+    actual = dict(payload.get("actual_execution") or {})
+    actual.pop("migration_warnings", None)
+    if actual.get("completion_status") == "planned":
+        actual.pop("completion_status", None)
+    return actual
+
+
 def _technical_sections(payload: dict[str, Any], event_type: str) -> dict[str, Any]:
     design = {
         "drilling_groups": payload.get("drilling_groups"),
@@ -72,15 +80,14 @@ def _technical_sections(payload: dict[str, Any], event_type: str) -> dict[str, A
         "contour_parameters": payload.get("contour_parameters"),
         "design_slope_orientation": payload.get("design_slope_orientation"),
     }
-    result = {"blast_design": design, "execution": payload.get("actual_execution")}
+    result = {"blast_design": design, "execution": _execution_content(payload)}
     if event_type == "production":
         result["geomechanics"] = payload.get("geomechanical_parameters")
     return result
 
 
 def _execution_initialized(payload: dict[str, Any]) -> bool:
-    actual = payload.get("actual_execution") or {}
-    groups = actual.get("actual_drilling_groups") or []
+    groups = _execution_content(payload).get("actual_drilling_groups") or []
     return any(group.get("copied_from_design") for group in groups if isinstance(group, dict))
 
 
@@ -98,7 +105,7 @@ def _assessment_result_details(revision) -> str:
 class EntityHistoryRepository:
     """Compose canonical revisions and generic audit rows into one read-only history."""
 
-    _REVISION_MARKERS = {"geometry_revision", "assessment_revision"}
+    _REVISION_MARKERS = {"geometry_revision", "assessment_revision", "technical_revision"}
 
     def __init__(self, session_factory):
         self.session_factory = session_factory
@@ -128,18 +135,23 @@ class EntityHistoryRepository:
                 for row in audits
                 if row.field_name in self._REVISION_MARKERS and row.new_value
             }
+            creation_actor = next(
+                (_actor(row.user) for row in audits if row.action == "create"), "—"
+            )
             entries = self._plain_audit_entries(audits)
             for revision in event.geometry_revisions:
                 entries.append(EntityHistoryEntry(
                     revision.imported_at,
-                    marker_actor.get(revision.logical_id, "—"),
+                    marker_actor.get(revision.logical_id, creation_actor if revision.revision_number == 1 else "—"),
                     "Geometry imported" if revision.revision_number == 1 else "Geometry reimported",
                     f"Geometry R{revision.revision_number} · {revision.source_file_name}",
                     "geometry", "blast_geometry", revision.logical_id,
                     revision.revision_number, f"geometry:{revision.id}",
                 ))
             if event.technical_card is not None:
-                entries.extend(self._technical_card_entries(event.technical_card.revisions, event.event_type))
+                entries.extend(self._technical_card_entries(
+                    event.technical_card.revisions, event.event_type, marker_actor
+                ))
             return self._sorted(entries)
 
     def for_assessment_area(self, area_id: str) -> list[EntityHistoryEntry]:
@@ -212,9 +224,11 @@ class EntityHistoryRepository:
         return "change"
 
     @staticmethod
-    def _technical_card_entries(revisions, event_type: str) -> list[EntityHistoryEntry]:
+    def _technical_card_entries(revisions, event_type: str,
+                                marker_actor: dict[str, str] | None = None) -> list[EntityHistoryEntry]:
         entries: list[EntityHistoryEntry] = []
         previous = None
+        marker_actor = marker_actor or {}
         for revision in revisions:
             payload = revision.payload_json or {}
             current_sections = _technical_sections(payload, event_type)
@@ -224,6 +238,7 @@ class EntityHistoryRepository:
                 "geomechanics": "Geomechanics",
                 "execution": "Execution fact",
             }
+            actor = marker_actor.get(revision.logical_id, revision.author or "—")
             for key, value in current_sections.items():
                 if previous is None:
                     if not _meaningful(value):
@@ -232,6 +247,8 @@ class EntityHistoryRepository:
                 elif value != previous_sections.get(key):
                     if key == "execution" and _execution_initialized(payload) and not _execution_initialized(previous.payload_json or {}):
                         title = "Execution fact initialized from design"
+                    elif not _meaningful(previous_sections.get(key)) and _meaningful(value):
+                        title = f"{labels[key]} created"
                     else:
                         title = f"{labels[key]} updated"
                 else:
@@ -241,13 +258,13 @@ class EntityHistoryRepository:
                 if geometry_number is not None:
                     details += f" · Geometry R{geometry_number}"
                 entries.append(EntityHistoryEntry(
-                    revision.created_at, revision.author or "—", title, details,
+                    revision.created_at, actor, title, details,
                     key, "technical_card", revision.logical_id,
                     revision.revision_number, f"technical:{revision.id}:{key}",
                 ))
             if revision.status == "completed":
                 entries.append(EntityHistoryEntry(
-                    revision.created_at, revision.author or "—", "Technical Card completed",
+                    revision.created_at, actor, "Technical Card completed",
                     f"Technical Card R{revision.revision_number}", "technical_card",
                     "technical_card", revision.logical_id, revision.revision_number,
                     f"technical:{revision.id}:completed",
