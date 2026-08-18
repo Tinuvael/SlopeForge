@@ -161,7 +161,7 @@ def test_project_tree_renders_nullable_area_navigation_rows(
 
     site = SimpleNamespace(id=1, name="Project")
     domain = SimpleNamespace(id=2, name="Domain")
-    monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: [site]))
+    monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda _id: [domain]))
     monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda _id: [domain]))
     monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(list_blocks=lambda **_kwargs: []))
     monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
@@ -296,14 +296,15 @@ def test_repeated_transient_navigation_keeps_stack_bounded():
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6.QtWidgets import QWidget
 
-    app = _app()
+    _app()
     window = _bare_main_window()
     for kind in ("Site", "Domain", "Area", "Contour") * 10:
         page = QWidget()
         page.setObjectName(kind)
         window._activate_page(page)
-        app.sendPostedEvents()
-        app.processEvents()
+        # removeWidget() is synchronous; this contract does not need to flush
+        # deferred-delete events on every iteration. Doing so makes this static
+        # lifecycle check depend on unrelated Qt objects queued by prior tests.
         assert window.page_stack.count() <= 2
     window.close()
 
@@ -414,7 +415,7 @@ def test_assessment_attachment_ui_has_no_saved_revision_gate():
     area = source("ui/pages/assessment_area_page.py")
     assert "Save an assessment draft first" not in area
     assert "prepare_evaluation_attachment_owner" in area
-    assert "EntityAttachmentManagerWidget" in area
+    assert "create_attachment_tab_page" in area
     assert "ensure_owner=ensure_owner" in area
 
 
