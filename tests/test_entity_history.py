@@ -144,7 +144,33 @@ def test_shared_history_widget_has_documents_style_four_column_contract():
     widget.close(); app.processEvents()
 
 
-def test_all_three_entity_pages_use_the_shared_history_widget():
+def test_history_revision_action_only_enables_for_revision_backed_rows():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.entity_history_widget import EntityHistoryWidget
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    widget = EntityHistoryWidget()
+    technical = EntityHistoryEntry(
+        datetime(2026, 8, 18, 12, 30, tzinfo=timezone.utc),
+        "eugene", "Blast design updated", "Technical Card R2", "blast_design",
+        "technical_card", "TC-R002", 2,
+    )
+    audit = EntityHistoryEntry(
+        datetime(2026, 8, 18, 12, 31, tzinfo=timezone.utc),
+        "eugene", "Horizon changed", "630 → 635", "change", "audit", "17",
+    )
+    widget.set_entries([technical, audit])
+    opened=[]; widget.entryActivated.connect(opened.append)
+    widget.table.selectRow(0); app.processEvents()
+    assert widget.open_revision_button.isEnabled()
+    widget.open_revision_button.click(); app.processEvents()
+    assert opened == [technical]
+    widget.table.selectRow(1); app.processEvents()
+    assert not widget.open_revision_button.isEnabled()
+    widget.close(); app.processEvents()
+
+
+def test_all_three_entity_pages_use_shared_history_and_revision_viewers():
     for path in (
         "ui/pages/block_page.py",
         "ui/pages/contour_event_page.py",
@@ -153,6 +179,13 @@ def test_all_three_entity_pages_use_the_shared_history_widget():
         text = Path(path).read_text(encoding="utf-8")
         assert "EntityHistoryWidget" in text
         assert "EntityHistoryRepository" in text
+        assert "entryActivated.connect(self._open_history_entry)" in text
+        assert "def _open_history_entry" in text
+    viewer = Path("ui/pages/entity_history_revision_viewer.py").read_text(encoding="utf-8")
+    assert "open_technical_card_revision" in viewer
+    assert "open_assessment_revision" in viewer
+    assert "open_geometry_revision" in viewer
+    assert "read_only=True" in viewer
 
 
 def test_history_audit_scope_records_compact_attachment_batches_and_ignores_auto_link_refresh():
