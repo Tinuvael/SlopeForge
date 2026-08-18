@@ -1,5 +1,5 @@
-"""SQLAlchemy adapter preserving the compatibility Mine/Site pair."""
-from database.models import Mine, Site
+"""SQLAlchemy adapter for creating one Project/Site."""
+from database.models import Site
 
 
 class SqlAlchemyProjectCreation:
@@ -10,8 +10,6 @@ class SqlAlchemyProjectCreation:
         if not clean_name:
             raise ValueError("Project name is required")
         with self._session_factory.begin() as session:
-            mine = Mine(name=clean_name, description=description or None)
-            session.add(mine); session.flush()
-            site = Site(mine_id=mine.id, name=clean_name, description=description or None)
+            site = Site(name=clean_name, description=description or None)
             session.add(site); session.flush()
             return site.id
