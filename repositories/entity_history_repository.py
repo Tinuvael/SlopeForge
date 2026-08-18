@@ -77,8 +77,6 @@ def _execution_content(payload: dict[str, Any]) -> dict[str, Any]:
         "deviations_text": deviations,
         "completion_status": "completed" if completed else None,
     }
-    # The editor always supplies a date while saving, even before factual work
-    # starts. Treat it as factual content only after another execution signal exists.
     if groups or notes or deviations or completed:
         core["actual_blast_date"] = actual.get("actual_blast_date")
     return core
@@ -122,6 +120,8 @@ class EntityHistoryRepository:
         self.session_factory = session_factory
 
     def for_blast_event(self, event_id: str) -> list[EntityHistoryEntry]:
+        if not callable(self.session_factory):
+            return []
         with self.session_factory() as session:
             event = session.scalar(
                 select(orm.BlastEvent)
@@ -166,6 +166,8 @@ class EntityHistoryRepository:
             return self._sorted(entries)
 
     def for_assessment_area(self, area_id: str) -> list[EntityHistoryEntry]:
+        if not callable(self.session_factory):
+            return []
         with self.session_factory() as session:
             area = session.scalar(
                 select(orm.AssessmentArea)
