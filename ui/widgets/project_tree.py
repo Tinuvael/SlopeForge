@@ -243,7 +243,8 @@ class ProjectTree(QWidget):
                         if interval is None: interval=self._item(label,{"type":"interval",**base}); folder.addChild(interval); intervals[label]=interval
                         text=area.name + (f" [{tr('Archived')}]" if area.is_archived else "")
                         interval.addChild(self._item(text,{"type":"area","id":area.id,"archived":area.is_archived,**base}))
-            if site_item.childCount(): self.tree.addTopLevelItem(site_item)
+            if site_item.childCount() or not constrained or site_match:
+                self.tree.addTopLevelItem(site_item)
         self.tree.expandAll() if constrained else self.tree.expandToDepth(1)
         self._expand_virtual_sections()
         QTimer.singleShot(0, self._expand_virtual_sections)
