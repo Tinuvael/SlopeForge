@@ -87,7 +87,7 @@ class ProductionBlastRepository:
             site_name=site.name,
             horizon_m=event.elevation_m,
             planned_blast_date=event.event_date,
-            status=str(states[event.logical_id] if event.logical_id in states else states[event.id]),
+            status=str(states[event.id]),
             author_name=author,
             created_at=event.created_at,
             updated_at=event.updated_at,
