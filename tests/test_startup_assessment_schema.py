@@ -16,13 +16,17 @@ class FakeInspector:
 def test_expected_alembic_head_resolves_real_repository_graph():
     """Exercise the production path/config rather than a mocked head helper."""
     repository_heads = ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
-    assert repository_heads == ["0006_explosive_product_metadata"]
+    assert repository_heads == ["0007_remove_mine_blastblock"]
     assert startup._expected_alembic_head() == repository_heads[0]
 
 
 class FakeScript:
     def get_revision(self, revision):
-        return object() if revision in {"0001_mvp_baseline", "0002_workflow_status", "0003_explosive_catalog", "0004_charge_presets", "0005_explosive_charge_form", "0006_explosive_product_metadata"} else None
+        return object() if revision in {
+            "0001_mvp_baseline", "0002_workflow_status", "0003_explosive_catalog",
+            "0004_charge_presets", "0005_explosive_charge_form",
+            "0006_explosive_product_metadata", "0007_remove_mine_blastblock",
+        } else None
 
 
 def arrange_startup(monkeypatch, *, revision="0002_workflow_status", tables=None):

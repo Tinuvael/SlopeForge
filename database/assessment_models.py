@@ -1,6 +1,6 @@
 """PostgreSQL persistence model for the versioned 2D Assessment domain.
 
-This module only declares metadata.  In particular, importing it never creates an
+This module only declares metadata. In particular, importing it never creates an
 engine or opens a database connection.
 """
 from __future__ import annotations
@@ -11,9 +11,9 @@ from typing import Any, Optional
 
 from sqlalchemy import (BigInteger, Boolean, CheckConstraint, Date, DateTime,
                         ForeignKey, Index, Integer, Numeric, String, Text,
-                        UniqueConstraint, event, func, select, text)
+                        UniqueConstraint, func, text)
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
 
@@ -42,12 +42,11 @@ class ProjectLinesDataset(Base):
 
 
 class BlastEvent(TimestampMixin, Base):
+    """Single persistence entity for both production Blocks and contour blasts."""
     __tablename__ = "blast_events"
     __table_args__ = (
         UniqueConstraint("domain_id", "logical_id", name="uq_blast_events_domain_logical_id"),
-        UniqueConstraint("blast_block_id", name="uq_blast_events_blast_block_id"),
         CheckConstraint("event_type IN ('production', 'contour')", name="ck_blast_events_event_type"),
-        CheckConstraint("blast_block_id IS NULL OR event_type = 'production'", name="ck_blast_events_block_production_only"),
         Index("ix_blast_events_domain_id", "domain_id"), Index("ix_blast_events_event_type", "event_type"),
         Index("ix_blast_events_elevation_m", "elevation_m"), Index("ix_blast_events_event_date", "event_date"),
         Index("ix_blast_events_is_archived", "is_archived"),
@@ -59,37 +58,16 @@ class BlastEvent(TimestampMixin, Base):
     event_type: Mapped[str] = mapped_column(String(20), nullable=False)
     event_date: Mapped[Optional[date]] = mapped_column(Date)
     elevation_m: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
-    blast_block_id: Mapped[Optional[int]] = mapped_column(ForeignKey("blast_blocks.id", ondelete="SET NULL"))
+    comment: Mapped[Optional[str]] = mapped_column(Text)
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     archive_reason: Mapped[Optional[str]] = mapped_column(Text)
     domain: Mapped["Domain"] = relationship(back_populates="blast_events")
+    created_by_user: Mapped[Optional["User"]] = relationship()
     geometry_revisions: Mapped[list["BlastEventGeometryRevision"]] = relationship(back_populates="blast_event", cascade="all, delete-orphan", passive_deletes=True, order_by="BlastEventGeometryRevision.revision_number")
     technical_card: Mapped[Optional["BlastEventTechnicalCard"]] = relationship(back_populates="blast_event", cascade="all, delete-orphan", passive_deletes=True, uselist=False)
     attachments: Mapped[list["AssessmentEntityAttachment"]] = relationship(back_populates="blast_event", cascade="all, delete-orphan", passive_deletes=True, foreign_keys="AssessmentEntityAttachment.blast_event_id")
-
-
-@event.listens_for(Session, "before_flush")
-def _validate_blast_event_block_domain(session, _flush_context, _instances):
-    """A production event may only reference a block in its own Domain."""
-    from database.models import BlastBlock
-
-    for row in session.new.union(session.dirty):
-        if not isinstance(row, BlastEvent) or row.blast_block_id is None:
-            continue
-        # A metadata command may atomically move both halves of the production
-        # unit.  Prefer the pending in-session Block value over the old database
-        # value while validating that single flush.
-        pending_block = next((item for item in session.new.union(session.dirty)
-                              if isinstance(item, BlastBlock)
-                              and item.id == row.blast_block_id), None)
-        block_domain_id = (pending_block.domain_id if pending_block is not None else
-            session.scalar(select(BlastBlock.domain_id).where(
-                BlastBlock.id == row.blast_block_id)))
-        if block_domain_id is None:
-            raise ValueError("Linked BlastBlock does not exist")
-        if row.domain_id != block_domain_id:
-            raise ValueError("BlastEvent and linked BlastBlock must belong to the same Domain")
 
 
 class BlastEventGeometryRevision(Base):
@@ -206,12 +184,7 @@ class AssessmentEventLink(Base):
     logical_id: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     source: Mapped[str] = mapped_column(String(20), nullable=False)
-    # Domain None means "no frozen snapshot" for production polygon links.
-    # none_as_null prevents psycopg from writing JSON `null`, which would fail
-    # ck_assessment_event_links_frozen_object (SQL NULL is intentionally valid).
-    frozen_intersection_geometry_json: Mapped[Optional[dict[str, Any]]] = mapped_column(
-        JSONB(none_as_null=True)
-    )
+    frozen_intersection_geometry_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB(none_as_null=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     assessment_area_geometry_revision: Mapped[AssessmentAreaGeometryRevision] = relationship(back_populates="event_links")
     blast_event_geometry_revision: Mapped[BlastEventGeometryRevision] = relationship(back_populates="event_links")

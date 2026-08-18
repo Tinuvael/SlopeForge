@@ -2,55 +2,40 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
-from database.models import Mine, Site
+from database.models import Site
 
 
 class SiteRepository:
     def __init__(self, session_factory: Callable[[], Session]):
         self.session_factory = session_factory
 
-    def list_sites(self, mine_id: int | None = None) -> list[Site]:
+    def list_sites(self) -> list[Site]:
         with self.session_factory() as session:
-            stmt = select(Site).options(joinedload(Site.mine)).order_by(Site.name)
-            if mine_id is not None:
-                stmt = stmt.where(Site.mine_id == mine_id)
-            items = list(session.scalars(stmt))
+            items = list(session.scalars(select(Site).order_by(Site.name, Site.id)))
             for item in items:
                 session.expunge(item)
             return items
 
-    def create_site(self, mine_id: int, name: str, description: str | None) -> Site:
-        with self.session_factory() as session:
-            try:
-                if session.get(Mine, mine_id) is None:
-                    raise ValueError("Selected mine not found")
-                site = Site(mine_id=mine_id, name=name.strip(), description=description or None)
-                session.add(site)
-                session.commit()
-                session.refresh(site)
-                session.expunge(site)
-                return site
-            except Exception:
-                session.rollback()
-                raise
+    def create_site(self, name: str, description: str | None = None) -> Site:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("Project name is required")
+        with self.session_factory.begin() as session:
+            site = Site(name=clean_name, description=description or None)
+            session.add(site); session.flush(); session.refresh(site); session.expunge(site)
+            return site
 
-    def update_site(self, site_id: int, mine_id: int, name: str, description: str | None) -> Site:
-        with self.session_factory() as session:
-            try:
-                site = session.get(Site, site_id)
-                if site is None:
-                    raise ValueError("Site not found")
-                if session.get(Mine, mine_id) is None:
-                    raise ValueError("Selected mine not found")
-                site.mine_id = mine_id
-                site.name = name.strip()
-                site.description = description or None
-                session.commit()
-                session.refresh(site)
-                session.expunge(site)
-                return site
-            except Exception:
-                session.rollback()
-                raise
+    def update_site(self, site_id: int, name: str, description: str | None = None) -> Site:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("Project name is required")
+        with self.session_factory.begin() as session:
+            site = session.get(Site, site_id)
+            if site is None:
+                raise ValueError("Project not found")
+            site.name = clean_name
+            site.description = description or None
+            session.flush(); session.refresh(site); session.expunge(site)
+            return site

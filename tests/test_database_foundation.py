@@ -14,7 +14,7 @@ from database.storage import StoragePathError, copy_attachment, ensure_inside_st
 
 
 def test_password_hashing_and_verification() -> None:
-    argon2 = pytest.importorskip("argon2", reason="argon2-cffi is not installed in this environment")
+    pytest.importorskip("argon2", reason="argon2-cffi is not installed in this environment")
     from database.security import hash_password, verify_password
     password_hash = hash_password("strong-password")
     assert password_hash.startswith("$argon2")
@@ -28,12 +28,9 @@ def test_first_user_admin_logic_with_mocked_session() -> None:
     class FakeSession:
         def __init__(self) -> None:
             self.users: list[User] = []
-        def scalar(self, _statement):
-            return len(self.users)
-        def add(self, user: User) -> None:
-            self.users.append(user)
-        def flush(self) -> None:
-            pass
+        def scalar(self, _statement): return len(self.users)
+        def add(self, user: User) -> None: self.users.append(user)
+        def flush(self) -> None: pass
 
     session = FakeSession()
     first = create_user(session, "admin", "password")
@@ -42,19 +39,24 @@ def test_first_user_admin_logic_with_mocked_session() -> None:
     assert second.role == "viewer"
 
 
-def test_attachment_storage_rejects_escape_and_copies_file(tmp_path: Path) -> None:
+def test_attachment_storage_uses_site_and_blast_event_identity(tmp_path: Path) -> None:
     settings = Settings(database_url="postgresql+psycopg://u:p@localhost:5432/db", storage_root=tmp_path / "storage")
-    source = tmp_path / "source photo.jpg"
-    source.write_text("content")
-    relative_path = copy_attachment(source, mine_id=1, site_id=2, block_id=3, settings=settings)
+    source = tmp_path / "source photo.jpg"; source.write_text("content")
+    relative_path = copy_attachment(source, site_id=2, event_id="BE-PROD-3", settings=settings)
     assert not relative_path.is_absolute()
+    assert "mine_" not in str(relative_path) and "block_" not in str(relative_path)
+    assert "site_2" in str(relative_path) and "blast_event_BE-PROD-3" in str(relative_path)
     assert (settings.storage_root / relative_path).read_text() == "content"
-    with pytest.raises(StoragePathError):
-        ensure_inside_storage(tmp_path / "outside.txt", settings=settings)
+    with pytest.raises(StoragePathError): ensure_inside_storage(tmp_path / "outside.txt", settings=settings)
 
 
-def test_sqlalchemy_metadata_compiles_for_postgresql() -> None:
+def test_sqlalchemy_metadata_compiles_for_postgresql_and_has_no_legacy_tables() -> None:
     assert "users" in Base.metadata.tables
+    assert "sites" in Base.metadata.tables and "blast_events" in Base.metadata.tables
+    assert "mines" not in Base.metadata.tables
+    assert "blast_blocks" not in Base.metadata.tables
+    assert "mine_id" not in Base.metadata.tables["sites"].c
+    assert "blast_block_id" not in Base.metadata.tables["blast_events"].c
     for table in Base.metadata.sorted_tables:
         str(CreateTable(table).compile(dialect=postgresql.dialect()))
 
@@ -72,50 +74,45 @@ def test_mvp_baseline_is_self_contained() -> None:
         assert f"name='{enum_name}'" in migration
 
 
+def test_destructive_legacy_removal_migration_is_explicit() -> None:
+    migration = Path("alembic/versions/0007_remove_mine_blastblock.py").read_text()
+    assert 'revision = "0007_remove_mine_blastblock"' in migration
+    assert 'down_revision = "0006_explosive_product_metadata"' in migration
+    assert 'op.drop_table("blast_blocks")' in migration
+    assert 'op.drop_table("mines")' in migration
+    assert 'op.drop_column("blast_events", "blast_block_id")' in migration
+    assert 'op.drop_column("sites", "mine_id")' in migration
+    assert 'op.execute("DROP TYPE IF EXISTS blast_block_status")' in migration
+
+
 def test_mvp_baseline_upgrade_and_downgrade_resolve_all_runtime_names(monkeypatch) -> None:
     """Calling migration functions catches undefined names hidden from compileall."""
     from importlib.util import module_from_spec, spec_from_file_location
 
     class NoOpOperations:
-        def __getattr__(self, _name):
-            return lambda *args, **kwargs: None
+        def __getattr__(self, _name): return lambda *args, **kwargs: None
 
     path = Path("alembic/versions/0001_mvp_baseline.py")
     spec = spec_from_file_location("mvp_baseline_runtime_names", path)
-    module = module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
+    module = module_from_spec(spec); assert spec.loader is not None; spec.loader.exec_module(module)
     monkeypatch.setattr(module, "op", NoOpOperations())
     monkeypatch.setattr(module.sa.Enum, "drop", lambda *args, **kwargs: None)
-    module.upgrade()
-    module.downgrade()
+    module.upgrade(); module.downgrade()
 
 
 def test_first_admin_creation_uses_advisory_lock_and_rechecks_users() -> None:
     pytest.importorskip("argon2", reason="argon2-cffi is not installed in this environment")
     from database.users import FirstAdminAlreadyExistsError, create_first_admin_with_lock
 
-    class FakeDialect:
-        name = "postgresql"
-
-    class FakeBind:
-        dialect = FakeDialect()
-
+    class FakeDialect: name = "postgresql"
+    class FakeBind: dialect = FakeDialect()
     class FakeSession:
-        def __init__(self, count: int):
-            self.count = count
-            self.executed = []
-            self.added = []
-        def get_bind(self):
-            return FakeBind()
-        def execute(self, statement, params=None):
-            self.executed.append((str(statement), params))
-        def scalar(self, statement):
-            return self.count
-        def add(self, user):
-            self.added.append(user)
-        def flush(self):
-            pass
+        def __init__(self, count: int): self.count = count; self.executed = []; self.added = []
+        def get_bind(self): return FakeBind()
+        def execute(self, statement, params=None): self.executed.append((str(statement), params))
+        def scalar(self, statement): return self.count
+        def add(self, user): self.added.append(user)
+        def flush(self): pass
 
     empty_session = FakeSession(0)
     user = create_first_admin_with_lock(empty_session, "admin", "password")
@@ -123,7 +120,6 @@ def test_first_admin_creation_uses_advisory_lock_and_rechecks_users() -> None:
     assert user.role == "admin"
 
     existing_session = FakeSession(1)
-    with pytest.raises(FirstAdminAlreadyExistsError):
-        create_first_admin_with_lock(existing_session, "other", "password")
+    with pytest.raises(FirstAdminAlreadyExistsError): create_first_admin_with_lock(existing_session, "other", "password")
     assert "pg_advisory_xact_lock" in existing_session.executed[0][0]
     assert existing_session.added == []

@@ -26,9 +26,10 @@ def ensure_inside_storage(path: Path, settings: Settings | None = None) -> Path:
     return resolved
 
 
-def block_attachment_dir(mine_id: int, site_id: int, block_id: int, settings: Settings | None = None) -> Path:
+def blast_event_attachment_dir(site_id: int, event_id: str, settings: Settings | None = None) -> Path:
     root = _storage_root(settings)
-    target = root / f"mine_{mine_id}" / f"site_{site_id}" / f"block_{block_id}" / "attachments"
+    safe_event = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in str(event_id))
+    target = root / f"site_{site_id}" / f"blast_event_{safe_event}" / "attachments"
     ensure_inside_storage(target, settings)
     target.mkdir(parents=True, exist_ok=True)
     return target
@@ -41,9 +42,9 @@ def unique_filename(original_filename: str) -> str:
     return f"{safe_stem}_{uuid4().hex}{suffix}"
 
 
-def copy_attachment(source_path: Path, mine_id: int, site_id: int, block_id: int, settings: Settings | None = None) -> Path:
+def copy_attachment(source_path: Path, site_id: int, event_id: str, settings: Settings | None = None) -> Path:
     source = source_path.resolve(strict=True)
-    target_dir = block_attachment_dir(mine_id, site_id, block_id, settings)
+    target_dir = blast_event_attachment_dir(site_id, event_id, settings)
     target = target_dir / unique_filename(source.name)
     ensure_inside_storage(target, settings)
     shutil.copy2(source, target)

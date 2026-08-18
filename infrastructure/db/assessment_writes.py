@@ -349,7 +349,6 @@ class SqlAlchemyAssessmentWrites:
         with self._session_factory.begin() as s:
             new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             row=self._attachment_for_domain(s,domain_id,attachment.id)
-            # Metadata editing never reparents an attachment.
             for name in ("attachment_kind", "subtype", "custom_subtype", "title",
                          "original_filename", "stored_filename", "relative_path",
                          "file_date", "description", "mime_type", "file_size_bytes"):
@@ -364,11 +363,13 @@ class SqlAlchemyAssessmentWrites:
             return DomainWriteResult(new_version)
 
     @classmethod
-    def insert_event_in_session(cls, s, domain_id, event):
+    def insert_event_in_session(cls, s, domain_id, event, *, created_by_user_id=None):
         row=orm.BlastEvent(domain_id=domain_id,logical_id=event.id,name=event.name,
             event_type=event.event_type,event_date=event.event_date,elevation_m=event.elevation,
-            blast_block_id=event.blast_block_id,is_archived=event.is_archived,
-            archived_at=event.archived_at,archive_reason=event.archive_reason)
+            comment=event.comment,is_archived=event.is_archived,
+            archived_at=event.archived_at,archive_reason=event.archive_reason,
+            created_by_user_id=(created_by_user_id if created_by_user_id is not None
+                                else event.created_by_user_id))
         s.add(row); s.flush()
         for revision in event.geometry_revisions:
             s.add(orm.BlastEventGeometryRevision(blast_event=row,logical_id=revision.id,
@@ -378,4 +379,4 @@ class SqlAlchemyAssessmentWrites:
                 plan_geometry_json=revision.plan_geometry.to_dict(),elevation_m=revision.elevation,
                 is_active=revision.id==event.active_geometry_revision_id))
         s.flush()
-        return None
+        return row

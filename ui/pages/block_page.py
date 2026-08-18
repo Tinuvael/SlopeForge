@@ -8,9 +8,9 @@ from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPu
 
 from app.context import AppContext
 from repositories.audit_log_repository import AuditLogRepository
-from repositories.blast_block_repository import BlastBlockRepository, BlastBlockRow
+from repositories.production_blast_repository import ProductionBlastRepository, ProductionBlastRow
 from repositories.domain_repository import DomainRepository
-from infrastructure.services.blast_block_service import BlastBlockService
+from infrastructure.services.production_blast_service import ProductionBlastService
 from ui.block_dialog import BlockDialog
 from ui.pages.block_card_widgets import (
     AttachmentPreviewWidget,
@@ -33,17 +33,17 @@ class _NullAttachmentService:
 
 class BlockPage(QWidget):
     data_changed = Signal()
-    metadata_saved = Signal(int,int)
+    metadata_saved = Signal(str,int)
 
     def __init__(self, context: AppContext):
         super().__init__()
         self.context = context
         self.domain_repo = DomainRepository(context.session_factory)
-        self.block_repo = BlastBlockRepository(context.session_factory)
-        self.block_service = BlastBlockService(self.block_repo, self.domain_repo)
+        self.block_repo = ProductionBlastRepository(context.session_factory)
+        self.block_service = ProductionBlastService(self.block_repo, self.domain_repo)
         self.audit_repo = AuditLogRepository(context.session_factory)
         self.filters = {"number_query": None, "domain_id": None, "site_id": None, "status": None}
-        self.current_block: BlastBlockRow | None = None
+        self.current_block: ProductionBlastRow | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -147,16 +147,9 @@ class BlockPage(QWidget):
             self.current_block = rows[0]
         self._render_current_block()
 
-    def open_block_id(self, block_id: int) -> None:
-        self.current_block = self.block_service.get_block(block_id)
+    def open_block_id(self, event_id: str) -> None:
+        self.current_block = self.block_service.get_block(event_id)
         self._render_current_block()
-
-    def create_block(self, domain_id: int | None = None) -> None:
-        dialog = BlockDialog(self.block_service, self.domain_repo, self.context.current_user, domain_id=domain_id)
-        if dialog.exec():
-            self.current_block = self.block_service.get_block(dialog.saved_block_id) if dialog.saved_block_id else None
-            self.refresh()
-            self.data_changed.emit()
 
     def edit_current_block(self) -> None:
         if not self.current_block or not self.context.current_user.can_edit or self.current_block.is_archived:
@@ -181,9 +174,9 @@ class BlockPage(QWidget):
 
     def _render_current_block(self) -> None:
         block = self.current_block
-        audit_entries = self.audit_repo.list_for_block(block.id) if block else []
+        audit_entries = self.audit_repo.list_for_blast_event(block.id) if block else []
         self.entity_controller = EntityPageController(self.context, block.domain_id) if block else None
-        event = self.entity_controller.event_for_block(block.id) if self.entity_controller else None
+        event = self.entity_controller.production_event(block.id) if self.entity_controller else None
         photos = self.entity_controller.attachments.list_for_owner("blast_event", event.id, "photo") if event else []
         documents = self.entity_controller.attachments.list_for_owner("blast_event", event.id, "document") if event else []
         photo_count, document_count = self.entity_controller.attachments.counts("blast_event", event.id) if event else (0, 0)
@@ -220,9 +213,9 @@ class BlockPage(QWidget):
     def _render_engineering(self, block):
         self._clear_engineering()
         if block is None:return
-        event=self.entity_controller.event_for_block(block.id)
+        event=self.entity_controller.production_event(block.id)
         if event is None:
-            self.overview.scheme.set_geometry(None,context="Linked production geometry is not loaded")
+            self.overview.scheme.set_geometry(None,context="Production geometry is not loaded")
             return
         editable=self.context.current_user.can_edit and not block.is_archived
         geometry=event.active_geometry_revision(); dataset=self.entity_controller.state.active_dataset(); lines=dataset.lines if dataset else []

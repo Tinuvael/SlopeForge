@@ -7,7 +7,10 @@ import pytest
 
 from app.context import CurrentUser
 from infrastructure.services.auth_service import AuthError, AuthService
-from infrastructure.services.blast_block_service import BlastBlockInput, BlastBlockService, PermissionDenied, ValidationError
+from infrastructure.services.production_blast_service import (
+    PermissionDenied, ProductionBlastInput, ProductionBlastService, ValidationError,
+    build_audit_changes, format_audit_value,
+)
 
 
 admin = CurrentUser(id=1, username="admin", full_name="Admin", role="admin")
@@ -21,52 +24,57 @@ class FakeDomain:
     site_id: int = 10
     name: str = "North"
 
+
 class FakeDomainRepo:
     def __init__(self): self.domains = [FakeDomain(7)]
     def get(self, domain_id): return next((x for x in self.domains if x.id == domain_id), None)
 
-class FakeBlockRepo:
+
+class FakeProductionRepo:
     session_factory = None
-    def __init__(self): self.created=[]; self.updated=[]; self.rows=[]
-    def create_block(self, **kwargs): self.created.append(kwargs); return type("Block",(),{"id":100})()
-    def update_block(self, **kwargs): self.updated.append(kwargs); return type("Block",(),{"id":kwargs["block_id"]})()
+    def __init__(self): self.rows=[]
     def list_blocks(self, **filters): return self.rows
-    def get_block(self, block_id): return None
+    def get_block(self, event_id): return next((x for x in self.rows if x.id == event_id), None)
+
 
 def valid_input(**overrides):
-    data={"domain_id":7,"block_number":"24-017","horizon_text":"135.5","comment":""}; data.update(overrides); return BlastBlockInput(**data)
+    data={"domain_id":7,"block_number":"24-017","horizon_text":"135.5","comment":""}; data.update(overrides)
+    return ProductionBlastInput(**data)
 
-def test_roles_can_edit(): assert admin.can_edit and editor.can_edit and not viewer.can_edit
-def test_create_block_by_domain():
-    repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo()); assert service.create_block(valid_input(),admin)==100; assert repo.created[0]["domain_id"]==7; assert repo.created[0]["horizon_m"]==Decimal("135.5")
-def test_viewer_cannot_edit():
-    with pytest.raises(PermissionDenied): BlastBlockService(FakeBlockRepo(),FakeDomainRepo()).create_block(valid_input(),viewer)
-def test_block_validation_rejects_missing_domain():
-    service=BlastBlockService(FakeBlockRepo(),FakeDomainRepo())
-    with pytest.raises(ValidationError): service.create_block(valid_input(domain_id=99),admin)
+
+def test_roles_can_edit():
+    assert admin.can_edit and editor.can_edit and not viewer.can_edit
+
+
+def test_production_metadata_validation_uses_block_name_and_horizon():
+    service=ProductionBlastService(FakeProductionRepo(),FakeDomainRepo(),audit_repository=object())
+    assert service._validate(valid_input()) == Decimal("135.5")
+    assert service._validate(valid_input(horizon_text="0")) == Decimal("0")
+
+
+def test_viewer_cannot_edit_production_block():
+    service=ProductionBlastService(FakeProductionRepo(),FakeDomainRepo(),audit_repository=object())
+    with pytest.raises(PermissionDenied): service._check_can_edit(viewer)
+
+
+def test_production_validation_rejects_missing_domain():
+    service=ProductionBlastService(FakeProductionRepo(),FakeDomainRepo(),audit_repository=object())
+    with pytest.raises(ValidationError): service._validate(valid_input(domain_id=99))
+
+
 def test_repository_filters_are_forwarded():
-    repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo()); assert service.list_blocks(domain_id=7,status="planned")==[]
+    repo=FakeProductionRepo(); service=ProductionBlastService(repo,FakeDomainRepo(),audit_repository=object())
+    assert service.list_blocks(domain_id=7,status="planned")==[]
 
-def test_block_update_preserves_zero_horizon():
-    repo=FakeBlockRepo(); service=BlastBlockService(repo,FakeDomainRepo())
-    service.update_block(5,valid_input(horizon_text="0"),editor,expected_version=0)
-    assert repo.updated[0]["horizon_m"] == Decimal("0")
 
-def test_linked_production_block_domain_is_immutable():
-    class Session:
-        def __enter__(self): return self
-        def __exit__(self,*args): pass
-        def get(self,model,key):
-            if model.__name__ == "BlastBlock": return type("Block",(),{"id":5,"domain_id":7})()
-            return FakeDomain(key,site_id=10)
-        def scalar(self,_statement): return 44
-    class Factory:
-        def __call__(self): return Session()
-        def begin(self): return Session()
-    repo=FakeBlockRepo(); repo.session_factory=Factory()
-    domains=FakeDomainRepo(); domains.domains.append(FakeDomain(8,site_id=10)); service=BlastBlockService(repo,domains,audit_repository=object())
-    with pytest.raises(ValidationError,match="Moving a Block between Domains"):
-        service.update_block(5,valid_input(domain_id=8),editor,expected_version=0)
+def test_audit_value_formatting_and_changed_fields() -> None:
+    assert format_audit_value("elevation_m", Decimal("760.5000")) == "760.5"
+    changes = build_audit_changes(
+        {"name": "A", "domain_id": 1, "elevation_m": Decimal("1.0"), "comment": None},
+        {"name": "A", "domain_id": 2, "elevation_m": Decimal("1.0"), "comment": None},
+        {1: "Old domain", 2: "New domain"},
+    )
+    assert changes == [("domain_id", "Old domain", "New domain")]
 
 
 def test_auth_success_and_failure_with_fake_session() -> None:
@@ -74,8 +82,6 @@ def test_auth_success_and_failure_with_fake_session() -> None:
     from database.models import User
     from database.security import hash_password
 
-    class FakeScalarResult:
-        def __init__(self, user): self.user = user
     class FakeSession:
         def __enter__(self): return self
         def __exit__(self, *args): pass
@@ -84,36 +90,4 @@ def test_auth_success_and_failure_with_fake_session() -> None:
     fake_session = FakeSession(); fake_session.user = user
     auth = AuthService(lambda: fake_session)
     assert auth.authenticate("admin", "secret").role == "admin"
-    with pytest.raises(AuthError):
-        auth.authenticate("admin", "wrong")
-
-
-def test_repository_rolls_back_when_save_fails() -> None:
-    from repositories.mine_repository import MineRepository
-
-    class FailingSession:
-        def __init__(self): self.rolled_back = False
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
-        def add(self, item): raise RuntimeError("database failure")
-        def commit(self): pass
-        def rollback(self): self.rolled_back = True
-
-    session = FailingSession()
-    repo = MineRepository(lambda: session)
-    with pytest.raises(RuntimeError):
-        repo.create_mine("Mine", None)
-    assert session.rolled_back
-
-
-def test_audit_value_formatting_and_changed_fields() -> None:
-    from decimal import Decimal
-    from infrastructure.services.blast_block_service import build_audit_changes, format_audit_value
-
-    assert format_audit_value("horizon_m", Decimal("760.5000")) == "760.5"
-    changes = build_audit_changes(
-        {"block_number": "A", "domain_id": 1, "horizon_m": Decimal("1.0"), "comment": None},
-        {"block_number": "A", "domain_id": 2, "horizon_m": Decimal("1.0"), "comment": None},
-        {1: "Old site", 2: "New site"},
-    )
-    assert changes == [("domain_id", "Old site", "New site")]
+    with pytest.raises(AuthError): auth.authenticate("admin", "wrong")

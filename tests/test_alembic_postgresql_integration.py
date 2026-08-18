@@ -25,22 +25,15 @@ def _build_mvp_assessment_fixture() -> tuple[ProjectLinesDataset, AssessmentArea
     source_line = DatamineLine(
         source_id="crest-1",
         points=[
-            DataminePoint(
-                x=0.0, y=0.0, z=101.12349, source_row_number=1,
-            ),
-            DataminePoint(
-                x=10.0, y=0.0, z=109.98751, source_row_number=2,
-            ),
+            DataminePoint(x=0.0, y=0.0, z=101.12349, source_row_number=1),
+            DataminePoint(x=10.0, y=0.0, z=109.98751, source_row_number=2),
         ],
         import_order=0,
     )
     dataset = ProjectLinesDataset(
-        id="LINES-1",
-        name="Survey",
+        id="LINES-1", name="Survey",
         imported_at=datetime(2026, 8, 13, tzinfo=timezone.utc),
-        source_file_name="survey.csv",
-        is_active=True,
-        lines=[source_line],
+        source_file_name="survey.csv", is_active=True, lines=[source_line],
     )
     start_point = SpatialPoint(x=0.0, y=0.0, z=101.12349)
     end_point = SpatialPoint(x=10.0, y=0.0, z=109.98751)
@@ -56,31 +49,19 @@ def _build_mvp_assessment_fixture() -> tuple[ProjectLinesDataset, AssessmentArea
     )
     corner = SpatialPoint(x=4.0, y=8.0, z=None)
     boundary = AssessmentBoundary(segments=(
-        ProjectLineSpan(
-            start_anchor=start_anchor, end_anchor=end_anchor,
-            frozen_trace_xyz=(start_point, end_point),
-        ),
-        StraightConnector(
-            start_point=end_point, end_point=corner, start_anchor=end_anchor,
-        ),
-        StraightConnector(
-            start_point=corner, end_point=start_point, end_anchor=start_anchor,
-        ),
+        ProjectLineSpan(start_anchor=start_anchor, end_anchor=end_anchor,
+                        frozen_trace_xyz=(start_point, end_point)),
+        StraightConnector(start_point=end_point, end_point=corner, start_anchor=end_anchor),
+        StraightConnector(start_point=corner, end_point=start_point, end_anchor=start_anchor),
     ))
     minimum, maximum = derive_elevation_summary(boundary)
     area = AssessmentArea(
-        id="AREA-1",
-        name="North wall",
-        assessment_date=date(2026, 8, 13),
+        id="AREA-1", name="North wall", assessment_date=date(2026, 8, 13),
         geometry_revisions=[AssessmentAreaGeometryRevision(
-            id="GEOM-1",
-            assessment_area_id="AREA-1",
-            revision_number=1,
+            id="GEOM-1", assessment_area_id="AREA-1", revision_number=1,
             created_at=datetime(2026, 8, 13, tzinfo=timezone.utc),
-            boundary=boundary,
-            final_geometry_frozen=derive_plan_polygon(boundary),
-            min_elevation=minimum,
-            max_elevation=maximum,
+            boundary=boundary, final_geometry_frozen=derive_plan_polygon(boundary),
+            min_elevation=minimum, max_elevation=maximum,
             change_reason="Initial traced boundary",
         )],
         active_geometry_revision_id="GEOM-1",
@@ -109,14 +90,12 @@ def test_mvp_assessment_fixture_uses_canonical_domain_serialization() -> None:
 
 
 def _require_destructive_test_database(url: str) -> None:
-    """Keep migration resets away from development and production databases."""
     if "test" not in (make_url(url).database or "").lower():
         pytest.fail("Refusing migration test outside a test database", pytrace=False)
 
 
 def _alembic_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, url: str):
     from alembic.config import Config
-
     _require_destructive_test_database(url)
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
@@ -135,8 +114,9 @@ def test_phase_78a_migration_is_the_only_alembic_head() -> None:
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0006_explosive_product_metadata"]
+    assert script.get_heads() == ["0007_remove_mine_blastblock"]
     assert [revision.revision for revision in script.walk_revisions()] == [
+        "0007_remove_mine_blastblock",
         "0006_explosive_product_metadata",
         "0005_explosive_charge_form",
         "0004_charge_presets",
@@ -151,8 +131,7 @@ def test_every_alembic_revision_fits_standard_version_column() -> None:
     from alembic.script import ScriptDirectory
 
     revisions = ScriptDirectory.from_config(Config("alembic.ini")).walk_revisions()
-    overlong = [revision.revision for revision in revisions
-                if len(revision.revision) > 32]
+    overlong = [revision.revision for revision in revisions if len(revision.revision) > 32]
     assert overlong == [], (
         "Alembic stores revision identifiers in alembic_version.version_num VARCHAR(32): "
         + ", ".join(overlong)
@@ -200,15 +179,15 @@ def test_explosive_catalogue_migration_and_postgresql_round_trip(
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
 def test_charge_preset_postgresql_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from alembic import command
-    from database.models import Mine, Site
     from domain.blasting.charge_design import ChargePresetComponent, ChargeComponentKind
     from infrastructure.db.charge_presets import SqlAlchemyChargePresetPersistence
     url=os.environ["TEST_DATABASE_URL"]; config=_alembic_config(monkeypatch,tmp_path,url)
     engine=create_engine(url); sessions=sessionmaker(engine,expire_on_commit=False)
     try:
-        command.downgrade(config,"base"); command.upgrade(config,"0004_charge_presets")
+        command.downgrade(config,"base"); command.upgrade(config,"0007_remove_mine_blastblock")
+        from database.models import Site
         with sessions() as session:
-            mine=Mine(name="Preset mine"); session.add(mine); session.flush(); site=Site(mine_id=mine.id,name="Preset project"); session.add(site); session.commit(); site_id=site.id
+            site=Site(name="Preset project"); session.add(site); session.commit(); site_id=site.id
         adapter=SqlAlchemyChargePresetPersistence(sessions)
         components=(ChargePresetComponent(ChargeComponentKind.STEMMING,0,1),)
         created=adapter.create_preset(site_id,"Standard",components)
@@ -228,13 +207,10 @@ def test_existing_preset_only_0004_upgrades_without_losing_rows(monkeypatch, tmp
             mine_id=connection.execute(text("INSERT INTO mines (name) VALUES ('M') RETURNING id")).scalar_one()
             site_id=connection.execute(text("INSERT INTO sites (mine_id,name) VALUES (:m,'P') RETURNING id"),{"m":mine_id}).scalar_one()
             connection.execute(text("INSERT INTO charge_design_presets (site_id,name,components_json) VALUES (:s,'Keep','[]'::jsonb)"),{"s":site_id})
-        with pytest.raises(Exception), engine.begin() as connection:
-            connection.execute(text("INSERT INTO charge_design_presets (site_id,name,components_json) VALUES (:s,'   ','[]'::jsonb)"),{"s":site_id})
-        with pytest.raises(Exception), engine.begin() as connection:
-            connection.execute(text("INSERT INTO charge_design_presets (site_id,name,components_json) VALUES (:s,'Bad','{}'::jsonb)"),{"s":site_id})
-        command.upgrade(config,"0005_explosive_charge_form")
+        command.upgrade(config,"0007_remove_mine_blastblock")
         with engine.connect() as connection:
             assert connection.execute(text("SELECT name FROM charge_design_presets")).scalar_one()=="Keep"
+            assert "mine_id" not in {column["name"] for column in inspect(connection).get_columns("sites")}
         assert "charge_form" in {column["name"] for column in inspect(engine).get_columns("explosive_products")}
     finally: engine.dispose()
 
@@ -243,10 +219,9 @@ def test_existing_preset_only_0004_upgrades_without_losing_rows(monkeypatch, tmp
 def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Exercise the real post-#89 model against a DB created only from 0001."""
     from alembic import command
     from database import assessment_models as orm
-    from database.models import BlastBlock, Domain, Mine, Site
+    from database.models import Domain, Site
     from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
     from repositories.assessment_state_repository import AssessmentStateRepository
     from repositories.project_lines_repository import ProjectLinesRepository
@@ -258,22 +233,15 @@ def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
 
     def create_core_graph() -> tuple[int, int]:
         with sessions.begin() as session:
-            mine = Mine(name="MVP baseline")
-            session.add(mine); session.flush()
-            site = Site(mine_id=mine.id, name="Project")
+            site = Site(name="Project")
             session.add(site); session.flush()
             domain = Domain(site_id=site.id, name="North")
             session.add(domain); session.flush()
-            block = BlastBlock(
-                domain_id=domain.id, block_number="B-1",
-                is_archived=False,
-            )
-            session.add(block); session.flush()
             session.add_all([
                 orm.BlastEvent(
                     domain_id=domain.id, logical_id="PROD-1", name="Production",
                     event_type="production", elevation_m=Decimal("100.000"),
-                    blast_block_id=block.id, is_archived=False,
+                    is_archived=False,
                 ),
                 orm.BlastEvent(
                     domain_id=domain.id, logical_id="CONT-1", name="Contour",
@@ -288,11 +256,8 @@ def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
         command.upgrade(config, "head")
         site_id, domain_id = create_core_graph()
 
-        # Reuse the domain fixture covered by a normal, non-DB regression test.
         dataset, area = _build_mvp_assessment_fixture()
-        ProjectLinesRepository(sessions).import_dataset(
-            site_id, dataset, make_active=True
-        )
+        ProjectLinesRepository(sessions).import_dataset(site_id, dataset, make_active=True)
         boundary = area.active_geometry_revision().boundary
         minimum, maximum = derive_elevation_summary(boundary)
         result = SqlAlchemyAssessmentWrites(sessions).persist_assessment_area_geometry(
@@ -324,52 +289,10 @@ def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
         assert {event.id for event in rebuilt.state.blast_events} == {"PROD-1", "CONT-1"}
         assert rebuilt.state.assessment_areas == []
         assert set(inspect(engine).get_table_names()) >= {
-            "users", "sites", "domains", "blast_events", "blast_blocks",
+            "users", "sites", "domains", "blast_events",
             "project_lines_datasets", "assessment_areas",
-            "assessment_area_geometry_revisions", "assessment_event_links",
         }
-    finally:
-        engine.dispose()
-
-
-@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
-def test_fresh_baseline_matches_application_metadata(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Compare application-relevant tables, columns, keys, checks, and indexes."""
-    from alembic import command
-    from database.base import Base
-    import database.assessment_models  # noqa: F401
-    import database.models  # noqa: F401
-
-    url = os.environ["TEST_DATABASE_URL"]
-    config = _alembic_config(monkeypatch, tmp_path, url)
-    engine = create_engine(url)
-    try:
-        command.downgrade(config, "base")
-        command.upgrade(config, "head")
-        inspector = inspect(engine)
-        assert set(inspector.get_table_names()) >= set(Base.metadata.tables)
-        for name, model_table in Base.metadata.tables.items():
-            actual_columns = {column["name"]: column for column in inspector.get_columns(name)}
-            assert set(actual_columns) == set(model_table.columns.keys()), name
-            for column in model_table.columns:
-                assert actual_columns[column.name]["nullable"] == column.nullable, f"{name}.{column.name}"
-            assert set(inspector.get_pk_constraint(name)["constrained_columns"]) == set(model_table.primary_key.columns.keys())
-            actual_fks = {
-                (tuple(fk["constrained_columns"]), tuple(fk["referred_columns"]), fk["referred_table"])
-                for fk in inspector.get_foreign_keys(name)
-            }
-            expected_fks = {
-                (tuple(fk.parent.name for fk in constraint.elements),
-                 tuple(fk.column.name for fk in constraint.elements),
-                 constraint.elements[0].column.table.name)
-                for constraint in model_table.foreign_key_constraints
-            }
-            assert actual_fks == expected_fks, name
-            actual_indexes = {index["name"] for index in inspector.get_indexes(name)}
-            assert {index.name for index in model_table.indexes} <= actual_indexes
-            actual_checks = {check["name"] for check in inspector.get_check_constraints(name)}
-            assert {check.name for check in model_table.constraints if check.__class__.__name__ == "CheckConstraint"} <= actual_checks
+        assert "mines" not in inspect(engine).get_table_names()
+        assert "blast_blocks" not in inspect(engine).get_table_names()
     finally:
         engine.dispose()

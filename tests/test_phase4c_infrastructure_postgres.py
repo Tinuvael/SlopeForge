@@ -19,7 +19,7 @@ if "test" not in (make_url(URL).database or "").lower():
 
 from application.use_cases.create_project import CreateProject, CreateProjectCommand
 from database import assessment_models as orm
-from database.models import BlastBlock, Domain, Mine, Site
+from database.models import Domain, Site
 from infrastructure.db.domain_creation import SqlAlchemyDomainCreation
 from infrastructure.db.project_creation import SqlAlchemyProjectCreation
 from infrastructure.db.project_lines_creation import SqlAlchemyProjectLinesCreationSupport
@@ -56,7 +56,6 @@ def cleanup_project(factory, site_id):
     with factory.begin() as session:
         site = session.get(Site, site_id)
         if site is None: return
-        mine_id = site.mine_id
         domain_ids = select(Domain.id).where(Domain.site_id == site_id)
         event_ids = select(orm.BlastEvent.id).where(orm.BlastEvent.domain_id.in_(domain_ids))
         card_ids = select(orm.BlastEventTechnicalCard.id).where(
@@ -80,13 +79,11 @@ def cleanup_project(factory, site_id):
 
         session.execute(delete(orm.ProjectLinesDataset).where(
             orm.ProjectLinesDataset.site_id == site_id))
-        session.execute(delete(BlastBlock).where(BlastBlock.domain_id.in_(domain_ids)))
         session.execute(delete(Domain).where(Domain.site_id == site_id))
-        session.delete(site); session.flush()
-        session.execute(delete(Mine).where(Mine.id == mine_id))
+        session.delete(site)
 
 
-def test_concrete_project_pair_validation_and_transaction(factory):
+def test_concrete_project_creation_is_direct_site_transaction(factory):
     adapter = SqlAlchemyProjectCreation(factory)
     with pytest.raises(ValueError, match="required"):
         adapter.create_project("   ", "ignored")
@@ -94,11 +91,11 @@ def test_concrete_project_pair_validation_and_transaction(factory):
     site_id = adapter.create_project("  Concrete Project  ", "")
     try:
         with factory() as session:
-            site = session.get(Site, site_id); mine = session.get(Mine, site.mine_id)
-            assert site.name == mine.name == "Concrete Project"
-            assert site.description is None and mine.description is None
+            site = session.get(Site, site_id)
+            assert site.name == "Concrete Project"
+            assert site.description is None
+            assert not hasattr(site, "mine_id")
             assert session.scalar(select(func.count()).select_from(Site).where(Site.id == site_id)) == 1
-            assert session.scalar(select(func.count()).select_from(Mine).where(Mine.id == mine.id)) == 1
     finally:
         cleanup_project(factory, site_id)
 
@@ -113,7 +110,6 @@ def test_concrete_project_pair_validation_and_transaction(factory):
     finally:
         event.remove(Session, "before_flush", fail_site_flush)
     with factory() as session:
-        assert session.scalar(select(func.count()).select_from(Mine).where(Mine.name == marker)) == 0
         assert session.scalar(select(func.count()).select_from(Site).where(Site.name == marker)) == 0
 
 
@@ -122,12 +118,11 @@ def test_concrete_project_lines_prepare_partial_success_and_site_scope(factory, 
     support = SqlAlchemyProjectLinesCreationSupport(factory)
     use_case = CreateProject(persistence, support)
     bad = tmp_path / "bad.csv"; bad.write_text("X,Y\n0,0\n", encoding="utf-8")
-    before = None
     with factory() as session:
-        before = (session.scalar(select(func.count()).select_from(Mine)), session.scalar(select(func.count()).select_from(Site)))
+        before = session.scalar(select(func.count()).select_from(Site))
     with pytest.raises(Exception): use_case.execute(command_for(bad))
     with factory() as session:
-        assert before == (session.scalar(select(func.count()).select_from(Mine)), session.scalar(select(func.count()).select_from(Site)))
+        assert before == session.scalar(select(func.count()).select_from(Site))
 
     good = tmp_path / "lines.csv"
     good.write_text("X,Y,Z,SID\n0,0,600,L1\n10,0,600,L1\n", encoding="utf-8")
@@ -169,17 +164,15 @@ def test_domain_adapter_and_navigation_are_site_scoped(factory):
             queries.get_domain_context(2_000_000_000)
     finally:
         cleanup_project(factory, site_id)
+
+
 def test_concrete_report_query_preserves_actual_date_stored_scores_and_links(factory):
     site_id = SqlAlchemyProjectCreation(factory).create_project("Report integration project", None)
     domain_id = SqlAlchemyDomainCreation(factory).create_domain(site_id, "North", None)
     state = build_rich_state()
     production, contour = state.blast_events
-    block_id = None
     try:
-        with factory.begin() as session:
-            block = BlastBlock(domain_id=domain_id, block_number="PB-7")
-            session.add(block); session.flush(); block_id = block.id
-        production.blast_block_id = block_id
+        production.name = "PB-7"
         production.event_date = date(2026, 7, 1)
         contour.event_date = date(2026, 8, 7)
         actual = state.technical_cards[0].active_revision().actual_execution

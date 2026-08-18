@@ -87,7 +87,7 @@ def test_project_tree_header_domain_collapse_and_virtual_sections(monkeypatch):
     site = SimpleNamespace(id=1, name="Project")
     domain = SimpleNamespace(id=2, name="Domain")
     block = SimpleNamespace(
-        id=10, domain_id=2, block_number="B-1", horizon_m=630,
+        id="BE-B-1", domain_id=2, block_number="B-1", horizon_m=630,
         planned_blast_date=None, status="planned", is_archived=False,
     )
     area = SimpleNamespace(
@@ -96,7 +96,7 @@ def test_project_tree_header_domain_collapse_and_virtual_sections(monkeypatch):
     )
     monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: [site]))
     monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda _id: [domain]))
-    monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(list_blocks=lambda **_kwargs: [block]))
+    monkeypatch.setattr(module, "ProductionBlastRepository", lambda _factory: SimpleNamespace(list_blocks=lambda **_kwargs: [block]))
     monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
         list_areas=lambda _archived: [area], list_contour_events=lambda _archived: []))
 

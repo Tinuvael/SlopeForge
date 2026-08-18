@@ -49,8 +49,8 @@ def project_tree(monkeypatch):
         2: [SimpleNamespace(id=21, name="South Domain")],
     }
     blocks = [
-        SimpleNamespace(id=101, domain_id=11, block_number="PB-101", horizon_m=500, planned_blast_date=date(2026, 8, 10), status="planned", is_archived=False),
-        SimpleNamespace(id=102, domain_id=12, block_number="OLD-9", horizon_m=490, planned_blast_date=None, status="in_preparation", is_archived=False),
+        SimpleNamespace(id="BE-101", domain_id=11, block_number="PB-101", horizon_m=500, planned_blast_date=date(2026, 8, 10), status="planned", is_archived=False),
+        SimpleNamespace(id="BE-102", domain_id=12, block_number="OLD-9", horizon_m=490, planned_blast_date=None, status="in_preparation", is_archived=False),
     ]
     contours = [
         SimpleNamespace(id="C1", domain_id=11, name="East Trim", elevation=500, event_date=date(2026, 8, 20), status="planned", is_archived=False),
@@ -62,7 +62,7 @@ def project_tree(monkeypatch):
     ]
     monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: sites))
     monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda site_id: domains[site_id]))
-    monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(
+    monkeypatch.setattr(module, "ProductionBlastRepository", lambda _factory: SimpleNamespace(
         list_blocks=lambda **filters: [row for row in blocks if row.domain_id == filters["domain_id"] and (not filters["status"] or row.status == filters["status"])]))
     monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
         list_areas=lambda _show: areas, list_contour_events=lambda _show: contours))
@@ -84,7 +84,7 @@ def test_searches_names_case_insensitively_and_preserves_hierarchy(project_tree,
     assert "North Quarry" in texts and "North1" in texts
     assert "South Project" not in texts
     if project_match:
-        assert "West" in texts  # matching a Project preserves its contained hierarchy
+        assert "West" in texts
     else:
         assert "West" not in texts
     expanded = {text: state for text, state in labels}

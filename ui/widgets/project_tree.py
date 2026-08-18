@@ -8,7 +8,7 @@ from PySide6.QtCore import QDate, QEvent, QTimer, Qt, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QFormLayout,
                                QHBoxLayout, QLabel, QPushButton, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
-from repositories.blast_block_repository import BlastBlockRepository
+from repositories.production_blast_repository import ProductionBlastRepository
 from repositories.domain_repository import DomainRepository
 from repositories.navigation_repository import NavigationRepository
 from repositories.site_repository import SiteRepository
@@ -76,7 +76,7 @@ class ProjectTreeWidget(QTreeWidget):
 
 
 class ProjectTree(QWidget):
-    block_selected = Signal(int, int, int)
+    block_selected = Signal(str, int, int)
     site_selected = Signal(int, str)
     domain_selected = Signal(int, str, int, str)
     assessment_area_selected = Signal(str, int, int, str)
@@ -88,7 +88,7 @@ class ProjectTree(QWidget):
     def __init__(self, context):
         super().__init__(); self.context = context; self._search_query = ""
         self.site_repo = SiteRepository(context.session_factory); self.domain_repo = DomainRepository(context.session_factory)
-        self.block_repo = BlastBlockRepository(context.session_factory); self.navigation_repo = NavigationRepository(context.session_factory)
+        self.block_repo = ProductionBlastRepository(context.session_factory); self.navigation_repo = NavigationRepository(context.session_factory)
         layout = QVBoxLayout(self); layout.setContentsMargins(8,8,8,8)
         tree_header = QHBoxLayout(); tree_header.setContentsMargins(0,0,0,0)
         self.tree_title = QLabel(tr("Project tree"))
@@ -243,7 +243,8 @@ class ProjectTree(QWidget):
                         if interval is None: interval=self._item(label,{"type":"interval",**base}); folder.addChild(interval); intervals[label]=interval
                         text=area.name + (f" [{tr('Archived')}]" if area.is_archived else "")
                         interval.addChild(self._item(text,{"type":"area","id":area.id,"archived":area.is_archived,**base}))
-            if site_item.childCount(): self.tree.addTopLevelItem(site_item)
+            if site_item.childCount() or not constrained or site_match:
+                self.tree.addTopLevelItem(site_item)
         self.tree.expandAll() if constrained else self.tree.expandToDepth(1)
         self._expand_virtual_sections()
         QTimer.singleShot(0, self._expand_virtual_sections)

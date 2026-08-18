@@ -47,7 +47,6 @@ def _assert_payload(payload, expected, kind: str) -> None:
 
 def _assert_link_same_domain(area_row: orm.AssessmentArea,
                              target: orm.BlastEventGeometryRevision) -> None:
-    """Reject links whose two parent aggregates have different Domain owners."""
     if target.blast_event.domain_id != area_row.domain_id:
         raise AssessmentPersistenceCorruptionError(
             "AssessmentEventLink connects revisions from different Domains")
@@ -68,11 +67,11 @@ def _state_from_domain(events_rows: list[orm.BlastEvent], areas_rows: list[orm.A
                 "is_active": revision.is_active})
         events.append({"id": row.logical_id, "name": row.name, "event_type": row.event_type,
             "event_date": row.event_date.isoformat() if row.event_date else None, "elevation": float(row.elevation_m),
-            "blast_block_id": row.blast_block_id,
             "geometry_revisions": revisions,
             "active_geometry_revision_id": next((x.logical_id for x in row.geometry_revisions if x.is_active), None),
             "is_archived": row.is_archived, "archived_at": row.archived_at.isoformat() if row.archived_at else None,
-            "archive_reason": row.archive_reason})
+            "archive_reason": row.archive_reason, "comment": row.comment,
+            "created_by_user_id": row.created_by_user_id})
         if row.technical_card:
             card = row.technical_card
             revision_payloads = []
@@ -106,9 +105,6 @@ def _state_from_domain(events_rows: list[orm.BlastEvent], areas_rows: list[orm.A
                 "change_reason": revision.change_reason})
             for link in sorted(revision.event_links, key=lambda x: (x.created_at, x.id)):
                 target = link.blast_event_geometry_revision
-                # Current links are an ownership invariant.  Older revisions are
-                # frozen evidence and may legitimately reference an event which
-                # was subsequently moved to another Domain.
                 if revision.is_active:
                     _assert_link_same_domain(row, target)
                 elif target.blast_event.domain_id != row.domain_id:
