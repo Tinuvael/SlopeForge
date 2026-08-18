@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPu
 
 from app.context import AppContext
 from repositories.audit_log_repository import AuditLogRepository
+from repositories.entity_history_repository import EntityHistoryRepository
 from repositories.production_blast_repository import ProductionBlastRepository, ProductionBlastRow
 from repositories.domain_repository import DomainRepository
 from infrastructure.services.production_blast_service import ProductionBlastService
@@ -22,6 +23,7 @@ from ui.pages.block_card_widgets import (
     CompactInfoCards,
     EmptySection,
 )
+from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.technical_card_widgets import (ActualExecutionEditorWidget,
@@ -42,6 +44,7 @@ class BlockPage(QWidget):
         self.block_repo = ProductionBlastRepository(context.session_factory)
         self.block_service = ProductionBlastService(self.block_repo, self.domain_repo)
         self.audit_repo = AuditLogRepository(context.session_factory)
+        self.history_repo = EntityHistoryRepository(context.session_factory)
         self.filters = {"number_query": None, "domain_id": None, "site_id": None, "status": None}
         self.current_block: ProductionBlastRow | None = None
 
@@ -78,7 +81,7 @@ class BlockPage(QWidget):
         self.documents_tab,self.documents_tab_count,self.manage_documents_button=self._make_attachment_tab("document")
         self.tabs.addTab(self.photos_tab, tr("Photos"))
         self.tabs.addTab(self.documents_tab, tr("Documents"))
-        self.history_tab = AuditPreviewWidget("Change history")
+        self.history_tab = EntityHistoryWidget()
         self.tabs.addTab(self.history_tab, tr("History"))
         left.addWidget(self.tabs)
 
@@ -175,6 +178,7 @@ class BlockPage(QWidget):
     def _render_current_block(self) -> None:
         block = self.current_block
         audit_entries = self.audit_repo.list_for_blast_event(block.id) if block else []
+        history_entries = self.history_repo.for_blast_event(block.id) if block else []
         self.entity_controller = EntityPageController(self.context, block.domain_id) if block else None
         event = self.entity_controller.production_event(block.id) if self.entity_controller else None
         photos = self.entity_controller.attachments.list_for_owner("blast_event", event.id, "photo") if event else []
@@ -196,11 +200,11 @@ class BlockPage(QWidget):
         self.compact_cards.set_block(block)
         self.comments.set_block(block)
         self.comments.edit_button.setEnabled(bool(block and self.context.current_user.can_edit and not block.is_archived))
-        self.summary.set_data(block, photo_count, document_count, len(audit_entries))
+        self.summary.set_data(block, photo_count, document_count, len(history_entries))
         self.photos.set_items(photos, "No photos yet")
         self.documents.set_items(documents, "No documents yet")
         self.audit_preview.set_entries(audit_entries)
-        self.history_tab.set_entries(audit_entries, limit=200)
+        self.history_tab.set_entries(history_entries)
         self._render_engineering(block)
         self._sync_engineering_actions_visibility()
 
