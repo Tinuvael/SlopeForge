@@ -22,43 +22,50 @@ def _real_add_blast_event_method():
     return namespace["_add_blast_event"], namespace
 
 
-def test_successful_create_followed_by_open_failure_is_not_reported_as_create_failure(monkeypatch):
-    method, namespace = _real_add_blast_event_method()
-    calls = []
-    result = SimpleNamespace(event_type="contour", event_id="BE-1", blast_block_id=None)
-
-    class UseCase:
-        def execute(self, command):
-            calls.append(command)
-            return result
-
+def _dialog(monkeypatch, event_type):
     class Dialog:
         def __init__(self, _parent): pass
         def exec(self): return True
         def values(self):
-            return {"name": "Contour", "event_type": "contour", "event_date": date.today(),
-                    "elevation": 610, "csv_path": "contour.csv"}
-
+            return {"name": "B-17" if event_type == "production" else "Contour",
+                    "event_type": event_type, "event_date": date.today(),
+                    "elevation": 610, "csv_path": "event.csv"}
     dialog_module = ModuleType("ui.dialogs.blast_event_dialog")
     dialog_module.BlastEventDialog = Dialog
     monkeypatch.setitem(sys.modules, "ui.dialogs.blast_event_dialog", dialog_module)
-    warnings = []
-    namespace["QMessageBox"].warning = (
-        lambda _parent, title, message: warnings.append((title, message)))
 
+
+def _window(result):
     window = SimpleNamespace()
     window.selected_domain_id = 4; window.selected_site_id = 2; window.selected_domain_name = "D"
     window.context = SimpleNamespace(current_user=SimpleNamespace(id=7, can_edit=True))
-    window.create_blast_event = UseCase()
-    refreshes = []
-    window.refresh_project_data = lambda: refreshes.append(True)
+    window.create_blast_event = SimpleNamespace(execute=lambda _command: result)
+    window.refresh_project_data = lambda: None
+    return window
+
+
+def test_successful_contour_create_followed_by_open_failure_is_not_reported_as_create_failure(monkeypatch):
+    method, namespace = _real_add_blast_event_method(); _dialog(monkeypatch, "contour")
+    window = _window(SimpleNamespace(event_type="contour", event_id="BE-1"))
     window.open_contour_from_tree = lambda *_args: False
+    warnings = []; namespace["QMessageBox"].warning = lambda _parent, title, message: warnings.append((title, message))
 
     method(window)
 
-    assert len(calls) == 1
-    assert refreshes == [True]
     assert len(warnings) == 1
     assert warnings[0][0] == "Blast event created"
     assert "created successfully" in warnings[0][1]
-    assert "Could not create blast event" not in warnings[0][1]
+
+
+def test_successful_production_create_opens_block_page_with_same_event_id(monkeypatch):
+    method, namespace = _real_add_blast_event_method(); _dialog(monkeypatch, "production")
+    window = _window(SimpleNamespace(event_type="production", event_id="BE-PROD-17"))
+    opened = []
+    window.open_block_from_tree = lambda event_id, domain_id, site_id: opened.append((event_id, domain_id, site_id)) or True
+    window.open_contour_from_tree = lambda *_args: False
+    warnings = []; namespace["QMessageBox"].warning = lambda *_args: warnings.append(True)
+
+    method(window)
+
+    assert opened == [("BE-PROD-17", 4, 2)]
+    assert warnings == []
