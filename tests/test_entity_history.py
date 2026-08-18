@@ -188,6 +188,15 @@ def test_all_three_entity_pages_use_shared_history_and_revision_viewers():
     assert "read_only=True" in viewer
 
 
+def test_historical_viewers_hide_nested_history_and_assessment_attachments():
+    viewer = Path("ui/pages/entity_history_revision_viewer.py").read_text(encoding="utf-8")
+    assert 'editor.take_tab(tr("Revision history"))' in viewer
+    assert '_take_optional_tab(dialog, tr("Photos and documents"))' in viewer
+    assert '_take_optional_tab(dialog, tr("History"))' in viewer
+    assert 'tr("Geometry & face condition")' in viewer
+    assert "control.setReadOnly(True)" in viewer
+
+
 def test_history_audit_scope_records_compact_attachment_batches_and_ignores_auto_link_refresh():
     writes = Path("infrastructure/db/assessment_writes.py").read_text(encoding="utf-8")
     assert 'description = f"Added {len(attachments)} {noun}s"' in writes
