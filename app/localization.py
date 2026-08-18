@@ -68,6 +68,11 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Cleanup warning": "Предупреждение очистки",
     "The attachment was deleted, but a temporary file could not be removed.": "Вложение удалено, но временный файл удалить не удалось.",
     "Photos and documents": "Фото и документы",
+    "Date & time": "Дата и время",
+    "User": "Пользователь",
+    "Change": "Изменение",
+    "Details": "Подробности",
+    "No history yet": "Истории пока нет",
 }
 
 # Qt asks the installed translator for platform-theme captions in contexts such
