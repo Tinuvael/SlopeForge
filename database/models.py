@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from sqlalchemy import (
-    Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Index, func,
+    Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, func,
     Integer, Numeric, String, Text, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -83,22 +83,12 @@ class ChargeDesignPreset(TimestampMixin, Base):
     components_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
 
 
-
-class Mine(TimestampMixin, Base):
-    __tablename__ = "mines"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    description: Mapped[Optional[str]] = mapped_column(Text)
-    sites: Mapped[list["Site"]] = relationship(back_populates="mine")
-
-
 class Site(TimestampMixin, Base):
+    """User-facing Project / Quarry.  `Site` is the internal persistence name."""
     __tablename__ = "sites"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    mine_id: Mapped[int] = mapped_column(ForeignKey("mines.id", ondelete="RESTRICT"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
-    mine: Mapped[Mine] = relationship(back_populates="sites")
     domains: Mapped[list["Domain"]] = relationship(back_populates="site", cascade="all, delete-orphan")
     project_lines_datasets: Mapped[list["ProjectLinesDataset"]] = relationship(back_populates="site")
 
@@ -112,7 +102,6 @@ class Domain(TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     site: Mapped[Site] = relationship(back_populates="domains")
-    blast_blocks: Mapped[list["BlastBlock"]] = relationship(back_populates="domain")
     blast_events: Mapped[list["BlastEvent"]] = relationship(back_populates="domain")
     assessment_areas: Mapped[list["AssessmentArea"]] = relationship(back_populates="domain")
     geometry: Mapped[Optional["DomainGeometry"]] = relationship(
@@ -138,42 +127,24 @@ class DomainGeometry(TimestampMixin, Base):
     domain: Mapped[Domain] = relationship(back_populates="geometry")
 
 
-class BlastBlock(TimestampMixin, Base):
-    __tablename__ = "blast_blocks"
-    __table_args__ = (Index("ix_blast_blocks_domain_block_number", "domain_id", "block_number"),)
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="RESTRICT"), nullable=False, index=True)
-    block_number: Mapped[str] = mapped_column(String(80), nullable=False)
-    horizon_m: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
-    comment: Mapped[Optional[str]] = mapped_column(Text)
-    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
-    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    created_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
-    domain: Mapped[Domain] = relationship(back_populates="blast_blocks")
-    created_by_user: Mapped[Optional[User]] = relationship()
-
-
-
-
 class AuditLogEntry(Base):
+    """Generic entity audit record; #121 builds the unified History read model on it."""
     __tablename__ = "audit_log_entries"
     __table_args__ = (
         CheckConstraint("action IN ('create', 'update', 'delete', 'attach', 'detach')", name="ck_audit_log_entries_action"),
-        CheckConstraint("entity_type IN ('blast_block', 'attachment', 'rock_mass_profile', 'rock_structure', 'blast_design', 'drilling_pattern', 'wall_assessment')", name="ck_audit_log_entries_entity_type"),
+        Index("ix_audit_log_entries_entity", "entity_type", "entity_id"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    blast_block_id: Mapped[int] = mapped_column(ForeignKey("blast_blocks.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     action: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
-    entity_id: Mapped[Optional[int]] = mapped_column(Integer)
+    entity_id: Mapped[str] = mapped_column(String(255), nullable=False)
     field_name: Mapped[Optional[str]] = mapped_column(String(80))
     old_value: Mapped[Optional[str]] = mapped_column(Text)
     new_value: Mapped[Optional[str]] = mapped_column(Text)
     description: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     user: Mapped[Optional[User]] = relationship()
-    blast_block: Mapped[BlastBlock] = relationship()
 
 
 class RememberToken(Base):
