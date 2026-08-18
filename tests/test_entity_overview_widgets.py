@@ -18,10 +18,26 @@ def test_operational_pages_use_shared_overview_primitives():
     for text in (block, contour, assessment):
         assert "EntityHeaderWidget" in text
         assert "QuickAttachmentPreview" in text
+        assert "SquareGeometryCard" in text
+        assert "OverviewKeyValueCard" in text
+        assert "RecentActivityCard" in text
     assert "focus_geometry=geometry.plan_geometry" in block
     assert "focus_geometry=self.rev.plan_geometry" in contour
     assert "focus_geometry=rev.final_geometry_frozen" in assessment
     assert "AssessmentMatrixPreview" in assessment
+
+
+def test_shared_square_geometry_card_prefers_near_square_size():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.entity_overview_widgets import SquareGeometryCard
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    card = SquareGeometryCard()
+    assert card.hasHeightForWidth()
+    assert card.heightForWidth(390) == 390
+    assert card.sizeHint().width() == card.sizeHint().height()
+    assert card.maximumWidth() == 440
+    card.close(); app.processEvents()
 
 
 def test_status_badges_have_distinct_semantic_workflow_colors():
@@ -41,6 +57,20 @@ def test_status_badges_have_distinct_semantic_workflow_colors():
     assert styles["completed"] == styles["assessed"]
     header.set_content(title="X", status_text="Completed", status_state="completed", archived=True)
     assert header.archive.isVisible() or not header.isVisible()
+    header.close(); app.processEvents()
+
+
+def test_header_uses_one_context_line_instead_of_duplicate_meta_cards():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.entity_overview_widgets import EntityHeaderWidget
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    header = EntityHeaderWidget()
+    header.set_content(
+        title="Block X", status_text="Blasted", status_state="blasted",
+        meta_values=("ID: BL-X", "Project / Domain: P / D", "Horizon: 630 m", "Geometry rev.: 2"),
+    )
+    assert header.context.text() == "ID: BL-X  ·  Project / Domain: P / D  ·  Horizon: 630 m  ·  Geometry rev.: 2"
     header.close(); app.processEvents()
 
 
@@ -85,28 +115,34 @@ def test_assessment_overview_uses_saved_revision_results_without_scoring_call():
     assert "calculate_revision(" not in text
     assert "photo_manager.add()" in text
     assert "document_manager.add()" in text
+    assert 'f"{tr(\'Project / Domain\')}: {self.project_name} / {self.domain_name}"' in text
 
 
-def test_block_overview_uses_active_technical_card_summary_and_section_navigation():
+def test_block_overview_has_single_kpi_summary_and_qprime_stability_categories():
     page = Path("ui/pages/block_page.py").read_text(encoding="utf-8")
-    cards = Path("ui/pages/block_card_widgets.py").read_text(encoding="utf-8")
-    assert "self.compact_cards.set_revision(card.active_revision() or revision)" in page
-    assert 'group_type=="main_pattern"' in cards
-    assert "main.burden_m" in cards and "main.spacing_m" in cards
-    assert "main.average_depth_m" in cards
-    assert "actual.actual_average_depth_m" in cards
-    assert "Open section" in cards
-    assert "self.compact_cards.open_buttons[0]" in page
-    assert "self.compact_cards.open_buttons[1]" in page
-    assert "self.compact_cards.open_buttons[2]" in page
+    assert "polygon_area_m2" in page
+    assert "_qprime_and_category" in page
+    for label in ("Very unstable", "Unstable", "Moderately stable", "Stable"):
+        assert label in page
+    assert '("Blast date",' in page
+    assert '("Block area",' in page
+    assert '("Bench height",' in page
+    assert '("Stability",' in page
+    assert "EngineeringSummaryCard" in page
+    assert "GeneralInfoCard" in page
+    assert "self.recent_activity.set_entries(history_entries)" in page
+    assert "Created" not in page.split("meta_values=(", 1)[1].split("),", 1)[0]
+    assert "Updated" not in page.split("meta_values=(", 1)[1].split("),", 1)[0]
 
 
-def test_contour_overview_exposes_geometry_oriented_design_summary():
+def test_contour_overview_exposes_geometry_oriented_summary_without_status_duplication():
     text = Path("ui/pages/contour_event_page.py").read_text(encoding="utf-8")
-    for label in ("Average depth", "Azimuth", "Inclination", "Average spacing", "Diameter"):
-        assert f'("{label}",' in text
+    for label in ("Average depth", "Azimuth", "Inclination", "Spacing"):
+        assert label in text
     assert "_primary_contour_group" in text
-    assert 'self._open_tab("Blast design")' in text
-    assert 'self._open_tab("Execution fact")' in text
+    assert 'self._open_tab("blast_design")' in text
     assert "actual.actual_average_depth_m" in text
     assert "actual_group.spacing_m" in text
+    assert '("Method",' in text
+    assert '("Technical Card",' in text
+    assert 'f"{tr(\'Project / Domain\')}: {self.project_name} / {self.domain_name}"' in text
