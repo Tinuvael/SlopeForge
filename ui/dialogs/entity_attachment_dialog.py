@@ -8,7 +8,7 @@ from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QEvent, QFileInfo, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QIcon, QImageReader, QKeySequence, QPainter, QPainterPath, QPixmap, QShortcut
+from PySide6.QtGui import QColor, QIcon, QImageReader, QKeySequence, QPainter, QPainterPath, QPalette, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -42,12 +42,24 @@ from PySide6.QtWidgets import (
 from application.services.attachments import ATTACHMENT_CATEGORIES, PHOTO_EXTENSIONS
 
 
+ATTACHMENT_WORKSPACE_COLOR = QColor("#f3f4f6")
+
+
 def _load_photo_pixmap(path: str | Path) -> QPixmap:
     """Load a photo with EXIF orientation applied, matching normal Windows viewers."""
     reader = QImageReader(str(path))
     reader.setAutoTransform(True)
     image = reader.read()
     return QPixmap.fromImage(image) if not image.isNull() else QPixmap()
+
+
+def _apply_workspace_palette(widget: QWidget) -> None:
+    """Give attachment workspaces one neutral background without styling native controls."""
+    palette = widget.palette()
+    palette.setColor(QPalette.ColorRole.Window, ATTACHMENT_WORKSPACE_COLOR)
+    palette.setColor(QPalette.ColorRole.Base, ATTACHMENT_WORKSPACE_COLOR)
+    widget.setPalette(palette)
+    widget.setAutoFillBackground(True)
 
 
 class AttachmentMetadataDialog(QDialog):
@@ -302,6 +314,7 @@ class EntityAttachmentManagerWidget(QWidget):
         self._gallery_layout_signature = None
         self._gallery_reflow_pending = False
         self._file_icon_provider = QFileIconProvider() if kind == "document" else None
+        _apply_workspace_palette(self)
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
 
@@ -358,15 +371,14 @@ class EntityAttachmentManagerWidget(QWidget):
         root.addWidget(self.table, 1)
 
     def _build_photo_pages(self, root):
-        workspace = "#f3f4f6"
         self.stack = QStackedWidget()
-        self.stack.setStyleSheet(f"QStackedWidget{{background:{workspace};}}")
-        self.gallery_page = QWidget(); self.gallery_page.setStyleSheet(f"background:{workspace};"); gallery_root = QVBoxLayout(self.gallery_page)
+        _apply_workspace_palette(self.stack)
+        self.gallery_page = QWidget(); _apply_workspace_palette(self.gallery_page); gallery_root = QVBoxLayout(self.gallery_page)
         gallery_root.setContentsMargins(0, 0, 0, 0)
         self.gallery_scroll = QScrollArea(); self.gallery_scroll.setWidgetResizable(True); self.gallery_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.gallery_scroll.setStyleSheet(f"QScrollArea{{background:{workspace};border:0;}} QScrollArea > QWidget > QWidget{{background:{workspace};}}")
-        self.gallery_scroll.viewport().setStyleSheet(f"background:{workspace};")
-        self.gallery_content = QWidget(); self.gallery_content.setStyleSheet(f"background:{workspace};"); self.gallery_grid = QGridLayout(self.gallery_content)
+        _apply_workspace_palette(self.gallery_scroll)
+        _apply_workspace_palette(self.gallery_scroll.viewport())
+        self.gallery_content = QWidget(); _apply_workspace_palette(self.gallery_content); self.gallery_grid = QGridLayout(self.gallery_content)
         self.gallery_grid.setContentsMargins(4, 6, 4, 6)
         self.gallery_grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.gallery_grid.setHorizontalSpacing(16); self.gallery_grid.setVerticalSpacing(16)
@@ -375,7 +387,7 @@ class EntityAttachmentManagerWidget(QWidget):
         gallery_root.addWidget(self.gallery_scroll)
         self.stack.addWidget(self.gallery_page)
 
-        self.viewer_page = QWidget(); viewer_root = QVBoxLayout(self.viewer_page); viewer_root.setContentsMargins(0, 0, 0, 0)
+        self.viewer_page = QWidget(); _apply_workspace_palette(self.viewer_page); viewer_root = QVBoxLayout(self.viewer_page); viewer_root.setContentsMargins(0, 0, 0, 0)
         viewer_header = QHBoxLayout()
         self.back_button = QPushButton(tr("Back")); self.back_button.clicked.connect(self._show_gallery)
         self.viewer_title = QLabel(); self.viewer_title.setObjectName("PhotoViewerTitle")
@@ -386,7 +398,7 @@ class EntityAttachmentManagerWidget(QWidget):
 
         viewer_body = QHBoxLayout(); viewer_body.setSpacing(14)
         self.photo_view = PhotoGraphicsView(); viewer_body.addWidget(self.photo_view, 1)
-        side = QWidget(); side.setFixedWidth(235); side_layout = QVBoxLayout(side); side_layout.setContentsMargins(0, 0, 0, 0); side_layout.setSpacing(10)
+        side = QWidget(); _apply_workspace_palette(side); side.setFixedWidth(235); side_layout = QVBoxLayout(side); side_layout.setContentsMargins(0, 0, 0, 0); side_layout.setSpacing(10)
         self.viewer_metadata = QFrame(); self.viewer_metadata.setObjectName("PhotoMetadataCard")
         self.viewer_metadata.setStyleSheet("QFrame#PhotoMetadataCard{background:#f8fafc;border:1px solid #dfe3ea;border-radius:8px;} QLabel#PhotoMetadataLabel{color:#6b7280;font-size:11px;} QLabel#PhotoMetadataValue{color:#111827;font-weight:500;}")
         metadata = QGridLayout(self.viewer_metadata); metadata.setContentsMargins(10, 9, 10, 9); metadata.setHorizontalSpacing(8); metadata.setVerticalSpacing(5); metadata.setColumnStretch(1,1)
