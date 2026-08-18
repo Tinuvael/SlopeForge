@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGroupBox,
-    QLabel, QLineEdit, QSplitter, QTextEdit, QVBoxLayout, QWidget,
+    QLabel, QLineEdit, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from app.localization import tr
@@ -94,21 +94,25 @@ def open_assessment_revision(parent, *, area, evaluation, revision, attachment_s
         combined = QWidget(dialog)
         combined_layout = QVBoxLayout(combined)
         combined_layout.setContentsMargins(8, 8, 8, 8)
-        splitter = QSplitter(Qt.Orientation.Vertical, combined)
-        splitter.setChildrenCollapsible(False)
-        for title, page in ((tr("Geometry"), geometry), (tr("Face condition"), condition)):
-            if page is None:
-                continue
-            section = QGroupBox(title, splitter)
-            section_layout = QVBoxLayout(section)
-            page.setParent(section)
-            page.show()
-            section_layout.addWidget(page)
-            splitter.addWidget(section)
-            section.show()
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
-        combined_layout.addWidget(splitter)
+        combined_layout.setSpacing(8)
+
+        if geometry is not None:
+            geometry_section = QGroupBox(tr("Geometry"), combined)
+            geometry_section.setFixedHeight(255)
+            geometry_layout = QVBoxLayout(geometry_section)
+            geometry.setParent(geometry_section)
+            geometry.show()
+            geometry_layout.addWidget(geometry)
+            combined_layout.addWidget(geometry_section, 0)
+
+        if condition is not None:
+            condition_section = QGroupBox(tr("Face condition"), combined)
+            condition_layout = QVBoxLayout(condition_section)
+            condition.setParent(condition_section)
+            condition.show()
+            condition_layout.addWidget(condition)
+            combined_layout.addWidget(condition_section, 1)
+
         index = dialog.tabs.insertTab(1, combined, tr("Geometry & face condition"))
         combined.show()
         dialog.tabs.setCurrentIndex(index)
