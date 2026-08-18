@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from database.models import BlastBlock, Domain, Site
+from database.models import Domain, Site
 from database import assessment_models as orm
 
 
@@ -46,8 +46,6 @@ class SqlAlchemyProjectReportQuery:
                 selectinload(orm.AssessmentArea.geometry_revisions).selectinload(orm.AssessmentAreaGeometryRevision.event_links).selectinload(orm.AssessmentEventLink.blast_event_geometry_revision).selectinload(orm.BlastEventGeometryRevision.blast_event),
                 selectinload(orm.AssessmentArea.evaluation).selectinload(orm.AssessmentAreaEvaluation.revisions),
             ))) if domain_ids else []
-            block_ids={e.blast_block_id for e in events if e.blast_block_id}
-            blocks={b.id:b.block_number for b in session.scalars(select(BlastBlock).where(BlastBlock.id.in_(block_ids))).all()} if block_ids else {}
             blasts=[]; assessments=[]
             for event in events:
                 domain_name=names.get(event.domain_id,"")
@@ -57,8 +55,9 @@ class SqlAlchemyProjectReportQuery:
                 if report_date is None or not from_date <= report_date <= to_date: continue
                 def number(key):
                     value=actual.get(key); return float(value) if value is not None else None
+                block_number=event.name if event.event_type=="production" else None
                 blasts.append(BlastReportRow(report_date,event.event_date,actual_date,domain_name,event.event_type,event.name,
-                    blocks.get(event.blast_block_id),float(event.elevation_m),event.is_archived,active.status if active else None,
+                    block_number,float(event.elevation_m),event.is_archived,active.status if active else None,
                     number("actual_block_volume_m3"),number("actual_total_explosive_mass_kg"),number("actual_total_drilling_length_m")))
             for area in areas:
                 domain_name=names.get(area.domain_id,"")
@@ -72,7 +71,7 @@ class SqlAlchemyProjectReportQuery:
                     for link in geometry.event_links:
                         if link.status != "confirmed": continue
                         event=link.blast_event_geometry_revision.blast_event
-                        if event.event_type=="production" and event.blast_block_id in blocks: prod.add(blocks[event.blast_block_id])
+                        if event.event_type=="production": prod.add(event.name)
                         elif event.event_type=="contour": contour.add(event.name)
                 interval = ""
                 if geometry:
