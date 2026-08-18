@@ -20,6 +20,10 @@ def _number(value):
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
+def _matches_search(query: str, *values) -> bool:
+    return not query or any(query in str(value).casefold() for value in values if value is not None)
+
+
 class OptionalDateEdit(QDateEdit):
     """Native date editor whose minimum/special value represents no boundary."""
 
@@ -211,15 +215,15 @@ class ProjectTree(QWidget):
                 domain_item = self._item(domain.name, {"type":"domain", **base})
                 blasts = []
                 for block in self.block_repo.list_blocks(domain_id=domain.id, status=status, show_archived=show_archived):
-                    if self._date_matches(block.planned_blast_date) and (not query or inherited_match or query in block.block_number.casefold()):
+                    if self._date_matches(block.planned_blast_date) and (inherited_match or _matches_search(query, block.block_number, block.id)):
                         blasts.append(("block", block.horizon_m, block))
                 for event in contours_by_domain.get(domain.id, []):
                     if status and event.status != status: continue
-                    if self._date_matches(event.event_date) and (not query or inherited_match or query in event.name.casefold()):
+                    if self._date_matches(event.event_date) and (inherited_match or _matches_search(query, event.name, event.id)):
                         blasts.append(("contour", event.elevation, event))
                 areas = [area for area in areas_by_domain.get(domain.id, [])
                          if self._date_matches(area.assessment_date)
-                         and (not query or inherited_match or query in area.name.casefold())]
+                         and (inherited_match or _matches_search(query, area.name, area.id))]
                 include_domain = bool(blasts or areas or (not constrained) or (inherited_match and not (status or self.from_date.value() or self.to_date.value())))
                 if not include_domain: continue
                 site_item.addChild(domain_item)
