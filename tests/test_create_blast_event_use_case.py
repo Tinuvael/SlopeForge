@@ -13,25 +13,18 @@ from application.use_cases.create_blast_event import (
 class MemoryPersistence:
     def __init__(self, *, fail=False):
         self.persisted = AssessmentDomainState()
-        self.blocks = []
+        self.calls = []
         self.fail = fail
 
     def load_state(self, domain_id):
         return AssessmentStateSnapshot(domain_id, 1, deepcopy(self.persisted), 0)
 
-    def persist_contour(self, domain_id, expected_version, event):
-        if self.fail: raise RuntimeError("injected persistence failure")
+    def persist_event(self, domain_id, expected_version, event, actor_id):
+        if self.fail:
+            raise RuntimeError("injected persistence failure")
+        self.calls.append((domain_id, expected_version, actor_id))
         self.persisted.blast_events.append(deepcopy(event))
-
-    def persist_production(self, domain_id, expected_version, event, actor_id):
-        if self.fail: raise RuntimeError("injected persistence failure")
-        block_id = len(self.blocks) + 1
-        event.blast_block_id = block_id
-        self.blocks.append({"id": block_id, "domain_id": domain_id, "block_number": event.name,
-                            "horizon": event.elevation, "date": event.event_date,
-                            "status": "planned", "comment": None, "actor_id": actor_id})
-        self.persisted.blast_events.append(deepcopy(event))
-        return block_id
+        return expected_version + 1
 
 
 def geometry_file(tmp_path):
@@ -50,41 +43,50 @@ def contour_geometry_file(tmp_path):
     return str(path)
 
 
-def test_contour_success_creates_event_without_block(tmp_path):
+def test_contour_success_creates_exactly_one_contour_event(tmp_path):
     persistence = MemoryPersistence()
     result = CreateBlastEvent(persistence).execute(command(contour_geometry_file(tmp_path), "contour"))
-    assert result.event_type == "contour" and result.blast_block_id is None
+    assert result.event_type == "contour"
     assert len(persistence.persisted.blast_events) == 1
-    assert persistence.persisted.blast_events[0].blast_block_id is None
-    assert persistence.blocks == []
+    event = persistence.persisted.blast_events[0]
+    assert event.id == result.event_id
+    assert event.event_type == "contour"
+    assert event.created_by_user_id == 42
+    assert persistence.calls == [(7, 0, 42)]
 
 
-def test_production_success_creates_exactly_one_linked_block(tmp_path):
+def test_production_success_creates_exactly_one_production_event_without_secondary_block_identity(tmp_path):
     persistence = MemoryPersistence()
     result = CreateBlastEvent(persistence).execute(command(geometry_file(tmp_path)))
+    assert result.event_type == "production"
+    assert len(persistence.persisted.blast_events) == 1
     event = persistence.persisted.blast_events[0]
-    assert result.blast_block_id == event.blast_block_id == persistence.blocks[0]["id"]
-    assert len(persistence.blocks) == 1
-    assert persistence.blocks[0] == {"id": 1, "domain_id": 7, "block_number": "B-17", "horizon": 100.0,
-                                     "date": date(2026, 8, 10), "status": "planned", "comment": None, "actor_id": 42}
+    assert event.id == result.event_id
+    assert event.name == "B-17"
+    assert event.elevation == 100.0
+    assert event.event_date == date(2026, 8, 10)
+    assert event.created_by_user_id == 42
+    assert not hasattr(event, "blast_block_id")
+    assert not hasattr(result, "blast_block_id")
+    assert persistence.calls == [(7, 0, 42)]
 
 
 def test_permission_rejection_does_not_load_or_persist(tmp_path):
     persistence = MemoryPersistence()
     with pytest.raises(BlastEventCreationPermissionError):
         CreateBlastEvent(persistence).execute(command(geometry_file(tmp_path), can_edit=False))
-    assert persistence.persisted.blast_events == [] and persistence.blocks == []
+    assert persistence.persisted.blast_events == [] and persistence.calls == []
 
 
 def test_geometry_failure_does_not_persist(tmp_path):
     persistence = MemoryPersistence()
     with pytest.raises(ValueError):
         CreateBlastEvent(persistence).execute(command(str(tmp_path / "missing.csv")))
-    assert persistence.persisted.blast_events == [] and persistence.blocks == []
+    assert persistence.persisted.blast_events == [] and persistence.calls == []
 
 
 def test_persistence_failure_leaves_fake_store_unchanged(tmp_path):
     persistence = MemoryPersistence(fail=True)
     with pytest.raises(RuntimeError, match="injected"):
         CreateBlastEvent(persistence).execute(command(geometry_file(tmp_path)))
-    assert persistence.persisted.blast_events == [] and persistence.blocks == []
+    assert persistence.persisted.blast_events == [] and persistence.calls == []
