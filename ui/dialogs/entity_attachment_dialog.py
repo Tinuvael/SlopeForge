@@ -315,13 +315,6 @@ class EntityAttachmentManagerWidget(QWidget):
         self._gallery_reflow_pending = False
         self._file_icon_provider = QFileIconProvider() if kind == "document" else None
         _apply_workspace_palette(self)
-        # Normal entity pages embed the manager in a plain tab-page QWidget with
-        # the default QVBoxLayout margins. Those margins are outside this widget,
-        # so they must use the same workspace palette too; otherwise Contour and
-        # Assessment expose a white frame while Block happens to blend with its
-        # styled QTabWidget pane. Keep compatibility dialogs untouched.
-        if isinstance(parent, QWidget) and not isinstance(parent, QDialog):
-            _apply_workspace_palette(parent)
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
 
