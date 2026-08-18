@@ -97,7 +97,7 @@ def test_photo_manager_reviews_each_selected_file_and_uses_embedded_gallery(tmp_
     assert selected is not None
     assert manager.viewer_title.text() == selected.title
     assert manager.viewer_category.text()
-    assert manager.viewer_date.text() == selected.file_date.isoformat()
+    assert manager.viewer_date.text() == selected.file_date.strftime("%d.%m.%Y")
     assert manager.viewer_file.text() == selected.original_filename
 
     manager._show_gallery()

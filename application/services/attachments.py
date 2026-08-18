@@ -11,6 +11,7 @@ from uuid import uuid4
 from domain.attachments.entities import EntityAttachment
 from domain.attachments.policy import (
     ATTACHMENT_CATEGORIES,
+    KIND_FOLDERS,
     PHOTO_EXTENSIONS,
     sanitize_filename,
     validate_attachment_owner,
@@ -46,6 +47,16 @@ class EntityAttachmentService:
 
     def owner_folder(self, owner_type: str, owner_id: str, create: bool = True) -> Path:
         return self.file_storage.owner_folder(owner_type, owner_id, create)
+
+    def attachment_folder(self, owner_type: str, owner_id: str, attachment_kind: str,
+                          create: bool = True) -> Path:
+        """Return the physical Photos/Documents subfolder for one attachment kind."""
+        self._validate(owner_type, owner_id, attachment_kind)
+        owner = self.owner_folder(owner_type, owner_id, create=create)
+        folder = owner / KIND_FOLDERS[attachment_kind]
+        if create:
+            folder.mkdir(parents=True, exist_ok=True)
+        return folder
 
     def _destination(self, owner_type: str, owner_id: str, kind: str, filename: str) -> Path:
         return self.file_storage.destination(owner_type, owner_id, kind, filename)
@@ -177,8 +188,6 @@ class EntityAttachmentService:
             try:
                 self.file_storage.remove(temporary)
             except OSError as cleanup_exc:
-                # The database/state commit already succeeded.  This is an orphan
-                # cleanup warning, not a failed logical delete.
                 return AttachmentDeleteResult(f"{temporary}: {cleanup_exc}")
         return AttachmentDeleteResult()
 
@@ -188,6 +197,9 @@ class EntityAttachmentService:
 
     def open_owner_folder(self, owner_type: str, owner_id: str) -> bool:
         return open_local_path(self.owner_folder(owner_type, owner_id))
+
+    def open_attachment_folder(self, owner_type: str, owner_id: str, attachment_kind: str) -> bool:
+        return open_local_path(self.attachment_folder(owner_type, owner_id, attachment_kind))
 
     def counts(self, owner_type: str, owner_id: str) -> tuple[int, int]:
         items = self.list_for_owner(owner_type, owner_id)
