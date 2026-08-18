@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
             if result.event_type=="contour":
                 opened=self.open_contour_from_tree(result.event_id,self.selected_domain_id,self.selected_site_id,self.selected_domain_name)
             else:
-                opened=self.open_block_from_tree(result.blast_block_id,self.selected_domain_id,self.selected_site_id)
+                opened=self.open_block_from_tree(result.event_id,self.selected_domain_id,self.selected_site_id)
             if not opened:
                 raise RuntimeError("The created Blast Event page could not be opened")
         except Exception as exc:
@@ -244,17 +244,14 @@ class MainWindow(QMainWindow):
         if self.selected_block_id is not None:
             block=self.block_page.current_block; action="Restore" if block.is_archived else "Archive"
             if QMessageBox.question(self,action,f"{action} Block {block.block_number}?") != QMessageBox.StandardButton.Yes:return
-            from app.use_case_factory import create_set_blast_block_archived_use_case
-            from application.use_cases.set_blast_block_archived import SetBlastBlockArchivedCommand
             user=self.context.current_user
             try:
                 version = (self.block_page.entity_controller.expected_version
                            if self.block_page.entity_controller else block.domain_version)
-                create_set_blast_block_archived_use_case(self.context).execute(SetBlastBlockArchivedCommand(block.id,not block.is_archived,user.id,user.can_edit,version))
+                self.block_page.block_service.set_archived(
+                    block.id,not block.is_archived,user,expected_version=version)
             except Exception as exc:
                 QMessageBox.warning(self,tr("Could not archive block"),domain_message(str(exc))); return
-            # Reopen from persistence after the successful command.  This rebuilds
-            # both the frozen Block row and the entity editing controller at N+1.
             block_id, domain_id, site_id = block.id, block.domain_id, block.site_id
             self.refresh_project_data()
             self.open_block_from_tree(block_id,domain_id,site_id); return
