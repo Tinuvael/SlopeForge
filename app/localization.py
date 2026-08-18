@@ -78,6 +78,7 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Assessment geometry": "Геометрия участка оценки",
     "Blast geometry": "Геометрия взрывного события",
     "Historical revision is read-only.": "Историческая ревизия доступна только для просмотра.",
+    "Geometry & face condition": "Геометрия и состояние борта",
 }
 
 # Qt asks the installed translator for platform-theme captions in contexts such
