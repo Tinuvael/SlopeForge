@@ -66,14 +66,34 @@ class ProductionBlastService:
                        BlastEventGeometryRevision.is_active.is_(True))
             )
 
-    def set_archived(self, event_id: str, archived: bool, user: CurrentUser) -> None:
+    def set_archived(self, event_id: str, archived: bool, user: CurrentUser,
+                     *, expected_version: int) -> int:
         self._check_can_edit(user)
         from datetime import datetime, timezone
         with self.session_factory.begin() as session:
             event = self._event(session, event_id)
+            new_version = guard_domain_versions(
+                session, {event.domain_id: expected_version})[event.domain_id]
+            if event.is_archived == archived:
+                return new_version
+            old_value = "archived" if event.is_archived else "active"
+            new_value = "archived" if archived else "active"
             event.is_archived = archived
             event.archived_at = datetime.now(timezone.utc) if archived else None
-            event.archive_reason = None if not archived else event.archive_reason
+            if not archived:
+                event.archive_reason = None
+            self.audit_repository.add_entry(
+                session,
+                user_id=user.id,
+                action="update",
+                entity_type="blast_event",
+                entity_id=event.logical_id,
+                field_name="archive_state",
+                old_value=old_value,
+                new_value=new_value,
+                description="Archived production Block" if archived else "Restored production Block",
+            )
+            return new_version
 
     def update_metadata(self, event_id, *, domain_id, block_number, horizon_text,
                         user, expected_version, target_expected_version=None):
