@@ -152,20 +152,37 @@ Visual direction: compact professional engineering desktop software; light backg
 
 Keep PySide6 / Qt Widgets. Do not migrate SlopeForge UI to QML/Qt Quick or a web framework unless the product architecture is explicitly changed.
 
+SlopeForge-specific UI constraints override generic examples in vendored skills:
+
+- MVP targets the established light theme; do not add dark mode merely because a generic skill discusses it.
+- Do not add decorative motion/animation unless an issue explicitly requires it.
+- Do not apply embedded/MCU or AI-specific UI sections unless that is the actual issue scope.
+- QML/Qt Quick examples are references only and must not trigger a framework migration.
+- Preserve compact Windows engineering-desktop typography; do not blindly force web-style 16 px body text when it conflicts with the established desktop density. Maintain readability, high-DPI behavior, contrast, and localization tolerance.
+- Prefer existing SlopeForge design tokens/helpers and SVG assets over inventing a parallel design system.
+
 ## Repo-local UI skills
 
-Codex-compatible repository skills live under `.agents/skills/` and are committed with the project. For UI work, load the relevant skill before proposing or editing production UI:
+Codex-compatible repository skills live under `.agents/skills/` and are committed with the project. The `SKILL.md` files are vendored **verbatim upstream snapshots**; keep SlopeForge-specific overrides in this `AGENTS.md` rather than editing the vendored skill text.
+
+For UI work, load the relevant skill before proposing or editing production UI:
 
 - `qt-ui-design` — `.agents/skills/qt-ui-design/SKILL.md`
+  - Upstream snapshot: The Qt Company R&D `qt-ui-design`, blob `0f107d12c10b88091c36ee644cbd6290eaacc917`.
   - Use for screen design, layout, navigation, information hierarchy, UX audit, accessibility, and visual consistency.
+  - The bundled `.agents/skills/qt-ui-design/LICENSE.txt` preserves the upstream BSD-3-Clause license text.
 - `pyqt-widgets` — `.agents/skills/pyqt-widgets/SKILL.md`
-  - Use for QWidget/dialog/form/table/tree/stack implementation, Qt layouts, signals, ownership, keyboard behavior, and widget lifecycle.
+  - Upstream snapshot: CodeAtCode/oss-ai-skills `pyqt-widgets`, blob `0a74c3b43c0d637062db3e1e9d5287eea08122b5`.
+  - Use for QWidget/dialog/form/table/tree/stack implementation and Qt layout/widget reference material.
 - `pyqt-styling` — `.agents/skills/pyqt-styling/SKILL.md`
-  - Use for QSS, visual tokens, control states, cards, forms, tables, tabs, dialogs, and theme consistency.
+  - Upstream snapshot: CodeAtCode/oss-ai-skills `pyqt-styling`, blob `18c1bc4132a371a0476bc9925f5875403fb60ef5`.
+  - Use for QSS selectors/properties/states, widget-specific styling, and theme reference material.
+
+The CodeAtCode source repository is GPL-3.0; SlopeForge is also GPL-3.0.
 
 For a broad UI redesign/refactor, use all three. For a narrow task, load only the relevant skills; do not add UI-skill context to unrelated persistence/domain work.
 
-These skills are supporting guidance, not product authority. If generic upstream guidance conflicts with current `main`, the active issue, or SlopeForge invariants in this file, follow SlopeForge. In particular, generic Qt/QML examples must not cause a QML migration, and generic styling examples must not replace the established compact engineering-desktop direction.
+These skills are supporting guidance, not product authority. If generic upstream guidance conflicts with current `main`, the active issue, or SlopeForge invariants in this file, follow SlopeForge.
 
 Before deleting/replacing an existing UI component during a visual cleanup, classify it as `ACTIVE`, `ACTIVE_BUT_MISPLACED`, `COMPATIBILITY_ONLY`, or `DEAD` and preserve working business behavior.
 
