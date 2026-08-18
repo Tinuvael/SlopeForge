@@ -17,6 +17,26 @@ from domain.blasting.workflow import WORKFLOW_LABELS, blast_workflow_for
 
 def _show(value,unit=""):return "—" if value in (None,"") else f"{value:g}{unit}" if isinstance(value,(int,float)) else str(value)
 
+
+def _method_label(code):
+    labels={
+        "buffer_cushion":"Buffer / cushion blasting",
+        "trim":"Trim blasting",
+        "presplit":"Presplit",
+        "midsplit":"Midsplit",
+        "postsplit":"Postsplit",
+        "line_drilling":"Line drilling",
+        "other":"Other",
+    }
+    return tr(labels.get(code,code.replace("_"," ").title())) if code else "—"
+
+
+def _primary_contour_group(revision):
+    preferred={"contour_line","presplit_line","midsplit_line","postsplit_line","line_drilling"}
+    included=[group for group in revision.drilling_groups if group.included]
+    return next((group for group in included if group.group_type in preferred),included[0] if included else None)
+
+
 class ContourEventPage(QWidget):
     metadata_saved=Signal(str,int)
     def __init__(self,context,domain_id,domain_name,event_id,parent=None):
@@ -30,6 +50,10 @@ class ContourEventPage(QWidget):
         self.setStyleSheet("#CardFrame{background:white;border:1px solid #dfe3ea;border-radius:8px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
     def _sync_engineering_actions_visibility(self,*_args):
         self.engineering_actions_widget.setVisible(self.tabs.currentIndex() in (1,2))
+    def _open_tab(self,title):
+        wanted=tr(title)
+        for index in range(self.tabs.count()):
+            if self.tabs.tabText(index)==wanted:self.tabs.setCurrentIndex(index);return
     def _header(self,root):
         self.header=EntityHeaderWidget(); self.header.edit_button.clicked.connect(self.edit_metadata); root.addWidget(self.header); self._refresh_workflow_presentation()
     def _wire_sidebar_actions(self):
@@ -64,11 +88,19 @@ class ContourEventPage(QWidget):
         page=QWidget(); layout=QVBoxLayout(page); top=QHBoxLayout(); info=CardFrame("General information"); grid=QGridLayout(); info.layout.addLayout(grid); values=(("Name",self.blast_event.name),("ID",self.blast_event.id),("Type","Contour"),("Domain",self.domain_name),("Horizon",f"{self.blast_event.elevation:g} m"),("Planned blast date",self.blast_event.event_date or "—"),("Status",workflow),("Archive",tr("Archived") if self.blast_event.is_archived else "—"),("Active geometry revision",self.rev.revision_number if self.rev else "—"),("Source geometry file",self.rev.source_file_name if self.rev else "—"),("Geometry import date",self.rev.imported_at.date() if self.rev else "—")); self.general_information={}
         for row,(name,value) in enumerate(values):left=QLabel(tr(name)); left.setObjectName("MutedText"); right=QLabel(str(value)); self.general_information[name]=right; grid.addWidget(left,row,0); grid.addWidget(right,row,1)
         top.addWidget(info,3); dataset=self.controller.state.active_dataset(); self.plan=PlanGeometryWidget(); self.plan.use_center_control(); self.plan.set_geometry(self.rev.plan_geometry if self.rev else None,dataset.lines if dataset else [],f"{tr('Horizon')}: {self.blast_event.elevation:g} | {tr('Source')}: {self.rev.source_file_name if self.rev else '—'}",focus_geometry=self.rev.plan_geometry if self.rev else None); self.plan.set_reimport_enabled(not self.read_only); self.plan.reimport_requested.connect(self.reimport_geometry); top.addWidget(self.plan,2); layout.addLayout(top)
-        contour=self.draft.contour_parameters; actual=self.draft.actual_execution; cards=QHBoxLayout(); design=CardFrame("Blast design parameters"); execution=CardFrame("Execution fact"); design_text=QLabel(); execution_text=QLabel(); design_text.setWordWrap(True); execution_text.setWordWrap(True)
-        if contour:design_text.setText(f"{tr('Controlled blasting method')}: {_show(contour.controlled_blasting_method)}\n{tr('Line length')}: {_show(contour.line_length_m,' m')}\n{tr('Hole count')}: {_show(contour.hole_count)}\n{tr('Average spacing')}: {_show(contour.average_spacing_m,' m')}\n{tr('Average depth')}: {_show(contour.average_depth_m,' m')}\n{tr('Diameter')}: {_show(contour.diameter_mm,' mm')}\n{tr('Explosive type')}: {_show(contour.explosive_type)}")
-        else:design_text.setText(tr("No design data"))
-        execution_text.setText(f"{tr('Completion status')}: {_show(actual.completion_status)}\n{tr('Actual blast date')}: {_show(actual.actual_blast_date)}\n{tr('Actual hole count')}: {_show(actual.actual_total_hole_count)}\n{tr('Actual drilling length')}: {_show(actual.actual_total_drilling_length_m,' m')}\n{tr('Actual explosive mass')}: {_show(actual.actual_total_explosive_mass_kg,' kg')}"); design.layout.addWidget(design_text); execution.layout.addWidget(execution_text); cards.addWidget(design); cards.addWidget(execution); layout.addLayout(cards)
-        bottom=QHBoxLayout(); comments=CardFrame("Comments"); comment=QLabel((self.draft.notes+"\n"+actual.execution_notes).strip() or tr("No comments")); comment.setWordWrap(True); comments.layout.addWidget(comment); recent=CardFrame("Recent history"); history=QLabel("\n".join(f"{x.timestamp.date()}: {x.title}" for x in self.history_repo.for_blast_event(self.blast_event.id)[:5]) or tr("No history")); history.setWordWrap(True); recent.layout.addWidget(history); bottom.addWidget(comments,3); bottom.addWidget(recent,2); layout.addLayout(bottom); layout.addWidget(self.editor.take_tab(tr("General"))); self.tabs.addTab(page,tr("General information"))
+        cards=QHBoxLayout(); design=CardFrame("Blast design parameters"); execution=CardFrame("Execution fact"); self.design_text=QLabel(); self.execution_text=QLabel(); self.design_text.setWordWrap(True); self.execution_text.setWordWrap(True); design_open=QPushButton(tr("Open section")); execution_open=QPushButton(tr("Open section")); design_open.clicked.connect(lambda:self._open_tab("Blast design")); execution_open.clicked.connect(lambda:self._open_tab("Execution fact")); design.layout.addWidget(self.design_text); design.layout.addStretch(); design.layout.addWidget(design_open); execution.layout.addWidget(self.execution_text); execution.layout.addStretch(); execution.layout.addWidget(execution_open); cards.addWidget(design); cards.addWidget(execution); layout.addLayout(cards); self._refresh_engineering_summary()
+        bottom=QHBoxLayout(); comments=CardFrame("Comments"); self.comment_text=QLabel(); self.comment_text.setWordWrap(True); comments.layout.addWidget(self.comment_text); recent=CardFrame("Recent history"); history=QLabel("\n".join(f"{x.timestamp.date()}: {x.title}" for x in self.history_repo.for_blast_event(self.blast_event.id)[:5]) or tr("No history")); history.setWordWrap(True); recent.layout.addWidget(history); bottom.addWidget(comments,3); bottom.addWidget(recent,2); layout.addLayout(bottom); layout.addWidget(self.editor.take_tab(tr("General"))); self.tabs.addTab(page,tr("General information"))
+    def _refresh_engineering_summary(self):
+        revision=self.card.active_revision() or self.draft; contour=revision.contour_parameters; actual=revision.actual_execution; group=_primary_contour_group(revision)
+        if contour:
+            spacing=contour.average_spacing_m if contour.average_spacing_m is not None else (group.spacing_m if group else None); depth=contour.average_depth_m if contour.average_depth_m is not None else (group.average_depth_m if group else None); inclination=(group.inclination_deg if group and group.inclination_deg is not None else contour.inclination_deg); diameter=contour.diameter_mm if contour.diameter_mm is not None else (group.diameter_mm if group else None); holes=contour.hole_count if contour.hole_count is not None else (group.hole_count if group else None); explosive=contour.explosive_type or (group.explosive_names() if group else "") or "—"
+            rows=(("Controlled blasting method",_method_label(contour.controlled_blasting_method)),("Line length",_show(contour.line_length_m," m")),("Hole count",_show(holes)),("Average depth",_show(depth," m")),("Azimuth",_show(group.azimuth_deg if group else None,"°")),("Inclination",_show(inclination,"°")),("Average spacing",_show(spacing," m")),("Diameter",_show(diameter," mm")),("Explosive type",explosive)); self.design_text.setText("\n".join(f"{tr(name)}: {value}" for name,value in rows))
+        else:self.design_text.setText(tr("No design data"))
+        actual_group=next((item for item in actual.actual_drilling_groups if item.included and item.group_type in {"contour_line","presplit_line","midsplit_line","postsplit_line","line_drilling"}),next((item for item in actual.actual_drilling_groups if item.included),None)); has_fact=bool(actual.actual_drilling_groups or actual.actual_blast_date or actual.completion_status=="completed")
+        if has_fact:
+            rows=(("Completion status",tr((actual.completion_status or "planned").replace("_"," ").title())),("Actual blast date",_show(actual.actual_blast_date)),("Actual hole count",_show(actual.actual_total_hole_count)),("Actual average depth",_show(actual.actual_average_depth_m," m")),("Actual spacing",_show(actual_group.spacing_m if actual_group else None," m")),("Actual drilling length",_show(actual.actual_total_drilling_length_m," m")),("Actual explosive mass",_show(actual.actual_total_explosive_mass_kg," kg"))); self.execution_text.setText("\n".join(f"{tr(name)}: {value}" for name,value in rows))
+        else:self.execution_text.setText(tr("No execution data yet"))
+        self.comment_text.setText((revision.notes+"\n"+actual.execution_notes).strip() or tr("No comments")) if hasattr(self,"comment_text") else None
     def _attachments(self,title):
         kind="photo" if title=="Photos" else "document"; page,manager=create_attachment_tab_page(self.controller.attachments,"blast_event",self.blast_event.id,kind,read_only=self.read_only); manager.changed.connect(self._after_attachment_change)
         if kind=="photo":self.photo_manager=manager
@@ -107,10 +139,10 @@ class ContourEventPage(QWidget):
     def save_draft(self):
         if self.read_only:QMessageBox.warning(self,tr("Read only"),tr("This contour event is read-only.")); return False
         saved=self.editor.save_draft()
-        if saved:self._refresh_workflow_presentation(); self._refresh_sidebar(); self._refresh_history()
+        if saved:self._refresh_workflow_presentation(); self._refresh_sidebar(); self._refresh_engineering_summary(); self._refresh_history()
         return saved
     def complete(self):
         if self.read_only:QMessageBox.warning(self,tr("Read only"),tr("This contour event is read-only.")); return False
         saved=self.editor.complete()
-        if saved:self._refresh_workflow_presentation(); self._refresh_sidebar(); self._refresh_history()
+        if saved:self._refresh_workflow_presentation(); self._refresh_sidebar(); self._refresh_engineering_summary(); self._refresh_history()
         return saved
