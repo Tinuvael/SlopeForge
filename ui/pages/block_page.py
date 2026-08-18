@@ -2,28 +2,35 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.localization import tr
-from ui.presentation_labels import domain_message
-
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from app.context import AppContext
+from app.localization import tr
+from domain.blasting.technical_card import polygon_area_m2
+from domain.blasting.workflow import (
+    ASSESSMENT_PROGRESS_LABELS,
+    WORKFLOW_LABELS,
+    BlastWorkflowState,
+    assessment_progress_for,
+)
+from infrastructure.services.production_blast_service import ProductionBlastService
+from repositories.domain_repository import DomainRepository
 from repositories.entity_history_repository import EntityHistoryRepository
 from repositories.production_blast_repository import ProductionBlastRepository, ProductionBlastRow
-from repositories.domain_repository import DomainRepository
-from infrastructure.services.production_blast_service import ProductionBlastService
 from ui.block_dialog import BlockDialog
 from ui.pages.block_card_widgets import EmptySection, format_datetime, format_decimal
-from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_history_revision_viewer import open_geometry_revision, open_technical_card_revision
+from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_overview_widgets import (
     EngineeringSummaryCard,
     EntityHeaderWidget,
-    GeneralInfoCard,
+    InlineAutosaveNotes,
     OverviewKeyValueCard,
     QuickAttachmentPreview,
     RecentActivityCard,
+    RelatedEntityList,
+    RelatedEntityRow,
     SquareGeometryCard,
 )
 from ui.pages.entity_page_controller import EntityPageController
@@ -34,17 +41,17 @@ from ui.pages.technical_card_widgets import (
     GeomechanicsEditorWidget,
     TechnicalCardEditorWidget,
 )
-from domain.blasting.technical_card import polygon_area_m2
-from domain.blasting.workflow import WORKFLOW_LABELS, BlastWorkflowState
+from ui.presentation_labels import domain_message, format_assessment_elevation_interval
 
 
-def _fmt_number(value, unit=""):
+def _fmt_number(value, unit="", digits=2):
     if value is None:
         return "—"
     try:
-        text = f"{float(value):g}"
+        number = float(value)
     except (TypeError, ValueError):
-        text = str(value)
+        return f"{value}{unit}"
+    text = f"{number:.{digits}f}".rstrip("0").rstrip(".")
     return f"{text}{unit}"
 
 
@@ -58,6 +65,10 @@ def _fmt_dateish(value):
         return datetime.fromisoformat(text).strftime("%d.%m.%Y")
     except ValueError:
         return text
+
+
+def _fmt_history_time(value):
+    return value.strftime("%d.%m.%Y %H:%M") if value else "—"
 
 
 def _pattern(burden, spacing):
@@ -83,6 +94,15 @@ def _qprime_and_category(geo):
     return qprime, category
 
 
+def _history_bounds(entries):
+    timed = [entry for entry in entries if entry.timestamp]
+    if not timed:
+        return None, None, None
+    created = min(timed, key=lambda item: item.timestamp)
+    updated = max(timed, key=lambda item: item.timestamp)
+    return created.actor or "—", created.timestamp, updated.timestamp
+
+
 class _NullAttachmentService:
     def list_for_owner(self, *args):
         return []
@@ -91,6 +111,7 @@ class _NullAttachmentService:
 class BlockPage(QWidget):
     data_changed = Signal()
     metadata_saved = Signal(str, int)
+    related_assessment_requested = Signal(str, int)
 
     def __init__(self, context: AppContext):
         super().__init__()
@@ -101,6 +122,9 @@ class BlockPage(QWidget):
         self.history_repo = EntityHistoryRepository(context.session_factory)
         self.filters = {"number_query": None, "domain_id": None, "site_id": None, "status": None}
         self.current_block: ProductionBlastRow | None = None
+        self._overview_photo_count = 0
+        self._overview_document_count = 0
+        self._overview_history_entries = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -119,11 +143,21 @@ class BlockPage(QWidget):
 
         top = QHBoxLayout()
         top.setSpacing(8)
-        self.general_info = GeneralInfoCard()
-        self.general_info.edit_notes_requested.connect(self.edit_comment)
-        self.geometry_card = SquareGeometryCard("Plan / geometry")
-        self.geometry_card.reimport_requested.connect(self._reimport_current_geometry)
-        top.addWidget(self.general_info, 1)
+        overview_stack = QVBoxLayout()
+        overview_stack.setSpacing(8)
+        self.general_info = OverviewKeyValueCard("General information")
+        self.notes = InlineAutosaveNotes("Notes")
+        self.notes.save_requested.connect(self._autosave_comment)
+        self.related_areas = RelatedEntityList("Related assessment areas")
+        self.related_areas.entity_activated.connect(self._open_related_area)
+        overview_stack.addWidget(self.general_info)
+        overview_stack.addWidget(self.notes)
+        overview_stack.addWidget(self.related_areas, 1)
+        self.geometry_card = SquareGeometryCard(
+            "Plan / geometry", action_label="Reimport geometry"
+        )
+        self.geometry_card.action_requested.connect(self._reimport_current_geometry)
+        top.addLayout(overview_stack, 1)
         top.addWidget(self.geometry_card, 0)
         overview_layout.addLayout(top)
 
@@ -183,7 +217,7 @@ class BlockPage(QWidget):
         self.documents.open_page_requested.connect(lambda: self._open_attachments("document"))
         for widget in (self.summary, self.photos, self.documents):
             widget.setMinimumWidth(250)
-            widget.setMaximumWidth(290)
+            widget.setMaximumWidth(300)
         right.addWidget(self.summary)
         right.addWidget(self.photos)
         right.addWidget(self.documents)
@@ -194,7 +228,7 @@ class BlockPage(QWidget):
         self.setStyleSheet(
             """
             #CardFrame { background:#ffffff; border:1px solid #dfe3ea; border-radius:8px; }
-            #CardTitle, #EngineeringSectionTitle { font-weight:600; color:#111827; }
+            #CardTitle, #EngineeringSectionTitle, #RelatedEntityTitle { font-weight:600; color:#111827; }
             #EntityTitle { font-size:24px; font-weight:700; }
             #EntityContextLine { color:#667085; }
             #MutedText { color:#6b7280; }
@@ -202,6 +236,7 @@ class BlockPage(QWidget):
             #ActivityTitle { color:#111827; }
             #EngineeringSummaryText { color:#374151; }
             #OverviewDivider { color:#e5e7eb; background:#e5e7eb; max-height:1px; border:0; }
+            #StaleBadge { background:#fff1c2; color:#8a5a00; border:1px solid #e5b94d; border-radius:4px; padding:2px 5px; }
             """
         )
         self._sync_engineering_actions_visibility()
@@ -229,6 +264,10 @@ class BlockPage(QWidget):
         }.get(key)
         if target is not None:
             self.tabs.setCurrentWidget(target)
+
+    def _open_related_area(self, area_id):
+        if self.current_block is not None:
+            self.related_assessment_requested.emit(area_id, self.current_block.domain_id)
 
     def set_filters(self, filters: dict) -> None:
         self.filters = filters
@@ -262,37 +301,44 @@ class BlockPage(QWidget):
             self.data_changed.emit()
             self.metadata_saved.emit(self.current_block.id, self.current_block.domain_id)
 
-    def edit_comment(self):
-        if not self.current_block or not self.context.current_user.can_edit or self.current_block.is_archived:
-            return
-        from PySide6.QtWidgets import QInputDialog
-        text, ok = QInputDialog.getMultiLineText(
-            self, tr("Notes"), tr("Notes"), self.current_block.comment or ""
-        )
-        if not ok:
+    def _autosave_comment(self, text):
+        block = self.current_block
+        if block is None or not self.context.current_user.can_edit or block.is_archived:
+            self.notes.restore_saved()
             return
         try:
             self.block_service.update_comment(
-                self.current_block.id,
+                block.id,
                 text,
                 self.context.current_user,
                 expected_version=self.entity_controller.expected_version,
             )
         except Exception as exc:
+            self.notes.restore_saved()
             QMessageBox.warning(self, tr("Could not save block"), domain_message(str(exc)))
             return
-        self.open_block_id(self.current_block.id)
+        self.notes.mark_saved(text)
+        self.current_block = self.block_service.get_block(block.id)
+        self._render_current_block()
         self.data_changed.emit()
+
+    def edit_comment(self):
+        """Compatibility entry point; Notes are now edited inline and autosaved."""
+        if not self.notes.editor.isReadOnly():
+            self.notes.editor.setFocus()
 
     def _render_current_block(self) -> None:
         block = self.current_block
         history_entries = self.history_repo.for_blast_event(block.id) if block else []
+        self._overview_history_entries = history_entries
         self.entity_controller = EntityPageController(self.context, block.domain_id) if block else None
         event = self.entity_controller.production_event(block.id) if self.entity_controller else None
         geometry = event.active_geometry_revision() if event else None
         photos = self.entity_controller.attachments.list_for_owner("blast_event", event.id, "photo") if event else []
         documents = self.entity_controller.attachments.list_for_owner("blast_event", event.id, "document") if event else []
         photo_count, document_count = self.entity_controller.attachments.counts("blast_event", event.id) if event else (0, 0)
+        self._overview_photo_count = photo_count
+        self._overview_document_count = document_count
         attachments_available = event is not None
         for manager in (self.photo_manager, self.document_manager):
             manager.service = self.entity_controller.attachments if self.entity_controller else _NullAttachmentService()
@@ -322,27 +368,51 @@ class BlockPage(QWidget):
                     f"{tr('Geometry rev.')}: {geometry.revision_number if geometry else '—'}",
                 ),
             )
-            self.general_info.set_data(
-                (
-                    ("Author", block.author_name),
-                    ("Created", format_datetime(block.created_at)),
-                    ("Source geometry", geometry.source_file_name if geometry else "—"),
-                    ("Imported", format_datetime(geometry.imported_at) if geometry else "—"),
-                ),
+            self.notes.set_value(
                 block.comment or "",
-                can_edit=self.context.current_user.can_edit and not block.is_archived,
+                editable=self.context.current_user.can_edit and not block.is_archived,
             )
         else:
             self.header.set_content(title=tr("Select a block"), status_text=tr("—"), status_state="unknown")
-            self.general_info.set_data([], "", can_edit=False)
+            self.notes.set_value("", editable=False)
 
         service = self.entity_controller.attachments if self.entity_controller else None
         self.photos.set_items(service, photos, "No photos yet", can_add=can_add)
         self.documents.set_items(service, documents, "No documents yet", can_add=can_add)
         self.history_tab.set_entries(history_entries)
         self.recent_activity.set_entries(history_entries)
+        self._render_related_areas(event)
         self._render_engineering(block)
         self._sync_engineering_actions_visibility()
+
+    def _render_related_areas(self, event):
+        if event is None or self.entity_controller is None:
+            self.related_areas.set_rows([], empty_text="No linked assessment areas")
+            return
+        rows = []
+        for area in self.entity_controller.state.assessment_areas:
+            if not any(
+                link.status == "confirmed" and link.blast_event_id == event.id
+                for link in area.links_for_revision()
+            ):
+                continue
+            evaluation = next(
+                (item for item in self.entity_controller.state.evaluations
+                 if item.assessment_area_id == area.id),
+                None,
+            )
+            progress = assessment_progress_for(area, evaluation)
+            status = tr(ASSESSMENT_PROGRESS_LABELS[progress])
+            rev = area.active_geometry_revision()
+            interval = format_assessment_elevation_interval(rev.min_elevation, rev.max_elevation)
+            rows.append(RelatedEntityRow(
+                area.id,
+                area.name,
+                f"{area.id} · {interval}",
+                status,
+                getattr(progress, "value", progress),
+            ))
+        self.related_areas.set_rows(rows, empty_text="No linked assessment areas")
 
     def _open_history_entry(self, entry):
         if not self.current_block or not self.entity_controller:
@@ -399,7 +469,7 @@ class BlockPage(QWidget):
             source=geometry.source_file_name if geometry else "",
             focus_geometry=geometry.plan_geometry if geometry else None,
         )
-        self.geometry_card.set_reimport_enabled(editable)
+        self.geometry_card.set_action_enabled(editable)
 
         card, draft = self.entity_controller.technical_card_draft(event)
         revision = card.active_revision() or draft
@@ -413,6 +483,17 @@ class BlockPage(QWidget):
             actual_main = next((g for g in actual.actual_drilling_groups if g.included), None)
 
         qprime, stability = _qprime_and_category(geo)
+        area = polygon_area_m2(geometry.plan_geometry) if geometry else None
+        blast_date = actual.actual_blast_date or block.planned_blast_date
+        blast_hint = tr("Actual") if actual.actual_blast_date else tr("Planned")
+        self.general_info.set_rows((
+            ("Blast date", _fmt_dateish(blast_date), blast_hint),
+            ("Block area", _fmt_number(area, " m²")),
+            ("Bench height", _fmt_number(main.average_depth_m if main else None, " m")),
+            ("Q′", _fmt_number(qprime)),
+            ("Stability", stability or tr("Not calculated")),
+        ))
+
         geo_lines = [
             f"{tr('Lithology')}: {geo.lithology or '—'}" if geo else tr("No geomechanics data yet"),
             f"UCS {_fmt_number(geo.ucs_mpa, ' MPa')}" if geo else "",
@@ -434,36 +515,36 @@ class BlockPage(QWidget):
             f"{tr('Average depth')} {_fmt_number(actual.actual_average_depth_m, ' m')}" if has_fact else "",
             f"{tr('Holes')} {_fmt_number(actual.actual_total_hole_count)}" if has_fact else "",
             f"{tr('Explosive')} {_fmt_number(actual.actual_total_explosive_mass_kg, ' kg')}" if has_fact else "",
+            (
+                f"{tr('Rejected')}: {actual.rejected_hole_count or 0} · "
+                f"{tr('Wet')}: {actual.wet_hole_count or 0} · "
+                f"{tr('Redrilled')}: {actual.redrilled_hole_count or 0} · "
+                f"{tr('Uncharged')}: {actual.uncharged_hole_count or 0}"
+            ) if has_fact else "",
         ]
-        self.engineering_summary.set_sections(
-            (
-                ("geomechanics", "Geomechanics", geo_lines),
-                ("blast_design", "Blast design", design_lines),
-                ("execution", "Execution fact", execution_lines),
-            )
-        )
-        self.engineering_notes.set_sections(
-            (
-                ("geomechanics", "Geomechanics", [geo.notes if geo and geo.notes else tr("No notes")]),
-                ("blast_design", "Blast design", [revision.notes or (main.notes if main else "") or tr("No notes")]),
-                ("execution", "Execution fact", [actual.execution_notes or tr("No notes")]),
-            )
-        )
+        self.engineering_summary.set_sections((
+            ("geomechanics", "Geomechanics", geo_lines),
+            ("blast_design", "Blast design", design_lines),
+            ("execution", "Execution fact", execution_lines),
+        ))
+        self.engineering_notes.set_sections((
+            ("geomechanics", "Geomechanics", [geo.notes if geo and geo.notes else tr("No notes")]),
+            ("blast_design", "Blast design", [revision.notes or (main.notes if main else "") or tr("No notes")]),
+            ("execution", "Execution fact", [actual.execution_notes or tr("No notes")]),
+        ))
 
-        production = revision.production_parameters
-        area = polygon_area_m2(geometry.plan_geometry) if geometry else None
-        blast_date = actual.actual_blast_date or block.planned_blast_date
-        blast_hint = tr("Actual") if actual.actual_blast_date else tr("Planned")
-        stability_value = f"{stability} · Q′ {_fmt_number(qprime)}" if stability else tr("Not calculated")
-        self.summary.set_rows(
-            (
-                ("Blast date", _fmt_dateish(blast_date), blast_hint),
-                ("Block area", _fmt_number(area, " m²"), tr("Geometry")),
-                ("Bench height", _fmt_number(production.design_bench_height_m if production else None, " m"), tr("Design")),
-                ("Stability", stability_value),
-                ("Technical Card", f"{tr('Rev.')} {revision.revision_number}"),
-            )
-        )
+        created_actor, created_at, updated_at = _history_bounds(self._overview_history_entries)
+        tc_revision = revision.revision_number if revision.revision_number else None
+        self.summary.set_rows((
+            ("Created by", block.author_name or created_actor or "—"),
+            ("Created", format_datetime(block.created_at) if block.created_at else _fmt_history_time(created_at)),
+            ("Last updated", format_datetime(block.updated_at) if block.updated_at else _fmt_history_time(updated_at)),
+            ("Geometry file", geometry.source_file_name if geometry else "—"),
+            ("Geometry revision", f"{tr('Rev.')} {geometry.revision_number}" if geometry else "—"),
+            ("Technical Card", f"{tr('Rev.')} {tc_revision}" if tc_revision else "—"),
+            ("Photos", self._overview_photo_count),
+            ("Documents", self._overview_document_count),
+        ))
 
         from app.use_case_factory import create_charge_presets, create_explosive_catalogue
         editor = TechnicalCardEditorWidget(
@@ -499,6 +580,7 @@ class BlockPage(QWidget):
     def _clear_engineering(self):
         self.engineering_summary.set_sections(())
         self.engineering_notes.set_sections(())
+        self.general_info.set_rows(())
         self.summary.set_rows(())
         for attr, title in (
             ("geomechanics_tab", "Geomechanics"),
@@ -510,7 +592,7 @@ class BlockPage(QWidget):
         self.save_engineering_draft.setEnabled(False)
         self.complete_engineering.setEnabled(False)
         self.technical_card_editor = None
-        self.geometry_card.set_reimport_enabled(False)
+        self.geometry_card.set_action_enabled(False)
 
     def _reimport_current_geometry(self):
         if not self.current_block or not self.entity_controller:
