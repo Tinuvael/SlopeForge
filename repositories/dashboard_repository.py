@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy import select
-from database.models import BlastBlock, Domain, DomainGeometry
+from database.models import Domain, DomainGeometry
 from database import assessment_models as a
 from domain.blasting.workflow import derive_assessment_progress_state
 from infrastructure.db.workflow_status_queries import blast_workflow_states
@@ -89,7 +89,6 @@ class SiteDashboardSnapshot:
     @property
     def domain_geometries(self):
         if not self.domains: return ()
-        # Every Domain snapshot contains the same set-based Project context.
         return tuple(DomainMapGeometry(g.domain_id,g.domain_name,g.points,g.palette_index,False) for g in self.domains[0].domain_geometries)
 
 def _number(v):
@@ -104,8 +103,12 @@ class DashboardRepository:
         with self.session_factory() as s:
             domain=s.get(Domain,domain_id)
             if domain is None: raise LookupError(f"Domain {domain_id} not found")
-            blocks=list(s.scalars(select(BlastBlock).where(BlastBlock.domain_id==domain_id,BlastBlock.is_archived.is_(False))))
-            contours=list(s.scalars(select(a.BlastEvent).where(a.BlastEvent.domain_id==domain_id,a.BlastEvent.event_type=="contour",a.BlastEvent.is_archived.is_(False))))
+            production=list(s.scalars(select(a.BlastEvent).where(
+                a.BlastEvent.domain_id==domain_id,a.BlastEvent.event_type=="production",
+                a.BlastEvent.is_archived.is_(False))))
+            contours=list(s.scalars(select(a.BlastEvent).where(
+                a.BlastEvent.domain_id==domain_id,a.BlastEvent.event_type=="contour",
+                a.BlastEvent.is_archived.is_(False))))
             rows=s.execute(select(a.AssessmentArea,a.AssessmentAreaGeometryRevision,a.AssessmentAreaEvaluationRevision)
                 .join(a.AssessmentArea.geometry_revisions)
                 .outerjoin(a.AssessmentAreaEvaluation,(a.AssessmentAreaEvaluation.assessment_area_id==a.AssessmentArea.id)&a.AssessmentAreaEvaluation.is_archived.is_(False))
@@ -125,29 +128,24 @@ class DashboardRepository:
                 areas.append(AreaRow(area.logical_id,area.name,interval,(ev.assessment_date if ev else area.assessment_date),status,float(ev.design_achievement_index) if ev and current_completed and ev.design_achievement_index is not None else None,float(ev.face_condition_index) if ev and current_completed and ev.face_condition_index is not None else None,q))
             completed=[x for x in areas if x.status=="completed"]
             avg=lambda key: (sum(v)/len(v) if (v:=[getattr(x,key) for x in completed if getattr(x,key) is not None]) else None)
-            summary=DomainSummary(domain.id,domain.name,len(blocks),len(contours),len(areas),len(completed),sum(x.status=="draft" for x in areas),avg("dai"),avg("fci"))
-            production_events=list(s.scalars(select(a.BlastEvent).where(
-                a.BlastEvent.blast_block_id.in_([x.id for x in blocks]),
-                a.BlastEvent.event_type=="production"))) if blocks else []
-            event_by_block={x.blast_block_id:x for x in production_events}
-            all_events=production_events+contours; states=blast_workflow_states(s,all_events)
-            blasts=[BlastRow(x.id,"Production",x.block_number,_number(x.horizon_m),event_by_block[x.id].event_date,str(states[event_by_block[x.id].id])) for x in blocks if x.id in event_by_block]
+            summary=DomainSummary(domain.id,domain.name,len(production),len(contours),len(areas),len(completed),sum(x.status=="draft" for x in areas),avg("dai"),avg("fci"))
+            all_events=production+contours; states=blast_workflow_states(s,all_events)
+            blasts=[BlastRow(x.logical_id,"Production",x.name,_number(x.elevation_m),x.event_date,str(states[x.id])) for x in production]
             blasts += [BlastRow(x.logical_id,"Contour",x.name,_number(x.elevation_m),x.event_date,str(states[x.id])) for x in contours]
             activity=[(f"Assessment Area: {area.name}",area.updated_at) for area,_,_ in rows]
             activity += [(f"Evaluation: {area.name}",ev.created_at) for area,_,ev in rows if ev is not None]
-            activity += [(f"Block {x.block_number}",x.updated_at) for x in blocks]+[(x.name,x.updated_at) for x in contours]
+            activity += [(f"Block {x.name}",x.updated_at) for x in production]+[(x.name,x.updated_at) for x in contours]
             recent=sorted(activity,key=lambda x:x[1].timestamp() if isinstance(x[1],datetime) else 0,reverse=True)[:10]
 
             dataset=s.scalar(select(a.ProjectLinesDataset).where(a.ProjectLinesDataset.site_id==domain.site_id,a.ProjectLinesDataset.is_active.is_(True)))
             project_lines=_project_line_geometries(dataset)
-            active_block_ids={x.id for x in blocks}
             geometry_rows=s.execute(select(a.BlastEvent,a.BlastEventGeometryRevision).join(a.BlastEvent.geometry_revisions).where(a.BlastEvent.domain_id==domain_id,a.BlastEvent.is_archived.is_(False),a.BlastEventGeometryRevision.is_active.is_(True))).all()
             production_geometries=[]; contour_geometries=[]
             for event,revision in geometry_rows:
                 points=_geometry_points(revision.plan_geometry_json)
                 if not points: continue
-                target=production_geometries if event.event_type=="production" and event.blast_block_id in active_block_ids else contour_geometries if event.event_type=="contour" else None
-                if target is not None: target.append(MapGeometry(event.blast_block_id if event.blast_block_id else event.logical_id,points))
+                target=production_geometries if event.event_type=="production" else contour_geometries if event.event_type=="contour" else None
+                if target is not None: target.append(MapGeometry(event.logical_id,points))
             assessment_geometries=tuple(MapGeometry(area.logical_id,_geometry_points(geo.final_geometry_json),ev.result_quadrant if ev and ev.status=="completed" else None) for area,geo,ev in rows if _geometry_points(geo.final_geometry_json))
             if site_geometry is None: site_geometry=_load_site_domain_geometry(s,domain.site_id)
             domain_geometries,source_kind,source_file_name=site_geometry.for_domain(domain_id)
