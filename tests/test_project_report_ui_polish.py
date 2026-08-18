@@ -66,7 +66,7 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     assert all(editor.isVisible() for editor in page.evaluation_editor.editors.values())
     assert page.evaluation_editor.date.isVisible() and page.evaluation_editor.date.isEnabled()
     assert page.evaluation_editor.inspector.isVisible() and page.evaluation_editor.inspector.isEnabled()
-    assert page.evaluation_editor.inspector.text()=="Иванов"  # saved value is never overwritten
+    assert page.evaluation_editor.inspector.text()=="Иванов"
     assert page.assessment_details_card.isVisible() and inputs.isAncestorOf(page.evaluation_editor.date) and inputs.isAncestorOf(page.evaluation_editor.inspector)
     assert page.assessment_right.width()/(inputs.width()+page.assessment_right.width())>.42
     assert page.assessment_basis_value.text()=="With contour drilling" or page.assessment_basis_value.text()=="Controlled blasting"
@@ -176,7 +176,8 @@ def test_cancelled_attachment_metadata_does_not_ensure_owner(monkeypatch):
     service=SimpleNamespace(list_for_owner=lambda *_:[]); ensured=[]
     manager=module.EntityAttachmentManagerWidget(service,"assessment_evaluation",None,"document",ensure_owner=lambda:ensured.append(True))
     monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(["known.pdf"],"Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip)"))
-    monkeypatch.setattr(module.AttachmentMetadataDialog,"exec",lambda *_:module.QDialog.DialogCode.Rejected); manager.add()
+    monkeypatch.setattr(module.DocumentBatchDialog,"exec",lambda *_:module.QDialog.DialogCode.Rejected)
+    manager.add()
     assert ensured==[] and manager.owner_id is None
 
 
@@ -186,7 +187,9 @@ def test_successful_attachment_ensures_owner_once(monkeypatch):
     service=SimpleNamespace(list_for_owner=lambda *_:[],add_files=lambda *args:added.append(args)); owners=[]
     def ensure():owners.append(True); return SimpleNamespace(id="E-1")
     manager=module.EntityAttachmentManagerWidget(service,"assessment_evaluation",None,"document",ensure_owner=ensure)
-    monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(["known.pdf"],"Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip)")); monkeypatch.setattr(module.AttachmentMetadataDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted); monkeypatch.setattr(module.AttachmentMetadataDialog,"values",lambda *_:{})
+    monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(["known.pdf"],"Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip)"))
+    monkeypatch.setattr(module.DocumentBatchDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(module.DocumentBatchDialog,"entries",lambda *_:[("known.pdf",{})])
     manager.add(); assert len(owners)==1 and len(added)==1 and manager.owner_id=="E-1"
 
 
@@ -206,8 +209,8 @@ def test_failed_add_rolls_back_only_newly_prepared_owner(monkeypatch):
     manager=module.EntityAttachmentManagerWidget(service,"assessment_evaluation",None,"document",
         ensure_owner=lambda:(owner,lambda:rolled_back.append(owner)))
     monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(['report.pdf'],"Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip)"))
-    monkeypatch.setattr(module.AttachmentMetadataDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted)
-    monkeypatch.setattr(module.AttachmentMetadataDialog,"values",lambda *_:{})
+    monkeypatch.setattr(module.DocumentBatchDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(module.DocumentBatchDialog,"entries",lambda *_:[("report.pdf",{})])
     errors=[]; monkeypatch.setattr(module.QMessageBox,"critical",lambda *args:errors.append(args[2]))
     manager.add()
     assert rolled_back==[owner] and manager.owner_id is None and errors
@@ -220,8 +223,8 @@ def test_failed_add_never_rolls_back_existing_owner(monkeypatch):
     manager=module.EntityAttachmentManagerWidget(service,"assessment_evaluation","E-existing","document",
         ensure_owner=lambda:ensured.append(True))
     monkeypatch.setattr(module.QFileDialog,"getOpenFileNames",lambda *_:(['report.pdf'],"Documents (*.pdf *.doc *.docx *.xls *.xlsx *.csv *.txt *.dxf *.dwg *.zip)"))
-    monkeypatch.setattr(module.AttachmentMetadataDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted)
-    monkeypatch.setattr(module.AttachmentMetadataDialog,"values",lambda *_:{})
+    monkeypatch.setattr(module.DocumentBatchDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(module.DocumentBatchDialog,"entries",lambda *_:[("report.pdf",{})])
     monkeypatch.setattr(module.QMessageBox,"critical",lambda *_:None)
     manager.add()
     assert manager.owner_id=="E-existing" and ensured==[]
