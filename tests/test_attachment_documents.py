@@ -129,3 +129,26 @@ def test_attachment_manager_opens_current_kind_folder():
     assert photo_service.calls == [("blast_event", "BE-X", "photo")]
     assert document_service.calls == [("blast_event", "BE-X", "document")]
     photo.close(); document.close(); app.processEvents()
+
+
+def test_photo_manager_matches_plain_tab_host_background_and_keeps_native_scrollbar():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    gui = pytest.importorskip("PySide6.QtGui", exc_type=ImportError)
+    from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+
+    class StubService:
+        def list_for_owner(self, *_args): return []
+
+    host = widgets.QWidget()
+    layout = widgets.QVBoxLayout(host)
+    manager = EntityAttachmentManagerWidget(StubService(), "blast_event", "BE-X", "photo", host)
+    layout.addWidget(manager)
+
+    assert host.autoFillBackground()
+    assert host.palette().color(gui.QPalette.ColorRole.Window).name().lower() == "#f3f4f6"
+    assert manager.gallery_scroll.styleSheet() == ""
+    assert manager.gallery_scroll.verticalScrollBar().styleSheet() == ""
+
+    host.close(); app.processEvents()
