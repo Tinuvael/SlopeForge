@@ -35,7 +35,7 @@ class AssessmentAreaPage(QWidget):
     edit_boundaries_requested=Signal(str)
     metadata_saved=Signal(str,int)
     def __init__(self,context,domain_id,domain_name,area_id,parent=None):
-        super().__init__(parent); self.context=context; self.domain_id=domain_id; self.domain_name=domain_name; self.area_id=area_id; self.controller=EntityPageController(context,domain_id); self.history_repo=EntityHistoryRepository(context.session_factory); self.area=self.controller.area(area_id); self.read_only=not context.current_user.can_edit or self.area.is_archived
+        super().__init__(parent); self.context=context; self.domain_id=domain_id; self.domain_name=domain_name; self.area_id=area_id; self.controller=EntityPageController(context,domain_id); factory=getattr(context,"session_factory",None); self.history_repo=EntityHistoryRepository(factory) if callable(factory) else None; self.area=self.controller.area(area_id); self.read_only=not context.current_user.can_edit or self.area.is_archived
         self._build_editor()
         root=QVBoxLayout(self); self._header(root); body=QHBoxLayout(); left=QVBoxLayout(); self.tabs=create_entity_tabs(); left.addWidget(self.tabs); body.addLayout(left,4); self._sidebar(body); root.addLayout(body)
         self._overview(); self.tabs.addTab(self.assessment_tab,tr("Assessment")); self._linked_events(); self._attachment_tab("Photos"); self._attachment_tab("Documents"); self.tabs.addTab(self.history,tr("History")); self._refresh_overview_and_sidebar(); self._refresh_history()
@@ -102,8 +102,11 @@ class AssessmentAreaPage(QWidget):
         layout.addLayout(cards); bottom=QHBoxLayout(); self.comments_card=CardFrame("Comments / recommendations"); self.comments_text=QLabel(); self.comments_text.setWordWrap(True); self.comments_card.layout.addWidget(self.comments_text); self.recent_card=CardFrame("Recent history"); self.recent_text=QLabel(); self.recent_text.setWordWrap(True); self.recent_card.layout.addWidget(self.recent_text); bottom.addWidget(self.comments_card,3); bottom.addWidget(self.recent_card,2); layout.addLayout(bottom)
         self.edit_boundaries_button=QPushButton(tr("Edit boundaries")); self.edit_boundaries_button.setEnabled(not self.read_only); self.edit_boundaries_button.clicked.connect(self._request_edit_boundaries); layout.addWidget(self.edit_boundaries_button); self.tabs.addTab(page,tr("Overview"))
 
+    def _history_entries(self):
+        return self.history_repo.for_assessment_area(self.area.id) if self.history_repo is not None else []
+
     def _refresh_history(self):
-        entries=self.history_repo.for_assessment_area(self.area.id); self.history.set_entries(entries); return entries
+        entries=self._history_entries(); self.history.set_entries(entries); return entries
 
     def _refresh_overview_and_sidebar(self):
         rev=self.area.active_geometry_revision(); active=self.evaluation.active_revision(); confirmed=[x for x in self.area.links_for_revision() if x.status=="confirmed"]; prod=sum(self.controller.links.event(x.blast_event_id).event_type=="production" for x in confirmed); contour=len(confirmed)-prod; status=tr(ASSESSMENT_PROGRESS_LABELS[assessment_progress_for(self.area,self.evaluation)]); self.header_status.setText(status + ((" · " + tr("Archived")) if self.area.is_archived else ""))
@@ -115,7 +118,7 @@ class AssessmentAreaPage(QWidget):
         for row,(name,value) in enumerate(rows):left=QLabel(tr(name)); left.setObjectName("MutedText"); right=QLabel(_value(value)); self.general_information[name]=right; self.info_grid.addWidget(left,row,0); self.info_grid.addWidget(right,row,1)
         evaluation_status=active.status if active else "—"; dai=f"{active.design_achievement_index:.3f}" if active and active.design_achievement_index is not None else "—"; fci=f"{active.face_condition_index:.3f}" if active and active.face_condition_index is not None else "—"; quadrant=result_label(active.result_label) if active else "—"
         self.result_text.setText(f"{tr('Evaluation status')}: {evaluation_status}\nDAI: {dai}\nFCI: {fci}\n{tr('Result')}: {_value(quadrant)}"); self.links_text.setText(f"{tr('Production blasts')}: {prod}\n{tr('Contour blasts')}: {contour}\n{tr('Total confirmed')}: {len(confirmed)}"); self.geometry_text.setText(f"{tr('Elevation interval')}: {interval}\n{tr('Revision')}: {rev.revision_number}\n{tr('Project Lines Dataset')}: {', '.join(rev.source_dataset_ids) or 'Free boundary'}")
-        comments=((active.comments or "")+("\n" if active and active.comments and active.recommendations else "")+(active.recommendations or "")) if active else ""; self.comments_text.setText(comments or tr("No comments or recommendations")); history_entries=self.history_repo.for_assessment_area(self.area.id); self.recent_text.setText("\n".join(f"{entry.timestamp.date()}: {entry.title}" for entry in history_entries[:6]) or tr("No history"))
+        comments=((active.comments or "")+("\n" if active and active.comments and active.recommendations else "")+(active.recommendations or "")) if active else ""; self.comments_text.setText(comments or tr("No comments or recommendations")); history_entries=self._history_entries(); self.recent_text.setText("\n".join(f"{entry.timestamp.date()}: {entry.title}" for entry in history_entries[:6]) or tr("No history"))
         while self.summary_grid.count():
             item=self.summary_grid.takeAt(0)
             if item.widget():item.widget().deleteLater()
@@ -204,7 +207,9 @@ class AssessmentAreaPage(QWidget):
         self._refresh_overview_and_sidebar(); self._refresh_history()
     def _save_evaluation(self,status):
         if not self._ensure_editable():return
-        if self.evaluation_editor.save(status):self._refresh_attachment_controls(); self._refresh_overview_and_sidebar(); self._refresh_history()
+        if self.evaluation_editor.save(status):
+            self._refresh_attachment_controls(); self._refresh_overview_and_sidebar()
+            if hasattr(self,"_refresh_history"): self._refresh_history()
     def _refresh_attachment_controls(self):
         persisted=self.evaluation in self.controller.state.evaluations
         for _kind,manager in getattr(self,"attachment_controls",[]):manager.owner_id=self.evaluation.id if persisted else None; manager.refresh()
