@@ -65,12 +65,23 @@ def _meaningful(value: Any) -> bool:
 
 
 def _execution_content(payload: dict[str, Any]) -> dict[str, Any]:
-    """Strip default-only execution state so an untouched fact is not 'created'."""
-    actual = dict(payload.get("actual_execution") or {})
-    actual.pop("migration_warnings", None)
-    if actual.get("completion_status") == "planned":
-        actual.pop("completion_status", None)
-    return actual
+    """Return user-authored execution content, excluding calculated/default noise."""
+    actual = payload.get("actual_execution") or {}
+    groups = actual.get("actual_drilling_groups") or []
+    notes = actual.get("execution_notes") or ""
+    deviations = actual.get("deviations_text") or ""
+    completed = actual.get("completion_status") == "completed"
+    core = {
+        "actual_drilling_groups": groups,
+        "execution_notes": notes,
+        "deviations_text": deviations,
+        "completion_status": "completed" if completed else None,
+    }
+    # The editor always supplies a date while saving, even before factual work
+    # starts. Treat it as factual content only after another execution signal exists.
+    if groups or notes or deviations or completed:
+        core["actual_blast_date"] = actual.get("actual_blast_date")
+    return core
 
 
 def _technical_sections(payload: dict[str, Any], event_type: str) -> dict[str, Any]:
