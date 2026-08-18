@@ -12,11 +12,24 @@ from application.ports.domain_version import DomainWriteResult
 from infrastructure.db.domain_version import guard_domain_versions
 from application.services.assessment_event_links import AssessmentEventLinkService
 from repositories.assessment_state_repository import _domain_graph_queries, _state_from_domain
+from repositories.audit_log_repository import AuditLogRepository
 
 
 class SqlAlchemyAssessmentWrites:
-    def __init__(self, session_factory: Callable[[], Session]):
+    def __init__(self, session_factory: Callable[[], Session], *, actor_id: int | None = None):
         self._session_factory = session_factory
+        self._actor_id = actor_id
+        self._audit_repo = AuditLogRepository(session_factory)
+
+    def _audit(self, session, *, entity_type, entity_id, action="update", field_name=None,
+               old_value=None, new_value=None, description=None):
+        return self._audit_repo.add_entry(
+            session, user_id=self._actor_id, action=action,
+            entity_type=entity_type, entity_id=entity_id, field_name=field_name,
+            old_value=None if old_value is None else str(old_value),
+            new_value=None if new_value is None else str(new_value),
+            description=description,
+        )
 
     @staticmethod
     def _logical(session, model, domain_id, logical_id):
@@ -30,8 +43,15 @@ class SqlAlchemyAssessmentWrites:
         with self._session_factory.begin() as s:
             new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             row = self._logical(s, orm.AssessmentArea, domain_id, area.id)
+            old = row.is_archived
             row.is_archived, row.archived_at, row.archive_reason = (
                 area.is_archived, area.archived_at, area.archive_reason)
+            if old != row.is_archived:
+                self._audit(s, entity_type="assessment_area", entity_id=area.id,
+                            field_name="archive_state",
+                            old_value="archived" if old else "active",
+                            new_value="archived" if row.is_archived else "active",
+                            description="Assessment Area archived" if row.is_archived else "Assessment Area restored")
             return DomainWriteResult(new_version)
 
     def persist_contour_archive(self, domain_id, expected_version, event):
@@ -42,8 +62,15 @@ class SqlAlchemyAssessmentWrites:
             row = self._logical(s, orm.BlastEvent, domain_id, event.id)
             if row.event_type != "contour":
                 raise ValueError("Stored BlastEvent is not contour")
+            old = row.is_archived
             row.is_archived, row.archived_at, row.archive_reason = (
                 event.is_archived, event.archived_at, event.archive_reason)
+            if old != row.is_archived:
+                self._audit(s, entity_type="blast_event", entity_id=event.id,
+                            field_name="archive_state",
+                            old_value="archived" if old else "active",
+                            new_value="archived" if row.is_archived else "active",
+                            description="Contour Blast archived" if row.is_archived else "Contour Blast restored")
             return DomainWriteResult(new_version)
 
     @staticmethod
@@ -99,9 +126,23 @@ class SqlAlchemyAssessmentWrites:
             versions = guard_domain_versions(s, expected)
             row = self._logical(s, orm.BlastEvent, domain_id, event_id)
             if row.event_type != "contour": raise ValueError("Stored BlastEvent is not contour")
+            old_name, old_elevation, old_domain = row.name, row.elevation_m, row.domain_id
             row.name, row.elevation_m = name.strip(), elevation
+            if old_name != row.name:
+                self._audit(s, entity_type="blast_event", entity_id=event_id,
+                            field_name="name", old_value=old_name, new_value=row.name,
+                            description="Contour Blast name changed")
+            if old_elevation != row.elevation_m:
+                self._audit(s, entity_type="blast_event", entity_id=event_id,
+                            field_name="elevation_m", old_value=old_elevation, new_value=row.elevation_m,
+                            description="Horizon changed")
             if target_domain_id != domain_id:
+                old_domain_name = s.get(Domain, old_domain).name
+                new_domain_name = s.get(Domain, target_domain_id).name
                 row.domain_id = target_domain_id; s.flush()
+                self._audit(s, entity_type="blast_event", entity_id=event_id,
+                            field_name="domain_id", old_value=old_domain_name, new_value=new_domain_name,
+                            description="Domain changed")
                 self._remove_current_cross_domain_links(s, domain_id)
                 self._remove_current_cross_domain_links(s, target_domain_id)
                 self._rebuild_current_suggestions(s, target_domain_id)
@@ -118,9 +159,19 @@ class SqlAlchemyAssessmentWrites:
                 expected[target_domain_id] = target_expected_version
             versions = guard_domain_versions(s, expected)
             row = self._logical(s, orm.AssessmentArea, domain_id, area_id)
+            old_name, old_domain = row.name, row.domain_id
             row.name = name.strip()
+            if old_name != row.name:
+                self._audit(s, entity_type="assessment_area", entity_id=area_id,
+                            field_name="name", old_value=old_name, new_value=row.name,
+                            description="Assessment Area name changed")
             if target_domain_id != domain_id:
+                old_domain_name = s.get(Domain, old_domain).name
+                new_domain_name = s.get(Domain, target_domain_id).name
                 row.domain_id = target_domain_id; s.flush()
+                self._audit(s, entity_type="assessment_area", entity_id=area_id,
+                            field_name="domain_id", old_value=old_domain_name, new_value=new_domain_name,
+                            description="Domain changed")
                 self._remove_current_cross_domain_links(s, target_domain_id)
                 self._rebuild_current_suggestions(s, target_domain_id,
                                                   area_logical_id=area_id)
@@ -146,6 +197,9 @@ class SqlAlchemyAssessmentWrites:
                 source_geometry_json=[x.to_dict() for x in revision.source_geometry],
                 plan_geometry_json=revision.plan_geometry.to_dict(),
                 elevation_m=revision.elevation, is_active=True))
+            self._audit(s, entity_type="blast_event", entity_id=event_id,
+                        field_name="geometry_revision", new_value=revision.id,
+                        description="Geometry reimported")
             return DomainWriteResult(new_version)
 
     def persist_technical_card_revision(self, domain_id, expected_version, card, revision, event_date=...):
@@ -212,11 +266,14 @@ class SqlAlchemyAssessmentWrites:
             new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             row = s.scalar(select(orm.AssessmentArea).where(
                 orm.AssessmentArea.domain_id == domain_id, orm.AssessmentArea.logical_id == area.id))
+            created = row is None
             if row is None:
                 row = orm.AssessmentArea(domain_id=domain_id, logical_id=area.id, name=area.name,
                     assessment_date=area.assessment_date, is_archived=area.is_archived,
                     archived_at=area.archived_at, archive_reason=area.archive_reason)
                 s.add(row); s.flush()
+                self._audit(s, entity_type="assessment_area", entity_id=area.id,
+                            action="create", description="Assessment Area created")
             duplicate = s.scalar(select(orm.AssessmentAreaGeometryRevision.id).where(
                 orm.AssessmentAreaGeometryRevision.assessment_area_id == row.id,
                 (orm.AssessmentAreaGeometryRevision.logical_id == revision.id) |
@@ -236,6 +293,9 @@ class SqlAlchemyAssessmentWrites:
             links = [link for link in area.event_links
                      if link.assessment_area_geometry_revision_id == revision.id]
             self._sync_links(s, row, revision.id, links)
+            self._audit(s, entity_type="assessment_area", entity_id=area.id,
+                        field_name="geometry_revision", new_value=revision.id,
+                        description="Boundaries created" if created else "Boundaries revised")
             return DomainWriteResult(new_version)
 
     def synchronize_area_links(self, domain_id, expected_version, area):
@@ -243,9 +303,31 @@ class SqlAlchemyAssessmentWrites:
             new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             row = self._logical(s, orm.AssessmentArea, domain_id, area.id)
             revision_id = area.active_geometry_revision_id
+            revision = next((x for x in row.geometry_revisions if x.logical_id == revision_id), None)
+            existing = {}
+            if revision is not None:
+                for link in revision.event_links:
+                    event = link.blast_event_geometry_revision.blast_event
+                    existing[link.logical_id] = (link.status, link.source, event.logical_id)
             links = [link for link in area.event_links
                      if link.assessment_area_geometry_revision_id == revision_id]
             self._sync_links(s, row, revision_id, links)
+            for link in links:
+                before = existing.get(link.id)
+                if before is None and link.source == "manual":
+                    self._audit(s, entity_type="assessment_area", entity_id=area.id,
+                                field_name="link_action", new_value=link.blast_event_id,
+                                description=f"Manual blast event linked · {link.blast_event_id}")
+                elif before is not None and before[0] != link.status:
+                    title = {
+                        "confirmed": "Blast event confirmed",
+                        "excluded": "Blast event excluded",
+                        "suggested": "Blast event link restored",
+                    }.get(link.status)
+                    if title:
+                        self._audit(s, entity_type="assessment_area", entity_id=area.id,
+                                    field_name="link_action", old_value=before[0], new_value=link.status,
+                                    description=f"{title} · {link.blast_event_id}")
             return DomainWriteResult(new_version)
 
     @staticmethod
@@ -297,6 +379,9 @@ class SqlAlchemyAssessmentWrites:
                 face_condition_index=revision.face_condition_index,
                 result_quadrant=revision.result_quadrant,
                 payload_json=revision.to_dict(), is_active=True))
+            self._audit(s, entity_type="assessment_area", entity_id=owner.assessment_area.logical_id,
+                        field_name="assessment_revision", new_value=revision.id,
+                        description="Assessment completed" if revision.status == "completed" else "Assessment draft saved")
             return DomainWriteResult(new_version)
 
     @staticmethod
@@ -322,6 +407,12 @@ class SqlAlchemyAssessmentWrites:
             raise ValueError("Attachment belongs to another Domain")
         return row
 
+    @staticmethod
+    def _attachment_history_owner(event=None, evaluation=None):
+        if event is not None:
+            return "blast_event", event.logical_id
+        return "assessment_area", evaluation.assessment_area.logical_id
+
     def add_attachment_metadata_batch(self, domain_id, expected_version, attachments, evaluation_owner=None):
         if not attachments:
             raise ValueError("Attachment batch is empty")
@@ -343,22 +434,45 @@ class SqlAlchemyAssessmentWrites:
                 row=orm.AssessmentEntityAttachment(logical_id=attachment.id); s.add(row)
                 self._set_attachment(row,attachment,event,evaluation)
                 s.flush()
+            history_type, history_id = self._attachment_history_owner(event, evaluation)
+            kind = attachments[0].attachment_kind
+            noun = "photo" if kind == "photo" else "document"
+            if len(attachments) == 1:
+                title = attachments[0].title or attachments[0].original_filename
+                description = f'Added {noun} "{title}"'
+            else:
+                description = f"Added {len(attachments)} {noun}s"
+            self._audit(s, entity_type=history_type, entity_id=history_id,
+                        action="attach", field_name="attachment_batch", description=description)
             return DomainWriteResult(new_version)
 
     def update_attachment_metadata(self, domain_id, expected_version, attachment):
         with self._session_factory.begin() as s:
             new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             row=self._attachment_for_domain(s,domain_id,attachment.id)
+            history_type, history_id = self._attachment_history_owner(row.blast_event, row.assessment_area_evaluation)
+            kind = row.attachment_kind
+            title = attachment.title or attachment.original_filename
             for name in ("attachment_kind", "subtype", "custom_subtype", "title",
                          "original_filename", "stored_filename", "relative_path",
                          "file_date", "description", "mime_type", "file_size_bytes"):
                 setattr(row, name, getattr(attachment, name))
+            noun = "Photo" if kind == "photo" else "Document"
+            self._audit(s, entity_type=history_type, entity_id=history_id,
+                        field_name="attachment_metadata",
+                        description=f'{noun} metadata updated "{title}"')
             return DomainWriteResult(new_version)
 
     def delete_attachment_metadata(self, domain_id, expected_version, attachment_id):
         with self._session_factory.begin() as s:
             new_version = guard_domain_versions(s, {domain_id: expected_version})[domain_id]
             row=self._attachment_for_domain(s,domain_id,attachment_id)
+            history_type, history_id = self._attachment_history_owner(row.blast_event, row.assessment_area_evaluation)
+            kind, title = row.attachment_kind, row.title or row.original_filename
+            noun = "photo" if kind == "photo" else "document"
+            self._audit(s, entity_type=history_type, entity_id=history_id,
+                        action="detach", field_name="attachment_delete",
+                        description=f'Deleted {noun} "{title}"')
             s.delete(row)
             return DomainWriteResult(new_version)
 
