@@ -91,3 +91,41 @@ def test_document_add_reviews_batch_once_and_persists_per_file_metadata(tmp_path
     assert {item.subtype for item in items} == {"blast_design", "survey"}
     assert manager.table.rowCount() == 2
     manager.close(); app.processEvents()
+
+
+def test_attachment_service_exposes_separate_photo_and_document_folders(tmp_path):
+    state = AssessmentDomainState()
+    service = EntityAttachmentService(state, storage_path=tmp_path / "state.json")
+
+    photo_folder = service.attachment_folder("blast_event", "BE-FOLDERS", "photo")
+    document_folder = service.attachment_folder("blast_event", "BE-FOLDERS", "document")
+
+    assert photo_folder.name == "photos"
+    assert document_folder.name == "documents"
+    assert photo_folder.parent == document_folder.parent
+    assert photo_folder.is_dir()
+    assert document_folder.is_dir()
+
+
+def test_attachment_manager_opens_current_kind_folder():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+
+    class StubService:
+        def __init__(self): self.calls = []
+        def list_for_owner(self, *_args): return []
+        def open_attachment_folder(self, owner_type, owner_id, kind):
+            self.calls.append((owner_type, owner_id, kind)); return True
+
+    photo_service = StubService()
+    document_service = StubService()
+    photo = EntityAttachmentManagerWidget(photo_service, "blast_event", "BE-X", "photo")
+    document = EntityAttachmentManagerWidget(document_service, "blast_event", "BE-X", "document")
+
+    photo.open_folder(); document.open_folder()
+
+    assert photo_service.calls == [("blast_event", "BE-X", "photo")]
+    assert document_service.calls == [("blast_event", "BE-X", "document")]
+    photo.close(); document.close(); app.processEvents()
