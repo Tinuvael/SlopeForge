@@ -313,15 +313,15 @@ class EntityAttachmentManagerWidget(QWidget):
         self.table = None
         self.stack = None
         self.mutation_buttons = []
+        self._build_attachment_actions(root)
         if self.kind == "photo":
             self._build_photo_pages(root)
-            self._build_photo_actions(root)
         else:
-            self._build_document_actions(root)
             self._build_document_table(root)
         self.refresh()
 
-    def _build_photo_actions(self, root):
+    def _build_attachment_actions(self, root):
+        """Keep Photos and Documents controls in the same place and order."""
         actions = QHBoxLayout()
         for text_, handler, mutation in (
             ("Add", self.add, True),
@@ -332,20 +332,11 @@ class EntityAttachmentManagerWidget(QWidget):
         ):
             button = QPushButton(tr(text_)); button.clicked.connect(handler)
             button.setEnabled(not mutation or (not self.read_only and not self.unsaved))
+            if text_ == "Edit metadata":
+                actions.addStretch()
             actions.addWidget(button)
             if mutation:
                 self.mutation_buttons.append(button)
-        actions.addStretch(); root.addLayout(actions)
-
-    def _build_document_actions(self, root):
-        actions = QHBoxLayout()
-        add = QPushButton(tr("Add documents")); add.clicked.connect(self.add); add.setEnabled(not self.read_only and not self.unsaved)
-        open_button = QPushButton(tr("Open")); open_button.clicked.connect(self.open_selected)
-        folder = QPushButton(tr("Open folder")); folder.clicked.connect(self.open_folder)
-        edit = QPushButton(tr("Edit metadata")); edit.clicked.connect(self.edit); edit.setEnabled(not self.read_only and not self.unsaved)
-        delete = QPushButton(tr("Delete")); delete.clicked.connect(self.delete); delete.setEnabled(not self.read_only and not self.unsaved)
-        actions.addWidget(add); actions.addWidget(open_button); actions.addWidget(folder); actions.addStretch(); actions.addWidget(edit); actions.addWidget(delete)
-        self.mutation_buttons.extend((add, edit, delete))
         root.addLayout(actions)
 
     def _build_document_table(self, root):
