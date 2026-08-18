@@ -38,9 +38,20 @@ class SqlAlchemyBlastEventCreationPersistence:
                 action="create",
                 entity_type="blast_event",
                 entity_id=event.id,
-                description=("Created production Block" if event.event_type == "production"
-                             else "Created contour Blast Event"),
+                description=("Block created" if event.event_type == "production"
+                             else "Contour Blast created"),
             )
+            for revision in event.geometry_revisions:
+                self._audit.add_entry(
+                    session,
+                    user_id=actor_id,
+                    action="update",
+                    entity_type="blast_event",
+                    entity_id=event.id,
+                    field_name="geometry_revision",
+                    new_value=revision.id,
+                    description="Geometry imported",
+                )
             self._fail("before_commit")
             return new_version
 
