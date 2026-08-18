@@ -194,7 +194,8 @@ def test_historical_viewers_hide_nested_history_and_assessment_attachments():
     assert '_take_optional_tab(dialog, tr("Photos and documents"))' in viewer
     assert '_take_optional_tab(dialog, tr("History"))' in viewer
     assert 'tr("Geometry & face condition")' in viewer
-    assert "control.setReadOnly(True)" in viewer
+    assert "control.setEnabled(False)" in viewer
+    assert "geometry_section.setFixedHeight(255)" in viewer
 
 
 def test_history_audit_scope_records_compact_attachment_batches_and_ignores_auto_link_refresh():
