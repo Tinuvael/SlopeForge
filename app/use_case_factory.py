@@ -4,8 +4,6 @@ from infrastructure.db.blast_event_creation import SqlAlchemyBlastEventCreationP
 from application.services.entity_editing import AssessmentEditingSession
 from infrastructure.db.assessment_state import SqlAlchemyAssessmentStatePersistence
 from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
-from application.use_cases.set_blast_block_archived import SetBlastBlockArchived
-from infrastructure.db.blast_block_archive import SqlAlchemyBlastBlockArchivePersistence
 from application.use_cases.create_project import CreateProject
 from application.use_cases.create_domain import CreateDomain
 from application.use_cases.generate_project_report import GenerateProjectReport
@@ -38,12 +36,6 @@ def create_entity_editing_session(context, domain_id):
         actor_id=user.id,
         can_edit=user.can_edit,
         writes=SqlAlchemyAssessmentWrites(context.session_factory),
-    )
-
-
-def create_set_blast_block_archived_use_case(context):
-    return SetBlastBlockArchived(
-        SqlAlchemyBlastBlockArchivePersistence(context.session_factory)
     )
 
 
