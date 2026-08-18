@@ -16,9 +16,9 @@ CATEGORY_ICONS = {
     "attachment": "document",
     "geometry": "layers",
     "blast_design": "blast-blocks",
-    "geomechanics": "geomechanics",
+    "geomechanics": "technical-card",
     "execution": "check",
-    "technical_card": "check",
+    "technical_card": "technical-card",
     "assessment": "assessment-area",
     "link": "link",
 }
