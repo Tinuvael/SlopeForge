@@ -5,13 +5,16 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
-from app.context import CurrentUser
+
+from application.dto.current_user import CurrentUser
 from database.assessment_models import BlastEvent
-from database.models import AuditLogEntry, BlastBlock, Domain, Mine, Site, User
+from database.models import AuditLogEntry, Domain, Site, User
 from repositories.audit_log_repository import AuditLogRepository
-from repositories.blast_block_repository import BlastBlockRepository
+from repositories.production_blast_repository import ProductionBlastRepository
 from repositories.domain_repository import DomainRepository
-from infrastructure.services.blast_block_service import BlastBlockInput, BlastBlockService, PermissionDenied
+from infrastructure.services.production_blast_service import (
+    PermissionDenied, ProductionBlastInput, ProductionBlastService,
+)
 
 URL=os.getenv("TEST_DATABASE_URL")
 if not URL: pytest.skip("TEST_DATABASE_URL is not set",allow_module_level=True)
@@ -32,42 +35,47 @@ def factory(tmp_path_factory):
 def context(factory):
     with factory.begin() as session:
         user=User(username="audit-admin",password_hash="hash",full_name="Admin User",role="admin",is_active=True)
-        mine=Mine(name="Audit Project");session.add_all((user,mine));session.flush()
-        site=Site(mine_id=mine.id,name="Audit Project");session.add(site);session.flush()
+        site=Site(name="Audit Project");session.add_all((user,site));session.flush()
         domain=Domain(site_id=site.id,name="North");session.add(domain);session.flush()
-        block=BlastBlock(domain_id=domain.id,block_number="B-001",created_by_user_id=user.id)
-        session.add(block);session.flush()
-        session.add(BlastEvent(domain_id=domain.id,logical_id="BE-B-001",name="B-001",
-            event_type="production",event_date=date.today(),elevation_m=0,blast_block_id=block.id))
-        session.flush(); ids=(user.id,mine.id,site.id,domain.id,block.id)
+        event=BlastEvent(domain_id=domain.id,logical_id="BE-B-001",name="B-001",
+            event_type="production",event_date=date.today(),elevation_m=760,
+            created_by_user_id=user.id)
+        session.add(event);session.flush(); ids=(user.id,site.id,domain.id,event.logical_id)
     yield ids
 
 def service(factory,audit=None):
-    return BlastBlockService(BlastBlockRepository(factory),DomainRepository(factory),audit)
+    return ProductionBlastService(ProductionBlastRepository(factory),DomainRepository(factory),audit)
 
-def data(domain_id,number="B-001",horizon="",comment=""):
-    return BlastBlockInput(domain_id,number,horizon,comment)
+def user(ids,role="admin"): return CurrentUser(ids[0],"audit-admin","Admin User",role)
 
-def user(ids,role="admin"): return CurrentUser(ids[0],role,"Admin User",role)
-
-def test_create_audit_entry(factory,context):
-    block_id=service(factory).create_block(data(context[3],"B-002"),user(context))
-    rows=AuditLogRepository(factory).list_for_block(block_id)
-    assert len(rows)==1 and rows[0].action=="create" and rows[0].description=="Создан взрывной блок"
+def test_generic_entity_audit_entry(factory,context):
+    with factory.begin() as session:
+        AuditLogRepository(factory).add_entry(session,user_id=context[0],action="create",
+            entity_type="blast_event",entity_id=context[3],description="Created production Block")
+    rows=AuditLogRepository(factory).list_for_blast_event(context[3])
+    assert len(rows)==1 and rows[0].action=="create" and rows[0].entity_id==context[3]
 
 def test_update_audits_changed_fields_and_noop(factory,context):
-    current=service(factory); current.update_block(context[4],data(context[3],horizon="760.5",comment="Updated"),user(context),expected_version=0)
-    rows=AuditLogRepository(factory).list_for_block(context[4]); fields={row.field_name for row in rows}
-    assert fields=={"horizon_m","comment"}
+    current=service(factory)
+    current.update_block(context[3],ProductionBlastInput(context[2],"B-001","760.5","Updated"),
+        user(context),expected_version=0)
+    rows=AuditLogRepository(factory).list_for_blast_event(context[3]); fields={row.field_name for row in rows}
+    assert fields=={"elevation_m","comment"}
     count=len(rows)
-    current.update_block(context[4],data(context[3],horizon="760.5",comment="Updated"),user(context),expected_version=1)
-    assert len(AuditLogRepository(factory).list_for_block(context[4]))==count
+    current.update_block(context[3],ProductionBlastInput(context[2],"B-001","760.5","Updated"),
+        user(context),expected_version=1)
+    assert len(AuditLogRepository(factory).list_for_blast_event(context[3]))==count
 
-def test_audit_failure_rolls_back_create(factory,context):
+def test_audit_failure_rolls_back_production_update(factory,context):
+    failing=service(factory,FailingAuditLogRepository(factory))
     with pytest.raises(RuntimeError,match="audit failed"):
-        service(factory,FailingAuditLogRepository(factory)).create_block(data(context[3],"ROLLBACK"),user(context))
-    with factory() as session: assert session.scalar(select(BlastBlock).where(BlastBlock.block_number=="ROLLBACK")) is None
+        failing.update_block(context[3],ProductionBlastInput(context[2],"ROLLBACK","761","x"),
+            user(context),expected_version=2)
+    with factory() as session:
+        row=session.scalar(select(BlastEvent).where(BlastEvent.logical_id==context[3]))
+        assert row.name=="B-001" and float(row.elevation_m)==760.5
 
 def test_viewer_cannot_edit(factory,context):
     with pytest.raises(PermissionDenied):
-        service(factory).update_block(context[4],data(context[3],number="X"),user(context,"viewer"),expected_version=0)
+        service(factory).update_block(context[3],ProductionBlastInput(context[2],"X","760.5","Updated"),
+            user(context,"viewer"),expected_version=2)
