@@ -225,7 +225,7 @@ state = check.checkState()
 
 # Signals
 check.stateChanged.connect(lambda s: print(f"State: {s}"))
-check.toggled.connect(lambda c: print(f"Toggled: {c}"))
+check.toggled.connect(lambda c: print(f"Checked: {c}"))
 ```
 
 ### QRadioButton
