@@ -358,14 +358,15 @@ class EntityAttachmentManagerWidget(QWidget):
         root.addWidget(self.table, 1)
 
     def _build_photo_pages(self, root):
+        workspace = "#f3f4f6"
         self.stack = QStackedWidget()
-        self.stack.setStyleSheet("QStackedWidget{background:#ffffff;}")
-        self.gallery_page = QWidget(); self.gallery_page.setStyleSheet("background:#ffffff;"); gallery_root = QVBoxLayout(self.gallery_page)
+        self.stack.setStyleSheet(f"QStackedWidget{{background:{workspace};}}")
+        self.gallery_page = QWidget(); self.gallery_page.setStyleSheet(f"background:{workspace};"); gallery_root = QVBoxLayout(self.gallery_page)
         gallery_root.setContentsMargins(0, 0, 0, 0)
         self.gallery_scroll = QScrollArea(); self.gallery_scroll.setWidgetResizable(True); self.gallery_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.gallery_scroll.setStyleSheet("QScrollArea{background:#ffffff;border:0;} QScrollArea > QWidget > QWidget{background:#ffffff;}")
-        self.gallery_scroll.viewport().setStyleSheet("background:#ffffff;")
-        self.gallery_content = QWidget(); self.gallery_content.setStyleSheet("background:#ffffff;"); self.gallery_grid = QGridLayout(self.gallery_content)
+        self.gallery_scroll.setStyleSheet(f"QScrollArea{{background:{workspace};border:0;}} QScrollArea > QWidget > QWidget{{background:{workspace};}}")
+        self.gallery_scroll.viewport().setStyleSheet(f"background:{workspace};")
+        self.gallery_content = QWidget(); self.gallery_content.setStyleSheet(f"background:{workspace};"); self.gallery_grid = QGridLayout(self.gallery_content)
         self.gallery_grid.setContentsMargins(4, 6, 4, 6)
         self.gallery_grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.gallery_grid.setHorizontalSpacing(16); self.gallery_grid.setVerticalSpacing(16)
