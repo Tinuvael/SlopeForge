@@ -89,19 +89,6 @@ class AssessmentEditingSession:
         self.expected_version = result.new_version
         return result
 
-    def update_contour_comment(self, event, comment):
-        self._require_edit()
-        if event not in self.state.blast_events or event.event_type != "contour":
-            raise ValueError("Contour BlastEvent not found in this Domain")
-        old = event.comment
-        text = str(comment or "")
-        try:
-            self._write("update_contour_comment", event.id, text or None)
-            event.comment = text or None
-        except Exception:
-            event.comment = old
-            raise
-
     def update_assessment_area_metadata(self, area, *, name, target_domain_id,
                                         target_expected_version):
         self._require_edit()
