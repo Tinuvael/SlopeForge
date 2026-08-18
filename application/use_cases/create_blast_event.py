@@ -30,7 +30,6 @@ class CreateBlastEventCommand:
 class CreateBlastEventResult:
     event_id: str
     event_type: str
-    blast_block_id: int | None
     warning_text: str | None = None
 
 
@@ -39,9 +38,7 @@ class BlastEventCreationPersistence(Protocol):
 
     def load_state(self, domain_id: int) -> AssessmentStateSnapshot: ...
 
-    def persist_contour(self, domain_id: int, expected_version: int, event: BlastEvent) -> int: ...
-
-    def persist_production(
+    def persist_event(
         self, domain_id: int, expected_version: int, event: BlastEvent, actor_id: int | None,
     ) -> int: ...
 
@@ -63,13 +60,7 @@ class CreateBlastEvent:
             elevation=command.elevation,
             csv_path=command.geometry_file_path,
         )
-        if event.event_type == "contour":
-            self._persistence.persist_contour(
-                command.domain_id, snapshot.expected_version, event)
-            block_id = None
-        else:
-            block_id = self._persistence.persist_production(
-                command.domain_id, snapshot.expected_version, event, command.actor_id)
-            if block_id is None:  # defensive guarantee of the application contract
-                raise RuntimeError("Production Blast Event persistence did not create a BlastBlock")
-        return CreateBlastEventResult(event.id, event.event_type, block_id, service.last_import_warning)
+        event.created_by_user_id = command.actor_id
+        self._persistence.persist_event(
+            command.domain_id, snapshot.expected_version, event, command.actor_id)
+        return CreateBlastEventResult(event.id, event.event_type, service.last_import_warning)
