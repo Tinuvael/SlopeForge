@@ -1,221 +1,668 @@
 ---
 name: pyqt-styling
-description: >-
-  Style SlopeForge PySide6 Qt Widgets with QSS and shared visual tokens. Use for
-  colors, spacing, borders, control states, tables, forms, tabs, dialogs,
-  status treatments, focus/disabled/read-only styling, and theme consistency.
+description: "PyQt/PySide6 QSS styling - selectors, properties, pseudo-states, dark theme, widget-specific styles"
 metadata:
-  upstream: https://github.com/CodeAtCode/oss-ai-skills/tree/master/frameworks/pyqt/styling
-  upstream_commit: 18c1bc4132a371a0476bc9925f5875403fb60ef5
-  upstream_license: GPL-3.0
-  adaptation: SlopeForge QSS/design-system profile
+  author: mte90
+  version: 1.0.0
+  tags:
+    - python
+    - qt
+    - pyqt
+    - pyside
+    - styling
+    - qss
+    - css
+    - themes
 ---
 
-# PyQt / PySide6 Styling — SlopeForge profile
+# PyQt Styling - QSS (Qt Style Sheets)
 
-Use this skill for QSS/theme implementation. Also load `qt-ui-design` for UX
-and visual hierarchy decisions, and `pyqt-widgets` when widget structure or
-layout changes.
+Complete guide to styling Qt applications with QSS.
 
-The existing SlopeForge style direction and `AGENTS.md` override generic QSS
-examples.
+## Basic Syntax
 
-## SlopeForge visual baseline
+### Type Selectors
 
-The active UI should look like compact professional engineering desktop
-software:
+```css
+/* Match all widgets of a type */
+QLabel {
+    color: #333333;
+    font-size: 14px;
+}
 
-- light neutral application background;
-- white/light content surfaces;
-- subtle neutral borders and separators;
-- restrained blue interactive accent;
-- compact spacing and control heights;
-- limited border radius;
-- minimal or no shadows;
-- no decorative gradients, glass effects, or animation;
-- existing SlopeForge SVG icon family;
-- clear readable focus, disabled, viewer, archive, warning, and error states.
+QPushButton {
+    background-color: #0078d4;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+}
 
-Do not turn SlopeForge into a web/mobile card dashboard.
-
-## Centralize style authority
-
-Before adding QSS:
-
-1. inspect existing shared style/theme helpers;
-2. reuse existing semantic properties/tokens where possible;
-3. extend the shared system instead of adding page-specific raw hex values;
-4. remove duplicate style fragments only when caller audit shows replacement is
-   safe.
-
-Prefer semantic roles such as:
-
-```text
-surface
-surface_muted
-border
-text_primary
-text_secondary
-interactive
-interactive_hover
-selection
-warning
-error
-success
-read_only
-archived
+QLineEdit {
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    padding: 4px;
+}
 ```
 
-The exact implementation may be Python constants, QSS generation, dynamic
-properties, or existing project helpers. Do not create a second competing theme
-system merely to satisfy this skill.
+### Class Selectors
 
-## QSS selectors
+```css
+/* Match widgets with specific property */
+QPushButton[primary="true"] {
+    background-color: #0078d4;
+    color: white;
+}
 
-Prefer type selectors for truly global behavior and dynamic properties for
-semantic variants:
+QLabel[heading="true"] {
+    font-size: 24px;
+    font-weight: bold;
+}
+```
+
+### ID Selectors
+
+```css
+/* Match specific widget by objectName */
+#myButton {
+    background-color: red;
+}
+
+#statusLabel {
+    color: green;
+}
+```
+
+### Pseudo-States
+
+```css
+/* Hover state */
+QPushButton:hover {
+    background-color: #106ebe;
+}
+
+/* Pressed state */
+QPushButton:pressed {
+    background-color: #005a9e;
+}
+
+/* Disabled state */
+QPushButton:disabled {
+    background-color: #cccccc;
+    color: #666666;
+}
+
+/* Focus state */
+QLineEdit:focus {
+    border: 2px solid #0078d4;
+}
+
+/* Checked state (for checkable widgets) */
+QCheckBox:checked {
+    color: green;
+}
+
+/* Selected state */
+QListWidget::item:selected {
+    background-color: #0078d4;
+    color: white;
+}
+```
+
+## Applying Styles
+
+### Application-Wide
 
 ```python
-button.setProperty("role", "primary")
+from PySide6.QtWidgets import QApplication
+
+app = QApplication()
+
+# Inline
+app.setStyleSheet("""
+    QLabel { color: #333; }
+    QPushButton { padding: 5px 10px; }
+""")
+
+# From file
+with open("style.qss", "r") as f:
+    app.setStyleSheet(f.read())
+```
+
+### Widget-Specific
+
+```python
+button = QPushButton("Styled")
+button.setStyleSheet("""
+    QPushButton {
+        background-color: blue;
+        color: white;
+        border-radius: 5px;
+    }
+    QPushButton:hover {
+        background-color: darkblue;
+    }
+""")
+```
+
+### Custom Properties
+
+```python
+# Set custom property
+button = QPushButton("Primary")
+button.setProperty("primary", True)
+
+# Force style refresh
 button.style().unpolish(button)
 button.style().polish(button)
 ```
 
 ```css
-QPushButton[role="primary"] { /* shared primary treatment */ }
-QPushButton[role="danger"]  { /* destructive treatment */ }
+/* Use in QSS */
+QPushButton[primary="true"] {
+    background-color: #0078d4;
+    color: white;
+}
+
+QPushButton[primary="true"]:hover {
+    background-color: #106ebe;
+}
 ```
 
-Use `objectName` selectors only for genuinely unique controls. Avoid long chains
-of page-specific selectors that make style behavior impossible to reason about.
+## Common Properties
 
-## Do not overuse global selectors
+### Colors
 
-Broad selectors such as `QWidget { ... }` can unintentionally restyle child
-controls, dialogs, menus, plot canvases, and third-party widgets. Keep global
-rules minimal and verify all major active pages after changing them.
+```css
+/* Text color */
+color: #333333;
 
-When a style change is local, scope it through a stable parent object name or
-semantic property rather than relying on fragile widget nesting.
+/* Background color */
+background-color: white;
 
-## Control-state completeness
+/* Selection colors */
+selection-color: white;
+selection-background-color: #0078d4;
 
-For interactive controls, consider at least:
+/* Border color */
+border: 1px solid #cccccc;
 
-- normal;
-- hover;
-- pressed;
-- focus;
-- checked/selected where applicable;
-- disabled;
-- read-only where distinct from disabled.
+/* Alternate row color */
+alternate-background-color: #f5f5f5;
+```
 
-Do not remove native focus indication without adding an obvious replacement.
-Disabled/read-only values must remain legible; grey-on-grey low-contrast text is
-not acceptable for engineering data users still need to inspect.
+### Fonts
 
-## Forms
+```css
+/* Font family */
+font-family: "Segoe UI", Arial, sans-serif;
 
-- Keep input borders subtle and consistent.
-- Use one normal control height family rather than page-specific heights.
-- Use compact horizontal padding.
-- Do not make every field look like a large rounded web input.
-- Validation should use a semantic error treatment plus text/tooltips, not color
-  alone.
-- Unit labels and secondary metadata should be visually quieter than editable
-  values without becoming unreadable.
+/* Font size */
+font-size: 14px;
 
-## Buttons and actions
+/* Font weight */
+font-weight: bold;  /* normal, bold, 100-900 */
 
-Use a small hierarchy:
+/* Font style */
+font-style: italic;
 
-- primary: one principal action in a group;
-- secondary: normal supporting action;
-- tertiary/tool: low-emphasis toolbar/icon action;
-- danger: destructive action, used sparingly.
+/* Combined */
+font: bold 14px "Segoe UI";
+```
 
-Do not make every action blue. Decorative blue surfaces must not look clickable.
-Archive/Restore should communicate actual action/state, not just color.
+### Borders
 
-## Cards and panels
+```css
+/* All sides */
+border: 1px solid #cccccc;
 
-Cards are for meaningful grouping, not decoration.
+/* Individual sides */
+border-top: 1px solid #cccccc;
+border-right: 2px dashed #999999;
+border-bottom: 1px solid #cccccc;
+border-left: none;
 
-- white/light surface;
-- subtle 1 px border where separation is needed;
-- restrained radius;
-- compact internal padding;
-- no stacked/nested cards without a clear information hierarchy reason;
-- no large shadows.
+/* Border radius */
+border-radius: 4px;
 
-If a simple layout/separator is clearer than another card, use the simpler
-structure.
+/* Individual corners */
+border-top-left-radius: 8px;
+border-top-right-radius: 8px;
+border-bottom-left-radius: 0;
+border-bottom-right-radius: 0;
+```
 
-## Tables, lists, and trees
+### Spacing
 
-- Keep row height compact but readable.
-- Use restrained selection highlight with adequate text contrast.
-- Distinguish hover from selection.
-- Avoid heavy grid lines; use subtle separators where useful.
-- Header hierarchy must be clear without oversized bold text.
-- Archived/read-only entities should remain readable and identifiable.
-- Do not use color alone to represent assessment/problem states.
+```css
+/* Padding (inside border) */
+padding: 10px;
+padding: 10px 20px;  /* vertical horizontal */
+padding: 5px 10px 5px 10px;  /* top right bottom left */
 
-## Tabs and navigation
+/* Margin (outside border) */
+margin: 5px;
 
-- Keep tabs compact and consistent across Block, Contour Blast, and Assessment
-  Area.
-- Selected state must be obvious without relying only on blue text.
-- Avoid page-specific tab styles.
-- Do not introduce excessive rounded pill navigation unless it already belongs
-  to the established design system.
+/* Spacing between widgets */
+spacing: 10px;
+```
 
-## Icons
+### Size
 
-- Reuse repository SlopeForge SVG assets.
-- Preserve consistent icon size and alignment.
-- Prefer text + icon for important actions when meaning is not obvious.
-- Do not import a second unrelated icon library for isolated convenience.
-- Directional/status icons should remain understandable in disabled/read-only
-  states.
+```css
+/* Minimum size */
+min-width: 100px;
+min-height: 30px;
 
-## Localization and resizing
+/* Maximum size */
+max-width: 500px;
+max-height: 200px;
 
-- Never bake user-visible text into images.
-- Leave enough room for translated strings.
-- Avoid QSS fixed widths on text-bearing controls unless required by a compact
-  product pattern and tested with localization.
-- Verify high DPI and normal Windows scaling.
+/* Fixed size */
+width: 200px;
+height: 50px;
+```
 
-## Anti-patterns
+## Widget-Specific Styles
 
-Do not:
+### QPushButton
 
-- paste large page-local `setStyleSheet()` blocks into every widget;
-- use random hex colors independently across pages;
-- use QSS as a substitute for fixing bad layout structure;
-- force dimensions globally that clip localized text;
-- add gradients, glossy effects, heavy shadows, or decorative motion;
-- hide focus borders because they look less clean;
-- style viewer/read-only controls so faintly that values cannot be read;
-- restyle engineering plots/graphics accidentally through global selectors.
+```css
+QPushButton {
+    background-color: #0078d4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-weight: bold;
+}
 
-## Validation
+QPushButton:hover {
+    background-color: #106ebe;
+}
 
-After shared QSS/theme changes, inspect at minimum:
+QPushButton:pressed {
+    background-color: #005a9e;
+}
 
-- Main window/header/tree;
-- Project and Domain pages;
-- Production Block;
-- Contour Blast;
-- Assessment Area;
-- dialogs/forms;
-- tables/lists;
-- archived and viewer/read-only states.
+QPushButton:disabled {
+    background-color: #cccccc;
+    color: #666666;
+}
 
-Run relevant Qt tests and the standard repository checks in `AGENTS.md`.
+/* Flat button */
+QPushButton[flat="true"] {
+    background-color: transparent;
+    color: #0078d4;
+    border: 1px solid #0078d4;
+}
+```
 
-## Upstream reference
+### QLineEdit
 
-Adapted from the `pyqt-styling` skill in CodeAtCode/oss-ai-skills:
-https://github.com/CodeAtCode/oss-ai-skills/tree/master/frameworks/pyqt/styling
+```css
+QLineEdit {
+    background-color: white;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    padding: 4px 8px;
+    selection-background-color: #0078d4;
+}
+
+QLineEdit:focus {
+    border: 2px solid #0078d4;
+}
+
+QLineEdit:disabled {
+    background-color: #f5f5f5;
+    color: #999999;
+}
+
+/* Password field */
+QLineEdit[echoMode="2"] {
+    lineedit-password-character: 9679;  /* Unicode bullet */
+}
+```
+
+### QComboBox
+
+```css
+QComboBox {
+    background-color: white;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+QComboBox:hover {
+    border-color: #999999;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 24px;
+}
+
+QComboBox::down-arrow {
+    image: url(down_arrow.png);
+    width: 12px;
+    height: 12px;
+}
+
+/* Dropdown list */
+QComboBox QAbstractItemView {
+    background-color: white;
+    border: 1px solid #cccccc;
+    selection-background-color: #0078d4;
+}
+```
+
+### QTabWidget
+
+```css
+QTabWidget::pane {
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+}
+
+QTabBar::tab {
+    background-color: #f5f5f5;
+    border: 1px solid #cccccc;
+    padding: 8px 16px;
+    margin-right: 2px;
+}
+
+QTabBar::tab:selected {
+    background-color: white;
+    border-bottom-color: white;
+}
+
+QTabBar::tab:hover {
+    background-color: #e5e5e5;
+}
+```
+
+### QScrollBar
+
+```css
+/* Vertical scrollbar */
+QScrollBar:vertical {
+    background-color: #f5f5f5;
+    width: 12px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #cccccc;
+    border-radius: 6px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #999999;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+```
+
+## Dark Theme Example
+
+```python
+DARK_THEME = """
+/* Global */
+* {
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+QWidget {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+}
+
+/* Main window */
+QMainWindow {
+    background-color: #1e1e1e;
+}
+
+/* Labels */
+QLabel {
+    color: #e0e0e0;
+}
+
+/* Buttons */
+QPushButton {
+    background-color: #0e639c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: #1177bb;
+}
+
+QPushButton:pressed {
+    background-color: #0d5a8a;
+}
+
+QPushButton:disabled {
+    background-color: #3c3c3c;
+    color: #666666;
+}
+
+/* Input fields */
+QLineEdit, QTextEdit, QPlainTextEdit {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 4px 8px;
+    selection-background-color: #0e639c;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border-color: #0e639c;
+}
+
+/* ComboBox */
+QComboBox {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+QComboBox:hover {
+    border-color: #4a4a4a;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    selection-background-color: #0e639c;
+    border: 1px solid #3c3c3c;
+}
+
+/* SpinBox */
+QSpinBox, QDoubleSpinBox {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+/* Checkbox */
+QCheckBox {
+    color: #e0e0e0;
+    spacing: 8px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #0e639c;
+    border-color: #0e639c;
+}
+
+/* Radio button */
+QRadioButton {
+    color: #e0e0e0;
+    spacing: 8px;
+}
+
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #3c3c3c;
+    border-radius: 8px;
+}
+
+QRadioButton::indicator:checked {
+    background-color: #0e639c;
+    border-color: #0e639c;
+}
+
+/* Tab widget */
+QTabWidget::pane {
+    border: 1px solid #3c3c3c;
+    background-color: #1e1e1e;
+}
+
+QTabBar::tab {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border: 1px solid #3c3c3c;
+    padding: 6px 12px;
+    margin-right: 2px;
+}
+
+QTabBar::tab:selected {
+    background-color: #1e1e1e;
+    border-bottom-color: #1e1e1e;
+}
+
+QTabBar::tab:hover {
+    background-color: #3c3c3c;
+}
+
+/* Scrollbar */
+QScrollBar:vertical {
+    background-color: #2d2d2d;
+    width: 12px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #4a4a4a;
+    border-radius: 6px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #5a5a5a;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+/* Scrollbar horizontal */
+QScrollBar:horizontal {
+    background-color: #2d2d2d;
+    height: 12px;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: #4a4a4a;
+    border-radius: 6px;
+    min-width: 30px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: #5a5a5a;
+}
+
+/* Menu */
+QMenuBar {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+}
+
+QMenuBar::item:selected {
+    background-color: #0e639c;
+}
+
+QMenu {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border: 1px solid #3c3c3c;
+}
+
+QMenu::item:selected {
+    background-color: #0e639c;
+}
+
+/* Tooltip */
+QToolTip {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border: 1px solid #3c3c3c;
+    padding: 4px;
+}
+
+/* Status bar */
+QStatusBar {
+    background-color: #007acc;
+    color: white;
+}
+
+/* GroupBox */
+QGroupBox {
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    margin-top: 12px;
+    padding-top: 12px;
+    font-weight: bold;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 0 4px;
+}
+"""
+
+# Apply
+app.setStyleSheet(DARK_THEME)
+```
+
+## Best Practices
+
+1. **Use semantic class names** - `primary`, `danger`, `warning`
+2. **Organize styles by widget** - Keep related styles together
+3. **Use variables** - Store colors in custom properties
+4. **Test on all platforms** - Colors and fonts vary
+5. **Use relative units** - `em` for fonts (limited support)
+6. **Keep styles modular** - Separate files per theme
+
+## References
+
+- **Qt Style Sheets**: https://doc.qt.io/qtforpython-6/overviews/stylesheet.html
+- **QSS Reference**: https://doc.qt.io/qtforpython-6/overviews/stylesheet-reference.html
+- **Qt Examples**: https://doc.qt.io/qtforpython-6/overviews/stylesheet-examples.html
