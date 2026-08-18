@@ -238,6 +238,7 @@ def _attachment():
 def test_edit_error_is_reported_without_refresh_or_changed(monkeypatch):
     app(); import ui.dialogs.entity_attachment_dialog as module
     item=_attachment(); service=SimpleNamespace(list_for_owner=lambda *_:[item],is_missing=lambda *_:False,
+        resolve_path=lambda value:Path(value.original_filename),
         update_metadata=lambda *_args,**_kwargs:(_ for _ in ()).throw(RuntimeError("save failed")))
     manager=module.EntityAttachmentManagerWidget(service,"blast_event","BE-1","document"); manager.table.selectRow(0)
     monkeypatch.setattr(module.AttachmentMetadataDialog,"exec",lambda *_:module.QDialog.DialogCode.Accepted)
@@ -251,6 +252,7 @@ def test_edit_error_is_reported_without_refresh_or_changed(monkeypatch):
 def test_delete_error_is_reported_without_refresh_or_changed(monkeypatch):
     app(); import ui.dialogs.entity_attachment_dialog as module
     item=_attachment(); service=SimpleNamespace(list_for_owner=lambda *_:[item],is_missing=lambda *_:False,
+        resolve_path=lambda value:Path(value.original_filename),
         delete_attachment=lambda *_:(_ for _ in ()).throw(RuntimeError("delete failed")))
     manager=module.EntityAttachmentManagerWidget(service,"blast_event","BE-1","document"); manager.table.selectRow(0)
     class Box:
@@ -278,7 +280,7 @@ def test_delete_cleanup_warning_still_refreshes_and_emits_changed(monkeypatch):
         items.clear()
         return SimpleNamespace(cleanup_warning="report.pdf.slopeforge-delete-ID.tmp: locked")
     service=SimpleNamespace(list_for_owner=lambda *_:list(items),is_missing=lambda *_:False,
-        delete_attachment=delete)
+        resolve_path=lambda value:Path(value.original_filename), delete_attachment=delete)
     manager=module.EntityAttachmentManagerWidget(service,"blast_event","BE-1","document"); manager.table.selectRow(0)
     warnings=[]; critical=[]
     class Box:
