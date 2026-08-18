@@ -3,8 +3,9 @@ from domain.blasting.workflow import ASSESSMENT_PROGRESS_LABELS, assessment_prog
 """Normal, revision-safe page for one Assessment Area."""
 from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (QAbstractItemView,QFormLayout,QFrame,QGridLayout,QHBoxLayout,QInputDialog,QLabel,QListWidget,QListWidgetItem,QMessageBox,QPushButton,
-                               QSizePolicy,QSplitter,QTabWidget,QVBoxLayout,QWidget)
+                               QSizePolicy,QSplitter,QVBoxLayout,QWidget)
 from ui.pages.entity_page_controller import EntityPageController
+from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 from ui.pages.block_card_widgets import AttachmentPreviewWidget,CardFrame,apply_workflow_badge_style
 from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog
@@ -34,7 +35,7 @@ class AssessmentAreaPage(QWidget):
     def __init__(self,context,domain_id,domain_name,area_id,parent=None):
         super().__init__(parent); self.context=context; self.domain_id=domain_id; self.domain_name=domain_name; self.area_id=area_id; self.controller=EntityPageController(context,domain_id); self.area=self.controller.area(area_id); self.read_only=not context.current_user.can_edit or self.area.is_archived
         self._build_editor()
-        root=QVBoxLayout(self); self._header(root); body=QHBoxLayout(); left=QVBoxLayout(); self.tabs=QTabWidget(); left.addWidget(self.tabs); body.addLayout(left,4); self._sidebar(body); root.addLayout(body)
+        root=QVBoxLayout(self); self._header(root); body=QHBoxLayout(); left=QVBoxLayout(); self.tabs=create_entity_tabs(); left.addWidget(self.tabs); body.addLayout(left,4); self._sidebar(body); root.addLayout(body)
         self._overview(); self.tabs.addTab(self.assessment_tab,tr("Assessment")); self._linked_events(); self._attachment_tab("Photos"); self._attachment_tab("Documents"); self.tabs.addTab(self.history,tr("History")); self._refresh_overview_and_sidebar()
         self.setStyleSheet("#CardFrame,#CriterionCard,#ResultCard{background:white;border:1px solid #dfe3ea;border-radius:6px} #CardTitle{font-weight:600;color:#111827} #EntityTitle{font-size:24px;font-weight:700} #StatusBadge{background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;border-radius:5px;padding:4px 8px} #MetaBadge{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px} #MutedText{color:#6b7280}")
 
@@ -186,12 +187,12 @@ class AssessmentAreaPage(QWidget):
         self.link_preview.set_comparison_geometry(area_revision.final_geometry_frozen,revision.plan_geometry if revision else None,project_lines,focus_geometry=area_revision.final_geometry_frozen,recenter=not self._link_preview_initialized); self._link_preview_initialized=True
 
     def _attachment_tab(self,title):
-        kind="photo" if title=="Photos" else "document"; from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget
-        persisted=self.evaluation in self.controller.state.evaluations; owner_id=self.evaluation.id if persisted else None; page=QWidget(); layout=QVBoxLayout(page)
+        kind="photo" if title=="Photos" else "document"
+        persisted=self.evaluation in self.controller.state.evaluations; owner_id=self.evaluation.id if persisted else None
         def ensure_owner():
             owner,rollback=self.controller.prepare_evaluation_attachment_owner(self.area,self.evaluation); self.evaluation=owner
             return owner,rollback
-        manager=EntityAttachmentManagerWidget(self.controller.attachments,"assessment_evaluation",owner_id,kind,page,read_only=self.read_only,ensure_owner=ensure_owner); manager.changed.connect(self._refresh_overview_and_sidebar); layout.addWidget(manager); self.attachment_controls=getattr(self,"attachment_controls",[]); self.attachment_controls.append((kind,manager)); self.tabs.addTab(page,tr(title));
+        page,manager=create_attachment_tab_page(self.controller.attachments,"assessment_evaluation",owner_id,kind,read_only=self.read_only,ensure_owner=ensure_owner); manager.changed.connect(self._refresh_overview_and_sidebar); self.attachment_controls=getattr(self,"attachment_controls",[]); self.attachment_controls.append((kind,manager)); self.tabs.addTab(page,tr(title));
         if kind=="photo":self.photos_tab=page
         else:self.documents_tab=page
     def _save_evaluation(self,status):
