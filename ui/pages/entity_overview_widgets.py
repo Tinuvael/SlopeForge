@@ -129,6 +129,9 @@ class QuickAttachmentPreview(CardFrame):
     add_requested = Signal()
     open_page_requested = Signal()
 
+    PHOTO_TILE_WIDTH = 120
+    PHOTO_TILE_HEIGHT = 88
+
     def __init__(self, title: str, kind: str):
         super().__init__()
         self.kind = kind
@@ -185,34 +188,52 @@ class QuickAttachmentPreview(CardFrame):
 
     def _build_photos(self):
         grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(6)
         for index, attachment in enumerate(self._items[:4]):
             button = QToolButton()
-            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            button.setText(attachment.title or attachment.original_filename)
-            button.setToolTip(attachment.original_filename)
-            button.setFixedSize(120, 96)
-            button.setIconSize(QSize(112, 66))
-            pixmap = self._photo_pixmap(attachment)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+            button.setText("")
+            button.setToolTip(attachment.title or attachment.original_filename)
+            button.setFixedSize(self.PHOTO_TILE_WIDTH, self.PHOTO_TILE_HEIGHT)
+            button.setIconSize(QSize(self.PHOTO_TILE_WIDTH, self.PHOTO_TILE_HEIGHT))
+            button.setStyleSheet(
+                "QToolButton{padding:0;margin:0;border:1px solid #dfe3ea;"
+                "border-radius:6px;background:#f3f4f6;}"
+                "QToolButton:hover{border:1px solid #8fb4dc;}"
+                "QToolButton:pressed{border:1px solid #1261a0;}"
+            )
+            pixmap = self._photo_pixmap(
+                attachment, self.PHOTO_TILE_WIDTH, self.PHOTO_TILE_HEIGHT
+            )
             if not pixmap.isNull():
-                button.setIcon(QIcon(pixmap.scaled(
-                    112, 66, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                    Qt.TransformationMode.SmoothTransformation,
-                )))
+                button.setIcon(QIcon(pixmap))
             button.clicked.connect(lambda _checked=False, i=index: self._open_photo(i))
             grid.addWidget(button, index // 2, index % 2)
         holder = QWidget()
         holder.setLayout(grid)
         self.content.addWidget(holder)
 
-    def _photo_pixmap(self, attachment) -> QPixmap:
+    def _photo_pixmap(self, attachment, width: int, height: int) -> QPixmap:
+        """Return a center-cropped cover thumbnail that fills the tile completely."""
         if self._service is None:
             return QPixmap()
         path = self._service.resolve_path(attachment)
         reader = QImageReader(str(path))
         reader.setAutoTransform(True)
         image = reader.read()
-        return QPixmap.fromImage(image) if not image.isNull() else QPixmap()
+        if image.isNull():
+            return QPixmap()
+        pixmap = QPixmap.fromImage(image)
+        scaled = pixmap.scaled(
+            width,
+            height,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        left = max(0, (scaled.width() - width) // 2)
+        top = max(0, (scaled.height() - height) // 2)
+        return scaled.copy(left, top, width, height)
 
     def _open_photo(self, index: int):
         if self._service is None or not self._items:
