@@ -30,13 +30,17 @@ def create_blast_event_use_case(context):
 
 def create_entity_editing_session(context, domain_id):
     user = context.current_user
+    writes=SqlAlchemyAssessmentWrites(context.session_factory)
+    # The composition root supplies the authenticated actor; write methods keep
+    # the existing narrow application-port signatures unchanged.
+    writes._actor_id = user.id
     return AssessmentEditingSession(
         SqlAlchemyAssessmentStatePersistence(context.session_factory),
         domain_id,
         actor_id=user.id,
         actor_name=getattr(user, "display_name", "") or getattr(user, "full_name", "") or user.username,
         can_edit=user.can_edit,
-        writes=SqlAlchemyAssessmentWrites(context.session_factory, actor_id=user.id),
+        writes=writes,
     )
 
 
