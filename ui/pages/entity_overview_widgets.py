@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QFileInfo, QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QImageReader, QPixmap
 from PySide6.QtWidgets import (
-    QFileIconProvider, QFileInfo, QGridLayout, QHBoxLayout, QLabel, QPushButton,
+    QFileIconProvider, QGridLayout, QHBoxLayout, QLabel, QPushButton,
     QToolButton, QVBoxLayout, QWidget,
 )
 
