@@ -25,7 +25,8 @@ class AssessmentEditingSession:
     """Owns the stable live graph and coordinates focused write workflows."""
 
     def __init__(self, persistence: AssessmentStatePersistence, domain_id: int, *,
-                 actor_id: int, can_edit: bool, writes: AssessmentWrites):
+                 actor_id: int, can_edit: bool, writes: AssessmentWrites,
+                 actor_name: str | None = None):
         snapshot = persistence.load(domain_id)
         self._persistence = persistence
         self._writes = writes
@@ -34,6 +35,7 @@ class AssessmentEditingSession:
         self.expected_version = snapshot.expected_version
         self.state = snapshot.state
         self.actor_id = actor_id
+        self.actor_name = actor_name
         self.can_edit = can_edit
         self.technical_cards = TechnicalCardService(self.state)
         self.evaluations = AssessmentAreaEvaluationService(self.state)
@@ -123,7 +125,6 @@ class AssessmentEditingSession:
         self._require_edit()
         if area not in self.state.assessment_areas:
             raise ValueError("Assessment Area not found in this Domain")
-        # Preserve the original list and objects; only status is mutable in-place.
         original_links = list(area.event_links)
         original_statuses = [(link, link.status) for link in original_links]
         try:
@@ -219,6 +220,8 @@ class AssessmentEditingSession:
         try:
             card.save_revision(revision, status=status)
             saved = card.revisions[-1]
+            if self.actor_name:
+                saved.author = self.actor_name
             self._write("persist_technical_card_revision", card, saved, event.event_date)
         except Exception:
             del card.revisions[count:]

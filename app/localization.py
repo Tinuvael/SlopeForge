@@ -68,6 +68,17 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Cleanup warning": "Предупреждение очистки",
     "The attachment was deleted, but a temporary file could not be removed.": "Вложение удалено, но временный файл удалить не удалось.",
     "Photos and documents": "Фото и документы",
+    "Date & time": "Дата и время",
+    "User": "Пользователь",
+    "Change": "Изменение",
+    "Details": "Подробности",
+    "No history yet": "Истории пока нет",
+    "Open revision": "Открыть ревизию",
+    "Double-click to open this historical revision.": "Дважды щёлкните, чтобы открыть эту историческую ревизию.",
+    "Assessment geometry": "Геометрия участка оценки",
+    "Blast geometry": "Геометрия взрывного события",
+    "Historical revision is read-only.": "Историческая ревизия доступна только для просмотра.",
+    "Geometry & face condition": "Геометрия и состояние борта",
 }
 
 # Qt asks the installed translator for platform-theme captions in contexts such
