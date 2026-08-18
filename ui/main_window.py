@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         self.header.archive_requested.connect(self._archive_selected)
         self.block_page.data_changed.connect(self.refresh_project_data)
         self.block_page.metadata_saved.connect(lambda entity_id,target_id:self._metadata_move_saved("block",entity_id,target_id))
+        self.block_page.related_assessment_requested.connect(self._open_related_assessment)
         central=QWidget(); self.setCentralWidget(central); root=QVBoxLayout(central); root.addWidget(self.header); body=QHBoxLayout(); body.addWidget(self.tree,1); body.addWidget(self.page_stack,4); root.addLayout(body); self._update_add()
     def _toggle_navigation(self):
         self._navigation_visible=not self._navigation_visible
@@ -123,6 +124,14 @@ class MainWindow(QMainWindow):
         if self._show(self.block_page):
             self.block_page.open_block_id(block_id); self._set_context(site_id,domain.site_name if domain else None,domain_id,domain.domain_name if domain else None,block_id); self.header.set_archive_context(True,self.block_page.current_block.is_archived); return True
         return False
+    def _open_related_assessment(self,area_id,domain_id):
+        domain=self.navigation_queries.get_domain_context(domain_id)
+        return self.open_area_from_tree(area_id,domain_id,domain.site_id,domain.domain_name)
+    def _open_related_blast(self,event_id,event_type,domain_id):
+        domain=self.navigation_queries.get_domain_context(domain_id)
+        if event_type=="production":
+            return self.open_block_from_tree(event_id,domain_id,domain.site_id)
+        return self.open_contour_from_tree(event_id,domain_id,domain.site_id,domain.domain_name)
     def open_area_from_tree(self,area_id,domain_id,site_id,domain_name):
         if not self._guard_leave(): return False
         from ui.pages.assessment_area_page import AssessmentAreaPage
@@ -131,6 +140,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self,tr("Assessment Area"),f"Could not open the assessment area. The current page was preserved.\n\n{domain_message(str(exc))}"); return False
         page.edit_boundaries_requested.connect(self._edit_area_boundaries)
         page.metadata_saved.connect(lambda entity_id,target_id:self._metadata_move_saved("area",entity_id,target_id))
+        page.related_blast_event_requested.connect(self._open_related_blast)
         self._activate_page(page)
         domain=self.navigation_queries.get_domain_context(domain_id); self.assessment_page=None; self.area_page=page; self._set_context(site_id,domain.site_name,domain_id,domain_name,area_id=area_id); self.header.set_archive_context(True,page.area.is_archived); return True
     def open_contour_from_tree(self,event_id,domain_id,site_id,domain_name):
@@ -138,7 +148,9 @@ class MainWindow(QMainWindow):
         from ui.pages.contour_event_page import ContourEventPage
         try: page=ContourEventPage(self.context,domain_id,domain_name,event_id)
         except Exception as exc: QMessageBox.critical(self,tr("Contour blast"),f"Could not open the contour blast.\n\n{domain_message(str(exc))}"); return False
-        page.metadata_saved.connect(lambda entity_id,target_id:self._metadata_move_saved("contour",entity_id,target_id)); self._activate_page(page)
+        page.metadata_saved.connect(lambda entity_id,target_id:self._metadata_move_saved("contour",entity_id,target_id))
+        page.related_assessment_requested.connect(self._open_related_assessment)
+        self._activate_page(page)
         domain=self.navigation_queries.get_domain_context(domain_id); self.contour_page=page; self._set_context(site_id,domain.site_name,domain_id,domain_name,contour_id=event_id); self.header.set_archive_context(True,page.blast_event.is_archived); return True
 
     def _metadata_move_saved(self, kind, entity_id, target_domain_id):
