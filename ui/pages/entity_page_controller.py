@@ -32,9 +32,12 @@ class EntityPageController:
         """Canonical version for every command issued by this open entity page."""
         return self.editing.expected_version
 
-    def event_for_block(self, block_id):
-        return next((event for event in self.state.blast_events
-                     if event.blast_block_id == block_id and event.event_type == "production"), None)
+    def event(self, event_id):
+        return next((event for event in self.state.blast_events if event.id == event_id), None)
+
+    def production_event(self, event_id):
+        event = self.event(event_id)
+        return event if event is not None and event.event_type == "production" else None
 
     def area(self, area_id):
         return next((area for area in self.state.assessment_areas if area.id == area_id), None)
