@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from statistics import median
-from uuid import uuid4
 
+from domain.entity_ids import generate_entity_id
 from domain.geometry.blast import BlastGeometryError, build_contour_geometry, build_production_geometry
 from infrastructure.geometry_import.lines import import_line_geometry
 from domain.blasting.entities import BlastEvent, BlastEventGeometryRevision
@@ -42,7 +42,9 @@ class BlastEventService:
             raise BlastEventValidationError("Выберите тип события: production или contour")
         if elevation is None:
             raise BlastEventValidationError("Укажите горизонт события")
-        event = BlastEvent(f"BE-{uuid4().hex[:8].upper()}", name.strip(), event_type, event_date, float(elevation))
+        display_type = "block" if event_type == "production" else "contour"
+        event_id = generate_entity_id(display_type, [event.id for event in self.state.blast_events])
+        event = BlastEvent(event_id, name.strip(), event_type, event_date, float(elevation))
         self._add_imported_geometry(event, csv_path)
         self.state.blast_events.append(event)
         return event
