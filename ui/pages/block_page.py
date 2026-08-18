@@ -24,6 +24,7 @@ from ui.pages.block_card_widgets import (
     EmptySection,
 )
 from ui.pages.entity_history_widget import EntityHistoryWidget
+from ui.pages.entity_history_revision_viewer import open_geometry_revision, open_technical_card_revision
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.technical_card_widgets import (ActualExecutionEditorWidget,
@@ -82,6 +83,7 @@ class BlockPage(QWidget):
         self.tabs.addTab(self.photos_tab, tr("Photos"))
         self.tabs.addTab(self.documents_tab, tr("Documents"))
         self.history_tab = EntityHistoryWidget()
+        self.history_tab.entryActivated.connect(self._open_history_entry)
         self.tabs.addTab(self.history_tab, tr("History"))
         left.addWidget(self.tabs)
 
@@ -207,6 +209,31 @@ class BlockPage(QWidget):
         self.history_tab.set_entries(history_entries)
         self._render_engineering(block)
         self._sync_engineering_actions_visibility()
+
+    def _open_history_entry(self, entry):
+        if not self.current_block or not self.entity_controller:
+            return
+        event = self.entity_controller.production_event(self.current_block.id)
+        if event is None:
+            return
+        if entry.source_type == "blast_geometry":
+            revision = next((item for item in event.geometry_revisions if item.id == entry.source_id), None)
+            if revision is not None:
+                dataset = self.entity_controller.state.active_dataset()
+                open_geometry_revision(self, revision=revision, project_lines=dataset.lines if dataset else [])
+            return
+        if entry.source_type == "technical_card":
+            card = next((item for item in self.entity_controller.state.technical_cards
+                         if item.blast_event_id == event.id), None)
+            revision = next((item for item in card.revisions if item.id == entry.source_id), None) if card else None
+            if card is not None and revision is not None:
+                from app.use_case_factory import create_charge_presets,create_explosive_catalogue
+                open_technical_card_revision(
+                    self, event=event, card=card, revision=revision,
+                    domain_name=self.current_block.domain_name,
+                    explosive_products=create_explosive_catalogue(self.context).list_enabled_products(),
+                    charge_presets=create_charge_presets(self.context,self.entity_controller.site_id),
+                )
 
     def _open_attachments(self, kind):
         self.tabs.setCurrentWidget(self.photos_tab if kind=="photo" else self.documents_tab)
