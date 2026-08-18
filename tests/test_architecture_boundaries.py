@@ -9,8 +9,6 @@ ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_ROOTS = ("app", "application", "database", "domain", "infrastructure", "repositories", "ui")
 REMOVED_PACKAGE = "prototype" + "_2d"
 
-# Deliberately retired entry points outside the canonical layer layout.  The
-# top-level prototype package also covers all of its former Phase 3A/3B modules.
 PERMANENTLY_REMOVED_PATHS = {
     "ui/pages/assessment_workspace_page.py",
     "ui/widgets/assessment_workspace.py",
@@ -22,6 +20,12 @@ PERMANENTLY_REMOVED_PATHS = {
     "reports",
     "widgets",
     "services",
+    "repositories/blast_block_repository.py",
+    "repositories/mine_repository.py",
+    "infrastructure/services/blast_block_service.py",
+    "application/ports/blast_block_archive.py",
+    "application/use_cases/set_blast_block_archived.py",
+    "infrastructure/db/blast_block_archive.py",
 }
 
 PERMANENTLY_REMOVED_IMPORTS = {
@@ -29,13 +33,17 @@ PERMANENTLY_REMOVED_IMPORTS = {
     "ui.widgets.assessment_workspace",
     "ui.directory_dialog",
     "ui.prototype_2d",
+    "repositories.blast_block_repository",
+    "repositories.mine_repository",
+    "infrastructure.services.blast_block_service",
+    "application.ports.blast_block_archive",
+    "application.use_cases.set_blast_block_archived",
+    "infrastructure.db.blast_block_archive",
 }
 
-MINE_COMPATIBILITY_FILES = {
-    "database/models.py", "repositories/blast_block_repository.py",
-    "repositories/mine_repository.py", "repositories/site_repository.py",
-    "infrastructure/db/project_creation.py", "ui/widgets/project_tree.py", "ui/header.py",
-}
+# The SVG/icon registry still uses its historic asset key `mine`; that is not a
+# persistence/domain concept and is intentionally isolated to the tree icon lookup.
+MINE_COMPATIBILITY_FILES = {"ui/widgets/project_tree.py"}
 
 RETIRED_ROOT_IMPORTS = ("reports", "widgets", "services", "database.database")
 
@@ -61,7 +69,6 @@ def imports(path: Path) -> set[str]:
 
 
 def absolute_imports(path: Path) -> set[str]:
-    """Return imports without confusing ``from . import widgets`` with a root package."""
     result = set()
     for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if isinstance(node, ast.Import):
@@ -80,7 +87,6 @@ def has_prefix(name: str, prefixes: tuple[str, ...]) -> bool:
 
 
 def _removed_source_path_exists(path: str) -> bool:
-    """Ignore empty/untracked local folders left behind by Git or __pycache__."""
     target = ROOT / path
     if target.is_file():
         return True
@@ -212,7 +218,7 @@ def test_geometry_import_adapters_do_not_import_ui() -> None:
     assert offenders == set()
 
 
-def test_mine_term_stays_inside_documented_compatibility_files() -> None:
+def test_mine_term_stays_outside_active_product_code_except_icon_asset_key() -> None:
     offenders = {
         relative(path) for path in production_files()
         if re.search(r"\bmines?\b", path.read_text(encoding="utf-8"), re.IGNORECASE)
@@ -261,7 +267,7 @@ def test_main_window_blast_event_creation_is_only_ui_orchestration() -> None:
         assert forbidden not in method_source
 
 
-def test_phase_4b2_ui_mutation_orchestration_does_not_return() -> None:
+def test_phase_4b2_ui_mutation_orchestration_uses_one_production_service_boundary() -> None:
     controller = ROOT / "ui/pages/entity_page_controller.py"
     assert "application.services.assessment_event_links" not in controller.read_text(encoding="utf-8")
     for relative_path in ("ui/pages/block_page.py", "ui/pages/contour_event_page.py"):
@@ -271,14 +277,15 @@ def test_phase_4b2_ui_mutation_orchestration_does_not_return() -> None:
     method = next(node for node in ast.walk(ast.parse(source))
                   if isinstance(node, ast.FunctionDef) and node.name == "_archive_selected")
     method_source = ast.get_source_segment(source, method) or ""
-    for forbidden in (".archive(", ".restore(", "block_service.set_archived", "controller.save"):
-        assert forbidden not in method_source
+    assert ".archive(" not in method_source and ".restore(" not in method_source
+    assert "block_page.block_service.set_archived" in method_source
+    assert "controller.save" not in method_source
 
 
-def test_block_archive_use_case_has_clean_application_dependencies() -> None:
-    path = ROOT / "application/use_cases/set_blast_block_archived.py"
-    forbidden = ("PySide6", "sqlalchemy", "database", "repositories", "ui")
-    assert not any(has_prefix(name, forbidden) for name in imports(path))
+def test_legacy_block_archive_use_case_is_removed() -> None:
+    assert not (ROOT / "application/use_cases/set_blast_block_archived.py").exists()
+    assert not (ROOT / "application/ports/blast_block_archive.py").exists()
+    assert (ROOT / "infrastructure/services/production_blast_service.py").is_file()
 
 
 def test_phase_4c_final_orchestration_boundaries() -> None:
