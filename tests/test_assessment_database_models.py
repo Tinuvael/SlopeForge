@@ -23,20 +23,10 @@ EXPECTED = {
 }
 
 
-def table(name):
-    return Base.metadata.tables[name]
-
-
-def checks(name):
-    return " ".join(str(c.sqltext) for c in table(name).constraints if isinstance(c, CheckConstraint))
-
-
-def uniques(name):
-    return {tuple(c.name for c in u.columns) for u in table(name).constraints if isinstance(u, UniqueConstraint)}
-
-
-def fk(name, column):
-    return next(iter(table(name).c[column].foreign_keys))
+def table(name): return Base.metadata.tables[name]
+def checks(name): return " ".join(str(c.sqltext) for c in table(name).constraints if isinstance(c, CheckConstraint))
+def uniques(name): return {tuple(c.name for c in u.columns) for u in table(name).constraints if isinstance(u, UniqueConstraint)}
+def fk(name, column): return next(iter(table(name).c[column].foreign_keys))
 
 
 def test_import_is_declarative_only_in_clean_subprocess():
@@ -51,46 +41,39 @@ def forbidden(*args, **kwargs):
 sqlalchemy.create_engine = forbidden
 sqlalchemy.engine.create_engine = forbidden
 sqlalchemy.engine.Engine.connect = forbidden
+import database.models
 import database.assessment_models as module
 assert "assessment_workspaces" not in module.Base.metadata.tables
+assert "mines" not in module.Base.metadata.tables
+assert "blast_blocks" not in module.Base.metadata.tables
 assert module.Base.metadata.tables["blast_events"].c.domain_id is not None
 for prefix in ("PySide6", "PyQt6", "ui", "widgets"):
     assert not any(name == prefix or name.startswith(prefix + ".") for name in sys.modules), prefix
 '''
-    environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(Path.cwd())
-    result = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=Path.cwd(),
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    environment = os.environ.copy(); environment["PYTHONPATH"] = str(Path.cwd())
+    result = subprocess.run([sys.executable, "-c", code], cwd=Path.cwd(), env=environment,
+                            capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
 
 
-def test_canonical_tables_exist_and_retired_parallel_schema_cannot_return():
+def test_canonical_tables_exist_and_legacy_persistence_cannot_return():
     assert EXPECTED <= set(Base.metadata.tables)
     retired = {
-        "rock_mass_profiles", "rock_structures", "blast_designs",
+        "mines", "blast_blocks", "rock_mass_profiles", "rock_structures", "blast_designs",
         "drilling_patterns", "charge_segments", "blast_executions",
         "wall_assessments", "attachments", "explosive_types", "lithologies",
     }
     assert retired.isdisjoint(Base.metadata.tables)
-    assert "blast_blocks" in Base.metadata.tables
-    assert "mines" in Base.metadata.tables
     assert "assessment_entity_attachments" in Base.metadata.tables
     assert "blast_event_technical_card_revisions" in Base.metadata.tables
     assert "project_lines_datasets" in Base.metadata.tables
-    assert {relationship.key for relationship in models.BlastBlock.__mapper__.relationships}.isdisjoint(
-        {"rock_mass_profile", "blast_design"}
-    )
-    assert not EXPECTED.intersection(models.__dict__)
+    assert not hasattr(models, "Mine")
+    assert not hasattr(models, "BlastBlock")
 
 
-def test_direct_domain_ownership_and_logical_identity():
+def test_direct_project_domain_ownership_and_logical_identity():
     assert "assessment_workspaces" not in Base.metadata.tables
+    assert "mine_id" not in table("sites").c
     assert ("site_id", "logical_id") in uniques("project_lines_datasets")
     assert ("domain_id", "logical_id") in uniques("blast_events")
     assert ("domain_id", "logical_id") in uniques("assessment_areas")
@@ -104,8 +87,7 @@ def test_direct_domain_ownership_and_logical_identity():
 
 
 def test_optional_frozen_link_geometry_uses_sql_null():
-    column = table("assessment_event_links").c.frozen_intersection_geometry_json
-    assert column.type.none_as_null is True
+    assert table("assessment_event_links").c.frozen_intersection_geometry_json.type.none_as_null is True
 
 
 def test_domain_and_site_scoped_project_lines_foundation():
@@ -115,22 +97,18 @@ def test_domain_and_site_scoped_project_lines_foundation():
     assert "is_archived" in table("project_lines_datasets").c
     assert "archived_at" in table("project_lines_datasets").c
     assert "NOT (is_archived AND is_active)" in checks("project_lines_datasets")
-    assert "site_id" not in table("blast_blocks").c
-    assert fk("blast_blocks", "domain_id").column.table.name == "domains"
-    assert "is_archived" in table("blast_blocks").c
-    assert "archived_at" in table("blast_blocks").c
     assert "horizons" not in Base.metadata.tables
 
 
-def test_blast_event_rules_and_optional_legacy_block_link():
+def test_blast_event_is_the_only_production_and_contour_persistence_entity():
     event = table("blast_events")
-    assert event.c.blast_block_id.nullable
-    assert fk("blast_events", "blast_block_id").target_fullname == "blast_blocks.id"
-    assert fk("blast_events", "blast_block_id").ondelete == "SET NULL"
-    assert ("blast_block_id",) in uniques("blast_events")
+    assert "blast_block_id" not in event.c
+    assert "comment" in event.c
+    assert "created_by_user_id" in event.c
+    assert fk("blast_events", "created_by_user_id").target_fullname == "users.id"
+    assert fk("blast_events", "created_by_user_id").ondelete == "SET NULL"
     sql = checks("blast_events")
     assert "production" in sql and "contour" in sql
-    assert "blast_block_id IS NULL OR event_type = 'production'" in sql
 
 
 def test_revision_identity_numbers_and_active_partial_indexes():
@@ -164,8 +142,7 @@ def test_geometry_elevation_json_and_exact_revision_links():
     assert fk("assessment_event_links", "blast_event_geometry_revision_id").target_fullname == "blast_event_geometry_revisions.id"
     for t in EXPECTED:
         for column in table(t).c:
-            if column.name.endswith("_json"):
-                assert isinstance(column.type, JSONB)
+            if column.name.endswith("_json"): assert isinstance(column.type, JSONB)
 
 
 def test_required_domain_fields_are_not_nullable():
@@ -174,9 +151,7 @@ def test_required_domain_fields_are_not_nullable():
         "blast_event_geometry_revisions": ("elevation_m",),
         "assessment_areas": ("assessment_date",),
         "assessment_entity_attachments": (
-            "subtype", "custom_subtype", "title", "file_date", "description",
-            "mime_type", "file_size_bytes",
-        ),
+            "subtype", "custom_subtype", "title", "file_date", "description", "mime_type", "file_size_bytes"),
     }
     for table_name, columns in required.items():
         assert all(not table(table_name).c[column].nullable for column in columns)
@@ -195,7 +170,7 @@ def test_all_foreign_key_delete_actions():
     expected = {
         ("project_lines_datasets", "site_id"): "RESTRICT",
         ("blast_events", "domain_id"): "RESTRICT",
-        ("blast_events", "blast_block_id"): "SET NULL",
+        ("blast_events", "created_by_user_id"): "SET NULL",
         ("blast_event_geometry_revisions", "blast_event_id"): "CASCADE",
         ("blast_event_technical_cards", "blast_event_id"): "CASCADE",
         ("blast_event_technical_card_revisions", "technical_card_id"): "CASCADE",
@@ -217,25 +192,19 @@ def test_metadata_and_indexes_compile_with_postgresql():
     dialect = postgresql.dialect()
     for name in EXPECTED:
         assert "CREATE TABLE" in str(CreateTable(table(name)).compile(dialect=dialect))
-        for index in table(name).indexes:
-            assert "CREATE" in str(CreateIndex(index).compile(dialect=dialect))
+        for index in table(name).indexes: assert "CREATE" in str(CreateIndex(index).compile(dialect=dialect))
 
 
-def test_assessment_schema_keeps_immutable_mvp_baseline():
+def test_migration_chain_adds_destructive_legacy_removal_after_baseline():
     versions = sorted(Path("alembic/versions").glob("*.py"))
     assert [path.name for path in versions] == [
-        "0001_mvp_baseline.py", "0002_workflow_status.py", "0003_explosive_catalog.py", "0004_charge_presets.py", "0005_explosive_charge_form.py", "0006_explosive_product_metadata.py"]
-    source = versions[0].read_text()
-    assert 'revision = "0001_mvp_baseline"' in source
-    assert "down_revision = None" in source
-    assert "assessment_workspaces" not in source
-    for name in EXPECTED:
-        assert f"op.create_table('{name}'" in source
-        assert f"op.drop_table('{name}')" in source
-    for obsolete in (
-        "selection_polygon_json", "horizon_slices_json", "lower_elevation_m",
-        "upper_elevation_m", "source_dataset_id",
-    ):
-        assert obsolete not in source
-    for current in ("boundary_json", "final_geometry_json", "min_elevation_m", "max_elevation_m"):
-        assert current in source
+        "0001_mvp_baseline.py", "0002_workflow_status.py", "0003_explosive_catalog.py",
+        "0004_charge_presets.py", "0005_explosive_charge_form.py",
+        "0006_explosive_product_metadata.py", "0007_remove_mine_blastblock.py"]
+    baseline = versions[0].read_text()
+    removal = versions[-1].read_text()
+    assert 'revision = "0001_mvp_baseline"' in baseline and "down_revision = None" in baseline
+    assert 'revision = "0007_remove_mine_blastblock"' in removal
+    assert 'down_revision = "0006_explosive_product_metadata"' in removal
+    assert 'op.drop_table("blast_blocks")' in removal
+    assert 'op.drop_table("mines")' in removal
