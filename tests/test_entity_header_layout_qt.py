@@ -1,13 +1,9 @@
-from types import SimpleNamespace
-
 import pytest
 
 pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication
 
-from ui.pages.assessment_area_page import AssessmentAreaPage
-from ui.pages.block_card_widgets import BlockHeaderWidget
-from ui.pages.contour_event_page import ContourEventPage
+from ui.pages.entity_overview_widgets import EntityHeaderWidget
 
 
 @pytest.fixture(scope="module")
@@ -15,44 +11,26 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-def _assert_title_status_stretch_edit(layout, title, status, edit):
-    assert layout.count() == 4
-    assert layout.itemAt(0).widget() is title
-    assert layout.itemAt(1).widget() is status
-    assert layout.itemAt(2).spacerItem() is not None
-    assert layout.itemAt(3).widget() is edit
-
-
-def test_block_header_order_is_title_status_stretch_edit(qapp):
-    header = BlockHeaderWidget()
+def test_shared_entity_header_order_is_title_status_archive_stretch_edit(qapp):
+    header = EntityHeaderWidget()
     top = header.layout.itemAt(0).layout()
-    _assert_title_status_stretch_edit(top, header.title, header.status,
-                                      header.edit_button)
+    assert top.count() == 5
+    assert top.itemAt(0).widget() is header.title
+    assert top.itemAt(1).widget() is header.status
+    assert top.itemAt(2).widget() is header.archive
+    assert top.itemAt(3).spacerItem() is not None
+    assert top.itemAt(4).widget() is header.edit_button
 
 
-def test_contour_header_order_is_title_status_stretch_edit(qapp):
-    host = QWidget(); root = QVBoxLayout(host)
-    event = SimpleNamespace(name="c4", id="C4", elevation=640,
-                            event_date=None, is_archived=False)
-    page = SimpleNamespace(blast_event=event, domain_name="North", read_only=False,
-                           rev=None, edit_metadata=lambda: None,
-                           _refresh_workflow_presentation=lambda: None)
-    ContourEventPage._header(page, root)
-    top = root.itemAt(0).widget().layout.itemAt(0).layout()
-    _assert_title_status_stretch_edit(top, top.itemAt(0).widget(),
-                                      page.header_status, page.edit_button)
-
-
-def test_assessment_header_order_is_title_status_stretch_edit(qapp):
-    host = QWidget(); root = QVBoxLayout(host)
-    revision = SimpleNamespace(min_elevation=600, max_elevation=650,
-                               revision_number=2)
-    area = SimpleNamespace(name="f1f1", id="A1", assessment_date=None,
-                           is_archived=False,
-                           active_geometry_revision=lambda: revision)
-    page = SimpleNamespace(area=area, domain_name="North", read_only=False,
-                           edit_metadata=lambda: None)
-    AssessmentAreaPage._header(page, root)
-    top = root.itemAt(0).widget().layout.itemAt(0).layout()
-    _assert_title_status_stretch_edit(top, top.itemAt(0).widget(),
-                                      page.header_status, page.edit_button)
+def test_shared_entity_header_uses_one_context_line(qapp):
+    header = EntityHeaderWidget()
+    header.set_content(
+        title="Block B1",
+        status_text="Blasted",
+        status_state="blasted",
+        meta_values=("ID: BL-1", "Project / Domain: P / D", "Horizon: 630 m", "Geometry rev.: 2"),
+    )
+    assert header.context.text() == (
+        "ID: BL-1  ·  Project / Domain: P / D  ·  Horizon: 630 m  ·  Geometry rev.: 2"
+    )
+    header.close(); qapp.processEvents()
