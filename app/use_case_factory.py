@@ -34,6 +34,7 @@ def create_entity_editing_session(context, domain_id):
         SqlAlchemyAssessmentStatePersistence(context.session_factory),
         domain_id,
         actor_id=user.id,
+        actor_name=getattr(user, "display_name", "") or getattr(user, "full_name", "") or user.username,
         can_edit=user.can_edit,
         writes=SqlAlchemyAssessmentWrites(context.session_factory, actor_id=user.id),
     )
