@@ -315,6 +315,13 @@ class EntityAttachmentManagerWidget(QWidget):
         self._gallery_reflow_pending = False
         self._file_icon_provider = QFileIconProvider() if kind == "document" else None
         _apply_workspace_palette(self)
+        # Normal entity pages embed the manager in a plain tab-page QWidget with
+        # the default QVBoxLayout margins. Those margins are outside this widget,
+        # so they must use the same workspace palette too; otherwise Contour and
+        # Assessment expose a white frame while Block happens to blend with its
+        # styled QTabWidget pane. Keep compatibility dialogs untouched.
+        if isinstance(parent, QWidget) and not isinstance(parent, QDialog):
+            _apply_workspace_palette(parent)
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
 
@@ -376,7 +383,9 @@ class EntityAttachmentManagerWidget(QWidget):
         self.gallery_page = QWidget(); _apply_workspace_palette(self.gallery_page); gallery_root = QVBoxLayout(self.gallery_page)
         gallery_root.setContentsMargins(0, 0, 0, 0)
         self.gallery_scroll = QScrollArea(); self.gallery_scroll.setWidgetResizable(True); self.gallery_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        _apply_workspace_palette(self.gallery_scroll)
+        # Do not set a palette or stylesheet on QScrollArea itself. On Windows
+        # that can alter how its native scrollbars are drawn. Only the viewport
+        # and content need the neutral workspace background.
         _apply_workspace_palette(self.gallery_scroll.viewport())
         self.gallery_content = QWidget(); _apply_workspace_palette(self.gallery_content); self.gallery_grid = QGridLayout(self.gallery_content)
         self.gallery_grid.setContentsMargins(4, 6, 4, 6)
