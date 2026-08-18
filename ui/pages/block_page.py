@@ -14,21 +14,23 @@ from repositories.domain_repository import DomainRepository
 from infrastructure.services.production_blast_service import ProductionBlastService
 from ui.block_dialog import BlockDialog
 from ui.pages.block_card_widgets import (
-    AttachmentPreviewWidget,
     AuditPreviewWidget,
-    BlockHeaderWidget,
     BlockOverviewWidget,
     BlockSummaryWidget,
     CommentsWidget,
     CompactInfoCards,
     EmptySection,
+    format_datetime,
+    format_decimal,
 )
 from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_history_revision_viewer import open_geometry_revision, open_technical_card_revision
+from ui.pages.entity_overview_widgets import EntityHeaderWidget, QuickAttachmentPreview
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.technical_card_widgets import (ActualExecutionEditorWidget,
     BlastDesignEditorWidget, GeomechanicsEditorWidget, TechnicalCardEditorWidget)
+from domain.blasting.workflow import WORKFLOW_LABELS, BlastWorkflowState
 
 
 class _NullAttachmentService:
@@ -53,7 +55,7 @@ class BlockPage(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
 
-        self.header = BlockHeaderWidget()
+        self.header = EntityHeaderWidget("Select a block")
         self.header.edit_button.clicked.connect(self.edit_current_block)
         layout.addWidget(self.header)
 
@@ -63,6 +65,7 @@ class BlockPage(QWidget):
         self.overview_tab = QWidget()
         overview_layout = QVBoxLayout(self.overview_tab)
         self.overview = BlockOverviewWidget()
+        self.overview.scheme.use_center_control()
         self.compact_cards = CompactInfoCards()
         bottom = QHBoxLayout()
         self.comments = CommentsWidget()
@@ -102,10 +105,12 @@ class BlockPage(QWidget):
 
         right = QVBoxLayout()
         self.summary = BlockSummaryWidget()
-        self.photos = AttachmentPreviewWidget("Photos")
-        self.documents = AttachmentPreviewWidget("Documents")
-        self.photos.add_button.clicked.connect(lambda: self._open_attachments("photo"))
-        self.documents.add_button.clicked.connect(lambda: self._open_attachments("document"))
+        self.photos = QuickAttachmentPreview("Photos", "photo")
+        self.documents = QuickAttachmentPreview("Documents", "document")
+        self.photos.add_requested.connect(lambda:self.photo_manager.add())
+        self.documents.add_requested.connect(lambda:self.document_manager.add())
+        self.photos.open_page_requested.connect(lambda:self._open_attachments("photo"))
+        self.documents.open_page_requested.connect(lambda:self._open_attachments("document"))
         for widget in (self.summary, self.photos, self.documents):
             widget.setMinimumWidth(250)
             widget.setMaximumWidth(290)
@@ -120,8 +125,7 @@ class BlockPage(QWidget):
             """
             #CardFrame { background: #ffffff; border: 1px solid #dfe3ea; border-radius: 8px; }
             #CardTitle { font-weight: 600; color: #111827; }
-            #BlockTitle { font-size: 24px; font-weight: 700; }
-            #StatusBadge { background: #fff4d6; color: #8a5a00; border: 1px solid #f4c76b; border-radius: 5px; padding: 4px 8px; }
+            #EntityTitle { font-size: 24px; font-weight: 700; }
             #MetaBadge { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 5px; padding: 4px 8px; }
             #MutedText { color: #6b7280; }
             #SchemePlaceholder { background: #111827; color: #f9fafb; border: 1px solid #334155; border-radius: 6px; font-size: 16px; font-weight: 600; }
@@ -191,20 +195,36 @@ class BlockPage(QWidget):
             manager.service=self.entity_controller.attachments if self.entity_controller else _NullAttachmentService(); manager.owner_id=event.id if event else None; manager.read_only=not self.context.current_user.can_edit or bool(block and block.is_archived)
             for button in manager.mutation_buttons:button.setEnabled(attachments_available and not manager.read_only)
             manager.refresh()
-        self.photos.add_button.setEnabled(attachments_available)
-        self.documents.add_button.setEnabled(attachments_available)
-        self.manage_photos_button.setEnabled(attachments_available and not self.photo_manager.read_only)
-        self.manage_documents_button.setEnabled(attachments_available and not self.document_manager.read_only)
+        can_add = attachments_available and self.context.current_user.can_edit and not bool(block and block.is_archived)
+        self.manage_photos_button.setEnabled(can_add)
+        self.manage_documents_button.setEnabled(can_add)
         self.photos_tab_count.setText(f"{photo_count} photo{'s' if photo_count!=1 else ''}" if photo_count else "No photos yet")
         self.documents_tab_count.setText(f"{document_count} document{'s' if document_count!=1 else ''}" if document_count else "No documents yet")
-        self.header.set_block(block, self.context.current_user.can_edit and not block.is_archived if block else False)
+        if block:
+            state=BlastWorkflowState(block.status)
+            self.header.set_content(
+                title=f"{tr('Block')} {block.block_number}",
+                status_text=tr(WORKFLOW_LABELS[state]), status_state=state,
+                archived=block.is_archived, can_edit=self.context.current_user.can_edit and not block.is_archived,
+                meta_values=(
+                    f"{tr('ID')}: {block.id}",
+                    f"{tr('Horizon')}: {format_decimal(block.horizon_m)}",
+                    f"{tr('Project / Quarry')}: {block.site_name}",
+                    f"{tr('Domain')}: {block.domain_name}",
+                    f"{tr('Created')}: {format_datetime(block.created_at)}",
+                    f"{tr('Updated')}: {format_datetime(block.updated_at)}",
+                ),
+            )
+        else:
+            self.header.set_content(title=tr("Select a block"),status_text=tr("—"),status_state="unknown")
         self.overview.set_block(block)
         self.compact_cards.set_block(block)
         self.comments.set_block(block)
         self.comments.edit_button.setEnabled(bool(block and self.context.current_user.can_edit and not block.is_archived))
         self.summary.set_data(block, photo_count, document_count, len(history_entries))
-        self.photos.set_items(photos, "No photos yet")
-        self.documents.set_items(documents, "No documents yet")
+        service=self.entity_controller.attachments if self.entity_controller else None
+        self.photos.set_items(service,photos,"No photos yet",can_add=can_add)
+        self.documents.set_items(service,documents,"No documents yet",can_add=can_add)
         self.audit_preview.set_entries(audit_entries)
         self.history_tab.set_entries(history_entries)
         self._render_engineering(block)
@@ -251,7 +271,8 @@ class BlockPage(QWidget):
         editable=self.context.current_user.can_edit and not block.is_archived
         geometry=event.active_geometry_revision(); dataset=self.entity_controller.state.active_dataset(); lines=dataset.lines if dataset else []
         self.overview.scheme.set_geometry(geometry.plan_geometry if geometry else None,lines,
-            f"Horizon {event.elevation:g} | {tr('Source')}: {geometry.source_file_name if geometry else '—'} | Revision: {geometry.revision_number if geometry else '—'}")
+            f"Horizon {event.elevation:g} | {tr('Source')}: {geometry.source_file_name if geometry else '—'} | Revision: {geometry.revision_number if geometry else '—'}",
+            focus_geometry=geometry.plan_geometry if geometry else None)
         self._disconnect_reimport()
         self._reimport_callback = lambda: self._reimport_geometry(event)
         self.overview.scheme.reimport_requested.connect(self._reimport_callback)
