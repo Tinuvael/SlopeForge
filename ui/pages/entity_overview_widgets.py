@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QFileInfo, QSize, Qt, Signal
-from PySide6.QtGui import QIcon, QImageReader, QPixmap
+from PySide6.QtCore import QFileInfo, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFileIconProvider, QGridLayout, QHBoxLayout, QLabel, QPushButton,
     QToolButton, QVBoxLayout, QWidget,
@@ -121,6 +121,55 @@ class OverviewKeyValueCard(CardFrame):
             self.grid.addWidget(key, row, 0)
             self.grid.addWidget(val, row, 1)
         self.grid.setColumnStretch(1, 1)
+
+
+class AssessmentMatrixPreview(QWidget):
+    """Tiny read-only DAI/FCI quadrant using already stored evaluation results."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.dai = None
+        self.fci = None
+        self.dai_threshold = 0.65
+        self.fci_threshold = 0.60
+        self.setMinimumHeight(170)
+
+    def set_result(self, *, dai, fci, dai_threshold=0.65, fci_threshold=0.60):
+        self.dai = None if dai is None else max(0.0, min(1.0, float(dai)))
+        self.fci = None if fci is None else max(0.0, min(1.0, float(fci)))
+        self.dai_threshold = max(0.0, min(1.0, float(dai_threshold)))
+        self.fci_threshold = max(0.0, min(1.0, float(fci_threshold)))
+        self.update()
+
+    def paintEvent(self, event):  # noqa: ARG002
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = QRectF(34, 12, max(40, self.width() - 48), max(40, self.height() - 42))
+
+        painter.fillRect(rect, QColor("#fbfcfd"))
+        painter.setPen(QPen(QColor("#cfd6de"), 1))
+        painter.drawRect(rect)
+
+        x = rect.left() + rect.width() * self.fci_threshold
+        y = rect.bottom() - rect.height() * self.dai_threshold
+        painter.setPen(QPen(QColor("#c1c9d2"), 1, Qt.PenStyle.DashLine))
+        painter.drawLine(int(x), int(rect.top()), int(x), int(rect.bottom()))
+        painter.drawLine(int(rect.left()), int(y), int(rect.right()), int(y))
+
+        painter.setPen(QColor("#667085"))
+        painter.drawText(4, int(rect.center().y()), "DAI")
+        painter.drawText(int(rect.center().x()) - 8, self.height() - 6, "FCI")
+
+        if self.dai is None or self.fci is None:
+            painter.setPen(QColor("#8a94a3"))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, tr("No assessment result yet"))
+            return
+
+        px = rect.left() + rect.width() * self.fci
+        py = rect.bottom() - rect.height() * self.dai
+        painter.setPen(QPen(QColor("#ffffff"), 2))
+        painter.setBrush(QColor("#1261a0"))
+        painter.drawEllipse(int(px) - 6, int(py) - 6, 12, 12)
 
 
 class QuickAttachmentPreview(CardFrame):
