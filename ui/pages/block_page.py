@@ -88,6 +88,9 @@ class BlockPage(QWidget):
         self.history_tab = EntityHistoryWidget()
         self.history_tab.entryActivated.connect(self._open_history_entry)
         self.tabs.addTab(self.history_tab, tr("History"))
+        self.compact_cards.open_buttons[0].clicked.connect(lambda:self.tabs.setCurrentWidget(self.geomechanics_tab))
+        self.compact_cards.open_buttons[1].clicked.connect(lambda:self.tabs.setCurrentWidget(self.design_tab))
+        self.compact_cards.open_buttons[2].clicked.connect(lambda:self.tabs.setCurrentWidget(self.execution_tab))
         left.addWidget(self.tabs)
 
         self.engineering_actions_widget = QWidget()
@@ -277,6 +280,7 @@ class BlockPage(QWidget):
         self._reimport_callback = lambda: self._reimport_geometry(event)
         self.overview.scheme.reimport_requested.connect(self._reimport_callback)
         card,revision=self.entity_controller.technical_card_draft(event)
+        self.compact_cards.set_revision(card.active_revision() or revision)
         from app.use_case_factory import create_charge_presets,create_explosive_catalogue
         editor=TechnicalCardEditorWidget(event,card,revision,self.entity_controller.save_technical_card,
             self,not editable,domain_name=block.domain_name,
@@ -290,6 +294,7 @@ class BlockPage(QWidget):
         self.overview.scheme.set_reimport_enabled(editable)
 
     def _clear_engineering(self):
+        self.compact_cards.set_revision(None)
         for attr,title in (("geomechanics_tab","Geomechanics"),("design_tab","Blast design"),("execution_tab","Execution fact")):
             old=getattr(self,attr); setattr(self,attr,self._replace_tab(old,EmptySection(),title))
         self.save_engineering_draft.setEnabled(False); self.complete_engineering.setEnabled(False); self.technical_card_editor=None
