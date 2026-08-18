@@ -359,10 +359,13 @@ class EntityAttachmentManagerWidget(QWidget):
 
     def _build_photo_pages(self, root):
         self.stack = QStackedWidget()
-        self.gallery_page = QWidget(); gallery_root = QVBoxLayout(self.gallery_page)
+        self.stack.setStyleSheet("QStackedWidget{background:#ffffff;}")
+        self.gallery_page = QWidget(); self.gallery_page.setStyleSheet("background:#ffffff;"); gallery_root = QVBoxLayout(self.gallery_page)
         gallery_root.setContentsMargins(0, 0, 0, 0)
         self.gallery_scroll = QScrollArea(); self.gallery_scroll.setWidgetResizable(True); self.gallery_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.gallery_content = QWidget(); self.gallery_grid = QGridLayout(self.gallery_content)
+        self.gallery_scroll.setStyleSheet("QScrollArea{background:#ffffff;border:0;} QScrollArea > QWidget > QWidget{background:#ffffff;}")
+        self.gallery_scroll.viewport().setStyleSheet("background:#ffffff;")
+        self.gallery_content = QWidget(); self.gallery_content.setStyleSheet("background:#ffffff;"); self.gallery_grid = QGridLayout(self.gallery_content)
         self.gallery_grid.setContentsMargins(4, 6, 4, 6)
         self.gallery_grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.gallery_grid.setHorizontalSpacing(16); self.gallery_grid.setVerticalSpacing(16)
@@ -681,7 +684,12 @@ class EntityAttachmentManagerWidget(QWidget):
             self.service.open_file(item)
 
     def open_folder(self, _checked=False):
-        if self.owner_id:
+        if not self.owner_id:
+            return
+        opener = getattr(self.service, "open_attachment_folder", None)
+        if opener is not None:
+            opener(self.owner_type, self.owner_id, self.kind)
+        else:
             self.service.open_owner_folder(self.owner_type, self.owner_id)
 
     def edit(self, _checked=False):
