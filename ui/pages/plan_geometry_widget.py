@@ -1,5 +1,4 @@
 """Reusable, read-only plan viewer with optional comparison and focus extents."""
-from math import sqrt
 
 from app.localization import tr
 from PySide6.QtCore import QPointF, QTimer, Qt
@@ -107,7 +106,9 @@ class PlanGeometryWidget(QWidget):
             self.canonical_focus_rect = None
             self._pending_center = False
             return
-        factor = sqrt(2.0)
+        # Overview framing contract: the focused entity occupies roughly half of
+        # the viewport span, leaving project-line and neighbouring geometry context.
+        factor = 2.0
         width, height = rect.width() * factor, rect.height() * factor
         center = rect.center()
         self.canonical_focus_rect = rect.__class__(
