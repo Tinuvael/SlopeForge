@@ -1,6 +1,7 @@
 """Thin UI adapter for entity-page application services."""
 from app.use_case_factory import create_entity_editing_session
 from application.services.attachments import EntityAttachmentService
+from infrastructure.services.contour_blast_service import ContourBlastService
 
 
 class EntityPageController:
@@ -15,6 +16,7 @@ class EntityPageController:
             on_add=self._persist_attachment_add,
             on_update=self.editing.update_attachment_metadata,
             on_delete=self.editing.delete_attachment_metadata)
+        self.contour_service = ContourBlastService(context.session_factory)
 
     def _persist_attachment_add(self, attachments):
         owner = None
@@ -70,7 +72,16 @@ class EntityPageController:
         return self.editing.update_contour_metadata(event, **values)
 
     def update_contour_comment(self, event, comment):
-        return self.editing.update_contour_comment(event, comment)
+        new_version = self.contour_service.update_comment(
+            event.id,
+            comment,
+            self.context.current_user,
+            domain_id=self.domain_id,
+            expected_version=self.expected_version,
+        )
+        event.comment = str(comment or "") or None
+        self.editing.expected_version = new_version
+        return new_version
 
     def update_assessment_area_metadata(self, area, **values):
         return self.editing.update_assessment_area_metadata(area, **values)
