@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from app.localization import tr
-from domain.blasting.workflow import ASSESSMENT_PROGRESS_LABELS, assessment_progress_for
+from domain.blasting.workflow import (
+    ASSESSMENT_PROGRESS_LABELS,
+    WORKFLOW_LABELS,
+    assessment_progress_for,
+    blast_workflow_for,
+)
 from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView, QFormLayout, QFrame, QHBoxLayout, QInputDialog, QLabel,
@@ -13,8 +18,14 @@ from repositories.entity_history_repository import EntityHistoryRepository
 from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_history_revision_viewer import open_assessment_revision, open_geometry_revision
 from ui.pages.entity_overview_widgets import (
-    AssessmentMatrixPreview, EngineeringSummaryCard, EntityHeaderWidget,
-    OverviewKeyValueCard, QuickAttachmentPreview, RecentActivityCard,
+    AssessmentMatrixPreview,
+    EngineeringSummaryCard,
+    EntityHeaderWidget,
+    OverviewKeyValueCard,
+    QuickAttachmentPreview,
+    RecentActivityCard,
+    RelatedEntityList,
+    RelatedEntityRow,
     SquareGeometryCard,
 )
 from ui.pages.entity_page_controller import EntityPageController
@@ -31,6 +42,19 @@ def _value(value):
 
 def _date(value):
     return value.strftime("%d.%m.%Y") if hasattr(value, "strftime") else _value(value)
+
+
+def _datetime_text(value):
+    return value.strftime("%d.%m.%Y %H:%M") if value else "—"
+
+
+def _history_bounds(entries):
+    timed = [entry for entry in entries if entry.timestamp]
+    if not timed:
+        return None, None, None
+    created = min(timed, key=lambda item: item.timestamp)
+    updated = max(timed, key=lambda item: item.timestamp)
+    return created.actor or "—", created.timestamp, updated.timestamp
 
 
 def _face_condition_value(revision, criterion_id, unit=""):
@@ -105,6 +129,7 @@ class AssessmentLinkListItem(QFrame):
 class AssessmentAreaPage(QWidget):
     edit_boundaries_requested = Signal(str)
     metadata_saved = Signal(str, int)
+    related_blast_event_requested = Signal(str, str, int)
 
     def __init__(self, context, domain_id, domain_name, area_id, parent=None):
         super().__init__(parent)
@@ -142,9 +167,10 @@ class AssessmentAreaPage(QWidget):
         self._refresh_history()
         self.setStyleSheet(
             "#CardFrame,#CriterionCard,#ResultCard{background:white;border:1px solid #dfe3ea;border-radius:6px}"
-            "#CardTitle,#EngineeringSectionTitle{font-weight:600;color:#111827}#EntityTitle{font-size:24px;font-weight:700}"
+            "#CardTitle,#EngineeringSectionTitle,#RelatedEntityTitle{font-weight:600;color:#111827}#EntityTitle{font-size:24px;font-weight:700}"
             "#EntityContextLine{color:#667085}#MutedText{color:#6b7280}#SummaryValue{color:#111827;font-weight:600}"
             "#EngineeringSummaryText{color:#374151}#OverviewDivider{color:#e5e7eb;background:#e5e7eb;max-height:1px;border:0}"
+            "#StaleBadge{background:#fff1c2;color:#8a5a00;border:1px solid #e5b94d;border-radius:4px;padding:2px 5px}"
         )
 
     def _header(self, root):
@@ -306,7 +332,7 @@ class AssessmentAreaPage(QWidget):
         self.document_preview = QuickAttachmentPreview("Documents", "document")
         for widget in (self.summary_card, self.photo_preview, self.document_preview):
             widget.setMinimumWidth(250)
-            widget.setMaximumWidth(290)
+            widget.setMaximumWidth(300)
         right.addWidget(self.summary_card)
         right.addWidget(self.photo_preview)
         right.addWidget(self.document_preview)
@@ -317,29 +343,38 @@ class AssessmentAreaPage(QWidget):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setSpacing(8)
+
         top = QHBoxLayout()
         top.setSpacing(8)
-        self.info_card = OverviewKeyValueCard("General information", open_label="Edit boundaries")
-        self.info_card.open_requested.connect(self._request_edit_boundaries)
-        self.geometry_card = SquareGeometryCard("Assessment area geometry")
-        self.geometry_card.plan.reimport_button.hide()
-        top.addWidget(self.info_card, 1)
+        overview_stack = QVBoxLayout()
+        overview_stack.setSpacing(8)
+        self.assessment_result = OverviewKeyValueCard("Assessment result", open_label="Open ›")
+        self.assessment_result.open_requested.connect(lambda: self.tabs.setCurrentWidget(self.assessment_tab))
+        self.related_events = RelatedEntityList("Related blast events")
+        self.related_events.entity_activated.connect(self._open_related_event)
+        overview_stack.addWidget(self.assessment_result)
+        overview_stack.addWidget(self.related_events, 1)
+        self.geometry_card = SquareGeometryCard(
+            "Assessment area geometry", action_label="Edit boundaries"
+        )
+        self.geometry_card.action_requested.connect(self._request_edit_boundaries)
+        top.addLayout(overview_stack, 1)
         top.addWidget(self.geometry_card, 0)
         layout.addLayout(top)
 
         middle = QHBoxLayout()
         middle.setSpacing(8)
-        self.assessment_summary = EngineeringSummaryCard("Assessment summary")
-        self.assessment_summary.section_open_requested.connect(self._open_overview_section)
+        self.face_condition_card = EngineeringSummaryCard("Face condition")
+        self.face_condition_card.section_open_requested.connect(self._open_overview_section)
         self.matrix_card = CardFrame("Assessment matrix")
-        self.matrix_card.setMinimumWidth(260)
-        self.matrix_card.setMaximumWidth(320)
+        self.matrix_card.setMinimumWidth(330)
+        self.matrix_card.setMaximumWidth(430)
         self.matrix_preview = AssessmentMatrixPreview()
         self.matrix_basis_text = QLabel()
         self.matrix_basis_text.setObjectName("MutedText")
         self.matrix_card.layout.addWidget(self.matrix_preview, 1)
         self.matrix_card.layout.addWidget(self.matrix_basis_text)
-        middle.addWidget(self.assessment_summary, 1)
+        middle.addWidget(self.face_condition_card, 1)
         middle.addWidget(self.matrix_card, 0)
         layout.addLayout(middle)
 
@@ -353,6 +388,11 @@ class AssessmentAreaPage(QWidget):
         bottom.addWidget(self.recent_activity, 2)
         layout.addLayout(bottom)
         self.tabs.addTab(page, tr("Overview"))
+
+    def _open_related_event(self, event_id):
+        event = self.controller.event(event_id)
+        if event is not None:
+            self.related_blast_event_requested.emit(event.id, event.event_type, self.controller.domain_id)
 
     def _open_overview_section(self, key):
         if key == "linked_events" and hasattr(self, "linked_events_tab"):
@@ -389,13 +429,10 @@ class AssessmentAreaPage(QWidget):
         rev = self.area.active_geometry_revision()
         active = self.evaluation.active_revision()
         confirmed = [x for x in self.area.links_for_revision() if x.status == "confirmed"]
-        prod = sum(self.controller.links.event(x.blast_event_id).event_type == "production" for x in confirmed)
-        contour = len(confirmed) - prod
         progress = assessment_progress_for(self.area, self.evaluation)
         status = tr(ASSESSMENT_PROGRESS_LABELS[progress])
         interval = format_assessment_elevation_interval(rev.min_elevation, rev.max_elevation)
         history_entries = self._history_entries()
-        author = history_entries[-1].actor if history_entries else "—"
         self.header.set_content(
             title=self.area.name,
             status_text=status,
@@ -409,28 +446,31 @@ class AssessmentAreaPage(QWidget):
                 f"{tr('Geometry rev.')}: {rev.revision_number}",
             ),
         )
-        source = ", ".join(rev.source_dataset_ids) or tr("Free boundary")
-        self.info_card.set_rows(
-            (
-                ("Author", author),
-                ("Created", _date(rev.created_at)),
-                ("Geometry source", source),
-                ("Revision reason", rev.change_reason or "—"),
-            )
-        )
+
         dataset = next((d for d in self.controller.state.datasets if d.id == (rev.source_dataset_ids[0] if rev.source_dataset_ids else None)), None)
+        geometry_source = dataset.source_file_name if dataset is not None else tr("Free boundary")
         self.geometry_card.set_geometry(
             rev.final_geometry_frozen,
             dataset.lines if dataset else [],
             revision=rev.revision_number,
-            source=source,
+            source=geometry_source,
             focus_geometry=rev.final_geometry_frozen,
         )
+        self.geometry_card.set_action_enabled(not self.read_only)
 
-        evaluation_status = active.status if active else "—"
         dai = f"{active.design_achievement_index:.3f}" if active and active.design_achievement_index is not None else "—"
         fci = f"{active.face_condition_index:.3f}" if active and active.face_condition_index is not None else "—"
         quadrant = result_label(active.result_label) if active else "—"
+        inspector = active.inspector if active and active.inspector else "—"
+        assessment_date = active.assessment_date if active and active.assessment_date else self.area.assessment_date
+        self.assessment_result.set_rows((
+            ("Assessment date", _date(assessment_date)),
+            ("Inspector", inspector),
+            ("DAI", dai),
+            ("FCI", fci),
+            ("Result", _value(quadrant)),
+        ))
+
         face_rows = (
             ("Contour hole traces", _face_condition_value(active, "visible_drillhole_traces", " %")),
             ("Loose blocks", _face_condition_value(active, "loose_blocks")),
@@ -440,13 +480,10 @@ class AssessmentAreaPage(QWidget):
             ("Blast cracks", _face_condition_value(active, "open_cracks")),
         )
         visible_face = [f"{tr(name)}: {value}" for name, value in face_rows if value != "—"]
-        self.assessment_summary.set_sections(
-            (
-                ("result", "Assessment result", [f"DAI {dai}", f"FCI {fci}", f"{tr('Result')}: {_value(quadrant)}", f"{tr('Status')}: {evaluation_status}"]),
-                ("face_condition", "Face condition", visible_face or [tr("No face-condition data yet")]),
-                ("linked_events", "Linked events", [f"{tr('Production blasts')}: {prod}", f"{tr('Contour blasts')}: {contour}", f"{tr('Total confirmed')}: {len(confirmed)}"]),
-            )
-        )
+        self.face_condition_card.set_sections((
+            ("face_condition", "Face condition", visible_face or [tr("No face-condition data yet")]),
+        ))
+
         snapshot = active.matrix_template_snapshot if active else {}
         dai_threshold = snapshot.get("design_achievement_threshold", .65) if snapshot else .65
         fci_threshold = snapshot.get("face_condition_threshold", .60) if snapshot else .60
@@ -457,26 +494,51 @@ class AssessmentAreaPage(QWidget):
             fci_threshold=fci_threshold,
         )
         controlled = bool(active and active.controlled_blasting_present)
-        self.matrix_basis_text.setText(tr("Controlled blasting") if controlled else tr("Standard blasting"))
-        self.comments_card.set_sections(
-            (
-                ("comments", "Comments", [active.comments if active and active.comments else tr("No comments")]),
-                ("recommendations", "Recommendations", [active.recommendations if active and active.recommendations else tr("No recommendations")]),
-            )
-        )
+        basis = tr("Controlled blasting") if controlled else tr("Standard blasting")
+        self.matrix_basis_text.setText(f"{basis} · {_value(quadrant)}")
+
+        related_rows = []
+        for link in confirmed:
+            event = self.controller.links.event(link.blast_event_id)
+            workflow = blast_workflow_for(self.controller.state, event)
+            title = f"{tr('Block')} {event.name}" if event.event_type == "production" else f"{tr('Contour blast')} {event.name}"
+            related_rows.append(RelatedEntityRow(
+                event.id,
+                title,
+                f"{event.id} · {tr('Horizon')} {_value(f'{event.elevation:g}')} m",
+                tr(WORKFLOW_LABELS[workflow]),
+                getattr(workflow, "value", workflow),
+                self.controller.links.is_stale(link),
+            ))
+        self.related_events.set_rows(related_rows, empty_text="No linked blast events")
+
+        self.comments_card.set_sections((
+            ("comments", "Comments", [active.comments if active and active.comments else tr("No comments")]),
+            ("recommendations", "Recommendations", [active.recommendations if active and active.recommendations else tr("No recommendations")]),
+        ))
         self.recent_activity.set_entries(history_entries)
-        self.summary_card.set_rows(
-            (
-                ("Assessment date", _date(self.area.assessment_date)),
-                ("DAI", dai),
-                ("FCI", fci),
-                ("Evaluation", f"{tr('Rev.')} {active.revision_number}" if active else "—"),
-                ("Linked events", len(confirmed)),
-            )
-        )
+
         persisted = self.evaluation in self.controller.state.evaluations
         photos = self.controller.attachments.list_for_owner("assessment_evaluation", self.evaluation.id, "photo") if persisted else []
         documents = self.controller.attachments.list_for_owner("assessment_evaluation", self.evaluation.id, "document") if persisted else []
+        created_actor, created_at, updated_at = _history_bounds(history_entries)
+        if created_at is None:
+            created_at = min((item.created_at for item in self.area.geometry_revisions), default=rev.created_at)
+        fallback_updates = [rev.created_at]
+        if active is not None:
+            fallback_updates.append(active.created_at)
+        if updated_at is None:
+            updated_at = max(fallback_updates)
+        self.summary_card.set_rows((
+            ("Created by", created_actor or "—"),
+            ("Created", _datetime_text(created_at)),
+            ("Last updated", _datetime_text(updated_at)),
+            ("Geometry file", geometry_source),
+            ("Geometry revision", f"{tr('Rev.')} {rev.revision_number}"),
+            ("Evaluation", f"{tr('Rev.')} {active.revision_number}" if active else "—"),
+            ("Photos", len(photos)),
+            ("Documents", len(documents)),
+        ))
         self.photo_preview.set_items(self.controller.attachments, photos, "No photos yet", can_add=not self.read_only)
         self.document_preview.set_items(self.controller.attachments, documents, "No documents yet", can_add=not self.read_only)
 
