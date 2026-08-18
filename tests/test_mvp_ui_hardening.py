@@ -161,7 +161,7 @@ def test_project_tree_renders_nullable_area_navigation_rows(
 
     site = SimpleNamespace(id=1, name="Project")
     domain = SimpleNamespace(id=2, name="Domain")
-    monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda _id: [domain]))
+    monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: [site]))
     monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda _id: [domain]))
     monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(list_blocks=lambda **_kwargs: []))
     monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
