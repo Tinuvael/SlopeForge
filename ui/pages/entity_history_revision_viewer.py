@@ -13,17 +13,10 @@ from ui.pages.technical_card_widgets import TechnicalCardEditorWidget
 
 
 def _lock_technical_revision(editor: TechnicalCardEditorWidget) -> None:
-    """Make every value control visibly read-only without disabling navigation/help."""
-    host = editor.editor
-    for control in host.findChildren(QLineEdit):
-        control.setReadOnly(True)
-    for control in host.findChildren(QTextEdit):
-        control.setReadOnly(True)
-    for control in host.findChildren(QAbstractSpinBox):
-        control.setReadOnly(True)
-    for control in host.findChildren(QComboBox):
-        control.setEnabled(False)
-    for control in host.findChildren(QCheckBox):
+    """Lock controls inside the reparented Technical Card tabs themselves."""
+    # TechnicalCardEditorWidget reparents the QTabWidget out of TechnicalCardDialog,
+    # so searching editor.editor misses the actual controls. Search the wrapper.
+    for control in editor.findChildren((QLineEdit, QTextEdit, QAbstractSpinBox, QComboBox, QCheckBox)):
         control.setEnabled(False)
 
 
@@ -33,6 +26,7 @@ def _take_optional_tab(dialog: AssessmentAreaEvaluationDialog, title: str, paren
             page = dialog.tabs.widget(index)
             dialog.tabs.removeTab(index)
             page.setParent(parent)
+            page.show()
             return page
     return None
 
@@ -107,12 +101,16 @@ def open_assessment_revision(parent, *, area, evaluation, revision, attachment_s
             section = QGroupBox(title, splitter)
             section_layout = QVBoxLayout(section)
             page.setParent(section)
+            page.show()
             section_layout.addWidget(page)
             splitter.addWidget(section)
+            section.show()
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 2)
         combined_layout.addWidget(splitter)
-        dialog.tabs.insertTab(1, combined, tr("Geometry & face condition"))
+        index = dialog.tabs.insertTab(1, combined, tr("Geometry & face condition"))
+        combined.show()
+        dialog.tabs.setCurrentIndex(index)
 
     dialog.exec()
 
