@@ -40,7 +40,7 @@ class EntityHistoryWidget(QWidget):
         toolbar = QHBoxLayout()
         toolbar.addStretch()
         self.open_revision_button = QPushButton(tr("Open revision"))
-        self.open_revision_button.setIcon(ui_icon("open"))
+        self.open_revision_button.setIcon(ui_icon("folder-open"))
         self.open_revision_button.setEnabled(False)
         self.open_revision_button.clicked.connect(self._activate_selected)
         toolbar.addWidget(self.open_revision_button)
