@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QAbstractItemView,QFormLayout,QFrame,QGridLayout,
                                QSizePolicy,QSplitter,QVBoxLayout,QWidget)
 from repositories.entity_history_repository import EntityHistoryRepository
 from ui.pages.entity_history_widget import EntityHistoryWidget
+from ui.pages.entity_history_revision_viewer import open_assessment_revision,open_geometry_revision
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
@@ -88,7 +89,7 @@ class AssessmentAreaPage(QWidget):
         for button in (self.save_evaluation_button,self.complete_evaluation_button):button.setEnabled(not self.read_only); controls.addWidget(button)
         self.save_evaluation_button.clicked.connect(lambda:self._save_evaluation("draft")); self.complete_evaluation_button.clicked.connect(lambda:self._save_evaluation("completed")); layout.addLayout(controls)
         for page in obsolete:page.deleteLater()
-        old_history=self.evaluation_editor.take_tab(tr("History")); old_history.deleteLater(); self.history=EntityHistoryWidget()
+        old_history=self.evaluation_editor.take_tab(tr("History")); old_history.deleteLater(); self.history=EntityHistoryWidget(); self.history.entryActivated.connect(self._open_history_entry)
 
     def _sidebar(self,body):
         right=QVBoxLayout(); self.summary_card=CardFrame("Summary"); self.summary_grid=QGridLayout(); self.summary_card.layout.addLayout(self.summary_grid); right.addWidget(self.summary_card)
@@ -107,6 +108,18 @@ class AssessmentAreaPage(QWidget):
 
     def _refresh_history(self):
         entries=self._history_entries(); self.history.set_entries(entries); return entries
+
+    def _open_history_entry(self,entry):
+        if entry.source_type=="assessment_geometry":
+            revision=next((item for item in self.area.geometry_revisions if item.id==entry.source_id),None)
+            if revision is not None:
+                dataset=next((d for d in self.controller.state.datasets if d.id==(revision.source_dataset_ids[0] if revision.source_dataset_ids else None)),None)
+                open_geometry_revision(self,revision=revision,project_lines=dataset.lines if dataset else [],assessment=True)
+            return
+        if entry.source_type=="assessment_evaluation":
+            revision=next((item for item in self.evaluation.revisions if item.id==entry.source_id),None)
+            if revision is not None:
+                open_assessment_revision(self,area=self.area,evaluation=self.evaluation,revision=revision,attachment_service=self.controller.attachments)
 
     def _refresh_overview_and_sidebar(self):
         rev=self.area.active_geometry_revision(); active=self.evaluation.active_revision(); confirmed=[x for x in self.area.links_for_revision() if x.status=="confirmed"]; prod=sum(self.controller.links.event(x.blast_event_id).event_type=="production" for x in confirmed); contour=len(confirmed)-prod; status=tr(ASSESSMENT_PROGRESS_LABELS[assessment_progress_for(self.area,self.evaluation)]); self.header_status.setText(status + ((" · " + tr("Archived")) if self.area.is_archived else ""))
