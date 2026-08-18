@@ -6,6 +6,7 @@ from application.state.assessment_domain_state import AssessmentDomainState
 from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
 from domain.assessment.geometry import AssessmentBoundary, derive_elevation_summary, derive_plan_polygon
 from domain.blasting.entities import utc_now
+from domain.entity_ids import generate_entity_id
 
 
 class AssessmentAreaService:
@@ -20,7 +21,7 @@ class AssessmentAreaService:
                                               boundary, polygon, minimum, maximum, change_reason)
 
     def create_area(self, *, name: str, assessment_date: date, boundary: AssessmentBoundary) -> AssessmentArea:
-        area_id = f"AA-{max([int(a.id.split('-')[-1]) for a in self.state.assessment_areas if a.id.startswith('AA-') and a.id.split('-')[-1].isdigit()] or [0]) + 1:03d}"
+        area_id = generate_entity_id("assessment", [area.id for area in self.state.assessment_areas])
         revision = self._build_revision(area_id, 1, boundary)
         area = AssessmentArea(area_id, name.strip() or area_id, assessment_date, [revision], revision.id, [])
         self.state.assessment_areas.append(area)

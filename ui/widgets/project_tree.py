@@ -211,15 +211,20 @@ class ProjectTree(QWidget):
                 domain_item = self._item(domain.name, {"type":"domain", **base})
                 blasts = []
                 for block in self.block_repo.list_blocks(domain_id=domain.id, status=status, show_archived=show_archived):
-                    if self._date_matches(block.planned_blast_date) and (not query or inherited_match or query in block.block_number.casefold()):
+                    block_match = (not query or inherited_match or query in block.block_number.casefold()
+                                   or query in str(block.id).casefold())
+                    if self._date_matches(block.planned_blast_date) and block_match:
                         blasts.append(("block", block.horizon_m, block))
                 for event in contours_by_domain.get(domain.id, []):
                     if status and event.status != status: continue
-                    if self._date_matches(event.event_date) and (not query or inherited_match or query in event.name.casefold()):
+                    event_match = (not query or inherited_match or query in event.name.casefold()
+                                   or query in str(event.id).casefold())
+                    if self._date_matches(event.event_date) and event_match:
                         blasts.append(("contour", event.elevation, event))
                 areas = [area for area in areas_by_domain.get(domain.id, [])
                          if self._date_matches(area.assessment_date)
-                         and (not query or inherited_match or query in area.name.casefold())]
+                         and (not query or inherited_match or query in area.name.casefold()
+                              or query in str(area.id).casefold())]
                 include_domain = bool(blasts or areas or (not constrained) or (inherited_match and not (status or self.from_date.value() or self.to_date.value())))
                 if not include_domain: continue
                 site_item.addChild(domain_item)
