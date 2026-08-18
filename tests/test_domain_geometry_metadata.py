@@ -19,7 +19,7 @@ def test_domain_geometry_metadata_contract():
     assert "jsonb_typeof" in checks["ck_domain_geometries_polygons_array"]
 
 
-def test_domain_geometry_is_part_of_immutable_mvp_baseline():
+def test_domain_geometry_baseline_remains_immutable_and_cleanup_is_followup():
     path = Path("alembic/versions/0001_mvp_baseline.py")
     spec = spec_from_file_location("mvp_baseline", path)
     module = module_from_spec(spec)
@@ -27,7 +27,9 @@ def test_domain_geometry_is_part_of_immutable_mvp_baseline():
     assert module.revision == "0001_mvp_baseline"
     assert module.down_revision is None
     assert sorted(item.name for item in Path("alembic/versions").glob("*.py")) == [
-        "0001_mvp_baseline.py", "0002_workflow_status.py", "0003_explosive_catalog.py", "0004_charge_presets.py", "0005_explosive_charge_form.py", "0006_explosive_product_metadata.py"]
+        "0001_mvp_baseline.py", "0002_workflow_status.py", "0003_explosive_catalog.py",
+        "0004_charge_presets.py", "0005_explosive_charge_form.py",
+        "0006_explosive_product_metadata.py", "0007_remove_mine_blastblock.py"]
 
 
 def test_project_lines_are_project_owned_and_independent_of_domains():
@@ -47,7 +49,6 @@ def test_domain_dashboard_permissions_and_import_filter_are_explicit():
     assert 'can_edit=getattr(getattr(self.context,"current_user",None),"can_edit",False)' in source
     assert 'bool(current) and can_edit' in source
     assert "*.csv *.dxf" in source
-    # Persistence is deliberately guarded by modal acceptance.
     assert "if dialog.exec():" in source and "replace_drawn" in source
 
 
