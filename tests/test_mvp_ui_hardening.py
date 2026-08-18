@@ -112,13 +112,13 @@ def test_project_tree_search_filters_real_displayed_rows(monkeypatch):
     site = SimpleNamespace(id=1, name="Project")
     domain = SimpleNamespace(id=2, name="Domain")
     blocks = [
-        SimpleNamespace(id=10, domain_id=2, block_number="P-101", horizon_m=100, planned_blast_date=None, status="planned", is_archived=False),
-        SimpleNamespace(id=11, domain_id=2, block_number="P-202", horizon_m=100, planned_blast_date=None, status="planned", is_archived=False),
+        SimpleNamespace(id="BE-P-101", domain_id=2, block_number="P-101", horizon_m=100, planned_blast_date=None, status="planned", is_archived=False),
+        SimpleNamespace(id="BE-P-202", domain_id=2, block_number="P-202", horizon_m=100, planned_blast_date=None, status="planned", is_archived=False),
     ]
     contours = [SimpleNamespace(id="C1", domain_id=2, name="C-101", elevation=100, event_date=None, status="planned", is_archived=False)]
     monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: [site]))
     monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda _id: [domain]))
-    monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(
+    monkeypatch.setattr(module, "ProductionBlastRepository", lambda _factory: SimpleNamespace(
         list_blocks=lambda **kwargs: [b for b in blocks if not kwargs.get("status") or kwargs["status"] == b.status]
     ))
     monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
@@ -163,7 +163,7 @@ def test_project_tree_renders_nullable_area_navigation_rows(
     domain = SimpleNamespace(id=2, name="Domain")
     monkeypatch.setattr(module, "SiteRepository", lambda _factory: SimpleNamespace(list_sites=lambda: [site]))
     monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace(list_for_site=lambda _id: [domain]))
-    monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace(list_blocks=lambda **_kwargs: []))
+    monkeypatch.setattr(module, "ProductionBlastRepository", lambda _factory: SimpleNamespace(list_blocks=lambda **_kwargs: []))
     monkeypatch.setattr(module, "NavigationRepository", lambda _factory: SimpleNamespace(
         list_areas=lambda _archived: [area], list_contour_events=lambda _archived: []))
 
@@ -183,21 +183,22 @@ def _block_page(monkeypatch, *, can_edit, archived):
     from ui.pages import block_page as module
 
     block = SimpleNamespace(
-        id=7, domain_id=2, block_number="P-7", horizon_m=100, site_name="Project",
+        id="BE-P-7", domain_id=2, block_number="P-7", horizon_m=100, site_name="Project",
         domain_name="Domain", status="planned", is_archived=archived, created_at=None,
         updated_at=None, author_name="Engineer", planned_blast_date=None, comment=None,
+        domain_version=0,
     )
-    event = SimpleNamespace(id="EVENT-7")
+    event = SimpleNamespace(id="BE-P-7")
     attachments = SimpleNamespace(
         list_for_owner=lambda *_args: [], counts=lambda *_args: (0, 0)
     )
-    controller = SimpleNamespace(event_for_block=lambda _id: event, attachments=attachments)
+    controller = SimpleNamespace(production_event=lambda _id: event, attachments=attachments)
     monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace())
-    monkeypatch.setattr(module, "BlastBlockRepository", lambda _factory: SimpleNamespace())
-    monkeypatch.setattr(module, "BlastBlockService", lambda *_args: SimpleNamespace(
+    monkeypatch.setattr(module, "ProductionBlastRepository", lambda _factory: SimpleNamespace())
+    monkeypatch.setattr(module, "ProductionBlastService", lambda *_args: SimpleNamespace(
         list_blocks=lambda **_kwargs: [block], get_block=lambda _id: block
     ))
-    monkeypatch.setattr(module, "AuditLogRepository", lambda _factory: SimpleNamespace(list_for_block=lambda _id: []))
+    monkeypatch.setattr(module, "AuditLogRepository", lambda _factory: SimpleNamespace(list_for_blast_event=lambda _id: []))
     monkeypatch.setattr(module, "EntityPageController", lambda *_args: controller)
     monkeypatch.setattr(module.BlockPage, "_render_engineering", lambda self, _block: None)
     context = SimpleNamespace(
@@ -302,9 +303,6 @@ def test_repeated_transient_navigation_keeps_stack_bounded():
         page = QWidget()
         page.setObjectName(kind)
         window._activate_page(page)
-        # removeWidget() is synchronous; this contract does not need to flush
-        # deferred-delete events on every iteration. Doing so makes this static
-        # lifecycle check depend on unrelated Qt objects queued by prior tests.
         assert window.page_stack.count() <= 2
     window.close()
 
