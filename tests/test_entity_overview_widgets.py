@@ -21,22 +21,29 @@ def test_operational_pages_use_shared_overview_primitives():
         assert "SquareGeometryCard" in text
         assert "OverviewKeyValueCard" in text
         assert "RecentActivityCard" in text
+        assert "RelatedEntityList" in text
+    assert "InlineAutosaveNotes" in block
+    assert "InlineAutosaveNotes" in contour
     assert "focus_geometry=geometry.plan_geometry" in block
     assert "focus_geometry=self.rev.plan_geometry" in contour
     assert "focus_geometry=rev.final_geometry_frozen" in assessment
     assert "AssessmentMatrixPreview" in assessment
 
 
-def test_shared_square_geometry_card_prefers_near_square_size():
+def test_shared_square_geometry_card_is_large_and_near_square():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.entity_overview_widgets import SquareGeometryCard
 
     app = widgets.QApplication.instance() or widgets.QApplication([])
     card = SquareGeometryCard()
     assert card.hasHeightForWidth()
-    assert card.heightForWidth(390) == 390
-    assert card.sizeHint().width() == card.sizeHint().height()
-    assert card.maximumWidth() == 440
+    assert card.heightForWidth(540) == 540
+    assert card.sizeHint().width() == card.sizeHint().height() == 540
+    assert card.minimumWidth() >= 470
+    assert card.maximumWidth() == 620
+    assert not card.plan.lines.isVisible()
+    assert not card.plan.frame_button.isVisible()
+    assert not card.plan.reimport_button.isVisible()
     card.close(); app.processEvents()
 
 
@@ -74,6 +81,26 @@ def test_header_uses_one_context_line_instead_of_duplicate_meta_cards():
     header.close(); app.processEvents()
 
 
+def test_inline_notes_requests_save_only_after_dirty_focus_out():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.entity_overview_widgets import InlineAutosaveNotes
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    notes = InlineAutosaveNotes()
+    saved = []
+    notes.save_requested.connect(saved.append)
+    notes.set_value("old", editable=True)
+    notes.editor.focus_lost.emit()
+    assert saved == []
+    notes.editor.setPlainText("new")
+    notes.editor.focus_lost.emit()
+    assert saved == ["new"]
+    notes.mark_saved("new")
+    notes.editor.focus_lost.emit()
+    assert saved == ["new"]
+    notes.close(); app.processEvents()
+
+
 def test_quick_attachment_preview_exposes_add_and_open_actions():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.entity_overview_widgets import QuickAttachmentPreview
@@ -93,7 +120,7 @@ def test_quick_attachment_preview_exposes_add_and_open_actions():
     preview.close(); app.processEvents()
 
 
-def test_assessment_matrix_preview_only_accepts_stored_indices():
+def test_assessment_matrix_preview_only_accepts_stored_indices_and_is_large():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.entity_overview_widgets import AssessmentMatrixPreview
 
@@ -104,10 +131,12 @@ def test_assessment_matrix_preview_only_accepts_stored_indices():
     assert preview.fci == pytest.approx(.58)
     assert preview.dai_threshold == pytest.approx(.65)
     assert preview.fci_threshold == pytest.approx(.60)
+    assert preview.minimumWidth() >= 300
+    assert preview.minimumHeight() >= 300
     preview.close(); app.processEvents()
 
 
-def test_assessment_overview_uses_saved_revision_results_without_scoring_call():
+def test_assessment_overview_uses_saved_results_once_and_real_related_events():
     text = Path("ui/pages/assessment_area_page.py").read_text(encoding="utf-8")
     assert "active.design_achievement_index" in text
     assert "active.face_condition_index" in text
@@ -115,10 +144,17 @@ def test_assessment_overview_uses_saved_revision_results_without_scoring_call():
     assert "calculate_revision(" not in text
     assert "photo_manager.add()" in text
     assert "document_manager.add()" in text
-    assert 'f"{tr(\'Project / Domain\')}: {self.project_name} / {self.domain_name}"' in text
+    assert "Related blast events" in text
+    assert "link.status == \"confirmed\"" in text
+    assert "self.controller.links.is_stale(link)" in text
+    assert "related_blast_event_requested" in text
+    assert '("DAI", dai)' in text
+    assert '("FCI", fci)' in text
+    assert text.count('(\"DAI\", dai)') == 1
+    assert text.count('(\"FCI\", fci)') == 1
 
 
-def test_block_overview_has_single_kpi_summary_and_qprime_stability_categories():
+def test_block_overview_uses_main_pattern_depth_and_execution_exceptions():
     page = Path("ui/pages/block_page.py").read_text(encoding="utf-8")
     assert "polygon_area_m2" in page
     assert "_qprime_and_category" in page
@@ -126,23 +162,38 @@ def test_block_overview_has_single_kpi_summary_and_qprime_stability_categories()
         assert label in page
     assert '("Blast date",' in page
     assert '("Block area",' in page
-    assert '("Bench height",' in page
+    assert '("Bench height", _fmt_number(main.average_depth_m' in page
     assert '("Stability",' in page
-    assert "EngineeringSummaryCard" in page
-    assert "GeneralInfoCard" in page
-    assert "self.recent_activity.set_entries(history_entries)" in page
+    assert "Related assessment areas" in page
+    assert 'link.status == "confirmed"' in page
+    for field in ("rejected_hole_count", "wet_hole_count", "redrilled_hole_count", "uncharged_hole_count"):
+        assert field in page
+    assert "InlineAutosaveNotes" in page
+    assert "GeneralInfoCard" not in page
     assert "Created" not in page.split("meta_values=(", 1)[1].split("),", 1)[0]
     assert "Updated" not in page.split("meta_values=(", 1)[1].split("),", 1)[0]
 
 
-def test_contour_overview_exposes_geometry_oriented_summary_without_status_duplication():
+def test_contour_overview_has_safe_metadata_and_related_assessment_access():
     text = Path("ui/pages/contour_event_page.py").read_text(encoding="utf-8")
     for label in ("Average depth", "Azimuth", "Inclination", "Spacing"):
         assert label in text
     assert "_primary_contour_group" in text
-    assert 'self._open_tab("blast_design")' in text
     assert "actual.actual_average_depth_m" in text
     assert "actual_group.spacing_m" in text
     assert '("Method",' in text
-    assert '("Technical Card",' in text
-    assert 'f"{tr(\'Project / Domain\')}: {self.project_name} / {self.domain_name}"' in text
+    assert "Related assessment areas" in text
+    assert "related_assessment_requested" in text
+    assert "update_contour_comment" in text
+    assert "self.blast_event.created_at" not in text
+    for field in ("rejected_hole_count", "wet_hole_count", "redrilled_hole_count", "uncharged_hole_count"):
+        assert field in text
+
+
+def test_main_window_wires_related_entities_into_existing_navigation():
+    text = Path("ui/main_window.py").read_text(encoding="utf-8")
+    assert "self.block_page.related_assessment_requested.connect(self._open_related_assessment)" in text
+    assert "page.related_assessment_requested.connect(self._open_related_assessment)" in text
+    assert "page.related_blast_event_requested.connect(self._open_related_blast)" in text
+    assert 'if event_type=="production"' in text
+    assert "open_contour_from_tree(event_id" in text
