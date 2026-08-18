@@ -85,3 +85,28 @@ def test_assessment_overview_uses_saved_revision_results_without_scoring_call():
     assert "calculate_revision(" not in text
     assert "photo_manager.add()" in text
     assert "document_manager.add()" in text
+
+
+def test_block_overview_uses_active_technical_card_summary_and_section_navigation():
+    page = Path("ui/pages/block_page.py").read_text(encoding="utf-8")
+    cards = Path("ui/pages/block_card_widgets.py").read_text(encoding="utf-8")
+    assert "self.compact_cards.set_revision(card.active_revision() or revision)" in page
+    assert 'group_type=="main_pattern"' in cards
+    assert "main.burden_m" in cards and "main.spacing_m" in cards
+    assert "main.average_depth_m" in cards
+    assert "actual.actual_average_depth_m" in cards
+    assert "Open section" in cards
+    assert "self.compact_cards.open_buttons[0]" in page
+    assert "self.compact_cards.open_buttons[1]" in page
+    assert "self.compact_cards.open_buttons[2]" in page
+
+
+def test_contour_overview_exposes_geometry_oriented_design_summary():
+    text = Path("ui/pages/contour_event_page.py").read_text(encoding="utf-8")
+    for label in ("Average depth", "Azimuth", "Inclination", "Average spacing", "Diameter"):
+        assert f'("{label}",' in text
+    assert "_primary_contour_group" in text
+    assert 'self._open_tab("Blast design")' in text
+    assert 'self._open_tab("Execution fact")' in text
+    assert "actual.actual_average_depth_m" in text
+    assert "actual_group.spacing_m" in text
