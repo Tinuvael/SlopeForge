@@ -57,8 +57,8 @@ def test_transient_page_lifecycle_is_bounded_and_geometry_signal_is_wired_once()
     main = source("ui/main_window.py")
     assert "removeWidget(current)" in main and "current.deleteLater()" in main
     block = source("ui/pages/block_page.py")
-    assert "self.geometry_card.reimport_requested.connect(self._reimport_current_geometry)" in block
-    assert "reimport_requested.disconnect()" not in block
+    assert "self.geometry_card.action_requested.connect(self._reimport_current_geometry)" in block
+    assert "action_requested.disconnect()" not in block
 
 
 def _app():
@@ -192,7 +192,8 @@ def _block_page(monkeypatch, *, can_edit, archived):
     attachments = SimpleNamespace(
         list_for_owner=lambda *_args: [], counts=lambda *_args: (0, 0)
     )
-    controller = SimpleNamespace(production_event=lambda _id: event, attachments=attachments)
+    state = SimpleNamespace(assessment_areas=[], evaluations=[])
+    controller = SimpleNamespace(production_event=lambda _id: event, attachments=attachments, state=state)
     monkeypatch.setattr(module, "DomainRepository", lambda _factory: SimpleNamespace())
     monkeypatch.setattr(module, "ProductionBlastRepository", lambda _factory: SimpleNamespace())
     monkeypatch.setattr(module, "ProductionBlastService", lambda *_args: SimpleNamespace(
