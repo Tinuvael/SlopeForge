@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
+from app.localization import tr
 from ui.pages.block_card_widgets import CardFrame
 from ui.pages.block_overview_widgets import (
     BlockAttachmentPreview,
@@ -10,7 +11,7 @@ from ui.pages.block_overview_widgets import (
     BlockRecentActivityCard,
     BlockRelatedEntityList,
 )
-from ui.pages.entity_overview_widgets import AssessmentMatrixPreview, EngineeringSummaryCard
+from ui.pages.entity_overview_widgets import AssessmentMatrixPreview, EngineeringSummaryCard, OverviewLinkButton
 
 
 class AssessmentAttachmentPreview(BlockAttachmentPreview):
@@ -26,9 +27,35 @@ class AssessmentRecentActivityCard(BlockRecentActivityCard):
 
 
 class AssessmentRelatedEventList(BlockRelatedEntityList):
-    """Taller linked-event list; Assessment Overview has no Notes card above the plan."""
+    """Linked-event card that may grow vertically beside the plan and state summaries."""
 
     LIST_HEIGHT = 184
+
+    def __init__(self, title: str):
+        super().__init__(title)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.list.setMinimumHeight(self.LIST_HEIGHT)
+        self.list.setMaximumHeight(16777215)
+        self.list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.empty_label.setMinimumHeight(self.LIST_HEIGHT)
+        self.empty_label.setMaximumHeight(16777215)
+        self.empty_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def set_rows(self, rows, *, empty_text="No linked entities"):
+        rows = list(rows)
+        super().set_rows(rows, empty_text=empty_text)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        if rows:
+            self.list.setMinimumHeight(self.LIST_HEIGHT)
+            self.list.setMaximumHeight(16777215)
+            self.list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            self.layout.setStretch(self.layout.indexOf(self.list), 1)
+        else:
+            self.empty_label.setMinimumHeight(self.LIST_HEIGHT)
+            self.empty_label.setMaximumHeight(16777215)
+            self.empty_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            self.layout.setStretch(self.layout.indexOf(self.empty_label), 1)
+        self.updateGeometry()
 
 
 class AssessmentCommentsCard(EngineeringSummaryCard):
@@ -53,6 +80,60 @@ class AssessmentCommentsCard(EngineeringSummaryCard):
             if widget.layout() is not None:
                 widget.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
             self.sections.setStretch(index, 1)
+
+
+class AssessmentStateSummaryCard(CardFrame):
+    """Geometry and face-condition summaries in one card with one Assessment action."""
+
+    open_requested = Signal()
+
+    def __init__(self, title="Geometry / face condition", parent=None):
+        super().__init__()
+        if parent is not None:
+            self.setParent(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        header = QHBoxLayout()
+        heading = QLabel(tr(title))
+        heading.setObjectName("CardTitle")
+        self.open_button = OverviewLinkButton("Open ›")
+        self.open_button.clicked.connect(self.open_requested)
+        header.addWidget(heading)
+        header.addStretch()
+        header.addWidget(self.open_button)
+        self.layout.addLayout(header)
+
+        self.sections = QVBoxLayout()
+        self.sections.setSpacing(6)
+        self.layout.addLayout(self.sections)
+
+    def set_sections(self, sections):
+        while self.sections.count():
+            item = self.sections.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        for index, (title, lines) in enumerate(sections):
+            section = QWidget()
+            layout = QVBoxLayout(section)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(3)
+            heading = QLabel(tr(title))
+            heading.setObjectName("EngineeringSectionTitle")
+            layout.addWidget(heading)
+            text = QLabel(
+                "  ·  ".join(str(line) for line in lines if line not in (None, ""))
+                or tr("No data yet")
+            )
+            text.setWordWrap(True)
+            text.setObjectName("EngineeringSummaryText")
+            layout.addWidget(text)
+            self.sections.addWidget(section)
+            if index < len(sections) - 1:
+                divider = QFrame()
+                divider.setFrameShape(QFrame.Shape.HLine)
+                divider.setObjectName("OverviewDivider")
+                self.sections.addWidget(divider)
 
 
 class CompactAssessmentMatrixPreview(AssessmentMatrixPreview):
