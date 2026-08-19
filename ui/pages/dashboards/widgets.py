@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QProgressBar,
+    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -35,6 +36,14 @@ DASHBOARD_METRIC_STYLE = (
     "QFrame#DashboardMetricCard{background:#ffffff;border:1px solid #d7dde6;"
     "border-radius:7px;}"
 )
+DASHBOARD_HEADER_STYLE = (
+    "QFrame#DashboardHeaderCard{background:#ffffff;border:1px solid #d7dde6;"
+    "border-radius:7px;}"
+)
+DASHBOARD_ROW_STYLE = (
+    "QWidget#DashboardSummaryRow,QWidget#ProjectLinesDatasetRow{"
+    "background:#ffffff;border:1px solid #d7dde6;border-radius:5px;}"
+)
 
 QuadrantPresentation = AssessmentResultPresentation
 
@@ -53,6 +62,38 @@ def format_dashboard_datetime(value) -> str:
     if isinstance(value, date):
         return value.strftime("%d.%m.%Y")
     return "—"
+
+
+class DashboardEntityHeader(CardFrame):
+    """Wide Project/Domain header matching the operational entity card language."""
+
+    def __init__(self, title: str, subtitle: str, parent=None):
+        super().__init__()
+        if parent is not None:
+            self.setParent(parent)
+        self.setObjectName("DashboardHeaderCard")
+        self.setStyleSheet(DASHBOARD_HEADER_STYLE)
+        self.setMinimumHeight(58)
+        self.setMaximumHeight(72)
+        self.layout.setContentsMargins(12, 8, 12, 8)
+        self.layout.setSpacing(2)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.title_label = QLabel(str(title))
+        self.title_label.setObjectName("EntityTitle")
+        self.title_label.setStyleSheet("font-size:22px;font-weight:700;color:#0f172a;")
+        self.edit_button = QPushButton(tr("Edit"))
+        self.edit_button.setProperty("role", "secondary")
+        self.edit_button.setIcon(ui_icon("edit", "blue"))
+        row.addWidget(self.title_label)
+        row.addStretch()
+        row.addWidget(self.edit_button)
+        self.layout.addLayout(row)
+
+        self.subtitle_label = QLabel(tr(subtitle))
+        self.subtitle_label.setObjectName("MutedText")
+        self.layout.addWidget(self.subtitle_label)
 
 
 class MetricCard(CardFrame):
@@ -222,10 +263,7 @@ class CompactSummaryList(DashboardCard):
             holder.setFixedHeight(self.ROW_HEIGHT - 2)
             holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             holder.setCursor(Qt.CursorShape.PointingHandCursor)
-            holder.setStyleSheet(
-                "QWidget#DashboardSummaryRow{background:#fbfcfd;"
-                "border:1px solid #e2e6ec;border-radius:5px;}"
-            )
+            holder.setStyleSheet(DASHBOARD_ROW_STYLE)
             holder.clicked.connect(lambda current_key=key: self.activated.emit(current_key))
             layout = QHBoxLayout(holder)
             layout.setContentsMargins(7, 4, 8, 4)
@@ -372,10 +410,7 @@ class ProjectLinesCard(DashboardCard):
             holder.setObjectName("ProjectLinesDatasetRow")
             holder.setFixedHeight(self.ROW_HEIGHT - 2)
             holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            holder.setStyleSheet(
-                "QWidget#ProjectLinesDatasetRow{background:#fbfcfd;"
-                "border:1px solid #e2e6ec;border-radius:5px;}"
-            )
+            holder.setStyleSheet(DASHBOARD_ROW_STYLE)
             layout = QHBoxLayout(holder)
             layout.setContentsMargins(8, 4, 9, 4)
             layout.setSpacing(8)
@@ -413,6 +448,7 @@ class ProjectLinesCard(DashboardCard):
 
 class DashboardRecentActivityCard(DashboardCard):
     ROW_HEIGHT = 30
+    META_WIDTH = 190
 
     def __init__(self, parent=None):
         super().__init__("Recent activity", parent)
@@ -463,8 +499,8 @@ class DashboardRecentActivityCard(DashboardCard):
                 "QWidget#DashboardActivityRow{border-bottom:1px solid #eef1f5;}"
             )
             layout = QHBoxLayout(holder)
-            layout.setContentsMargins(2, 0, 2, 0)
-            layout.setSpacing(10)
+            layout.setContentsMargins(2, 0, 12, 0)
+            layout.setSpacing(8)
             title = QLabel(title_text)
             title.setObjectName("ActivityTitle")
             title.setStyleSheet("font-weight:500;color:#334155;")
@@ -475,7 +511,9 @@ class DashboardRecentActivityCard(DashboardCard):
             meta_text = f"{author}  ·  {stamp_text}" if author else stamp_text
             meta = QLabel(meta_text)
             meta.setObjectName("MutedText")
+            meta.setFixedWidth(self.META_WIDTH)
             meta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            meta.setToolTip(meta_text)
             layout.addWidget(title, 1)
             layout.addWidget(meta)
             self.list.addItem(item)
