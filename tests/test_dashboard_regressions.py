@@ -42,16 +42,20 @@ def test_map_geometry_decoder_supports_persisted_plan_types():
     assert _geometry_points({}) == ()
 
 
-def test_plan_overview_is_read_only_and_actions_live_in_card_header():
+def test_plan_overview_is_read_only_and_actions_live_in_single_card_header():
     plan = source("ui/pages/dashboards/plan_overview.py")
     project = source("ui/pages/dashboards/site_dashboard.py")
+    domain = source("ui/pages/dashboards/domain_dashboard.py")
     assert 'QCheckBox(tr("Project Lines"))' in plan
     assert 'OverviewLinkButton("Center")' in plan
     assert "primary_action_requested = Signal()" in plan
     assert "secondary_action_requested = Signal()" in plan
+    assert "self.header.addWidget(self.lines)" in plan
+    assert "self.layout.addLayout(self.controls)" not in plan
     assert 'primary_action_label="Project Lines"' in project
-    assert 'tr("Import Project Lines")' in project
-    assert 'tr("Update Project Lines")' in project
+    assert 'tr("Import lines")' in project
+    assert 'tr("Update lines")' in project
+    assert 'add_header_action("Clear")' not in domain
     for forbidden in ("edit_vertices", "setFlag", "ItemIsMovable", "ItemIsSelectable"):
         assert forbidden not in plan
 
