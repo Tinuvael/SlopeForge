@@ -46,6 +46,15 @@ class ActivityRow:
 
 
 @dataclass(frozen=True)
+class TrendRow:
+    """One stored completed assessment revision for an all-time trend."""
+
+    assessment_date: date
+    dai: float | None
+    fci: float | None
+
+
+@dataclass(frozen=True)
 class MapGeometry:
     entity_id: int | str
     points: tuple[tuple[float, float], ...]
@@ -125,9 +134,13 @@ class DomainDashboardSnapshot:
     domain_geometries: tuple[DomainMapGeometry, ...] = ()
     geometry_source_kind: str | None = None
     geometry_source_file_name: str | None = None
+    trend_history: list[TrendRow] = field(default_factory=list)
 
     @property
     def trend_rows(self):
+        if self.trend_history:
+            return self.trend_history
+        # Keeps lightweight/in-memory snapshots useful in tests and previews.
         return [
             row
             for row in self.areas
@@ -399,6 +412,48 @@ class DashboardRepository:
                 average("fci"),
             )
 
+            historical_revisions = list(
+                session.scalars(
+                    select(a.AssessmentAreaEvaluationRevision)
+                    .join(
+                        a.AssessmentAreaEvaluation,
+                        a.AssessmentAreaEvaluationRevision.evaluation_id
+                        == a.AssessmentAreaEvaluation.id,
+                    )
+                    .join(
+                        a.AssessmentArea,
+                        a.AssessmentAreaEvaluation.assessment_area_id
+                        == a.AssessmentArea.id,
+                    )
+                    .where(
+                        a.AssessmentArea.domain_id == domain_id,
+                        a.AssessmentArea.is_archived.is_(False),
+                        a.AssessmentAreaEvaluation.is_archived.is_(False),
+                        a.AssessmentAreaEvaluationRevision.status == "completed",
+                        a.AssessmentAreaEvaluationRevision.assessment_date.is_not(None),
+                    )
+                    .order_by(
+                        a.AssessmentAreaEvaluationRevision.assessment_date,
+                        a.AssessmentAreaEvaluationRevision.created_at,
+                        a.AssessmentAreaEvaluationRevision.id,
+                    )
+                )
+            )
+            trend_history = [
+                TrendRow(
+                    revision.assessment_date,
+                    float(revision.design_achievement_index)
+                    if revision.design_achievement_index is not None
+                    else None,
+                    float(revision.face_condition_index)
+                    if revision.face_condition_index is not None
+                    else None,
+                )
+                for revision in historical_revisions
+                if revision.design_achievement_index is not None
+                or revision.face_condition_index is not None
+            ]
+
             all_events = production + contours
             states = blast_workflow_states(session, all_events)
             blasts = [
@@ -456,8 +511,7 @@ class DashboardRepository:
                             if evaluation.status == "completed"
                             else "Assessment draft saved",
                             evaluation.created_at,
-                            revision_actor.get(evaluation.logical_id)
-                            or area_latest_actor.get(area_id, ""),
+                            revision_actor.get(evaluation.logical_id, ""),
                         )
                     )
             for item in production:
@@ -543,19 +597,20 @@ class DashboardRepository:
                 domain_id
             )
             return DomainDashboardSnapshot(
-                summary,
-                areas,
-                blasts,
-                intervals,
-                quadrants,
-                recent,
-                project_lines,
-                tuple(production_geometries),
-                tuple(contour_geometries),
-                tuple(assessment_geometries),
-                domain_geometries,
-                source_kind,
-                source_file_name,
+                domain=summary,
+                areas=areas,
+                blasts=blasts,
+                intervals=intervals,
+                quadrants=quadrants,
+                recent=recent,
+                project_lines=project_lines,
+                production_geometries=tuple(production_geometries),
+                contour_geometries=tuple(contour_geometries),
+                assessment_geometries=tuple(assessment_geometries),
+                domain_geometries=domain_geometries,
+                geometry_source_kind=source_kind,
+                geometry_source_file_name=source_file_name,
+                trend_history=trend_history,
             )
 
     def site_snapshot(self, site_id: int) -> SiteDashboardSnapshot:
