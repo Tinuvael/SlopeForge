@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.icons.ui.ui_icons import ui_icon
 from app.localization import tr
 from ui.dialogs.entity_attachment_dialog import PhotoViewer
 from ui.pages.block_card_widgets import CardFrame
@@ -77,6 +78,7 @@ class EntityHeaderWidget(CardFrame):
         self.archive.hide()
         self.edit_button = QPushButton(tr("Edit"))
         self.edit_button.setProperty("role", "secondary")
+        self.edit_button.setIcon(ui_icon("edit", "blue"))
         top.addWidget(self.title)
         top.addWidget(self.status)
         top.addWidget(self.archive)
