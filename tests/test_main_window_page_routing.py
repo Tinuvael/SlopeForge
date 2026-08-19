@@ -53,10 +53,12 @@ def test_block_creation_reuses_blast_event_dialog_and_single_event_identity():
         assert forbidden not in block
 
 def test_site_dashboard_owns_project_lines_management():
-    pages=source("ui/pages/dashboards/site_dashboard.py")
-    assert "class SiteDashboardPage" in pages
-    assert "Import / Update Project Lines" in pages
-    assert "ProjectLinesRepository" in pages
+    page=source("ui/pages/dashboards/site_dashboard.py")
+    assert "class SiteDashboardPage" in page
+    assert 'primary_action_label="Import / Update Project Lines"' in page
+    assert "ProjectLinesCard" in page
+    assert "ProjectLinesRepository" in page
+    assert "QTabWidget" not in page and "QScrollArea" not in page
 
 def test_archive_button_and_production_event_service_are_connected():
     assert "archive_button" in source("ui/header.py")
