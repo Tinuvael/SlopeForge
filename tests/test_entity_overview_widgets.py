@@ -19,7 +19,7 @@ def test_operational_pages_use_shared_overview_primitives():
     for text in (block, contour, assessment):
         assert "EntityHeaderWidget" in text
         assert "OverviewKeyValueCard" in text
-        assert "RecentActivityCard" in text
+        assert "RecentActivityCard" in text or "BlockRecentActivityCard" in text
     for text in (contour, assessment):
         assert "QuickAttachmentPreview" in text
         assert "SquareGeometryCard" in text
@@ -27,7 +27,7 @@ def test_operational_pages_use_shared_overview_primitives():
     assert "BlockAttachmentPreview" in block
     assert "BlockGeometryCard" in block
     assert "BlockRelatedEntityList" in block
-    assert "InlineAutosaveNotes" in block
+    assert "BlockNotesCard" in block
     assert "InlineAutosaveNotes" in contour
     assert "focus_geometry=geometry.plan_geometry" in block
     assert "focus_geometry=self.rev.plan_geometry" in contour
@@ -242,7 +242,7 @@ def test_block_overview_uses_main_pattern_depth_and_execution_exceptions():
     assert 'link.status == "confirmed"' in page
     for field in ("rejected_hole_count", "wet_hole_count", "redrilled_hole_count", "uncharged_hole_count"):
         assert field in page
-    assert "InlineAutosaveNotes" in page
+    assert "BlockNotesCard" in page
     assert "GeneralInfoCard" not in page
     assert "Created" not in page.split("meta_values=(", 1)[1].split("),", 1)[0]
     assert "Updated" not in page.split("meta_values=(", 1)[1].split("),", 1)[0]
@@ -258,6 +258,7 @@ def test_block_overview_refinements_keep_preview_and_navigation_distinct():
     assert 'BlockAttachmentPreview("Photos", "photo", max_items=6)' in page
     assert 'BlockAttachmentPreview("Documents", "document", max_items=7)' in page
     assert 'BlockGeometryCard("Plan / geometry", action_label="Reimport")' in page
+    assert 'BlockNotesCard("Notes")' in page
     assert "set_visible_item_limit(photo_limit)" in page
     assert "set_visible_item_limit(document_limit)" in page
     assert "entity_activated.connect(self._preview_related_area)" in page
