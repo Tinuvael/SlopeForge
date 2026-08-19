@@ -154,6 +154,11 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Blast cracks": "Взрывные трещины",
     "No face-condition data yet": "Данных о состоянии борта пока нет",
     "Suggested": "Предложено",
+    "Explosive": "ВВ",
+    "No blast-design data yet": "Данных проекта БВР пока нет",
+    "No execution data yet": "Фактических данных пока нет",
+    "No geomechanics data yet": "Геомеханических данных пока нет",
+    "Open section": "Открыть раздел",
 }
 
 # Qt asks the installed translator for platform-theme captions in contexts such
