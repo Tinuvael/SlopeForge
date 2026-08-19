@@ -24,6 +24,7 @@ from repositories.domain_repository import DomainRepository
 from repositories.entity_history_repository import EntityHistoryRepository
 from ui.pages.contour_overview_widgets import (
     ContourAttachmentPreview,
+    ContourEngineeringNotesCard,
     ContourGeometryCard,
     ContourNotesCard,
     ContourRecentActivityCard,
@@ -355,11 +356,7 @@ class ContourEventPage(QWidget):
         bottom = QHBoxLayout()
         bottom.setSpacing(8)
         bottom.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.engineering_notes = EngineeringSummaryCard("Engineering notes")
-        self.engineering_notes.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
-        )
+        self.engineering_notes = ContourEngineeringNotesCard("Engineering notes")
         self.engineering_notes.section_open_requested.connect(self._open_tab)
         self.recent_activity = ContourRecentActivityCard()
         self.recent_activity.setSizePolicy(
@@ -367,7 +364,7 @@ class ContourEventPage(QWidget):
             QSizePolicy.Policy.Fixed,
         )
         self.recent_activity.open_history_requested.connect(lambda: self.tabs.setCurrentWidget(self.history))
-        bottom.addWidget(self.engineering_notes, 3, Qt.AlignmentFlag.AlignTop)
+        bottom.addWidget(self.engineering_notes, 3)
         bottom.addWidget(self.recent_activity, 2, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(bottom)
         self.tabs.addTab(page, tr("General information"))
