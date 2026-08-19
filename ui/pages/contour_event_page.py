@@ -361,11 +361,11 @@ class ContourEventPage(QWidget):
         self.recent_activity = ContourRecentActivityCard()
         self.recent_activity.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Preferred,
         )
         self.recent_activity.open_history_requested.connect(lambda: self.tabs.setCurrentWidget(self.history))
         bottom.addWidget(self.engineering_notes, 3)
-        bottom.addWidget(self.recent_activity, 2, Qt.AlignmentFlag.AlignTop)
+        bottom.addWidget(self.recent_activity, 2)
         layout.addLayout(bottom)
         self.tabs.addTab(page, tr("General information"))
 
