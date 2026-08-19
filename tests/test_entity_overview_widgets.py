@@ -223,7 +223,9 @@ def test_assessment_overview_uses_saved_results_once_and_real_related_events():
     assert "photo_manager.add()" in text
     assert "document_manager.add()" in text
     assert "Related blast events" in text
-    assert 'item.status == "confirmed" and item.blast_event_id == event_id' in text
+    assert 'item.status != "excluded" and item.blast_event_id == event_id' in text
+    assert 'visible_links = [x for x in self.area.links_for_revision() if x.status != "excluded"]' in text
+    assert 'if link.status == "suggested"' in text
     assert "self.controller.links.is_stale(link)" in text
     assert "self.controller.links.linked_revision(event, link)" in text
     assert "related_blast_event_requested" in text
