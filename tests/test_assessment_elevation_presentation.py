@@ -11,8 +11,10 @@ def test_assessment_interval_rounds_for_display_only():
     assert (minimum, maximum) == (630.0, 655.363961338486)
 
 
-def test_normal_area_page_uses_one_formatter_in_all_interval_locations():
+def test_normal_area_page_uses_canonical_formatter_for_displayed_interval():
     source = Path("ui/pages/assessment_area_page.py").read_text(encoding="utf-8")
-    assert source.count("format_assessment_elevation_interval(") == 3
+    assert source.count("format_assessment_elevation_interval(") >= 1
+    assert "interval = format_assessment_elevation_interval(rev.min_elevation, rev.max_elevation)" in source
+    assert 'f"{tr(\'Interval\')}: {interval}"' in source
     assert "_value(rev.min_elevation)" not in source
     assert "_value(rev.max_elevation)" not in source
