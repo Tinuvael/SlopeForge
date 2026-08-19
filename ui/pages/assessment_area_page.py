@@ -477,7 +477,7 @@ class AssessmentAreaPage(QWidget):
         link = next(
             (
                 item for item in self.area.links_for_revision()
-                if item.status == "confirmed" and item.blast_event_id == event_id
+                if item.status != "excluded" and item.blast_event_id == event_id
             ),
             None,
         )
@@ -569,7 +569,7 @@ class AssessmentAreaPage(QWidget):
         self._related_event_preview_id = None
         rev = self.area.active_geometry_revision()
         active = self.evaluation.active_revision()
-        confirmed = [x for x in self.area.links_for_revision() if x.status == "confirmed"]
+        visible_links = [x for x in self.area.links_for_revision() if x.status != "excluded"]
         progress = assessment_progress_for(self.area, self.evaluation)
         status = tr(ASSESSMENT_PROGRESS_LABELS[progress])
         interval = format_assessment_elevation_interval(rev.min_elevation, rev.max_elevation)
@@ -651,14 +651,17 @@ class AssessmentAreaPage(QWidget):
         self.matrix_basis_text.setText(f"{basis} · {_value(quadrant)}")
 
         related_rows = []
-        for link in confirmed:
+        for link in visible_links:
             event = self.controller.links.event(link.blast_event_id)
             workflow = blast_workflow_for(self.controller.state, event)
             title = f"{tr('Block')} {event.name}" if event.event_type == "production" else f"{tr('Contour blast')} {event.name}"
+            subtitle = f"{event.id} · {tr('Horizon')} {_value(f'{event.elevation:g}')} m"
+            if link.status == "suggested":
+                subtitle += f" · {tr('Suggested')}"
             related_rows.append(RelatedEntityRow(
                 event.id,
                 title,
-                f"{event.id} · {tr('Horizon')} {_value(f'{event.elevation:g}')} m",
+                subtitle,
                 tr(WORKFLOW_LABELS[workflow]),
                 getattr(workflow, "value", workflow),
                 self.controller.links.is_stale(link),
