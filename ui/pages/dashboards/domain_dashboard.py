@@ -293,9 +293,7 @@ class DomainDashboardPage(QWidget):
         editable = self._can_edit()
         self.plan_card.set_actions_enabled(editable)
         if self.plan_card.primary_action is not None:
-            self.plan_card.primary_action.setText(
-                tr("Import") if current else tr("Import")
-            )
+            self.plan_card.primary_action.setText(tr("Import"))
         if self.plan_card.secondary_action is not None:
             self.plan_card.secondary_action.setText(
                 tr("Edit boundaries") if current else tr("Draw geometry")
