@@ -168,10 +168,12 @@ class CompactSummaryList(DashboardCard):
         *,
         visible_rows: int = 3,
         show_go_to: bool = False,
+        fill_available: bool = False,
     ):
         super().__init__(title, parent)
         self.visible_rows = max(1, int(visible_rows))
         self.show_go_to = bool(show_go_to)
+        self.fill_available = bool(fill_available)
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(4)
@@ -182,7 +184,12 @@ class CompactSummaryList(DashboardCard):
             "QListWidget::item{background:transparent;border:0;}"
             "QListWidget::item:selected{background:transparent;}"
         )
-        self.layout.addWidget(self.list, 1)
+        if self.fill_available:
+            self.list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            self.layout.addWidget(self.list, 1)
+        else:
+            self.layout.addWidget(self.list, 0, Qt.AlignmentFlag.AlignTop)
+            self.layout.addStretch(1)
         self.set_rows([])
 
     def clear_selection(self):
@@ -192,9 +199,13 @@ class CompactSummaryList(DashboardCard):
     def set_rows(self, rows: list[SummaryRow], *, empty_text="No data yet"):
         self.list.clear()
         rows = list(rows)
-        visible_height = self.ROW_HEIGHT * min(max(1, len(rows)), self.visible_rows) + 4
-        self.list.setMinimumHeight(visible_height)
-        self.list.setMaximumHeight(self.ROW_HEIGHT * self.visible_rows + 4)
+        if self.fill_available:
+            self.list.setMinimumHeight(self.ROW_HEIGHT + 4)
+            self.list.setMaximumHeight(16777215)
+        else:
+            visible_height = self.ROW_HEIGHT * min(max(1, len(rows)), self.visible_rows) + 4
+            self.list.setMinimumHeight(visible_height)
+            self.list.setMaximumHeight(self.ROW_HEIGHT * self.visible_rows + 4)
         if not rows:
             item = QListWidgetItem(tr(empty_text))
             item.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -401,55 +412,74 @@ class ProjectLinesCard(DashboardCard):
 
 
 class DashboardRecentActivityCard(DashboardCard):
-    SLOT_COUNT = 4
-    SLOT_HEIGHT = 29
+    ROW_HEIGHT = 30
 
     def __init__(self, parent=None):
         super().__init__("Recent activity", parent)
         self.setMinimumHeight(142)
-        self.rows = QVBoxLayout()
-        self.rows.setContentsMargins(0, 0, 0, 0)
-        self.rows.setSpacing(0)
-        self.layout.addLayout(self.rows)
+        self.list = QListWidget()
+        self.list.setFrameShape(QFrame.Shape.NoFrame)
+        self.list.setSpacing(0)
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.list.setStyleSheet(
+            "QListWidget{background:transparent;border:0;}"
+            "QListWidget::item{background:transparent;border:0;}"
+        )
+        self.layout.addWidget(self.list, 1)
+
+    @staticmethod
+    def _entry_parts(entry):
+        if hasattr(entry, "changed_at"):
+            entity_type = tr(str(getattr(entry, "entity_type", "")))
+            entity_name = str(getattr(entry, "entity_name", "") or "")
+            action = tr(str(getattr(entry, "action", "") or ""))
+            title = " ".join(part for part in (entity_type, entity_name) if part)
+            if action:
+                title = f"{title}  ·  {action}" if title else action
+            return title, getattr(entry, "changed_at", None), str(getattr(entry, "actor", "") or "")
+        name, changed = entry[:2]
+        author = str(entry[2] or "") if len(entry) > 2 else ""
+        return str(name), changed, author
 
     def set_entries(self, entries):
-        while self.rows.count():
-            item = self.rows.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        visible = list(entries[: self.SLOT_COUNT])
-        for index in range(self.SLOT_COUNT):
-            slot = QWidget()
-            slot.setObjectName("DashboardActivityRow")
-            slot.setFixedHeight(self.SLOT_HEIGHT)
-            slot.setStyleSheet(
+        self.list.clear()
+        visible = list(entries[:10])
+        if not visible:
+            item = QListWidgetItem(tr("No recent activity"))
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            item.setSizeHint(QSize(0, self.ROW_HEIGHT))
+            self.list.addItem(item)
+            return
+        for entry in visible:
+            title_text, changed, author = self._entry_parts(entry)
+            item = QListWidgetItem()
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            item.setSizeHint(QSize(0, self.ROW_HEIGHT))
+            holder = QWidget()
+            holder.setObjectName("DashboardActivityRow")
+            holder.setFixedHeight(self.ROW_HEIGHT - 1)
+            holder.setStyleSheet(
                 "QWidget#DashboardActivityRow{border-bottom:1px solid #eef1f5;}"
             )
-            layout = QHBoxLayout(slot)
+            layout = QHBoxLayout(holder)
             layout.setContentsMargins(2, 0, 2, 0)
             layout.setSpacing(10)
-            if index < len(visible):
-                entry = visible[index]
-                name, changed = entry[:2]
-                author = str(entry[2] or "") if len(entry) > 2 else ""
-                title = QLabel(str(name))
-                title.setObjectName("ActivityTitle")
-                title.setStyleSheet("font-weight:500;color:#334155;")
-                title.setMinimumWidth(0)
-                title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-                stamp_text = format_dashboard_datetime(changed)
-                meta_text = f"{author}  ·  {stamp_text}" if author else stamp_text
-                meta = QLabel(meta_text)
-                meta.setObjectName("MutedText")
-                meta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                layout.addWidget(title, 1)
-                layout.addWidget(meta)
-            elif index == 0 and not visible:
-                empty = QLabel(tr("No recent activity"))
-                empty.setObjectName("MutedText")
-                layout.addWidget(empty)
-                layout.addStretch()
-            self.rows.addWidget(slot)
+            title = QLabel(title_text)
+            title.setObjectName("ActivityTitle")
+            title.setStyleSheet("font-weight:500;color:#334155;")
+            title.setMinimumWidth(0)
+            title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            title.setToolTip(title_text)
+            stamp_text = format_dashboard_datetime(changed)
+            meta_text = f"{author}  ·  {stamp_text}" if author else stamp_text
+            meta = QLabel(meta_text)
+            meta.setObjectName("MutedText")
+            meta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            layout.addWidget(title, 1)
+            layout.addWidget(meta)
+            self.list.addItem(item)
+            self.list.setItemWidget(item, holder)
 
 
 def section(title, child):
