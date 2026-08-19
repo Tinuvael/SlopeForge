@@ -40,7 +40,7 @@ class DashboardPlanOverviewWidget(QWidget):
             "QGraphicsView{border:1px solid #e4e8ee;border-radius:5px;background:#fbfcfd;}"
         )
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.view.setMinimumHeight(235)
+        self.view.setMinimumHeight(245)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -202,10 +202,10 @@ class DashboardPlanCard(DashboardCard):
     ):
         super().__init__(title, parent)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        self.setMinimumWidth(460)
-        self.setMaximumWidth(620)
-        self.setMinimumHeight(300)
-        self.setMaximumHeight(360)
+        self.setMinimumWidth(440)
+        self.setMaximumWidth(560)
+        self.setMinimumHeight(310)
+        self.setMaximumHeight(370)
 
         self.lines = QCheckBox(tr("Project Lines"))
         self.lines.setChecked(True)
@@ -234,10 +234,10 @@ class DashboardPlanCard(DashboardCard):
         return True
 
     def heightForWidth(self, width):
-        return max(300, min(360, int(width * 0.62)))
+        return max(310, min(370, int(width * 0.69)))
 
     def sizeHint(self):
-        return QSize(540, 335)
+        return QSize(510, 350)
 
     def set_snapshot(self, snapshot):
         self.plan.set_snapshot(snapshot)
