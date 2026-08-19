@@ -114,17 +114,19 @@ class SiteDashboardPage(QWidget):
         right_layout.setSpacing(9)
 
         self.result_card = DashboardCard("Assessment result distribution")
-        self.result_card.setMinimumHeight(245)
+        self.result_card.setMinimumHeight(210)
+        self.result_card.setMaximumHeight(225)
         self.result_chart = CompactChart({}, "donut")
         self.result_card.layout.addWidget(self.result_chart, 1)
-        right_layout.addWidget(self.result_card, 1)
+        right_layout.addWidget(self.result_card)
 
         self.attention_card = CompactSummaryList(
             "Attention required", visible_rows=2, show_go_to=True
         )
+        self.attention_card.setMinimumHeight(160)
         self.attention_card.activated.connect(self._filter_attention_area)
         self.attention_card.go_to_requested.connect(self._open_attention_area)
-        right_layout.addWidget(self.attention_card)
+        right_layout.addWidget(self.attention_card, 1)
         workspace.addWidget(right_top, 0, 1)
 
         self.domain_summary = CompactSummaryList(
@@ -257,12 +259,11 @@ class SiteDashboardPage(QWidget):
         self.plan_card.set_snapshot(self.snapshot)
         active = self.snapshot.active_dataset
         if active is None:
-            self.plan_card.set_subtitle(tr("No Project Lines loaded"))
-            action_label = tr("Import Project Lines")
+            self.plan_card.set_subtitle(tr("No Project Lines"))
+            action_label = tr("Import lines")
         else:
-            imported = active.imported_at.strftime("%d.%m.%Y") if active.imported_at else "—"
-            self.plan_card.set_subtitle(f"{active.name} · {imported}")
-            action_label = tr("Update Project Lines")
+            self.plan_card.set_subtitle(str(active.name))
+            action_label = tr("Update lines")
         if self.plan_card.primary_action is not None:
             self.plan_card.primary_action.setText(action_label)
         editable = self._can_edit()
