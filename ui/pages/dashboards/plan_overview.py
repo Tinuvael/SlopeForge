@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QGraphicsPathItem,
     QGraphicsScene,
     QGraphicsView,
+    QHBoxLayout,
     QLabel,
     QSizePolicy,
     QVBoxLayout,
@@ -204,40 +205,51 @@ class DashboardPlanCard(DashboardCard):
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.setMinimumWidth(440)
         self.setMaximumWidth(560)
-        self.setMinimumHeight(310)
-        self.setMaximumHeight(370)
+        self.setMinimumHeight(325)
+        self.setMaximumHeight(385)
+
+        self.controls = QHBoxLayout()
+        self.controls.setContentsMargins(0, 0, 0, 0)
+        self.controls.setSpacing(6)
+        self.controls.addStretch()
 
         self.lines = QCheckBox(tr("Project Lines"))
         self.lines.setChecked(True)
-        self.header.addWidget(self.lines)
+        self.controls.addWidget(self.lines)
         self.center_button = OverviewLinkButton("Center")
-        self.header.addWidget(self.center_button)
+        self.controls.addWidget(self.center_button)
 
         self.primary_action = None
         if primary_action_label:
             self.primary_action = OverviewLinkButton(primary_action_label)
             self.primary_action.clicked.connect(self.primary_action_requested)
-            self.header.addWidget(self.primary_action)
+            self.controls.addWidget(self.primary_action)
 
         self.secondary_action = None
         if secondary_action_label:
             self.secondary_action = OverviewLinkButton(secondary_action_label)
             self.secondary_action.clicked.connect(self.secondary_action_requested)
-            self.header.addWidget(self.secondary_action)
+            self.controls.addWidget(self.secondary_action)
 
+        self.layout.addLayout(self.controls)
         self.plan = DashboardPlanOverviewWidget(snapshot, self)
         self.layout.addWidget(self.plan, 1)
         self.lines.toggled.connect(self.plan.set_project_lines_visible)
         self.center_button.clicked.connect(self.plan.fit_assessments)
 
+    def add_header_action(self, text: str) -> OverviewLinkButton:
+        button = OverviewLinkButton(text)
+        self.controls.addWidget(button)
+        return button
+
     def hasHeightForWidth(self):
         return True
 
     def heightForWidth(self, width):
-        return max(310, min(370, int(width * 0.69)))
+        return max(325, min(385, int(width * 0.72)))
 
     def sizeHint(self):
-        return QSize(510, 350)
+        return QSize(510, 365)
 
     def set_snapshot(self, snapshot):
         self.plan.set_snapshot(snapshot)
