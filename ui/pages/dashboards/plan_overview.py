@@ -209,9 +209,19 @@ class DashboardPlanOverviewWidget(QWidget):
         super().showEvent(event)
         self._initial_fit_pending = True
         QTimer.singleShot(0, self._fit_initial_view)
+        QTimer.singleShot(60, self._fit_initial_view)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._initial_fit_pending:
+            QTimer.singleShot(0, self._fit_initial_view)
 
     def _fit_initial_view(self):
         if not self._initial_fit_pending or not self.isVisible():
+            return
+        viewport = self.view.viewport().size()
+        if viewport.width() < 50 or viewport.height() < 50:
+            QTimer.singleShot(30, self._fit_initial_view)
             return
         self.fit_assessments()
         self._initial_fit_pending = False
