@@ -7,16 +7,12 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
-    QHBoxLayout,
-    QLabel,
     QMessageBox,
-    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from app.icons.ui.ui_icons import ui_icon
 from app.localization import tr
 from app.use_case_factory import create_rename_domain_use_case
 from application.use_cases.rename_domain import RenameDomainCommand
@@ -34,6 +30,7 @@ from .plan_overview import DashboardPlanCard
 from .widgets import (
     CompactSummaryList,
     DashboardCard,
+    DashboardEntityHeader,
     DashboardRecentActivityCard,
     MetricCard,
     SummaryRow,
@@ -66,24 +63,12 @@ class DomainDashboardPage(QWidget):
         root.setContentsMargins(14, 12, 14, 12)
         root.setSpacing(9)
 
-        header = QHBoxLayout()
-        header.setSpacing(8)
-        self.title_label = QLabel(name or domain.name)
-        self.title_label.setObjectName("EntityTitle")
-        self.title_label.setStyleSheet("font-size:22px;font-weight:700;color:#0f172a;")
-        self.edit_button = QPushButton(tr("Edit"))
-        self.edit_button.setProperty("role", "secondary")
-        self.edit_button.setIcon(ui_icon("edit", "blue"))
+        self.dashboard_header = DashboardEntityHeader(name or domain.name, "Domain overview")
+        self.title_label = self.dashboard_header.title_label
+        self.edit_button = self.dashboard_header.edit_button
         self.edit_button.setEnabled(self._can_edit())
         self.edit_button.clicked.connect(self.edit_domain)
-        header.addWidget(self.title_label)
-        header.addStretch()
-        header.addWidget(self.edit_button)
-        root.addLayout(header)
-
-        subtitle = QLabel(tr("Domain overview"))
-        subtitle.setObjectName("MutedText")
-        root.addWidget(subtitle)
+        root.addWidget(self.dashboard_header)
 
         self.metrics_host = QWidget()
         self.metrics_layout = QGridLayout(self.metrics_host)
