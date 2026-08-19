@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import Signal
@@ -22,6 +23,7 @@ from domain.project.domain_geometry import build_domain_polygons
 from infrastructure.geometry_import.lines import import_line_geometry
 from repositories.dashboard_repository import DashboardRepository
 from repositories.domain_geometry_repository import DomainGeometryRepository
+from ui.assessment_result_presentation import assessment_result_presentation
 from ui.dialogs.domain_geometry_editor import DomainGeometryEditorDialog
 from ui.dialogs.rename_entity_dialog import RenameEntityDialog
 from ui.presentation_labels import domain_message
@@ -29,6 +31,7 @@ from ui.presentation_labels import domain_message
 from .charts import CompactChart
 from .plan_overview import DashboardPlanCard
 from .widgets import (
+    BlastActivityCard,
     CompactSummaryList,
     DashboardCard,
     DashboardRecentActivityCard,
@@ -90,10 +93,11 @@ class DomainDashboardPage(QWidget):
         workspace.setContentsMargins(0, 0, 0, 0)
         workspace.setHorizontalSpacing(8)
         workspace.setVerticalSpacing(8)
-        workspace.setColumnStretch(0, 7)
-        workspace.setColumnStretch(1, 3)
-        workspace.setRowStretch(0, 5)
+        workspace.setColumnStretch(0, 6)
+        workspace.setColumnStretch(1, 4)
+        workspace.setRowStretch(0, 4)
         workspace.setRowStretch(1, 2)
+        workspace.setRowStretch(2, 2)
         root.addLayout(workspace, 1)
 
         self.plan_card = DashboardPlanCard(
@@ -117,12 +121,27 @@ class DomainDashboardPage(QWidget):
         self.result_card.layout.addWidget(self.result_chart, 1)
         right_layout.addWidget(self.result_card, 3)
 
-        self.recent_card = DashboardRecentActivityCard()
-        right_layout.addWidget(self.recent_card, 2)
+        self.attention_card = CompactSummaryList(
+            "Attention required", visible_rows=3
+        )
+        self.attention_card.activated.connect(self.assessment_area_requested)
+        right_layout.addWidget(self.attention_card, 2)
         workspace.addWidget(right_top, 0, 1)
 
-        self.interval_summary = CompactSummaryList("Elevation intervals")
-        workspace.addWidget(self.interval_summary, 1, 0, 1, 2)
+        self.interval_summary = CompactSummaryList("Elevation intervals", visible_rows=4)
+        workspace.addWidget(self.interval_summary, 1, 0)
+
+        self.latest_assessments = CompactSummaryList(
+            "Latest assessments", visible_rows=3
+        )
+        self.latest_assessments.activated.connect(self.assessment_area_requested)
+        workspace.addWidget(self.latest_assessments, 1, 1)
+
+        self.blast_activity = BlastActivityCard()
+        workspace.addWidget(self.blast_activity, 2, 0)
+
+        self.recent_card = DashboardRecentActivityCard()
+        workspace.addWidget(self.recent_card, 2, 1)
 
         self._render_snapshot()
 
@@ -180,6 +199,47 @@ class DomainDashboardPage(QWidget):
             rows.append(SummaryRow(interval, f"{interval} m", detail, trailing))
         return rows
 
+    def _attention_rows(self):
+        rows = []
+        for area in self.snapshot.areas:
+            presentation = assessment_result_presentation(area.quadrant)
+            if area.status != "completed" or not presentation.requires_attention:
+                continue
+            rows.append(
+                (
+                    presentation.severity,
+                    SummaryRow(
+                        area.id,
+                        area.name,
+                        f"{area.interval} m  ·  {presentation.label}",
+                        f"DAI {metric(area.dai)}  ·  FCI {metric(area.fci)}",
+                        presentation.color,
+                    ),
+                )
+            )
+        rows.sort(key=lambda item: (-item[0], item[1].title.lower()))
+        return [row for _, row in rows]
+
+    def _latest_rows(self):
+        completed = [area for area in self.snapshot.areas if area.status == "completed"]
+        completed.sort(
+            key=lambda area: area.assessment_date or date.min,
+            reverse=True,
+        )
+        rows = []
+        for area in completed:
+            presentation = assessment_result_presentation(area.quadrant)
+            rows.append(
+                SummaryRow(
+                    area.id,
+                    area.name,
+                    f"{area.interval} m  ·  {presentation.label}",
+                    f"DAI {metric(area.dai)}  ·  FCI {metric(area.fci)}",
+                    presentation.color,
+                )
+            )
+        return rows
+
     def _render_snapshot(self):
         self._render_metrics()
         self.plan_card.set_snapshot(self.snapshot)
@@ -213,10 +273,21 @@ class DomainDashboardPage(QWidget):
         self.clear_geometry_button.setEnabled(bool(current) and editable)
 
         self.result_chart.set_data(self.snapshot.quadrants)
-        self.recent_card.set_entries(self.snapshot.recent)
+        self.attention_card.set_rows(
+            self._attention_rows(), empty_text="No areas require attention"
+        )
         self.interval_summary.set_rows(
             self._interval_rows(), empty_text="No Assessment Areas yet"
         )
+        self.latest_assessments.set_rows(
+            self._latest_rows(), empty_text="No completed assessments yet"
+        )
+        self.blast_activity.set_data(
+            self.snapshot.domain.production,
+            self.snapshot.domain.contour,
+            self.snapshot.blasts,
+        )
+        self.recent_card.set_entries(self.snapshot.recent)
 
     def _refresh(self):
         self.snapshot = self.repo.domain_snapshot(self.domain_id)
