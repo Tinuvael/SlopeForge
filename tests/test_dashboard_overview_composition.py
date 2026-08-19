@@ -61,6 +61,8 @@ def test_dashboard_plan_has_one_line_header_auto_fit_and_wheel_zoom():
     assert "AnchorUnderMouse" in plan
     assert "reset_zoom_state" in plan
     assert "def showEvent" in plan
+    assert "def resizeEvent" in plan
+    assert "viewport.width() < 50 or viewport.height() < 50" in plan
     assert "QTimer.singleShot(0, self._fit_initial_view)" in plan
     assert "self.view.setMinimumHeight(320)" in plan
     assert "self.setMinimumHeight(405)" in plan
