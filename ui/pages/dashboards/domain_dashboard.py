@@ -104,14 +104,12 @@ class DomainDashboardPage(QWidget):
 
         self.plan_card = DashboardPlanCard(
             self.snapshot,
-            primary_action_label="Import geometry",
+            primary_action_label="Import",
             secondary_action_label="Draw geometry",
         )
         self.plan_card.primary_action_requested.connect(self.import_geometry)
         self.plan_card.secondary_action_requested.connect(self.edit_geometry)
         self.plan_card.filter_cleared.connect(self._clear_filter_selections)
-        self.clear_geometry_button = self.plan_card.add_header_action("Clear")
-        self.clear_geometry_button.clicked.connect(self.clear_geometry)
         workspace.addWidget(self.plan_card, 0, 0)
 
         right_top = QWidget()
@@ -123,19 +121,21 @@ class DomainDashboardPage(QWidget):
         right_layout.setSpacing(9)
 
         self.result_card = DashboardCard("Assessment result distribution")
-        self.result_card.setMinimumHeight(245)
+        self.result_card.setMinimumHeight(210)
+        self.result_card.setMaximumHeight(225)
         self.result_chart = CompactChart({}, "donut")
         self.result_card.layout.addWidget(self.result_chart, 1)
-        right_layout.addWidget(self.result_card, 1)
+        right_layout.addWidget(self.result_card)
 
         self.attention_card = CompactSummaryList(
             "Attention required", visible_rows=2, show_go_to=True
         )
+        self.attention_card.setMinimumHeight(160)
         self.attention_card.activated.connect(
             lambda value: self._filter_area(value, self.attention_card)
         )
         self.attention_card.go_to_requested.connect(self.assessment_area_requested)
-        right_layout.addWidget(self.attention_card)
+        right_layout.addWidget(self.attention_card, 1)
         workspace.addWidget(right_top, 0, 1)
 
         self.interval_summary = CompactSummaryList("Elevation intervals", visible_rows=3)
@@ -288,20 +288,18 @@ class DomainDashboardPage(QWidget):
                 f"{polygon_text} · {source}" if source else polygon_text
             )
         else:
-            self.plan_card.set_subtitle(tr("No Domain geometry defined"))
+            self.plan_card.set_subtitle(tr("No Domain geometry"))
 
         editable = self._can_edit()
         self.plan_card.set_actions_enabled(editable)
         if self.plan_card.primary_action is not None:
             self.plan_card.primary_action.setText(
-                tr("Replace / Import") if current else tr("Import geometry")
+                tr("Import") if current else tr("Import")
             )
         if self.plan_card.secondary_action is not None:
             self.plan_card.secondary_action.setText(
                 tr("Edit boundaries") if current else tr("Draw geometry")
             )
-        self.clear_geometry_button.setVisible(bool(current) and editable)
-        self.clear_geometry_button.setEnabled(bool(current) and editable)
 
         self.result_chart.set_data(self.snapshot.quadrants)
         self.attention_card.set_rows(
