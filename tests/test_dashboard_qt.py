@@ -10,7 +10,7 @@ from domain.project.project_lines import ProjectLinesDataset
 
 try:
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QLabel
     from repositories.dashboard_repository import (
         AreaRow,
         BlastRow,
@@ -118,7 +118,7 @@ def test_domain_interval_summary_is_compact_and_not_entity_table(app, monkeypatc
     assert page.interval_summary.list.count() == 1
     holder = page.interval_summary.list.itemWidget(page.interval_summary.list.item(0))
     assert holder is not None
-    assert "10–20 m" in " ".join(label.text() for label in holder.findChildren(type(page.title_label)))
+    assert "10–20 m" in " ".join(label.text() for label in holder.findChildren(QLabel))
     assert not hasattr(page, "tabs")
     page.close()
 
