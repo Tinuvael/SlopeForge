@@ -83,17 +83,24 @@ class AssessmentCommentsCard(EngineeringSummaryCard):
 
 
 class AssessmentStateSummaryCard(CardFrame):
-    """Geometry and face-condition summaries in one card with one Assessment action."""
+    """Compact Geometry and Face condition summary with one Assessment action."""
 
     open_requested = Signal()
+    MINIMUM_WIDTH = 320
+    MAXIMUM_WIDTH = 400
 
     def __init__(self, title="Geometry / face condition", parent=None):
         super().__init__()
         if parent is not None:
             self.setParent(parent)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(self.MINIMUM_WIDTH)
+        self.setMaximumWidth(self.MAXIMUM_WIDTH)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.layout.setContentsMargins(14, 8, 14, 8)
+        self.layout.setSpacing(4)
 
         header = QHBoxLayout()
+        header.setSpacing(6)
         heading = QLabel(tr(title))
         heading.setObjectName("CardTitle")
         self.open_button = OverviewLinkButton("Open ›")
@@ -104,7 +111,7 @@ class AssessmentStateSummaryCard(CardFrame):
         self.layout.addLayout(header)
 
         self.sections = QVBoxLayout()
-        self.sections.setSpacing(6)
+        self.sections.setSpacing(4)
         self.layout.addLayout(self.sections)
 
     def set_sections(self, sections):
@@ -117,7 +124,7 @@ class AssessmentStateSummaryCard(CardFrame):
             section = QWidget()
             layout = QVBoxLayout(section)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(3)
+            layout.setSpacing(2)
             heading = QLabel(tr(title))
             heading.setObjectName("EngineeringSectionTitle")
             layout.addWidget(heading)
