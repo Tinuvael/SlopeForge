@@ -52,6 +52,9 @@ def test_plan_overview_is_read_only_and_actions_live_in_single_card_header():
     assert "secondary_action_requested = Signal()" in plan
     assert "self.header.addWidget(self.lines)" in plan
     assert "self.layout.addLayout(self.controls)" not in plan
+    assert "def wheelEvent" in plan
+    assert "AnchorUnderMouse" in plan
+    assert "self.scale(factor, factor)" in plan
     assert 'primary_action_label="Project Lines"' in project
     assert 'tr("Import lines")' in project
     assert 'tr("Update lines")' in project
