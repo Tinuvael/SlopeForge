@@ -161,8 +161,12 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Open section": "Открыть раздел",
     # Compact Project/Domain dashboards (#69).
     "Project overview": "Обзор проекта",
+    "Domain overview": "Обзор домена",
     "Plan / assessment areas": "План / участки оценки",
     "Import / Update": "Импорт / обновить",
+    "Import / Update Project Lines": "Импорт / обновить проектные линии",
+    "Assessment result distribution": "Распределение результатов оценки",
+    "Domain summary": "Сводка по доменам",
     "No Domains yet": "Доменов пока нет",
     "Blast events: %1 • Production: %2 • Contour: %3": "Взрывные события: %1 • Производственные: %2 • Контурные: %3",
     "Elevation intervals": "Интервалы высот",
@@ -170,6 +174,10 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "No Domain geometry defined": "Геометрия домена не задана",
     "No Assessment Areas yet": "Участков оценки пока нет",
     "No completed assessment": "Нет завершённой оценки",
+    "Geometry achieved, condition insufficient": "Геометрия достигнута, состояние борта недостаточно",
+    "Good results": "Хорошие результаты",
+    "Unacceptable results": "Неприемлемые результаты",
+    "Condition good, geometry unacceptable": "Состояние борта хорошее, геометрия неприемлема",
     "Clear": "Очистить",
 }
 
