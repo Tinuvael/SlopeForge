@@ -13,10 +13,9 @@ from ui.pages.entity_overview_widgets import (
 
 
 class BlockRelatedEntityList(RelatedEntityList):
-    """Fixed-height Block relationship card with internally scrollable rows."""
+    """Stable Block relationship card with an internally scrollable viewport."""
 
-    CARD_HEIGHT = 104
-    LIST_HEIGHT = 60
+    LIST_HEIGHT = 88
     STATE_COLORS = {
         "completed": ("#edf8f0", "#58a66a"),
         "assessed": ("#edf8f0", "#58a66a"),
@@ -29,12 +28,19 @@ class BlockRelatedEntityList(RelatedEntityList):
 
     def __init__(self, title: str):
         super().__init__(title)
-        self.setFixedHeight(self.CARD_HEIGHT)
-        self.layout.setContentsMargins(14, 12, 18, 12)
-        self.layout.setSpacing(4)
-        self.list.setMinimumHeight(self.LIST_HEIGHT)
-        self.list.setMaximumHeight(self.LIST_HEIGHT)
+        # Fix only the content viewport. Let CardFrame/layout calculate the outer
+        # height from its real margins + title + spacing + viewport, so content can
+        # never be clipped by an undersized magic CARD_HEIGHT.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.layout.setSpacing(6)
+        self.list.setFixedHeight(self.LIST_HEIGHT)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # Keep a few pixels inside the viewport so the right-hand row border is
+        # painted fully even at the edge of a QListView item rect.
+        self.list.setStyleSheet(
+            "QListWidget{background:transparent;border:0;padding-right:5px;}"
+        )
         self.empty_label = QLabel()
         self.empty_label.setObjectName("MutedText")
         self.empty_label.setFixedHeight(self.LIST_HEIGHT)
@@ -59,10 +65,9 @@ class BlockRelatedEntityList(RelatedEntityList):
         self.empty_label.hide()
         self.list.show()
         super().set_rows(rows, empty_text=empty_text)
-        # The shared list changes its own min/max height depending on row count;
-        # Block deliberately keeps a constant viewport and scrolls long lists.
-        self.list.setMinimumHeight(self.LIST_HEIGHT)
-        self.list.setMaximumHeight(self.LIST_HEIGHT)
+        # Shared RelatedEntityList adjusts list height by row count. Block keeps a
+        # constant viewport instead; additional rows scroll inside this card.
+        self.list.setFixedHeight(self.LIST_HEIGHT)
         for index, row in enumerate(rows):
             item = self.list.item(index)
             item.setData(Qt.ItemDataRole.UserRole + 1, row.status_state or "unknown")
@@ -76,10 +81,9 @@ class BlockRelatedEntityList(RelatedEntityList):
             )
             layout = holder.layout()
             if layout is not None:
-                layout.setContentsMargins(9, 7, 14, 7)
-            # Do not let the natural width of title + status + action enlarge the
-            # QListWidget item beyond its viewport. Only the row height is a hint;
-            # QListView supplies the current viewport width.
+                layout.setContentsMargins(9, 7, 12, 7)
+            # Width is deliberately omitted. QListView owns row width; only height
+            # is hinted. This avoids stale content-width measurements on hidden tabs.
             item.setSizeHint(QSize(0, holder.sizeHint().height()))
         self._sync_row_styles()
         self.updateGeometry()
@@ -161,7 +165,11 @@ class BlockAttachmentPreview(QuickAttachmentPreview):
 
 
 class BlockGeometryCard(SquareGeometryCard):
-    """Geometry card whose vertical hint never drives the Block Overview row."""
+    """Wider Block geometry card whose vertical hint never drives the Overview row."""
+
+    PREFERRED_WIDTH = 700
+    MINIMUM_WIDTH = 610
+    MAXIMUM_WIDTH = 800
 
     def __init__(
         self,
@@ -177,20 +185,21 @@ class BlockGeometryCard(SquareGeometryCard):
             enforce_square=False,
             parent=parent,
         )
+        self.setMinimumWidth(self.MINIMUM_WIDTH)
+        self.setMaximumWidth(self.MAXIMUM_WIDTH)
         self.setMinimumHeight(0)
         self.setMaximumHeight(16777215)
-        # The three cards on the left are the vertical source of truth. Ignoring
-        # this widget's inherited 440 px height hint lets the row be sized by them;
-        # QHBoxLayout then gives the plan exactly the same row height.
+        # Left cards remain the vertical source of truth. Horizontally the plan is
+        # intentionally ~30% wider than the previous 540 px overview target.
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         self.plan.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.plan.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
     def sizeHint(self):
-        return QSize(540, 0)
+        return QSize(self.PREFERRED_WIDTH, 0)
 
     def minimumSizeHint(self):
-        return QSize(470, 0)
+        return QSize(self.MINIMUM_WIDTH, 0)
 
 
 class BlockSectionHost(QWidget):
