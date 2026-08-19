@@ -18,6 +18,9 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     assert geometry.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Ignored
     assert geometry.sizeHint().height() == 0
     assert geometry.minimumSizeHint().height() == 0
+    assert geometry.sizeHint().width() == 700
+    assert geometry.minimumWidth() == 610
+    assert geometry.maximumWidth() == 800
 
     related = BlockRelatedEntityList("Related assessment areas")
     related.set_rows([
@@ -28,14 +31,14 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     ])
     item = related.list.item(0)
     holder = related.list.itemWidget(item)
-    assert related.minimumHeight() == related.maximumHeight() == related.CARD_HEIGHT
+    assert related.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Fixed
     assert related.list.minimumHeight() == related.list.maximumHeight() == related.LIST_HEIGHT
+    assert related.sizeHint().height() > related.LIST_HEIGHT
     assert item.sizeHint().width() == 0
     assert holder.sizePolicy().horizontalPolicy() == widgets.QSizePolicy.Policy.Expanding
-    assert related.layout.contentsMargins().right() == 18
+    assert "padding-right:5px" in related.list.styleSheet()
     assert "background:#edf8f0" in holder.styleSheet()
     assert "border:1px solid #58a66a" in holder.styleSheet()
-    assert holder.layout().contentsMargins().right() == 14
     item.setSelected(True)
     app.processEvents()
     assert "border:2px solid #2563a6" in holder.styleSheet()
@@ -45,7 +48,7 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     app.processEvents()
 
 
-def test_block_related_empty_state_keeps_same_fixed_card_height():
+def test_block_related_empty_state_uses_same_content_viewport_without_clipping():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.block_overview_widgets import BlockRelatedEntityList
 
@@ -56,8 +59,21 @@ def test_block_related_empty_state_keeps_same_fixed_card_height():
     assert related.empty_label.text() == "No linked assessment areas"
     assert related.empty_label.height() == related.LIST_HEIGHT
     assert not related.empty_label.isHidden()
-    assert related.minimumHeight() == related.maximumHeight() == related.CARD_HEIGHT
+    assert related.sizeHint().height() > related.LIST_HEIGHT
     related.close()
+    app.processEvents()
+
+
+def test_block_notes_card_fixes_only_editor_viewport():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.block_overview_widgets import BlockNotesCard
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    notes = BlockNotesCard()
+    assert notes.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Fixed
+    assert notes.editor.minimumHeight() == notes.editor.maximumHeight() == notes.EDITOR_HEIGHT
+    assert notes.sizeHint().height() > notes.EDITOR_HEIGHT
+    notes.close()
     app.processEvents()
 
 
@@ -140,13 +156,11 @@ def test_block_page_has_no_layout_feedback_loop_or_tab_reinsertion():
     assert "self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)" in text
     assert "self.overview_stack_widget.setSizePolicy" in text
     assert "QSizePolicy.Policy.Fixed" in text
-    assert "self.notes.setFixedHeight(108)" in text
-    assert "self.notes.editor.setFixedHeight(58)" in text
     assert "BlockRecentActivityCard" in text
     assert "top.addWidget(self.geometry_card, 0)" in text
-    assert "QSizePolicy.Policy.Ignored" in helpers
-    assert "def sizeHint(self):" in helpers
-    assert "return QSize(540, 0)" in helpers
+    assert "PREFERRED_WIDTH = 700" in helpers
+    assert "LIST_HEIGHT = 88" in helpers
+    assert "BlockNotesCard" in helpers
 
 
 def test_block_sidebar_density_uses_actual_tab_viewport_after_summary_render():
