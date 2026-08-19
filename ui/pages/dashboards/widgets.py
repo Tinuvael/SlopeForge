@@ -41,7 +41,7 @@ DASHBOARD_HEADER_STYLE = (
     "border-radius:7px;}"
 )
 DASHBOARD_ROW_STYLE = (
-    "QWidget#DashboardSummaryRow,QWidget#ProjectLinesDatasetRow{"
+    "QFrame#DashboardSummaryRow,QWidget#ProjectLinesDatasetRow{"
     "background:#ffffff;border:1px solid #d7dde6;border-radius:5px;}"
 )
 
@@ -186,8 +186,12 @@ class SummaryRow:
     accent: str | None = None
 
 
-class SummaryRowWidget(QWidget):
+class SummaryRowWidget(QFrame):
     clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
