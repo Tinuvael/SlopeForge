@@ -142,6 +142,18 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Redrilled": "Перебуренные",
     "Uncharged": "Не заряженные",
     "No linked entities": "Нет связанных объектов",
+    "Angle deviation": "Отклонение угла",
+    "Berm deviation": "Отклонение бермы",
+    "Toe deviation": "Отклонение подошвы",
+    "No geometry assessment data yet": "Данных оценки геометрии пока нет",
+    "Contour hole traces": "Следы контурных скважин",
+    "Loose blocks": "Свободные блоки",
+    "Face profile": "Профиль откоса",
+    "Crest loss": "Потеря бровки",
+    "Blast damage": "Взрывные повреждения",
+    "Blast cracks": "Взрывные трещины",
+    "No face-condition data yet": "Данных о состоянии борта пока нет",
+    "Suggested": "Предложено",
 }
 
 # Qt asks the installed translator for platform-theme captions in contexts such
