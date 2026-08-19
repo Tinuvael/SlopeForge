@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, QTimer, Qt, Signal
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from app.context import AppContext
@@ -128,6 +128,7 @@ class BlockPage(QWidget):
         self._overview_document_count = 0
         self._overview_history_entries = []
         self._related_area_preview_id = None
+        self._show_settle_pending = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -268,11 +269,42 @@ class BlockPage(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._sync_sidebar_density()
+        self._sync_top_row_height()
 
     def showEvent(self, event):
         super().showEvent(event)
+        self.setUpdatesEnabled(False)
+        if self._related_area_preview_id is not None:
+            self._clear_related_area_preview()
+        self._settle_visible_layout()
+        if not self._show_settle_pending:
+            self._show_settle_pending = True
+            QTimer.singleShot(0, self._finish_show_layout)
+
+    def _settle_visible_layout(self) -> None:
         self._sync_sidebar_density()
         self._sync_top_row_height()
+        for widget in (
+            self,
+            self.overview_tab,
+            self.overview_stack_widget,
+            self.photos,
+            self.documents,
+        ):
+            layout = widget.layout()
+            if layout is not None:
+                layout.activate()
+        if self._related_area_preview_id is None:
+            self.geometry_card.plan.center_on_focus()
+
+    def _finish_show_layout(self) -> None:
+        self._show_settle_pending = False
+        try:
+            if self.isVisible():
+                self._settle_visible_layout()
+        finally:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     def _sync_sidebar_density(self) -> None:
         if not hasattr(self, "photos") or not hasattr(self, "documents"):
@@ -296,8 +328,7 @@ class BlockPage(QWidget):
         stack_layout = self.overview_stack_widget.layout()
         if stack_layout is not None:
             stack_layout.activate()
-        target = self.overview_stack_widget.sizeHint().height()
-        target = max(360, min(520, target))
+        target = max(360, self.overview_stack_widget.sizeHint().height())
         if self.geometry_card.height() != target or self.geometry_card.minimumHeight() != target:
             self.geometry_card.setFixedHeight(target)
 
