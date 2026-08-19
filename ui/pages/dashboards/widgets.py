@@ -35,7 +35,6 @@ DASHBOARD_METRIC_STYLE = (
     "border-radius:7px;}"
 )
 
-# Compatibility name retained for the existing dashboard repository/tests.
 QuadrantPresentation = AssessmentResultPresentation
 
 
@@ -56,8 +55,6 @@ def format_dashboard_datetime(value) -> str:
 
 
 class MetricCard(CardFrame):
-    """Small KPI card using the same card shell/margins as entity overviews."""
-
     def __init__(self, title, value, detail="", icon="analytics"):
         super().__init__()
         self.setObjectName("DashboardMetricCard")
@@ -105,8 +102,6 @@ class EmptyStateWidget(QWidget):
 
 
 class DashboardCard(CardFrame):
-    """Card header used by dashboard panels; actions match entity Overview links."""
-
     def __init__(self, title: str, parent=None):
         super().__init__()
         if parent is not None:
@@ -150,23 +145,40 @@ class SummaryRow:
 
 
 class CompactSummaryList(DashboardCard):
-    """Card-like rows; only this bounded inner list may scroll."""
+    """Bounded dashboard rows: row click filters, optional Go to navigates."""
 
     activated = Signal(str)
-    ROW_HEIGHT = 44
+    go_to_requested = Signal(str)
+    ROW_HEIGHT = 46
 
-    def __init__(self, title: str, parent=None, *, visible_rows: int = 3):
+    def __init__(
+        self,
+        title: str,
+        parent=None,
+        *,
+        visible_rows: int = 3,
+        show_go_to: bool = False,
+    ):
         super().__init__(title, parent)
         self.visible_rows = max(1, int(visible_rows))
+        self.show_go_to = bool(show_go_to)
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(4)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.list.setStyleSheet("QListWidget{background:transparent;border:0;}")
+        self.list.setStyleSheet(
+            "QListWidget{background:transparent;border:0;}"
+            "QListWidget::item{background:transparent;border:0;}"
+            "QListWidget::item:selected{background:transparent;}"
+        )
         self.list.itemClicked.connect(self._emit_item)
         self.layout.addWidget(self.list, 1)
         self.set_rows([])
+
+    def clear_selection(self):
+        self.list.clearSelection()
+        self.list.setCurrentItem(None)
 
     def set_rows(self, rows: list[SummaryRow], *, empty_text="No data yet"):
         self.list.clear()
@@ -193,8 +205,8 @@ class CompactSummaryList(DashboardCard):
                 "border:1px solid #e2e6ec;border-radius:5px;}"
             )
             layout = QHBoxLayout(holder)
-            layout.setContentsMargins(7, 4, 9, 4)
-            layout.setSpacing(8)
+            layout.setContentsMargins(7, 4, 8, 4)
+            layout.setSpacing(7)
             if row.accent:
                 accent = QFrame()
                 accent.setFixedWidth(4)
@@ -219,6 +231,13 @@ class CompactSummaryList(DashboardCard):
                 trailing.setObjectName("SummaryValue")
                 trailing.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 layout.addWidget(trailing)
+            if self.show_go_to:
+                go_to = OverviewLinkButton("Go to ›")
+                go_to.setToolTip(tr("Open"))
+                go_to.clicked.connect(
+                    lambda _checked=False, key=str(row.key): self.go_to_requested.emit(key)
+                )
+                layout.addWidget(go_to)
             self.list.addItem(item)
             self.list.setItemWidget(item, holder)
 
@@ -229,21 +248,27 @@ class CompactSummaryList(DashboardCard):
 
 
 class AssessmentProgressCard(DashboardCard):
-    """Compact progress overview without inventing a new scoring metric."""
-
     def __init__(self, parent=None):
         super().__init__("Assessment progress", parent)
+        self.setMinimumHeight(118)
+        summary = QHBoxLayout()
+        summary.setContentsMargins(0, 2, 0, 3)
         self.counts = QLabel()
-        self.counts.setObjectName("SummaryValue")
+        self.counts.setStyleSheet("font-weight:600;color:#334155;")
+        self.percent = QLabel("0%")
+        self.percent.setStyleSheet("font-size:18px;font-weight:700;color:#1f4f7a;")
+        self.percent.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        summary.addWidget(self.counts, 1)
+        summary.addWidget(self.percent)
+        self.layout.addLayout(summary)
         self.progress = QProgressBar()
         self.progress.setTextVisible(False)
         self.progress.setRange(0, 100)
-        self.progress.setFixedHeight(10)
+        self.progress.setFixedHeight(17)
         self.progress.setStyleSheet(
-            "QProgressBar{border:1px solid #d9dee7;border-radius:5px;background:#f3f5f8;}"
-            "QProgressBar::chunk{background:#4f78a8;border-radius:4px;}"
+            "QProgressBar{border:1px solid #ccd5e1;border-radius:8px;background:#eef2f6;}"
+            "QProgressBar::chunk{background:#4f78a8;border-radius:7px;}"
         )
-        self.layout.addWidget(self.counts)
         self.layout.addWidget(self.progress)
         self.layout.addStretch()
 
@@ -252,22 +277,23 @@ class AssessmentProgressCard(DashboardCard):
         completed = max(0, int(completed))
         drafts = max(0, int(drafts))
         pending = max(0, total - completed - drafts)
+        percentage = round(100 * completed / total) if total else 0
         self.counts.setText(
             tr("Completed: %1  ·  Draft: %2  ·  Not evaluated: %3")
             .replace("%1", str(completed))
             .replace("%2", str(drafts))
             .replace("%3", str(pending))
         )
-        self.progress.setValue(round(100 * completed / total) if total else 0)
+        self.percent.setText(f"{percentage}%")
+        self.progress.setValue(percentage)
 
 
 class BlastActivityCard(DashboardCard):
-    """Small factual Blast Event summary for a Domain overview."""
-
     def __init__(self, parent=None):
         super().__init__("Blast activity", parent)
+        self.setMinimumHeight(118)
         self.counts = QLabel()
-        self.counts.setObjectName("SummaryValue")
+        self.counts.setStyleSheet("font-weight:600;color:#334155;")
         self.latest = QLabel()
         self.latest.setObjectName("MutedText")
         self.layout.addWidget(self.counts)
@@ -292,13 +318,12 @@ class BlastActivityCard(DashboardCard):
 
 
 class ProjectLinesCard(DashboardCard):
-    """Compact history of Site-wide Project Lines datasets."""
-
-    VISIBLE_ROWS = 2
-    ROW_HEIGHT = 40
+    VISIBLE_ROWS = 3
+    ROW_HEIGHT = 42
 
     def __init__(self, parent=None):
         super().__init__("Project Lines", parent)
+        self.setMinimumHeight(118)
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(3)
@@ -330,7 +355,7 @@ class ProjectLinesCard(DashboardCard):
                 "border:1px solid #e2e6ec;border-radius:5px;}"
             )
             layout = QHBoxLayout(holder)
-            layout.setContentsMargins(8, 3, 9, 3)
+            layout.setContentsMargins(8, 4, 9, 4)
             layout.setSpacing(8)
             text = QVBoxLayout()
             text.setContentsMargins(0, 0, 0, 0)
@@ -365,13 +390,12 @@ class ProjectLinesCard(DashboardCard):
 
 
 class DashboardRecentActivityCard(DashboardCard):
-    """Four stable one-line activity slots, matching operational entity cards."""
-
     SLOT_COUNT = 4
     SLOT_HEIGHT = 27
 
     def __init__(self, parent=None):
         super().__init__("Recent activity", parent)
+        self.setMinimumHeight(118)
         self.rows = QVBoxLayout()
         self.rows.setSpacing(2)
         self.layout.addLayout(self.rows)
@@ -408,7 +432,6 @@ class DashboardRecentActivityCard(DashboardCard):
 
 
 def section(title, child):
-    """Legacy helper kept for callers outside #69; new dashboards use DashboardCard."""
     card = DashboardCard(title)
     card.layout.addWidget(child)
     return card
