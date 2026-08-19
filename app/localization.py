@@ -163,7 +163,6 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Project overview": "Обзор проекта",
     "Domain overview": "Обзор домена",
     "Plan / assessment areas": "План / участки оценки",
-    "Import / Update": "Импорт / обновить",
     "Import / Update Project Lines": "Импорт / обновить проектные линии",
     "Assessment result distribution": "Распределение результатов оценки",
     "Domain summary": "Сводка по доменам",
