@@ -7,7 +7,7 @@ from domain.blasting.workflow import (
     assessment_progress_for,
     blast_workflow_for,
 )
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import QEvent, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView, QFormLayout, QFrame, QHBoxLayout, QInputDialog, QLabel,
     QListWidget, QListWidgetItem, QMessageBox, QPushButton, QSizePolicy,
@@ -15,23 +15,25 @@ from PySide6.QtWidgets import (
 )
 from repositories.domain_repository import DomainRepository
 from repositories.entity_history_repository import EntityHistoryRepository
+from ui.pages.assessment_overview_widgets import (
+    AssessmentAttachmentPreview,
+    AssessmentCommentsCard,
+    AssessmentGeometryCard,
+    AssessmentMatrixCard,
+    AssessmentRecentActivityCard,
+    AssessmentRelatedEventList,
+)
 from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_history_revision_viewer import open_assessment_revision, open_geometry_revision
 from ui.pages.entity_overview_widgets import (
-    AssessmentMatrixPreview,
     EngineeringSummaryCard,
     EntityHeaderWidget,
     OverviewKeyValueCard,
-    QuickAttachmentPreview,
-    RecentActivityCard,
-    RelatedEntityList,
     RelatedEntityRow,
-    SquareGeometryCard,
 )
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
-from ui.pages.block_card_widgets import CardFrame
 from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog
 from ui.presentation_labels import format_assessment_elevation_interval, result_label
 
@@ -46,6 +48,16 @@ def _date(value):
 
 def _datetime_text(value):
     return value.strftime("%d.%m.%Y %H:%M") if value else "—"
+
+
+def _number(value, unit=""):
+    if value is None:
+        return "—"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return f"{value}{unit}"
+    return f"{number:g}{unit}"
 
 
 def _history_bounds(entries):
@@ -144,15 +156,19 @@ class AssessmentAreaPage(QWidget):
         self.history_repo = EntityHistoryRepository(factory) if callable(factory) else None
         self.area = self.controller.area(area_id)
         self.read_only = not context.current_user.can_edit or self.area.is_archived
+        self._related_event_preview_id = None
         self._build_editor()
 
         root = QVBoxLayout(self)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(8)
         self._header(root)
         body = QHBoxLayout()
         left = QVBoxLayout()
         self.tabs = create_entity_tabs()
+        self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         left.addWidget(self.tabs)
-        body.addLayout(left, 4)
+        body.addLayout(left, 1)
         self._sidebar(body)
         root.addLayout(body)
 
@@ -169,9 +185,31 @@ class AssessmentAreaPage(QWidget):
             "#CardFrame,#CriterionCard,#ResultCard{background:white;border:1px solid #dfe3ea;border-radius:6px}"
             "#CardTitle,#EngineeringSectionTitle,#RelatedEntityTitle{font-weight:600;color:#111827}#EntityTitle{font-size:24px;font-weight:700}"
             "#EntityContextLine{color:#667085}#MutedText{color:#6b7280}#SummaryValue{color:#111827;font-weight:600}"
-            "#EngineeringSummaryText{color:#374151}#OverviewDivider{color:#e5e7eb;background:#e5e7eb;max-height:1px;border:0}"
+            "#ActivityTitle{color:#111827}#EngineeringSummaryText{color:#374151}#OverviewDivider{color:#e5e7eb;background:#e5e7eb;max-height:1px;border:0}"
             "#StaleBadge{background:#fff1c2;color:#8a5a00;border:1px solid #e5b94d;border-radius:4px;padding:2px 5px}"
         )
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_sidebar_density()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._related_event_preview_id is not None:
+            self._clear_related_event_preview()
+        self._sync_sidebar_density()
+        if self._related_event_preview_id is None and hasattr(self, "geometry_card"):
+            self.geometry_card.plan.center_on_focus()
+
+    def eventFilter(self, watched, event):
+        if (
+            watched is getattr(self, "_geometry_viewport", None)
+            and self._related_event_preview_id is not None
+            and event.type() == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
+            self._clear_related_event_preview()
+        return super().eventFilter(watched, event)
 
     def _header(self, root):
         self.header = EntityHeaderWidget()
@@ -183,6 +221,37 @@ class AssessmentAreaPage(QWidget):
         self.document_preview.add_requested.connect(lambda: self.document_manager.add())
         self.photo_preview.open_page_requested.connect(lambda: self.tabs.setCurrentWidget(self.photos_tab))
         self.document_preview.open_page_requested.connect(lambda: self.tabs.setCurrentWidget(self.documents_tab))
+
+    def _sync_sidebar_density(self) -> None:
+        if not hasattr(self, "photo_preview") or not hasattr(self, "document_preview"):
+            return
+        if not hasattr(self, "tabs") or not self.isVisible() or self.tabs.height() < 100:
+            self.photo_preview.set_visible_item_limit(4)
+            self.document_preview.set_visible_item_limit(4)
+            return
+
+        available = max(0, self.tabs.height() - 4)
+        photo_limit = min(6, self.photo_preview._max_items)
+        document_limit = min(7, self.document_preview._max_items)
+        self.photo_preview.set_visible_item_limit(photo_limit)
+        self.document_preview.set_visible_item_limit(document_limit)
+
+        def required_height():
+            spacing = self._sidebar_layout.spacing()
+            return (
+                self.summary_card.sizeHint().height()
+                + self.photo_preview.sizeHint().height()
+                + self.document_preview.sizeHint().height()
+                + max(0, spacing) * 2
+            )
+
+        while required_height() > available and (document_limit > 4 or photo_limit > 4):
+            if document_limit > 4:
+                document_limit -= 1
+                self.document_preview.set_visible_item_limit(document_limit)
+            elif photo_limit > 4:
+                photo_limit -= 2
+                self.photo_preview.set_visible_item_limit(photo_limit)
 
     def edit_metadata(self):
         from ui.dialogs.entity_metadata_dialogs import AssessmentAreaMetadataDialog
@@ -327,9 +396,10 @@ class AssessmentAreaPage(QWidget):
 
     def _sidebar(self, body):
         right = QVBoxLayout()
+        right.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.summary_card = OverviewKeyValueCard("Summary")
-        self.photo_preview = QuickAttachmentPreview("Photos", "photo")
-        self.document_preview = QuickAttachmentPreview("Documents", "document")
+        self.photo_preview = AssessmentAttachmentPreview("Photos", "photo", max_items=6)
+        self.document_preview = AssessmentAttachmentPreview("Documents", "document", max_items=7)
         for widget in (self.summary_card, self.photo_preview, self.document_preview):
             widget.setMinimumWidth(250)
             widget.setMaximumWidth(300)
@@ -337,52 +407,63 @@ class AssessmentAreaPage(QWidget):
         right.addWidget(self.photo_preview)
         right.addWidget(self.document_preview)
         right.addStretch()
-        body.addLayout(right, 1)
+        self._sidebar_layout = right
+        body.addLayout(right, 0)
 
     def _overview(self):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         top = QHBoxLayout()
         top.setSpacing(8)
-        overview_stack = QVBoxLayout()
+        self.overview_stack_widget = QWidget()
+        self.overview_stack_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        overview_stack = QVBoxLayout(self.overview_stack_widget)
+        overview_stack.setContentsMargins(0, 0, 0, 0)
         overview_stack.setSpacing(8)
+        overview_stack.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.assessment_result = OverviewKeyValueCard("Assessment result", open_label="Open ›")
         self.assessment_result.open_requested.connect(lambda: self.tabs.setCurrentWidget(self.assessment_tab))
-        self.related_events = RelatedEntityList("Related blast events")
-        self.related_events.entity_activated.connect(self._open_related_event)
+        self.related_events = AssessmentRelatedEventList("Related blast events")
+        self.related_events.entity_activated.connect(self._preview_related_event)
+        self.related_events.entity_action_requested.connect(self._open_related_event)
         overview_stack.addWidget(self.assessment_result)
-        overview_stack.addWidget(self.related_events, 1)
-        self.geometry_card = SquareGeometryCard(
-            "Assessment area geometry", action_label="Edit boundaries"
-        )
+        overview_stack.addWidget(self.related_events)
+
+        self.geometry_card = AssessmentGeometryCard("Plan / geometry", action_label="Edit boundaries")
         self.geometry_card.action_requested.connect(self._request_edit_boundaries)
-        top.addLayout(overview_stack, 1)
+        self.geometry_card.plan.view.escape_requested.connect(self._clear_related_event_preview)
+        self._geometry_viewport = self.geometry_card.plan.view.viewport()
+        self._geometry_viewport.installEventFilter(self)
+        top.addWidget(self.overview_stack_widget, 1)
         top.addWidget(self.geometry_card, 0)
         layout.addLayout(top)
 
         middle = QHBoxLayout()
         middle.setSpacing(8)
+        middle.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.geometry_summary_card = EngineeringSummaryCard("Geometry")
+        self.geometry_summary_card.section_open_requested.connect(self._open_overview_section)
         self.face_condition_card = EngineeringSummaryCard("Face condition")
         self.face_condition_card.section_open_requested.connect(self._open_overview_section)
-        self.matrix_card = CardFrame("Assessment matrix")
-        self.matrix_card.setMinimumWidth(330)
-        self.matrix_card.setMaximumWidth(430)
-        self.matrix_preview = AssessmentMatrixPreview()
+        self.matrix_card = AssessmentMatrixCard("Assessment matrix")
+        self.matrix_preview = self.matrix_card.preview
         self.matrix_basis_text = QLabel()
         self.matrix_basis_text.setObjectName("MutedText")
-        self.matrix_card.layout.addWidget(self.matrix_preview, 1)
         self.matrix_card.layout.addWidget(self.matrix_basis_text)
-        middle.addWidget(self.face_condition_card, 1)
-        middle.addWidget(self.matrix_card, 0)
+        middle.addWidget(self.geometry_summary_card, 2, Qt.AlignmentFlag.AlignTop)
+        middle.addWidget(self.face_condition_card, 3, Qt.AlignmentFlag.AlignTop)
+        middle.addWidget(self.matrix_card, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(middle)
 
         bottom = QHBoxLayout()
         bottom.setSpacing(8)
-        self.comments_card = EngineeringSummaryCard("Comments / recommendations")
+        self.comments_card = AssessmentCommentsCard("Comments / recommendations")
         self.comments_card.section_open_requested.connect(self._open_overview_section)
-        self.recent_activity = RecentActivityCard()
+        self.recent_activity = AssessmentRecentActivityCard()
+        self.recent_activity.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.recent_activity.open_history_requested.connect(lambda: self.tabs.setCurrentWidget(self.history))
         bottom.addWidget(self.comments_card, 3)
         bottom.addWidget(self.recent_activity, 2)
@@ -394,10 +475,72 @@ class AssessmentAreaPage(QWidget):
         if event is not None:
             self.related_blast_event_requested.emit(event.id, event.event_type, self.controller.domain_id)
 
+    def _preview_related_event(self, event_id):
+        area_revision = self.area.active_geometry_revision()
+        link = next(
+            (
+                item for item in self.area.links_for_revision()
+                if item.status == "confirmed" and item.blast_event_id == event_id
+            ),
+            None,
+        )
+        if link is None:
+            return
+        event = self.controller.links.event(link.blast_event_id)
+        linked_revision = self.controller.links.linked_revision(event, link)
+        if linked_revision is None:
+            return
+        dataset = next(
+            (
+                item for item in self.controller.state.datasets
+                if item.id == (area_revision.source_dataset_ids[0] if area_revision.source_dataset_ids else None)
+            ),
+            None,
+        )
+        project_lines = dataset.lines if dataset else []
+        plan = self.geometry_card.plan
+        plan.set_comparison_geometry(
+            area_revision.final_geometry_frozen,
+            linked_revision.plan_geometry,
+            project_lines,
+            focus_geometry=area_revision.final_geometry_frozen,
+            recenter=False,
+        )
+        plan._toggle_lines(self.geometry_card.lines.isChecked())
+        area_rect = plan._geometry_path(area_revision.final_geometry_frozen).boundingRect()
+        event_rect = plan._geometry_path(linked_revision.plan_geometry).boundingRect()
+        combined = area_rect.united(event_rect)
+        if not combined.isNull():
+            margin = max(max(combined.width(), combined.height()) * 0.12, 1.0)
+            plan.view.fit_to_rect(combined.adjusted(-margin, -margin, margin, margin))
+        self._related_event_preview_id = event_id
+        plan.view.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _clear_related_event_preview(self):
+        if self._related_event_preview_id is None:
+            return
+        self._related_event_preview_id = None
+        self.related_events.list.clearSelection()
+        rev = self.area.active_geometry_revision()
+        dataset = next(
+            (
+                item for item in self.controller.state.datasets
+                if item.id == (rev.source_dataset_ids[0] if rev.source_dataset_ids else None)
+            ),
+            None,
+        )
+        self.geometry_card.set_geometry(
+            rev.final_geometry_frozen,
+            dataset.lines if dataset else [],
+            focus_geometry=rev.final_geometry_frozen,
+        )
+        self.geometry_card.plan._toggle_lines(self.geometry_card.lines.isChecked())
+        self.geometry_card.plan.center_on_focus()
+
     def _open_overview_section(self, key):
         if key == "linked_events" and hasattr(self, "linked_events_tab"):
             self.tabs.setCurrentWidget(self.linked_events_tab)
-        elif key in {"assessment", "result", "face_condition", "comments", "recommendations"}:
+        elif key in {"assessment", "result", "geometry", "face_condition", "comments", "recommendations"}:
             self.tabs.setCurrentWidget(self.assessment_tab)
 
     def _history_entries(self):
@@ -426,6 +569,7 @@ class AssessmentAreaPage(QWidget):
                 )
 
     def _refresh_overview_and_sidebar(self):
+        self._related_event_preview_id = None
         rev = self.area.active_geometry_revision()
         active = self.evaluation.active_revision()
         confirmed = [x for x in self.area.links_for_revision() if x.status == "confirmed"]
@@ -452,8 +596,6 @@ class AssessmentAreaPage(QWidget):
         self.geometry_card.set_geometry(
             rev.final_geometry_frozen,
             dataset.lines if dataset else [],
-            revision=rev.revision_number,
-            source=geometry_source,
             focus_geometry=rev.final_geometry_frozen,
         )
         self.geometry_card.set_action_enabled(not self.read_only)
@@ -463,12 +605,28 @@ class AssessmentAreaPage(QWidget):
         quadrant = result_label(active.result_label) if active else "—"
         inspector = active.inspector if active and active.inspector else "—"
         assessment_date = active.assessment_date if active and active.assessment_date else self.area.assessment_date
+        area_height = None
+        if rev.min_elevation is not None and rev.max_elevation is not None:
+            area_height = abs(float(rev.max_elevation) - float(rev.min_elevation))
         self.assessment_result.set_rows((
             ("Assessment date", _date(assessment_date)),
             ("Inspector", inspector),
+            ("Area height", _number(area_height, " m")),
             ("DAI", dai),
             ("FCI", fci),
             ("Result", _value(quadrant)),
+        ))
+
+        design_inputs = active.design_inputs if active and active.design_inputs else {}
+        geometry_lines = []
+        if active:
+            geometry_lines = [
+                f"{tr('Angle deviation')}: {_number(design_inputs.get('bench_angle_shortfall_deg'), '°')}",
+                f"{tr('Berm deviation')}: {_number(design_inputs.get('berm_width_deficit_m'), ' m')}",
+                f"{tr('Toe deviation')}: {_number(design_inputs.get('toe_offset_from_design_m'), ' m')}",
+            ]
+        self.geometry_summary_card.set_sections((
+            ("geometry", "Design geometry", geometry_lines or [tr("No geometry assessment data yet")]),
         ))
 
         face_rows = (
@@ -509,6 +667,7 @@ class AssessmentAreaPage(QWidget):
                 tr(WORKFLOW_LABELS[workflow]),
                 getattr(workflow, "value", workflow),
                 self.controller.links.is_stale(link),
+                action_text="Go to ›",
             ))
         self.related_events.set_rows(related_rows, empty_text="No linked blast events")
 
@@ -541,6 +700,7 @@ class AssessmentAreaPage(QWidget):
         ))
         self.photo_preview.set_items(self.controller.attachments, photos, "No photos yet", can_add=not self.read_only)
         self.document_preview.set_items(self.controller.attachments, documents, "No documents yet", can_add=not self.read_only)
+        self._sync_sidebar_density()
 
     def _linked_events(self):
         page = QWidget()
