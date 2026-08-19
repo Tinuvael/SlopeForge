@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -27,6 +28,11 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     ])
     item = related.list.item(0)
     holder = related.list.itemWidget(item)
+    assert related.minimumHeight() == related.maximumHeight() == related.CARD_HEIGHT
+    assert related.list.minimumHeight() == related.list.maximumHeight() == related.LIST_HEIGHT
+    assert item.sizeHint().width() == 0
+    assert holder.sizePolicy().horizontalPolicy() == widgets.QSizePolicy.Policy.Expanding
+    assert related.layout.contentsMargins().right() == 18
     assert "background:#edf8f0" in holder.styleSheet()
     assert "border:1px solid #58a66a" in holder.styleSheet()
     assert holder.layout().contentsMargins().right() == 14
@@ -39,7 +45,7 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     app.processEvents()
 
 
-def test_block_related_empty_state_is_not_a_stretched_list_item():
+def test_block_related_empty_state_keeps_same_fixed_card_height():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.block_overview_widgets import BlockRelatedEntityList
 
@@ -48,8 +54,33 @@ def test_block_related_empty_state_is_not_a_stretched_list_item():
     related.set_rows([], empty_text="No linked assessment areas")
     assert related.list.isHidden()
     assert related.empty_label.text() == "No linked assessment areas"
+    assert related.empty_label.height() == related.LIST_HEIGHT
     assert not related.empty_label.isHidden()
+    assert related.minimumHeight() == related.maximumHeight() == related.CARD_HEIGHT
     related.close()
+    app.processEvents()
+
+
+def test_block_recent_activity_always_reserves_four_equal_slots():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.block_overview_widgets import BlockRecentActivityCard
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    card = BlockRecentActivityCard()
+    entries = [
+        SimpleNamespace(title="Created", actor="eugene", timestamp=datetime(2026, 8, 19, 12, i))
+        for i in range(2)
+    ]
+    card.set_entries(entries)
+    assert card.rows.count() == 4
+    assert [card.rows.itemAt(i).widget().height() for i in range(4)] == [card.SLOT_HEIGHT] * 4
+    assert card.rows.itemAt(2).widget().findChildren(widgets.QLabel) == []
+    assert card.rows.itemAt(3).widget().findChildren(widgets.QLabel) == []
+
+    card.set_entries(entries * 3)
+    assert card.rows.count() == 4
+    assert all(card.rows.itemAt(i).widget().findChildren(widgets.QLabel) for i in range(4))
+    card.close()
     app.processEvents()
 
 
@@ -102,11 +133,16 @@ def test_block_page_has_no_layout_feedback_loop_or_tab_reinsertion():
     assert "_sync_top_row_height" not in text
     assert "_settle_visible_layout" not in text
     assert "_finish_show_layout" not in text
-    assert "setFixedHeight" not in text
+    assert "self.geometry_card.setFixedHeight" not in text
     assert ".removeTab(" not in text
     assert ".insertTab(" not in text
     assert "BlockSectionHost" in text
     assert "self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)" in text
+    assert "self.overview_stack_widget.setSizePolicy" in text
+    assert "QSizePolicy.Policy.Fixed" in text
+    assert "self.notes.setFixedHeight(108)" in text
+    assert "self.notes.editor.setFixedHeight(58)" in text
+    assert "BlockRecentActivityCard" in text
     assert "top.addWidget(self.geometry_card, 0)" in text
     assert "QSizePolicy.Policy.Ignored" in helpers
     assert "def sizeHint(self):" in helpers
