@@ -1,12 +1,15 @@
 """Small dependency-free dashboard charts painted directly by Qt."""
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
-from PySide6.QtWidgets import QSizePolicy, QWidget
+from collections import defaultdict
+from datetime import date
+
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
 from app.localization import tr
-from .widgets import quadrant_presentation
+from .widgets import DashboardCard, quadrant_presentation
 
 
 class CompactChart(QWidget):
@@ -141,3 +144,148 @@ class CompactChart(QWidget):
                 text_flags,
                 label,
             )
+
+
+class IndexTrendChart(QWidget):
+    """All-time daily mean of one stored completed assessment index."""
+
+    def __init__(self, label: str, attribute: str, parent=None):
+        super().__init__(parent)
+        self.label = label
+        self.attribute = attribute
+        self.points: list[tuple[date, float]] = []
+        self.setMinimumHeight(118)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def set_rows(self, rows):
+        grouped: dict[date, list[float]] = defaultdict(list)
+        for row in rows:
+            when = getattr(row, "assessment_date", None)
+            value = getattr(row, self.attribute, None)
+            if when is not None and value is not None:
+                grouped[when].append(float(value))
+        self.points = [
+            (when, sum(values) / len(values))
+            for when, values in sorted(grouped.items())
+            if values
+        ]
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#fbfcfd"))
+        painter.setPen(QPen(QColor("#e2e6ec"), 1))
+        painter.drawRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), 5, 5)
+
+        title_font = QFont(painter.font())
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        painter.setPen(QColor("#334155"))
+        painter.drawText(QRectF(10, 5, 50, 20), Qt.AlignmentFlag.AlignVCenter, self.label)
+
+        if not self.points:
+            painter.setFont(QFont())
+            painter.setPen(QColor("#64748b"))
+            painter.drawText(
+                QRectF(10, 25, self.width() - 20, self.height() - 35),
+                Qt.AlignmentFlag.AlignCenter,
+                tr("No completed data"),
+            )
+            return
+
+        latest = self.points[-1][1]
+        painter.setFont(QFont())
+        painter.setPen(QColor("#334155"))
+        painter.drawText(
+            QRectF(self.width() - 75, 5, 65, 20),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            f"{latest:.2f}",
+        )
+
+        plot = QRectF(32, 28, max(30, self.width() - 44), max(34, self.height() - 50))
+        small = QFont(painter.font())
+        small.setPointSize(max(7, painter.font().pointSize() - 1))
+        painter.setFont(small)
+
+        for value in (0.0, 0.5, 1.0):
+            y = plot.bottom() - value * plot.height()
+            painter.setPen(QPen(QColor("#e5e9ef"), 1))
+            painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
+            painter.setPen(QColor("#7b8794"))
+            painter.drawText(
+                QRectF(1, y - 8, 27, 16),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                f"{value:.1f}",
+            )
+
+        first_date = self.points[0][0]
+        last_date = self.points[-1][0]
+        span = max(1, (last_date - first_date).days)
+
+        def point_for(when, value):
+            if first_date == last_date:
+                x = plot.center().x()
+            else:
+                x = plot.left() + ((when - first_date).days / span) * plot.width()
+            y = plot.bottom() - max(0.0, min(1.0, value)) * plot.height()
+            return QPointF(x, y)
+
+        path = QPainterPath()
+        first_point = point_for(*self.points[0])
+        path.moveTo(first_point)
+        for when, value in self.points[1:]:
+            path.lineTo(point_for(when, value))
+
+        line_pen = QPen(QColor("#3f6f9f"), 2)
+        painter.setPen(line_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
+        painter.setBrush(QColor("#3f6f9f"))
+        painter.setPen(QPen(QColor("#ffffff"), 1))
+        for when, value in self.points:
+            point = point_for(when, value)
+            painter.drawEllipse(point, 3.2, 3.2)
+
+        painter.setPen(QColor("#7b8794"))
+        first_label = first_date.strftime("%d.%m.%y")
+        last_label = last_date.strftime("%d.%m.%y")
+        if first_date == last_date:
+            painter.drawText(
+                QRectF(plot.left(), plot.bottom() + 3, plot.width(), 16),
+                Qt.AlignmentFlag.AlignCenter,
+                first_label,
+            )
+        else:
+            painter.drawText(
+                QRectF(plot.left(), plot.bottom() + 3, plot.width() / 2, 16),
+                Qt.AlignmentFlag.AlignLeft,
+                first_label,
+            )
+            painter.drawText(
+                QRectF(plot.center().x(), plot.bottom() + 3, plot.width() / 2, 16),
+                Qt.AlignmentFlag.AlignRight,
+                last_label,
+            )
+
+
+class AssessmentTrendCard(DashboardCard):
+    """Side-by-side all-time DAI and FCI trends from stored completed results."""
+
+    def __init__(self, parent=None):
+        super().__init__("DAI / FCI over time", parent)
+        self.setMinimumHeight(150)
+        self.set_subtitle(tr("Daily average · all completed assessments"))
+        charts = QHBoxLayout()
+        charts.setContentsMargins(0, 0, 0, 0)
+        charts.setSpacing(8)
+        self.dai = IndexTrendChart("DAI", "dai")
+        self.fci = IndexTrendChart("FCI", "fci")
+        charts.addWidget(self.dai, 1)
+        charts.addWidget(self.fci, 1)
+        self.layout.addLayout(charts, 1)
+
+    def set_rows(self, rows):
+        rows = list(rows)
+        self.dai.set_rows(rows)
+        self.fci.set_rows(rows)
