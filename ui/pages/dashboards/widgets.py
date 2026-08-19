@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -104,6 +104,7 @@ class DashboardCard(CardFrame):
         self.heading.setObjectName("CardTitle")
         self.subtitle = QLabel()
         self.subtitle.setObjectName("MutedText")
+        self.subtitle.setMinimumWidth(0)
         self.header.addWidget(self.heading)
         self.header.addSpacing(6)
         self.header.addWidget(self.subtitle)
@@ -134,13 +135,13 @@ class CompactSummaryList(DashboardCard):
 
     activated = Signal(str)
     VISIBLE_ROWS = 4
-    ROW_HEIGHT = 42
+    ROW_HEIGHT = 46
 
     def __init__(self, title: str, parent=None):
         super().__init__(title, parent)
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
-        self.list.setSpacing(3)
+        self.list.setSpacing(4)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setStyleSheet("QListWidget{background:transparent;border:0;}")
@@ -151,29 +152,39 @@ class CompactSummaryList(DashboardCard):
     def set_rows(self, rows: list[SummaryRow], *, empty_text="No data yet"):
         self.list.clear()
         rows = list(rows)
-        visible_height = self.ROW_HEIGHT * min(max(1, len(rows)), self.VISIBLE_ROWS) + 4
+        visible_height = self.ROW_HEIGHT * min(max(1, len(rows)), self.VISIBLE_ROWS) + 6
         self.list.setMinimumHeight(visible_height)
-        self.list.setMaximumHeight(self.ROW_HEIGHT * self.VISIBLE_ROWS + 4)
+        self.list.setMaximumHeight(self.ROW_HEIGHT * self.VISIBLE_ROWS + 6)
         if not rows:
             item = QListWidgetItem(tr(empty_text))
             item.setFlags(Qt.ItemFlag.NoItemFlags)
+            item.setSizeHint(QSize(0, self.ROW_HEIGHT))
             self.list.addItem(item)
             return
         for row in rows:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, row.key)
+            item.setSizeHint(QSize(0, self.ROW_HEIGHT))
             holder = QWidget()
             holder.setObjectName("DashboardSummaryRow")
+            holder.setFixedHeight(self.ROW_HEIGHT - 2)
+            holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            holder.setStyleSheet(
+                "QWidget#DashboardSummaryRow{background:#ffffff;"
+                "border:1px solid #d9dee7;border-radius:5px;}"
+            )
             layout = QHBoxLayout(holder)
-            layout.setContentsMargins(8, 5, 8, 5)
+            layout.setContentsMargins(9, 5, 10, 5)
             layout.setSpacing(8)
             text = QVBoxLayout()
             text.setContentsMargins(0, 0, 0, 0)
             text.setSpacing(0)
             title = QLabel(row.title)
             title.setObjectName("RelatedEntityTitle")
+            title.setMinimumWidth(0)
             detail = QLabel(row.detail)
             detail.setObjectName("MutedText")
+            detail.setMinimumWidth(0)
             text.addWidget(title)
             text.addWidget(detail)
             layout.addLayout(text, 1)
@@ -182,7 +193,6 @@ class CompactSummaryList(DashboardCard):
                 trailing.setObjectName("SummaryValue")
                 trailing.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 layout.addWidget(trailing)
-            item.setSizeHint(holder.sizeHint())
             self.list.addItem(item)
             self.list.setItemWidget(item, holder)
 
@@ -196,18 +206,18 @@ class ProjectLinesCard(DashboardCard):
     """Compact history of Site-wide Project Lines datasets."""
 
     VISIBLE_ROWS = 3
-    ROW_HEIGHT = 38
+    ROW_HEIGHT = 42
 
     def __init__(self, parent=None):
         super().__init__("Project Lines", parent)
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
-        self.list.setSpacing(2)
+        self.list.setSpacing(3)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setStyleSheet("QListWidget{background:transparent;border:0;}")
-        self.list.setMinimumHeight(self.ROW_HEIGHT + 2)
-        self.list.setMaximumHeight(self.ROW_HEIGHT * self.VISIBLE_ROWS + 4)
+        self.list.setMinimumHeight(self.ROW_HEIGHT + 4)
+        self.list.setMaximumHeight(self.ROW_HEIGHT * self.VISIBLE_ROWS + 6)
         self.layout.addWidget(self.list, 1)
 
     def set_datasets(self, datasets):
@@ -216,24 +226,35 @@ class ProjectLinesCard(DashboardCard):
         if not datasets:
             item = QListWidgetItem(tr("No Project Lines loaded"))
             item.setFlags(Qt.ItemFlag.NoItemFlags)
+            item.setSizeHint(QSize(0, self.ROW_HEIGHT))
             self.list.addItem(item)
             return
         for dataset in datasets:
             item = QListWidgetItem()
+            item.setSizeHint(QSize(0, self.ROW_HEIGHT))
             holder = QWidget()
+            holder.setObjectName("ProjectLinesDatasetRow")
+            holder.setFixedHeight(self.ROW_HEIGHT - 2)
+            holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            holder.setStyleSheet(
+                "QWidget#ProjectLinesDatasetRow{background:#ffffff;"
+                "border:1px solid #d9dee7;border-radius:5px;}"
+            )
             layout = QHBoxLayout(holder)
-            layout.setContentsMargins(6, 4, 6, 4)
+            layout.setContentsMargins(8, 4, 9, 4)
             layout.setSpacing(8)
             text = QVBoxLayout()
             text.setContentsMargins(0, 0, 0, 0)
             text.setSpacing(0)
             title = QLabel(str(dataset.name))
             title.setObjectName("RelatedEntityTitle")
+            title.setMinimumWidth(0)
             stamp = getattr(dataset, "imported_at", None)
             detail = QLabel(
                 f"{format_dashboard_datetime(stamp)}  ·  {getattr(dataset, 'source_file_name', '') or '—'}"
             )
             detail.setObjectName("MutedText")
+            detail.setMinimumWidth(0)
             text.addWidget(title)
             text.addWidget(detail)
             layout.addLayout(text, 1)
@@ -250,7 +271,6 @@ class ProjectLinesCard(DashboardCard):
                     "border-radius:5px;padding:3px 7px;font-weight:600;"
                 )
             layout.addWidget(state)
-            item.setSizeHint(holder.sizeHint())
             self.list.addItem(item)
             self.list.setItemWidget(item, holder)
 
