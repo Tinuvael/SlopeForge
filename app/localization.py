@@ -159,6 +159,18 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "No execution data yet": "Фактических данных пока нет",
     "No geomechanics data yet": "Геомеханических данных пока нет",
     "Open section": "Открыть раздел",
+    # Compact Project/Domain dashboards (#69).
+    "Project overview": "Обзор проекта",
+    "Plan / assessment areas": "План / участки оценки",
+    "Import / Update": "Импорт / обновить",
+    "No Domains yet": "Доменов пока нет",
+    "Blast events: %1 • Production: %2 • Contour: %3": "Взрывные события: %1 • Производственные: %2 • Контурные: %3",
+    "Elevation intervals": "Интервалы высот",
+    "Assessment areas: %1 • Evaluated: %2": "Участки оценки: %1 • Оценено: %2",
+    "No Domain geometry defined": "Геометрия домена не задана",
+    "No Assessment Areas yet": "Участков оценки пока нет",
+    "No completed assessment": "Нет завершённой оценки",
+    "Clear": "Очистить",
 }
 
 # Qt asks the installed translator for platform-theme captions in contexts such
