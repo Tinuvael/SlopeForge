@@ -18,11 +18,15 @@ def test_operational_pages_use_shared_overview_primitives():
     assessment = Path("ui/pages/assessment_area_page.py").read_text(encoding="utf-8")
     for text in (block, contour, assessment):
         assert "EntityHeaderWidget" in text
-        assert "QuickAttachmentPreview" in text
-        assert "SquareGeometryCard" in text
         assert "OverviewKeyValueCard" in text
         assert "RecentActivityCard" in text
+    for text in (contour, assessment):
+        assert "QuickAttachmentPreview" in text
+        assert "SquareGeometryCard" in text
         assert "RelatedEntityList" in text
+    assert "BlockAttachmentPreview" in block
+    assert "BlockGeometryCard" in block
+    assert "BlockRelatedEntityList" in block
     assert "InlineAutosaveNotes" in block
     assert "InlineAutosaveNotes" in contour
     assert "focus_geometry=geometry.plan_geometry" in block
@@ -246,13 +250,14 @@ def test_block_overview_uses_main_pattern_depth_and_execution_exceptions():
 
 def test_block_overview_refinements_keep_preview_and_navigation_distinct():
     page = Path("ui/pages/block_page.py").read_text(encoding="utf-8")
+    helpers = Path("ui/pages/block_overview_widgets.py").read_text(encoding="utf-8")
     general = page.index("overview_stack.addWidget(self.general_info)")
     related = page.index("overview_stack.addWidget(self.related_areas)")
     notes = page.index("overview_stack.addWidget(self.notes)")
     assert general < related < notes
-    assert 'QuickAttachmentPreview("Photos", "photo", max_items=6)' in page
-    assert 'QuickAttachmentPreview("Documents", "document", max_items=7)' in page
-    assert 'action_label="Reimport", enforce_square=False' in page
+    assert 'BlockAttachmentPreview("Photos", "photo", max_items=6)' in page
+    assert 'BlockAttachmentPreview("Documents", "document", max_items=7)' in page
+    assert 'BlockGeometryCard("Plan / geometry", action_label="Reimport")' in page
     assert "set_visible_item_limit(photo_limit)" in page
     assert "set_visible_item_limit(document_limit)" in page
     assert "entity_activated.connect(self._preview_related_area)" in page
@@ -261,7 +266,10 @@ def test_block_overview_refinements_keep_preview_and_navigation_distinct():
     assert 'action_text="Go to ›"' in page
     assert "set_comparison_geometry(" in page
     assert "block_rect.united(area_rect)" in page
+    assert "plan.center_on_focus()" in page
     assert "QEvent.Type.MouseButtonPress" in page
+    assert "ScrollBarAlwaysOff" in helpers
+    assert "BlockRelatedEntityItem" in helpers
     assert "revision=geometry.revision_number" not in page.split("def _render_engineering", 1)[1].split("card, draft", 1)[0]
     assert "source=geometry.source_file_name" not in page.split("def _render_engineering", 1)[1].split("card, draft", 1)[0]
 
