@@ -71,7 +71,9 @@ class AssessmentMatrixCard(CardFrame):
     """Compact matrix card; scoring remains entirely outside this presentation widget."""
 
     def __init__(self, title="Assessment matrix", parent=None):
-        super().__init__(title, parent)
+        super().__init__(title)
+        if parent is not None:
+            self.setParent(parent)
         self.setMinimumWidth(250)
         self.setMaximumWidth(310)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
