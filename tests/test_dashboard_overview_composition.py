@@ -20,27 +20,36 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
         assert "MetricCard" in page
         assert "DashboardRecentActivityCard" in page
         assert "CompactSummaryList" in page
-        assert 'CompactSummaryList(\n            "Attention required", visible_rows=3' in page
+        assert 'CompactSummaryList(\n            "Attention required", visible_rows=2' in page
+        assert 'setObjectName("DashboardPage")' in page
+        assert "workspace.setColumnStretch(0, 1)" in page
+        assert "workspace.setColumnStretch(1, 1)" in page
+        assert "setRowStretch" not in page
 
     assert "ProjectLinesCard" in project
     assert 'primary_action_label="Project Lines"' in project
-    assert 'CompactSummaryList("Domain summary", visible_rows=4)' in project
+    assert 'CompactSummaryList("Domain summary", visible_rows=3)' in project
     assert "AssessmentProgressCard" in project
     assert "assessment_area_requested = Signal(str, int)" in project
 
-    assert 'CompactSummaryList("Elevation intervals", visible_rows=4)' in domain
+    assert 'CompactSummaryList("Elevation intervals", visible_rows=3)' in domain
     assert '"Latest assessments", visible_rows=3' in domain
     assert "BlastActivityCard" in domain
     assert 'primary_action_label="Import geometry"' in domain
     assert 'secondary_action_label="Draw geometry"' in domain
 
 
-def test_dashboard_plan_is_compact_assessment_focused_and_uses_1_5x_framing():
+def test_dashboard_plan_has_stable_near_four_three_footprint_and_uses_1_5x_framing():
     plan = source("ui/pages/dashboards/plan_overview.py")
     assert "FRAME_FACTOR = 1.5" in plan
-    assert "self.view.setMinimumHeight(185)" in plan
-    assert "self.setMinimumHeight(230)" in plan
-    assert "self.setMaximumHeight(310)" in plan
+    assert "self.view.setMinimumHeight(235)" in plan
+    assert "self.setMinimumWidth(460)" in plan
+    assert "self.setMaximumWidth(620)" in plan
+    assert "self.setMinimumHeight(300)" in plan
+    assert "self.setMaximumHeight(360)" in plan
+    assert "def hasHeightForWidth" in plan
+    assert "int(width * 0.62)" in plan
+    assert "return QSize(540, 335)" in plan
     assert 'getattr(self.snapshot, "assessment_geometries", ())' in plan
     assert 'getattr(self.snapshot, "project_lines", ())' in plan
     assert 'getattr(self.snapshot, "domain_geometries", ())' in plan
@@ -79,11 +88,15 @@ def test_dashboard_result_palette_matches_full_assessment_matrix():
 
 def test_dashboard_internal_lists_are_bounded_and_card_styled():
     widgets = source("ui/pages/dashboards/widgets.py")
-    assert "visible_rows: int = 4" in widgets
+    assert "visible_rows: int = 3" in widgets
     assert "self.visible_rows" in widgets
     assert "DashboardSummaryRow" in widgets
     assert "ProjectLinesDatasetRow" in widgets
-    assert "DASHBOARD_CARD_STYLE" in widgets
+    assert 'self.setObjectName("DashboardCard")' in widgets
+    assert 'self.setObjectName("DashboardMetricCard")' in widgets
+    assert "QFrame#DashboardCard" in widgets
+    assert "QFrame#DashboardMetricCard" in widgets
+    assert "QFrame#OverviewCard" not in widgets
     assert "ScrollBarAsNeeded" in widgets
     assert "ScrollBarAlwaysOff" in widgets
 
