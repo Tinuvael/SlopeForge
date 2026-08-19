@@ -50,6 +50,24 @@ def test_every_literal_tr_call_has_finished_russian_translation():
     assert missing == []
 
 
+def test_runtime_dashboard_card_labels_have_russian_fallbacks():
+    # DashboardCard and OverviewLinkButton receive some labels dynamically, so
+    # those values do not appear as literal tr("...") calls in the AST scan.
+    required = {
+        "Plan / assessment areas",
+        "Import / Update Project Lines",
+        "Assessment result distribution",
+        "Domain summary",
+        "Elevation intervals",
+        "No completed assessment",
+        "Geometry achieved, condition insufficient",
+        "Good results",
+        "Unacceptable results",
+        "Condition good, geometry unacceptable",
+    }
+    assert required <= RUSSIAN_RUNTIME_FALLBACKS.keys()
+
+
 def test_obvious_widget_literals_do_not_bypass_translation():
     raw = []
     for path in ACTIVE:
