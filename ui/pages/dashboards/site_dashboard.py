@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
@@ -47,6 +47,8 @@ class SiteDashboardPage(QWidget):
 
     def __init__(self, context, site_id, name):
         super().__init__()
+        self.setObjectName("DashboardPage")
+        self.setStyleSheet("QWidget#DashboardPage{background:#f4f6f9;}")
         self.context = context
         self.site_id = site_id
         self.repo = DashboardRepository(context.session_factory)
@@ -55,8 +57,8 @@ class SiteDashboardPage(QWidget):
         self.snapshot = self.repo.site_snapshot(site_id)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 10, 12, 10)
-        root.setSpacing(8)
+        root.setContentsMargins(14, 12, 14, 12)
+        root.setSpacing(9)
 
         header = QHBoxLayout()
         header.setSpacing(8)
@@ -85,14 +87,11 @@ class SiteDashboardPage(QWidget):
 
         workspace = QGridLayout()
         workspace.setContentsMargins(0, 0, 0, 0)
-        workspace.setHorizontalSpacing(8)
-        workspace.setVerticalSpacing(8)
-        workspace.setColumnStretch(0, 6)
-        workspace.setColumnStretch(1, 4)
-        workspace.setRowStretch(0, 4)
-        workspace.setRowStretch(1, 2)
-        workspace.setRowStretch(2, 2)
-        root.addLayout(workspace, 1)
+        workspace.setHorizontalSpacing(9)
+        workspace.setVerticalSpacing(9)
+        workspace.setColumnStretch(0, 1)
+        workspace.setColumnStretch(1, 1)
+        root.addLayout(workspace)
 
         self.plan_card = DashboardPlanCard(
             self.snapshot,
@@ -100,12 +99,19 @@ class SiteDashboardPage(QWidget):
         )
         self.plan_card.primary_action_requested.connect(self.import_lines)
         self.plan_card.set_actions_enabled(self._can_edit())
-        workspace.addWidget(self.plan_card, 0, 0)
+        workspace.addWidget(
+            self.plan_card,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
+        )
 
         right_top = QWidget()
+        right_top.setMinimumHeight(300)
+        right_top.setMaximumHeight(360)
         right_layout = QVBoxLayout(right_top)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(8)
+        right_layout.setSpacing(9)
 
         self.result_card = DashboardCard("Assessment result distribution")
         self.result_chart = CompactChart({}, "donut")
@@ -113,13 +119,13 @@ class SiteDashboardPage(QWidget):
         right_layout.addWidget(self.result_card, 3)
 
         self.attention_card = CompactSummaryList(
-            "Attention required", visible_rows=3
+            "Attention required", visible_rows=2
         )
         self.attention_card.activated.connect(self._open_attention_area)
         right_layout.addWidget(self.attention_card, 2)
         workspace.addWidget(right_top, 0, 1)
 
-        self.domain_summary = CompactSummaryList("Domain summary", visible_rows=4)
+        self.domain_summary = CompactSummaryList("Domain summary", visible_rows=3)
         self.domain_summary.activated.connect(
             lambda value: self.domain_requested.emit(int(value))
         )
@@ -134,6 +140,7 @@ class SiteDashboardPage(QWidget):
         self.recent_card = DashboardRecentActivityCard()
         workspace.addWidget(self.recent_card, 2, 1)
 
+        root.addStretch(1)
         self._render_snapshot()
 
     def _can_edit(self) -> bool:
