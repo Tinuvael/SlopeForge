@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QSizePolicy
+from PySide6.QtWidgets import QSizePolicy
 
 from ui.pages.entity_overview_widgets import (
     QuickAttachmentPreview,
@@ -67,7 +67,14 @@ class BlockAttachmentPreview(QuickAttachmentPreview):
 class BlockGeometryCard(SquareGeometryCard):
     """Block Overview geometry card driven by the neighbouring stack height."""
 
-    def __init__(self, title="Plan / geometry", *, action_label="Reimport", parent=None):
+    def __init__(
+        self,
+        title="Plan / geometry",
+        *,
+        action_label="Reimport",
+        enforce_square=False,
+        parent=None,
+    ):
         super().__init__(
             title,
             action_label=action_label,
