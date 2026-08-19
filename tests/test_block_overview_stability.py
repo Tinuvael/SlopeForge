@@ -9,7 +9,7 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     core = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     from ui.pages.block_overview_widgets import BlockGeometryCard, BlockRelatedEntityList
-    from ui.pages.entity_overview_widgets import RelatedEntityRow
+    from ui.pages.entity_overview_widgets import OverviewLinkButton, RelatedEntityRow
 
     app = widgets.QApplication.instance() or widgets.QApplication([])
     geometry = BlockGeometryCard()
@@ -40,6 +40,13 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     assert wrapper.layout().contentsMargins().right() == related.ROW_RIGHT_INSET == 10
     assert holder is not None
     assert holder.sizePolicy().horizontalPolicy() == widgets.QSizePolicy.Policy.Expanding
+    labels = [label.text() for label in holder.findChildren(widgets.QLabel)]
+    assert "Area 1" in labels
+    assert "AA-1 · 600–630 m" in labels
+    assert "Completed" in labels
+    action = holder.findChild(OverviewLinkButton)
+    assert action is not None
+    assert action.text() == "Go to ›"
     assert "background:#edf8f0" in holder.styleSheet()
     assert "border:1px solid #58a66a" in holder.styleSheet()
     item.setSelected(True)
@@ -155,6 +162,7 @@ def test_block_page_has_no_layout_feedback_loop_or_tab_reinsertion():
     assert "self.geometry_card.setFixedHeight" not in text
     assert ".removeTab(" not in text
     assert ".insertTab(" not in text
+    assert "removeItemWidget" not in helpers
     assert "BlockSectionHost" in text
     assert "self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)" in text
     assert "self.overview_stack_widget.setSizePolicy" in text
