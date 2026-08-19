@@ -9,7 +9,7 @@ from domain.blasting.workflow import (
 )
 from PySide6.QtCore import QEvent, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QFormLayout, QFrame, QHBoxLayout, QInputDialog, QLabel,
+    QAbstractItemView, QFormLayout, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
     QListWidget, QListWidgetItem, QMessageBox, QPushButton, QSizePolicy,
     QSplitter, QVBoxLayout, QWidget,
 )
@@ -22,11 +22,11 @@ from ui.pages.assessment_overview_widgets import (
     AssessmentMatrixCard,
     AssessmentRecentActivityCard,
     AssessmentRelatedEventList,
+    AssessmentStateSummaryCard,
 )
 from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_history_revision_viewer import open_assessment_revision, open_geometry_revision
 from ui.pages.entity_overview_widgets import (
-    EngineeringSummaryCard,
     EntityHeaderWidget,
     OverviewKeyValueCard,
     RelatedEntityRow,
@@ -416,47 +416,44 @@ class AssessmentAreaPage(QWidget):
         layout.setSpacing(8)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        top = QHBoxLayout()
-        top.setSpacing(8)
-        self.overview_stack_widget = QWidget()
-        self.overview_stack_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        overview_stack = QVBoxLayout(self.overview_stack_widget)
-        overview_stack.setContentsMargins(0, 0, 0, 0)
-        overview_stack.setSpacing(8)
-        overview_stack.setAlignment(Qt.AlignmentFlag.AlignTop)
+        workspace = QGridLayout()
+        workspace.setHorizontalSpacing(8)
+        workspace.setVerticalSpacing(8)
+        workspace.setColumnStretch(0, 1)
+        workspace.setColumnStretch(1, 0)
+
         self.assessment_result = OverviewKeyValueCard("Assessment result", open_label="Open ›")
         self.assessment_result.open_requested.connect(lambda: self.tabs.setCurrentWidget(self.assessment_tab))
+        workspace.addWidget(self.assessment_result, 0, 0)
+
         self.related_events = AssessmentRelatedEventList("Related blast events")
         self.related_events.entity_activated.connect(self._preview_related_event)
         self.related_events.entity_action_requested.connect(self._open_related_event)
-        overview_stack.addWidget(self.assessment_result)
-        overview_stack.addWidget(self.related_events)
+        workspace.addWidget(self.related_events, 1, 0, 2, 1)
 
         self.geometry_card = AssessmentGeometryCard("Plan / geometry", action_label="Edit boundaries")
         self.geometry_card.action_requested.connect(self._request_edit_boundaries)
         self.geometry_card.plan.view.escape_requested.connect(self._clear_related_event_preview)
         self._geometry_viewport = self.geometry_card.plan.view.viewport()
         self._geometry_viewport.installEventFilter(self)
-        top.addWidget(self.overview_stack_widget, 1)
-        top.addWidget(self.geometry_card, 0)
-        layout.addLayout(top)
+        workspace.addWidget(self.geometry_card, 0, 1, 2, 1)
+        workspace.setRowMinimumHeight(1, self.related_events.LIST_HEIGHT)
 
-        middle = QHBoxLayout()
-        middle.setSpacing(8)
-        middle.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.geometry_summary_card = EngineeringSummaryCard("Geometry")
-        self.geometry_summary_card.section_open_requested.connect(self._open_overview_section)
-        self.face_condition_card = EngineeringSummaryCard("Face condition")
-        self.face_condition_card.section_open_requested.connect(self._open_overview_section)
+        state_row = QWidget()
+        state_layout = QHBoxLayout(state_row)
+        state_layout.setContentsMargins(0, 0, 0, 0)
+        state_layout.setSpacing(8)
+        self.state_summary_card = AssessmentStateSummaryCard("Geometry / face condition")
+        self.state_summary_card.open_requested.connect(lambda: self.tabs.setCurrentWidget(self.assessment_tab))
         self.matrix_card = AssessmentMatrixCard("Assessment matrix")
         self.matrix_preview = self.matrix_card.preview
         self.matrix_basis_text = QLabel()
         self.matrix_basis_text.setObjectName("MutedText")
         self.matrix_card.layout.addWidget(self.matrix_basis_text)
-        middle.addWidget(self.geometry_summary_card, 2, Qt.AlignmentFlag.AlignTop)
-        middle.addWidget(self.face_condition_card, 3, Qt.AlignmentFlag.AlignTop)
-        middle.addWidget(self.matrix_card, 0, Qt.AlignmentFlag.AlignTop)
-        layout.addLayout(middle)
+        state_layout.addWidget(self.state_summary_card, 1)
+        state_layout.addWidget(self.matrix_card, 0)
+        workspace.addWidget(state_row, 2, 1)
+        layout.addLayout(workspace)
 
         bottom = QHBoxLayout()
         bottom.setSpacing(8)
@@ -625,9 +622,6 @@ class AssessmentAreaPage(QWidget):
                 f"{tr('Berm deviation')}: {_number(design_inputs.get('berm_width_deficit_m'), ' m')}",
                 f"{tr('Toe deviation')}: {_number(design_inputs.get('toe_offset_from_design_m'), ' m')}",
             ]
-        self.geometry_summary_card.set_sections((
-            ("geometry", "Design geometry", geometry_lines or [tr("No geometry assessment data yet")]),
-        ))
 
         face_rows = (
             ("Contour hole traces", _face_condition_value(active, "visible_drillhole_traces", " %")),
@@ -638,8 +632,9 @@ class AssessmentAreaPage(QWidget):
             ("Blast cracks", _face_condition_value(active, "open_cracks")),
         )
         visible_face = [f"{tr(name)}: {value}" for name, value in face_rows if value != "—"]
-        self.face_condition_card.set_sections((
-            ("face_condition", "Face condition", visible_face or [tr("No face-condition data yet")]),
+        self.state_summary_card.set_sections((
+            ("Geometry", geometry_lines or [tr("No geometry assessment data yet")]),
+            ("Face condition", visible_face or [tr("No face-condition data yet")]),
         ))
 
         snapshot = active.matrix_template_snapshot if active else {}
