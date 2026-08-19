@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from app.localization import tr
 from ui.pages.entity_overview_widgets import (
+    InlineAutosaveNotes,
     QuickAttachmentPreview,
     RecentActivityCard,
     RelatedEntityList,
@@ -28,16 +29,11 @@ class BlockRelatedEntityList(RelatedEntityList):
 
     def __init__(self, title: str):
         super().__init__(title)
-        # Fix only the content viewport. Let CardFrame/layout calculate the outer
-        # height from its real margins + title + spacing + viewport, so content can
-        # never be clipped by an undersized magic CARD_HEIGHT.
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.layout.setSpacing(6)
         self.list.setFixedHeight(self.LIST_HEIGHT)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # Keep a few pixels inside the viewport so the right-hand row border is
-        # painted fully even at the edge of a QListView item rect.
         self.list.setStyleSheet(
             "QListWidget{background:transparent;border:0;padding-right:5px;}"
         )
@@ -65,8 +61,6 @@ class BlockRelatedEntityList(RelatedEntityList):
         self.empty_label.hide()
         self.list.show()
         super().set_rows(rows, empty_text=empty_text)
-        # Shared RelatedEntityList adjusts list height by row count. Block keeps a
-        # constant viewport instead; additional rows scroll inside this card.
         self.list.setFixedHeight(self.LIST_HEIGHT)
         for index, row in enumerate(rows):
             item = self.list.item(index)
@@ -82,8 +76,6 @@ class BlockRelatedEntityList(RelatedEntityList):
             layout = holder.layout()
             if layout is not None:
                 layout.setContentsMargins(9, 7, 12, 7)
-            # Width is deliberately omitted. QListView owns row width; only height
-            # is hinted. This avoids stale content-width measurements on hidden tabs.
             item.setSizeHint(QSize(0, holder.sizeHint().height()))
         self._sync_row_styles()
         self.updateGeometry()
@@ -105,6 +97,19 @@ class BlockRelatedEntityList(RelatedEntityList):
                 f"QWidget#BlockRelatedEntityItem{{background:{background};"
                 f"border:{width}px solid {border};border-radius:5px;}}"
             )
+
+
+class BlockNotesCard(InlineAutosaveNotes):
+    """Compact fixed-content Notes card; the editor scrolls for long comments."""
+
+    EDITOR_HEIGHT = 46
+
+    def __init__(self, title="Notes"):
+        super().__init__(title)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.layout.setSpacing(6)
+        self.editor.setFixedHeight(self.EDITOR_HEIGHT)
+        self.editor.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
 
 class BlockRecentActivityCard(RecentActivityCard):
@@ -189,8 +194,6 @@ class BlockGeometryCard(SquareGeometryCard):
         self.setMaximumWidth(self.MAXIMUM_WIDTH)
         self.setMinimumHeight(0)
         self.setMaximumHeight(16777215)
-        # Left cards remain the vertical source of truth. Horizontally the plan is
-        # intentionally ~30% wider than the previous 540 px overview target.
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         self.plan.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.plan.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
