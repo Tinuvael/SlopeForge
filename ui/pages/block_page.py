@@ -20,6 +20,11 @@ from repositories.entity_history_repository import EntityHistoryRepository
 from repositories.production_blast_repository import ProductionBlastRepository, ProductionBlastRow
 from ui.block_dialog import BlockDialog
 from ui.pages.block_card_widgets import EmptySection, format_datetime, format_decimal
+from ui.pages.block_overview_widgets import (
+    BlockAttachmentPreview,
+    BlockGeometryCard,
+    BlockRelatedEntityList,
+)
 from ui.pages.entity_history_revision_viewer import open_geometry_revision, open_technical_card_revision
 from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_overview_widgets import (
@@ -27,11 +32,8 @@ from ui.pages.entity_overview_widgets import (
     EntityHeaderWidget,
     InlineAutosaveNotes,
     OverviewKeyValueCard,
-    QuickAttachmentPreview,
     RecentActivityCard,
-    RelatedEntityList,
     RelatedEntityRow,
-    SquareGeometryCard,
 )
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
@@ -146,11 +148,13 @@ class BlockPage(QWidget):
         top = QHBoxLayout()
         top.setSpacing(8)
         top.setAlignment(Qt.AlignmentFlag.AlignTop)
-        overview_stack = QVBoxLayout()
+        self.overview_stack_widget = QWidget()
+        overview_stack = QVBoxLayout(self.overview_stack_widget)
+        overview_stack.setContentsMargins(0, 0, 0, 0)
         overview_stack.setSpacing(8)
         overview_stack.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.general_info = OverviewKeyValueCard("General information")
-        self.related_areas = RelatedEntityList("Related assessment areas")
+        self.related_areas = BlockRelatedEntityList("Related assessment areas")
         self.related_areas.entity_activated.connect(self._preview_related_area)
         self.related_areas.entity_action_requested.connect(self._open_related_area)
         self.notes = InlineAutosaveNotes("Notes")
@@ -158,14 +162,12 @@ class BlockPage(QWidget):
         overview_stack.addWidget(self.general_info)
         overview_stack.addWidget(self.related_areas)
         overview_stack.addWidget(self.notes)
-        self.geometry_card = SquareGeometryCard(
-            "Plan / geometry", action_label="Reimport", enforce_square=False
-        )
+        self.geometry_card = BlockGeometryCard("Plan / geometry", action_label="Reimport")
         self.geometry_card.action_requested.connect(self._reimport_current_geometry)
         self.geometry_card.plan.view.escape_requested.connect(self._clear_related_area_preview)
         self._geometry_viewport = self.geometry_card.plan.view.viewport()
         self._geometry_viewport.installEventFilter(self)
-        top.addLayout(overview_stack, 1)
+        top.addWidget(self.overview_stack_widget, 1)
         top.addWidget(self.geometry_card, 0, Qt.AlignmentFlag.AlignTop)
         overview_layout.addLayout(top)
 
@@ -218,8 +220,8 @@ class BlockPage(QWidget):
         right = QVBoxLayout()
         right.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.summary = OverviewKeyValueCard("Summary")
-        self.photos = QuickAttachmentPreview("Photos", "photo", max_items=6)
-        self.documents = QuickAttachmentPreview("Documents", "document", max_items=7)
+        self.photos = BlockAttachmentPreview("Photos", "photo", max_items=6)
+        self.documents = BlockAttachmentPreview("Documents", "document", max_items=7)
         self.photos.add_requested.connect(lambda: self.photo_manager.add())
         self.documents.add_requested.connect(lambda: self.document_manager.add())
         self.photos.open_page_requested.connect(lambda: self._open_attachments("photo"))
@@ -249,7 +251,7 @@ class BlockPage(QWidget):
             """
         )
         self._sync_engineering_actions_visibility()
-        self._sync_sidebar_density(self.height())
+        self._sync_sidebar_density()
         self.refresh()
 
     def _make_attachment_tab(self, kind):
@@ -265,11 +267,18 @@ class BlockPage(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._sync_sidebar_density(event.size().height())
+        self._sync_sidebar_density()
 
-    def _sync_sidebar_density(self, height: int) -> None:
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._sync_sidebar_density()
+        self._sync_top_row_height()
+
+    def _sync_sidebar_density(self) -> None:
         if not hasattr(self, "photos") or not hasattr(self, "documents"):
             return
+        window = self.window()
+        height = window.height() if window is not None and window is not self else self.height()
         if height >= 800:
             photo_limit, document_limit = 6, 7
         elif height >= 730:
@@ -280,6 +289,17 @@ class BlockPage(QWidget):
             photo_limit, document_limit = 4, 4
         self.photos.set_visible_item_limit(photo_limit)
         self.documents.set_visible_item_limit(document_limit)
+
+    def _sync_top_row_height(self) -> None:
+        if not hasattr(self, "overview_stack_widget") or not hasattr(self, "geometry_card"):
+            return
+        stack_layout = self.overview_stack_widget.layout()
+        if stack_layout is not None:
+            stack_layout.activate()
+        target = self.overview_stack_widget.sizeHint().height()
+        target = max(360, min(520, target))
+        if self.geometry_card.height() != target or self.geometry_card.minimumHeight() != target:
+            self.geometry_card.setFixedHeight(target)
 
     def _sync_engineering_actions_visibility(self, *_args):
         self.engineering_actions_widget.setVisible(self.tabs.currentIndex() in (1, 2, 3))
@@ -358,16 +378,13 @@ class BlockPage(QWidget):
         dataset = self.entity_controller.state.active_dataset()
         lines = dataset.lines if dataset else []
         plan = self.geometry_card.plan
-        transform = plan.view.transform()
-        center = plan.view.mapToScene(plan.view.viewport().rect().center())
         self.geometry_card.set_geometry(
             geometry.plan_geometry,
             lines,
             focus_geometry=geometry.plan_geometry,
         )
         plan._toggle_lines(self.geometry_card.lines.isChecked())
-        plan.view.setTransform(transform)
-        plan.view.centerOn(center)
+        plan.center_on_focus()
 
     def set_filters(self, filters: dict) -> None:
         self.filters = filters
@@ -382,8 +399,13 @@ class BlockPage(QWidget):
         self._render_current_block()
 
     def open_block_id(self, event_id: str) -> None:
-        self.current_block = self.block_service.get_block(event_id)
-        self._render_current_block()
+        self.setUpdatesEnabled(False)
+        try:
+            self.current_block = self.block_service.get_block(event_id)
+            self._render_current_block()
+        finally:
+            self.setUpdatesEnabled(True)
+        self.update()
 
     def edit_current_block(self) -> None:
         if not self.current_block or not self.context.current_user.can_edit or self.current_block.is_archived:
@@ -480,11 +502,12 @@ class BlockPage(QWidget):
         service = self.entity_controller.attachments if self.entity_controller else None
         self.photos.set_items(service, photos, "No photos yet", can_add=can_add)
         self.documents.set_items(service, documents, "No documents yet", can_add=can_add)
-        self._sync_sidebar_density(self.height())
+        self._sync_sidebar_density()
         self.history_tab.set_entries(history_entries)
         self.recent_activity.set_entries(history_entries)
         self._render_related_areas(event)
         self._render_engineering(block)
+        self._sync_top_row_height()
         self._sync_engineering_actions_visibility()
 
     def _render_related_areas(self, event):
