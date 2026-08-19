@@ -270,10 +270,7 @@ class DomainDashboardPage(QWidget):
             tr("Drawn") if current else ""
         )
         if current:
-            polygon_text = tr("%1 polygons").replace("%1", str(len(current)))
-            self.plan_card.set_subtitle(
-                f"{polygon_text} · {source}" if source else polygon_text
-            )
+            self.plan_card.set_subtitle(source)
         else:
             self.plan_card.set_subtitle(tr("No Domain geometry"))
 
