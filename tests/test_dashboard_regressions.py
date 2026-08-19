@@ -44,10 +44,12 @@ def test_map_geometry_decoder_supports_persisted_plan_types():
 
 def test_plan_overview_is_read_only_and_actions_live_in_card_header():
     plan = source("ui/pages/dashboards/plan_overview.py")
+    project = source("ui/pages/dashboards/site_dashboard.py")
     assert 'QCheckBox(tr("Project Lines"))' in plan
     assert 'OverviewLinkButton("Center")' in plan
     assert "primary_action_requested = Signal()" in plan
     assert "secondary_action_requested = Signal()" in plan
+    assert 'primary_action_label="Import / Update Project Lines"' in project
     for forbidden in ("edit_vertices", "setFlag", "ItemIsMovable", "ItemIsSelectable"):
         assert forbidden not in plan
 
