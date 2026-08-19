@@ -27,6 +27,9 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
         assert "workspace.setRowMinimumHeight(0, 405)" in page
         assert "workspace.setRowStretch(0, 1)" in page
         assert "root.addLayout(workspace, 1)" in page
+        assert "self.result_card.setMinimumHeight(210)" in page
+        assert "self.result_card.setMaximumHeight(225)" in page
+        assert "self.attention_card.setMinimumHeight(160)" in page
 
     assert "ProjectLinesCard" in project
     assert 'primary_action_label="Project Lines"' in project
@@ -35,25 +38,36 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
     assert "lines_card.add_header_action(\"Add\")" in project
     assert "assessment_area_requested = Signal(str, int)" in project
     assert "self._filter_domain" in project and 'set_filter("domain"' in project
+    assert 'action_label = tr("Update lines")' in project
 
     assert 'CompactSummaryList("Elevation intervals", visible_rows=3)' in domain
     assert '"Latest assessments", visible_rows=3, show_go_to=True' in domain
     assert "BlastActivityCard" in domain
-    assert 'primary_action_label="Import geometry"' in domain
+    assert 'primary_action_label="Import"' in domain
     assert 'secondary_action_label="Draw geometry"' in domain
+    assert 'add_header_action("Clear")' not in domain
     assert 'set_filter("interval"' in domain and 'set_filter("area"' in domain
 
 
-def test_dashboard_plan_fills_top_row_and_supports_transient_filtering():
+def test_dashboard_plan_has_one_line_header_auto_fit_and_wheel_zoom():
     plan = source("ui/pages/dashboards/plan_overview.py")
     assert "FRAME_FACTOR = 1.5" in plan
     assert "class DashboardGraphicsView" in plan
     assert "clear_filter_requested = Signal()" in plan
     assert "Qt.Key.Key_Escape" in plan
     assert "self.itemAt(event.position().toPoint()) is None" in plan
+    assert "def wheelEvent" in plan
+    assert "self.scale(factor, factor)" in plan
+    assert "AnchorUnderMouse" in plan
+    assert "reset_zoom_state" in plan
+    assert "def showEvent" in plan
+    assert "QTimer.singleShot(0, self._fit_initial_view)" in plan
     assert "self.view.setMinimumHeight(320)" in plan
     assert "self.setMinimumHeight(405)" in plan
     assert "self.setMaximumHeight(455)" in plan
+    assert "self.header.addWidget(self.lines)" in plan
+    assert "self.header.addWidget(self.center_button)" in plan
+    assert "self.layout.addLayout(self.controls)" not in plan
     assert "QSizePolicy.Policy.Expanding" in plan
     assert "return QSize(600, 430)" in plan
     assert "def set_filter" in plan and "def clear_filter" in plan
@@ -110,14 +124,18 @@ def test_dashboard_internal_lists_have_explicit_filter_and_navigation_actions():
     assert "ScrollBarAlwaysOff" in widgets
 
 
-def test_progress_and_donut_are_visually_strengthened_without_new_metrics():
+def test_progress_donut_and_activity_cards_are_visually_polished_without_new_metrics():
     widgets = source("ui/pages/dashboards/widgets.py")
     charts = source("ui/pages/dashboards/charts.py")
     assert "self.progress.setFixedHeight(17)" in widgets
     assert 'self.percent = QLabel("0%")' in widgets
-    assert "self.setMinimumHeight(205 if kind == \"donut\" else 92)" in charts
-    assert "shadow.setWidth(width + 5)" in charts
+    assert "self.setMinimumHeight(150 if kind == \"donut\" else 92)" in charts
+    assert "shadow.setWidth(width + 4)" in charts
     assert "center_font.setBold(True)" in charts
+    assert "Qt.TextFlag.TextWordWrap" in charts
+    assert 'slot.setObjectName("DashboardActivityRow")' in widgets
+    assert "border-bottom:1px solid #eef1f5" in widgets
+    assert "len(entry) > 2" in widgets
     assert "risk_score" not in widgets.lower()
     assert "risk_score" not in charts.lower()
 
