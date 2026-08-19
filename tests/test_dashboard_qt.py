@@ -177,6 +177,11 @@ def test_read_only_map_constructs_empty_and_populated(app):
     assert card.primary_action.text() == "Import geometry"
     assert card.plan.view.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     assert card.plan.view.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert card.plan._initial_fit_pending is True
+    card.plan.resize(600, 420)
+    card.plan.show()
+    app.processEvents()
+    assert card.plan.view.transform().m11() > 0
     card.set_filter("area", "AREA-42")
     assert card.plan._filter_state == ("area", "AREA-42")
     card.clear_filter()
