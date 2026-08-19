@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -144,6 +145,15 @@ class SummaryRow:
     accent: str | None = None
 
 
+class SummaryRowWidget(QWidget):
+    clicked = Signal()
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
 class CompactSummaryList(DashboardCard):
     """Bounded dashboard rows: row click filters, optional Go to navigates."""
 
@@ -172,7 +182,6 @@ class CompactSummaryList(DashboardCard):
             "QListWidget::item{background:transparent;border:0;}"
             "QListWidget::item:selected{background:transparent;}"
         )
-        self.list.itemClicked.connect(self._emit_item)
         self.layout.addWidget(self.list, 1)
         self.set_rows([])
 
@@ -193,23 +202,27 @@ class CompactSummaryList(DashboardCard):
             self.list.addItem(item)
             return
         for row in rows:
+            key = str(row.key)
             item = QListWidgetItem()
-            item.setData(Qt.ItemDataRole.UserRole, row.key)
+            item.setData(Qt.ItemDataRole.UserRole, key)
             item.setSizeHint(QSize(0, self.ROW_HEIGHT))
-            holder = QWidget()
+            holder = SummaryRowWidget()
             holder.setObjectName("DashboardSummaryRow")
             holder.setFixedHeight(self.ROW_HEIGHT - 2)
             holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            holder.setCursor(Qt.CursorShape.PointingHandCursor)
             holder.setStyleSheet(
                 "QWidget#DashboardSummaryRow{background:#fbfcfd;"
                 "border:1px solid #e2e6ec;border-radius:5px;}"
             )
+            holder.clicked.connect(lambda current_key=key: self.activated.emit(current_key))
             layout = QHBoxLayout(holder)
             layout.setContentsMargins(7, 4, 8, 4)
             layout.setSpacing(7)
             if row.accent:
                 accent = QFrame()
                 accent.setFixedWidth(4)
+                accent.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
                 accent.setStyleSheet(
                     f"background:{row.accent};border:0;border-radius:2px;"
                 )
@@ -220,9 +233,11 @@ class CompactSummaryList(DashboardCard):
             title = QLabel(row.title)
             title.setObjectName("RelatedEntityTitle")
             title.setMinimumWidth(0)
+            title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             detail = QLabel(row.detail)
             detail.setObjectName("MutedText")
             detail.setMinimumWidth(0)
+            detail.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             text.addWidget(title)
             text.addWidget(detail)
             layout.addLayout(text, 1)
@@ -230,21 +245,17 @@ class CompactSummaryList(DashboardCard):
                 trailing = QLabel(row.trailing)
                 trailing.setObjectName("SummaryValue")
                 trailing.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                trailing.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
                 layout.addWidget(trailing)
             if self.show_go_to:
                 go_to = OverviewLinkButton("Go to ›")
                 go_to.setToolTip(tr("Open"))
                 go_to.clicked.connect(
-                    lambda _checked=False, key=str(row.key): self.go_to_requested.emit(key)
+                    lambda _checked=False, current_key=key: self.go_to_requested.emit(current_key)
                 )
                 layout.addWidget(go_to)
             self.list.addItem(item)
             self.list.setItemWidget(item, holder)
-
-    def _emit_item(self, item):
-        key = item.data(Qt.ItemDataRole.UserRole)
-        if key not in (None, ""):
-            self.activated.emit(str(key))
 
 
 class AssessmentProgressCard(DashboardCard):
