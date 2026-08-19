@@ -13,12 +13,14 @@ def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
         AssessmentMatrixCard,
         AssessmentRecentActivityCard,
         AssessmentRelatedEventList,
+        AssessmentStateSummaryCard,
     )
 
     app = widgets.QApplication.instance() or widgets.QApplication([])
     geometry = AssessmentGeometryCard()
     related = AssessmentRelatedEventList("Related blast events")
     comments = AssessmentCommentsCard()
+    state = AssessmentStateSummaryCard()
     matrix = AssessmentMatrixCard()
     activity = AssessmentRecentActivityCard()
     photos = AssessmentAttachmentPreview("Photos", "photo", max_items=6)
@@ -28,6 +30,10 @@ def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
         ("comments", "Comments", ["Comment"]),
         ("recommendations", "Recommendations", ["Recommendation"]),
     ))
+    state.set_sections((
+        ("Geometry", ["Angle deviation: 1°", "Berm deviation: 1 m"]),
+        ("Face condition", ["Contour hole traces: 75 %"]),
+    ))
 
     assert geometry.sizeHint().width() == 700
     assert geometry.minimumWidth() == 610
@@ -35,6 +41,9 @@ def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
     assert related.LIST_HEIGHT == 184
     assert related.LIST_HEIGHT > 136
     assert related.ROW_RIGHT_INSET == 14
+    assert related.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Expanding
+    assert related.list.minimumHeight() == 184
+    assert related.list.maximumHeight() > 184
     assert activity.SLOT_COUNT == 4
     assert activity.SLOT_HEIGHT == 32
     assert photos._max_items == 6
@@ -45,6 +54,8 @@ def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
     assert matrix.preview.minimumHeight() == 190
     assert matrix.preview.sizeHint().width() == 220
     assert matrix.preview.sizeHint().height() == 220
+    assert state.sections.count() == 3
+    assert state.open_button.text() == "Open ›"
 
     section_indexes = []
     for index in range(comments.sections.count()):
@@ -57,7 +68,7 @@ def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
             assert widget.layout().alignment() & core.Qt.AlignmentFlag.AlignTop
     assert len(section_indexes) == 2
 
-    for widget in (geometry, related, comments, matrix, activity, photos, documents):
+    for widget in (geometry, related, comments, state, matrix, activity, photos, documents):
         widget.close()
     app.processEvents()
 
@@ -75,6 +86,15 @@ def test_assessment_overview_page_uses_saved_geometry_and_stored_result_only():
     assert 'AssessmentAttachmentPreview("Documents", "document", max_items=7)' in page
     assert 'AssessmentGeometryCard("Plan / geometry", action_label="Edit boundaries")' in page
     assert 'AssessmentRelatedEventList("Related blast events")' in page
+    assert 'AssessmentStateSummaryCard("Geometry / face condition")' in page
+    assert "workspace.addWidget(self.related_events, 1, 0, 2, 1)" in page
+    assert "workspace.addWidget(self.geometry_card, 0, 1, 2, 1)" in page
+    assert "workspace.addWidget(state_row, 2, 1)" in page
+    assert "workspace.setRowMinimumHeight(1, self.related_events.LIST_HEIGHT)" in page
+    assert "self.state_summary_card.open_requested.connect" in page
+    assert "self.state_summary_card.set_sections" in page
+    assert "self.geometry_summary_card" not in page
+    assert "self.face_condition_card" not in page
     assert "entity_activated.connect(self._preview_related_event)" in page
     assert "entity_action_requested.connect(self._open_related_event)" in page
     assert "escape_requested.connect(self._clear_related_event_preview)" in page
