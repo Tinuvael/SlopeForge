@@ -55,7 +55,7 @@ class SlopeForgeSplash(QSplashScreen):
             painter.setPen(QColor("#d8eefc"))
             painter.drawText(rect.width() - 250, rect.height() - 20, 236, 18, Qt.AlignmentFlag.AlignRight, self._status)
 
-    def close_with_fade(self, minimum_ms: int = 1000, fade_ms: int = 350) -> None:
+    def close_with_fade(self, minimum_ms: int = 2000, fade_ms: int = 350) -> None:
         while self._timer.elapsed() < minimum_ms:
             QApplication.processEvents()
             QThread.msleep(20)
