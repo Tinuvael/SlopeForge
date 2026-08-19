@@ -1,24 +1,30 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QListWidgetItem,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.localization import tr
 from ui.pages.entity_overview_widgets import (
     InlineAutosaveNotes,
+    OverviewLinkButton,
     QuickAttachmentPreview,
     RecentActivityCard,
     RelatedEntityList,
     SquareGeometryCard,
+    apply_status_badge,
 )
 
 
 class BlockRelatedEntityList(RelatedEntityList):
     """Stable Block relationship card with an internally scrollable viewport."""
 
-    # Roughly two linked-area rows are visible before the list starts scrolling.
-    # The outer CardFrame remains content-driven, so this also raises the left
-    # overview stack (and therefore the adjacent Plan card) by one row.
     LIST_HEIGHT = 136
     ROW_RIGHT_INSET = 10
     STATE_COLORS = {
@@ -51,9 +57,12 @@ class BlockRelatedEntityList(RelatedEntityList):
         self.list.itemSelectionChanged.connect(self._sync_row_styles)
 
     def set_rows(self, rows, *, empty_text="No linked entities"):
+        """Build Block rows directly so QListWidget owns each wrapper only once."""
         rows = list(rows)
+        self.list.clear()
+        self.list.setFixedHeight(self.LIST_HEIGHT)
+
         if not rows:
-            self.list.clear()
             self.list.hide()
             self.empty_label.setText(tr(empty_text))
             self.empty_label.show()
@@ -62,28 +71,11 @@ class BlockRelatedEntityList(RelatedEntityList):
 
         self.empty_label.hide()
         self.list.show()
-        super().set_rows(rows, empty_text=empty_text)
-        self.list.setFixedHeight(self.LIST_HEIGHT)
-        for index, row in enumerate(rows):
-            item = self.list.item(index)
-            item.setData(Qt.ItemDataRole.UserRole + 1, row.status_state or "unknown")
-            holder = self.list.itemWidget(item)
-            if holder is None:
-                continue
 
-            # QListWidget stretches itemWidget to the full item rect. Painting the
-            # card border on that widget puts the right border exactly on the
-            # viewport clip edge. Wrap it and inset the actual card by 10 px so the
-            # complete border is always visible without any resize-time width math.
-            self.list.removeItemWidget(item)
-            holder.setObjectName("BlockRelatedEntityItem")
-            holder.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Fixed,
-            )
-            holder_layout = holder.layout()
-            if holder_layout is not None:
-                holder_layout.setContentsMargins(9, 7, 12, 7)
+        for row in rows:
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, row.entity_id)
+            item.setData(Qt.ItemDataRole.UserRole + 1, row.status_state or "unknown")
 
             wrapper = QWidget()
             wrapper.setObjectName("BlockRelatedEntityWrapper")
@@ -91,11 +83,46 @@ class BlockRelatedEntityList(RelatedEntityList):
             wrapper_layout = QHBoxLayout(wrapper)
             wrapper_layout.setContentsMargins(0, 0, self.ROW_RIGHT_INSET, 0)
             wrapper_layout.setSpacing(0)
-            holder.setParent(wrapper)
+
+            holder = QWidget(wrapper)
+            holder.setObjectName("BlockRelatedEntityItem")
+            holder.setCursor(Qt.CursorShape.PointingHandCursor)
+            holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            layout = QVBoxLayout(holder)
+            layout.setContentsMargins(9, 7, 12, 7)
+            layout.setSpacing(2)
+
+            top = QHBoxLayout()
+            title = QLabel(row.title)
+            title.setObjectName("RelatedEntityTitle")
+            top.addWidget(title)
+            top.addStretch()
+            if row.status_text:
+                badge = QLabel(tr(row.status_text))
+                apply_status_badge(badge, row.status_state)
+                top.addWidget(badge)
+            if row.stale:
+                stale = QLabel(tr("Stale"))
+                stale.setObjectName("StaleBadge")
+                top.addWidget(stale)
+            if row.action_text:
+                action = OverviewLinkButton(row.action_text)
+                action.clicked.connect(
+                    lambda _checked=False, entity_id=row.entity_id:
+                    self.entity_action_requested.emit(str(entity_id))
+                )
+                top.addWidget(action)
+            layout.addLayout(top)
+
+            subtitle = QLabel(row.subtitle)
+            subtitle.setObjectName("MutedText")
+            layout.addWidget(subtitle)
             wrapper_layout.addWidget(holder)
 
             item.setSizeHint(QSize(0, holder.sizeHint().height()))
+            self.list.addItem(item)
             self.list.setItemWidget(item, wrapper)
+
         self._sync_row_styles()
         self.updateGeometry()
 
