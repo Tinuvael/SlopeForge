@@ -27,8 +27,12 @@ from ui.pages.entity_overview_widgets import OverviewLinkButton
 
 
 DASHBOARD_CARD_STYLE = (
-    "QFrame#OverviewCard{background:#ffffff;border:1px solid #d9dee7;"
-    "border-radius:6px;}"
+    "QFrame#DashboardCard{background:#ffffff;border:1px solid #d7dde6;"
+    "border-radius:7px;}"
+)
+DASHBOARD_METRIC_STYLE = (
+    "QFrame#DashboardMetricCard{background:#ffffff;border:1px solid #d7dde6;"
+    "border-radius:7px;}"
 )
 
 # Compatibility name retained for the existing dashboard repository/tests.
@@ -56,10 +60,12 @@ class MetricCard(CardFrame):
 
     def __init__(self, title, value, detail="", icon="analytics"):
         super().__init__()
-        self.setStyleSheet(DASHBOARD_CARD_STYLE)
+        self.setObjectName("DashboardMetricCard")
+        self.setStyleSheet(DASHBOARD_METRIC_STYLE)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setMinimumHeight(72)
-        self.setMaximumHeight(82)
+        self.setMinimumHeight(74)
+        self.setMaximumHeight(84)
+        self.layout.setContentsMargins(12, 10, 12, 10)
         row = QHBoxLayout()
         row.setSpacing(10)
         image = QLabel()
@@ -105,11 +111,15 @@ class DashboardCard(CardFrame):
         super().__init__()
         if parent is not None:
             self.setParent(parent)
+        self.setObjectName("DashboardCard")
         self.setStyleSheet(DASHBOARD_CARD_STYLE)
+        self.layout.setContentsMargins(12, 10, 12, 10)
+        self.layout.setSpacing(7)
         self.header = QHBoxLayout()
         self.header.setSpacing(6)
         self.heading = QLabel(tr(title))
         self.heading.setObjectName("CardTitle")
+        self.heading.setStyleSheet("font-weight:600;color:#1f2937;")
         self.subtitle = QLabel()
         self.subtitle.setObjectName("MutedText")
         self.subtitle.setMinimumWidth(0)
@@ -143,9 +153,9 @@ class CompactSummaryList(DashboardCard):
     """Card-like rows; only this bounded inner list may scroll."""
 
     activated = Signal(str)
-    ROW_HEIGHT = 46
+    ROW_HEIGHT = 44
 
-    def __init__(self, title: str, parent=None, *, visible_rows: int = 4):
+    def __init__(self, title: str, parent=None, *, visible_rows: int = 3):
         super().__init__(title, parent)
         self.visible_rows = max(1, int(visible_rows))
         self.list = QListWidget()
@@ -161,9 +171,9 @@ class CompactSummaryList(DashboardCard):
     def set_rows(self, rows: list[SummaryRow], *, empty_text="No data yet"):
         self.list.clear()
         rows = list(rows)
-        visible_height = self.ROW_HEIGHT * min(max(1, len(rows)), self.visible_rows) + 6
+        visible_height = self.ROW_HEIGHT * min(max(1, len(rows)), self.visible_rows) + 4
         self.list.setMinimumHeight(visible_height)
-        self.list.setMaximumHeight(self.ROW_HEIGHT * self.visible_rows + 6)
+        self.list.setMaximumHeight(self.ROW_HEIGHT * self.visible_rows + 4)
         if not rows:
             item = QListWidgetItem(tr(empty_text))
             item.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -179,11 +189,11 @@ class CompactSummaryList(DashboardCard):
             holder.setFixedHeight(self.ROW_HEIGHT - 2)
             holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             holder.setStyleSheet(
-                "QWidget#DashboardSummaryRow{background:#ffffff;"
-                "border:1px solid #d9dee7;border-radius:5px;}"
+                "QWidget#DashboardSummaryRow{background:#fbfcfd;"
+                "border:1px solid #e2e6ec;border-radius:5px;}"
             )
             layout = QHBoxLayout(holder)
-            layout.setContentsMargins(7, 5, 10, 5)
+            layout.setContentsMargins(7, 4, 9, 4)
             layout.setSpacing(8)
             if row.accent:
                 accent = QFrame()
@@ -235,6 +245,7 @@ class AssessmentProgressCard(DashboardCard):
         )
         self.layout.addWidget(self.counts)
         self.layout.addWidget(self.progress)
+        self.layout.addStretch()
 
     def set_counts(self, total: int, completed: int, drafts: int):
         total = max(0, int(total))
@@ -261,6 +272,7 @@ class BlastActivityCard(DashboardCard):
         self.latest.setObjectName("MutedText")
         self.layout.addWidget(self.counts)
         self.layout.addWidget(self.latest)
+        self.layout.addStretch()
 
     def set_data(self, production: int, contour: int, blasts):
         self.counts.setText(
@@ -282,8 +294,8 @@ class BlastActivityCard(DashboardCard):
 class ProjectLinesCard(DashboardCard):
     """Compact history of Site-wide Project Lines datasets."""
 
-    VISIBLE_ROWS = 3
-    ROW_HEIGHT = 42
+    VISIBLE_ROWS = 2
+    ROW_HEIGHT = 40
 
     def __init__(self, parent=None):
         super().__init__("Project Lines", parent)
@@ -294,7 +306,7 @@ class ProjectLinesCard(DashboardCard):
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setStyleSheet("QListWidget{background:transparent;border:0;}")
         self.list.setMinimumHeight(self.ROW_HEIGHT + 4)
-        self.list.setMaximumHeight(self.ROW_HEIGHT * self.VISIBLE_ROWS + 6)
+        self.list.setMaximumHeight(self.ROW_HEIGHT * self.VISIBLE_ROWS + 5)
         self.layout.addWidget(self.list, 1)
 
     def set_datasets(self, datasets):
@@ -314,11 +326,11 @@ class ProjectLinesCard(DashboardCard):
             holder.setFixedHeight(self.ROW_HEIGHT - 2)
             holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             holder.setStyleSheet(
-                "QWidget#ProjectLinesDatasetRow{background:#ffffff;"
-                "border:1px solid #d9dee7;border-radius:5px;}"
+                "QWidget#ProjectLinesDatasetRow{background:#fbfcfd;"
+                "border:1px solid #e2e6ec;border-radius:5px;}"
             )
             layout = QHBoxLayout(holder)
-            layout.setContentsMargins(8, 4, 9, 4)
+            layout.setContentsMargins(8, 3, 9, 3)
             layout.setSpacing(8)
             text = QVBoxLayout()
             text.setContentsMargins(0, 0, 0, 0)
@@ -356,12 +368,12 @@ class DashboardRecentActivityCard(DashboardCard):
     """Four stable one-line activity slots, matching operational entity cards."""
 
     SLOT_COUNT = 4
-    SLOT_HEIGHT = 30
+    SLOT_HEIGHT = 27
 
     def __init__(self, parent=None):
         super().__init__("Recent activity", parent)
         self.rows = QVBoxLayout()
-        self.rows.setSpacing(3)
+        self.rows.setSpacing(2)
         self.layout.addLayout(self.rows)
 
     def set_entries(self, entries):
