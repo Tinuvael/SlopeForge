@@ -120,6 +120,67 @@ def test_quick_attachment_preview_exposes_add_and_open_actions():
     preview.close(); app.processEvents()
 
 
+def test_quick_attachment_preview_extra_items_collapse_without_overflow():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.entity_overview_widgets import QuickAttachmentPreview
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    host = widgets.QWidget()
+    host.resize(1000, 900)
+    photos = QuickAttachmentPreview("Photos", "photo", max_items=6)
+    documents = QuickAttachmentPreview("Documents", "document", max_items=7)
+    photos.setParent(host)
+    documents.setParent(host)
+    photos._items = [object()] * 6
+    documents._items = [object()] * 7
+
+    assert photos._visible_item_limit() == 6
+    assert documents._visible_item_limit() == 7
+
+    host.resize(1000, 790)
+    assert photos._visible_item_limit() == 4
+    assert documents._visible_item_limit() == 6
+    host.resize(1000, 710)
+    assert documents._visible_item_limit() == 5
+    host.resize(1000, 640)
+    assert documents._visible_item_limit() == 4
+
+    photos.resize(250, 180)
+    width, _height = photos._photo_tile_size()
+    margins = photos.layout.contentsMargins()
+    available = photos.width() - margins.left() - margins.right()
+    assert width * 2 + 6 <= available
+    photos.close(); documents.close(); host.close(); app.processEvents()
+
+
+def test_related_entity_list_separates_preview_click_from_go_to_action():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.entity_overview_widgets import (
+        OverviewLinkButton,
+        RelatedEntityList,
+        RelatedEntityRow,
+    )
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    related = RelatedEntityList("Related assessment areas")
+    activated = []
+    navigated = []
+    related.entity_activated.connect(activated.append)
+    related.entity_action_requested.connect(navigated.append)
+    related.set_rows([
+        RelatedEntityRow("AA-1", "Area 1", "AA-1 · 600–630 m", action_text="Go to ›")
+    ])
+    item = related.list.item(0)
+    related._emit_item(item)
+    assert activated == ["AA-1"]
+    holder = related.list.itemWidget(item)
+    button = holder.findChild(OverviewLinkButton)
+    assert button is not None
+    button.click(); app.processEvents()
+    assert navigated == ["AA-1"]
+    related.close(); app.processEvents()
+
+
 def test_assessment_matrix_preview_only_accepts_stored_indices_and_is_large():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.entity_overview_widgets import AssessmentMatrixPreview
@@ -172,6 +233,24 @@ def test_block_overview_uses_main_pattern_depth_and_execution_exceptions():
     assert "GeneralInfoCard" not in page
     assert "Created" not in page.split("meta_values=(", 1)[1].split("),", 1)[0]
     assert "Updated" not in page.split("meta_values=(", 1)[1].split("),", 1)[0]
+
+
+def test_block_overview_refinements_keep_preview_and_navigation_distinct():
+    page = Path("ui/pages/block_page.py").read_text(encoding="utf-8")
+    general = page.index("overview_stack.addWidget(self.general_info)")
+    related = page.index("overview_stack.addWidget(self.related_areas, 1)")
+    notes = page.index("overview_stack.addWidget(self.notes)")
+    assert general < related < notes
+    assert 'QuickAttachmentPreview("Photos", "photo", max_items=6)' in page
+    assert 'QuickAttachmentPreview("Documents", "document", max_items=7)' in page
+    assert 'action_label="Reimport"' in page
+    assert "entity_activated.connect(self._preview_related_area)" in page
+    assert "entity_action_requested.connect(self._open_related_area)" in page
+    assert "escape_requested.connect(self._clear_related_area_preview)" in page
+    assert 'action_text="Go to ›"' in page
+    assert "set_comparison_geometry(" in page
+    assert "block_rect.united(area_rect)" in page
+    assert "QEvent.Type.MouseButtonPress" in page
 
 
 def test_contour_overview_has_safe_metadata_and_related_assessment_access():
