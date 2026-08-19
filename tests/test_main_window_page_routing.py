@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 def source(path): return Path(path).read_text(encoding="utf-8")
+def compact(text): return "".join(text.split())
 
 def test_tree_is_primary_navigation_without_project_lines_branch():
     tree=source("ui/widgets/project_tree.py")
@@ -106,9 +107,10 @@ def test_entity_page_integration_corrections_are_visible():
     assert 'QPushButton(tr("Save draft"))' in block and 'QPushButton(tr("Complete"))' in block
     assert "save_draft()" in block and "complete()" in block
     area=source("ui/pages/assessment_area_page.py")
+    area_compact=compact(area)
     assert "self.assessment_sections" not in area
-    assert "self.assessment_inputs=QWidget()" in area
-    assert "self.assessment_inputs=QScrollArea()" not in area
+    assert "self.assessment_inputs=QWidget()" in area_compact
+    assert "self.assessment_inputs=QScrollArea()" not in area_compact
     assert "geometry_section_title" in area and "face_condition_section_title" in area
     assert "page.setVisible(True)" not in area
     assert "Save an assessment draft first" not in area
@@ -157,24 +159,27 @@ def test_area_creation_cancel_drawing_is_not_page_cancel():
 
 def test_stale_block_engineering_is_cleared_and_read_only_is_defensive():
     block=source("ui/pages/block_page.py")
-    render=block[block.index("def _render_engineering"):block.index("def _reimport_geometry")]
+    render=block[block.index("def _render_engineering"):block.index("def _reimport_current_geometry")]
     assert "self._clear_engineering()" in render
-    assert "self.technical_card_editor=None" in render
-    assert "set_reimport_enabled(False)" in render
-    assert "self.current_block.is_archived" in render
+    assert "self._dispose_technical_card_editor()" in block
+    assert "self.design_tab.set_content(EmptySection())" in block
+    assert "self.execution_tab.set_content(EmptySection())" in block
+    assert "self.geometry_card.set_action_enabled(False)" in block
+    assert "not editable" in render
     reimport=block[block.index("def _reimport_geometry"):]
     assert "not self.context.current_user.can_edit" in reimport and "self.current_block.is_archived" in reimport
 
 def test_area_and_contour_mutations_are_defensively_read_only():
     area=source("ui/pages/assessment_area_page.py")
-    assert "self.read_only=not context.current_user.can_edit or self.area.is_archived" in area
+    contour=source("ui/pages/contour_event_page.py")
+    assert "self.read_only=notcontext.current_user.can_editor self.area.is_archived".replace(" ","") in compact(area)
     assert "def _ensure_editable" in area
     for method in ("_change_link","recalculate_links","add_manual_link","_save_evaluation","_request_edit_boundaries"):
         section=area[area.index(f"def {method}"):]
         assert "_ensure_editable" in section[:500]
-    contour=source("ui/pages/contour_event_page.py")
-    assert "self.read_only=not context.current_user.can_edit or self.blast_event.is_archived" in contour
-    assert "if self.read_only" in contour and "set_reimport_enabled(not self.read_only)" in contour
+    assert "self.read_only=notcontext.current_user.can_editor self.blast_event.is_archived".replace(" ","") in compact(contour)
+    assert "if self.read_only" in contour
+    assert "self.geometry_card.set_action_enabled(not self.read_only)" in contour
 
 def test_restart_drawing_distinguishes_create_and_edit_modes():
     creation=source("ui/pages/assessment_area_creation_page.py")
