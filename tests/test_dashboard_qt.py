@@ -80,7 +80,7 @@ def test_native_charts_construct_with_and_without_data(app):
     assert CompactChart({}).data == {}
 
 
-def test_project_domain_summary_emits_real_domain_id(app, monkeypatch):
+def test_project_domain_summary_filters_first_and_go_to_emits_real_domain_id(app, monkeypatch):
     snap = snapshot()
     site_snap = SiteDashboardSnapshot(3, [snap], None, [])
     monkeypatch.setattr(
@@ -96,13 +96,17 @@ def test_project_domain_summary_emits_real_domain_id(app, monkeypatch):
     page.domain_requested.connect(received.append)
 
     item = page.domain_summary.list.item(0)
-    page.domain_summary.list.itemClicked.emit(item)
+    holder = page.domain_summary.list.itemWidget(item)
+    holder.clicked.emit()
+    assert page.plan_card.plan._filter_state == ("domain", "North")
+    assert received == []
 
+    page.domain_summary.go_to_requested.emit("7")
     assert received == [7]
     page.close()
 
 
-def test_domain_interval_summary_is_compact_and_not_entity_table(app, monkeypatch):
+def test_domain_interval_summary_filters_plan_without_virtual_navigation(app, monkeypatch):
     snap = snapshot()
     monkeypatch.setattr(
         "ui.pages.dashboards.domain_dashboard.DashboardRepository.domain_snapshot",
@@ -119,6 +123,8 @@ def test_domain_interval_summary_is_compact_and_not_entity_table(app, monkeypatc
     holder = page.interval_summary.list.itemWidget(page.interval_summary.list.item(0))
     assert holder is not None
     assert "10–20 m" in " ".join(label.text() for label in holder.findChildren(QLabel))
+    holder.clicked.emit()
+    assert page.plan_card.plan._filter_state == ("interval", "10–20")
     assert not hasattr(page, "tabs")
     page.close()
 
@@ -171,6 +177,10 @@ def test_read_only_map_constructs_empty_and_populated(app):
     assert card.primary_action.text() == "Import geometry"
     assert card.plan.view.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     assert card.plan.view.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    card.set_filter("area", "AREA-42")
+    assert card.plan._filter_state == ("area", "AREA-42")
+    card.clear_filter()
+    assert card.plan._filter_state is None
     empty_map.close()
     plan.close()
     card.close()
