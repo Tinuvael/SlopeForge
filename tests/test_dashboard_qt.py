@@ -90,8 +90,12 @@ def test_trends_group_same_date_and_activity_shows_entity_actor_and_time(app):
     ]
     trend = AssessmentTrendCard()
     trend.set_rows(rows)
-    assert trend.dai.points == [(date(2026, 8, 1), pytest.approx(.7)), (date(2026, 8, 3), 1.0)]
-    assert trend.fci.points == [(date(2026, 8, 1), pytest.approx(.6)), (date(2026, 8, 3), .9)]
+    assert [when for when, _value in trend.dai.points] == [date(2026, 8, 1), date(2026, 8, 3)]
+    assert trend.dai.points[0][1] == pytest.approx(.7)
+    assert trend.dai.points[1][1] == pytest.approx(1.0)
+    assert [when for when, _value in trend.fci.points] == [date(2026, 8, 1), date(2026, 8, 3)]
+    assert trend.fci.points[0][1] == pytest.approx(.6)
+    assert trend.fci.points[1][1] == pytest.approx(.9)
 
     recent = DashboardRecentActivityCard()
     recent.set_entries([
