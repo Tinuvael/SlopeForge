@@ -63,6 +63,29 @@ def test_plan_overview_is_read_only_and_actions_live_in_single_card_header():
         assert forbidden not in plan
 
 
+def test_dashboard_trends_use_stored_completed_revision_history_only():
+    repository = source("repositories/dashboard_repository.py")
+    assert "class TrendRow" in repository
+    assert 'a.AssessmentAreaEvaluationRevision.status == "completed"' in repository
+    assert "a.AssessmentAreaEvaluationRevision.assessment_date.is_not(None)" in repository
+    assert "revision.design_achievement_index" in repository
+    assert "revision.face_condition_index" in repository
+    assert "calculate_revision" not in repository
+
+
+def test_recent_activity_identifies_entity_and_uses_real_actor_sources():
+    repository = source("repositories/dashboard_repository.py")
+    widgets = source("ui/pages/dashboards/widgets.py")
+    assert 'ActivityRow(\n                        "Block"' in repository
+    assert 'ActivityRow(\n                        "Contour blast"' in repository
+    assert '"Assessment Area"' in repository
+    assert "AuditLogEntry" in repository
+    assert "revision_actor.get(evaluation.logical_id" in repository
+    assert "created_by_user" in repository
+    assert "entity_name" in widgets
+    assert "actor" in widgets
+
+
 def test_real_quadrant_values_drive_shared_assessment_presentation():
     presentation = source("ui/assessment_result_presentation.py")
     for value in (
