@@ -23,7 +23,8 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     ])
     item = related.list.item(0)
     holder = related.list.itemWidget(item)
-    assert "border:1px solid #cfd7e2" in holder.styleSheet()
+    assert "background:#edf8f0" in holder.styleSheet()
+    assert "border:1px solid #58a66a" in holder.styleSheet()
     assert holder.layout().contentsMargins().right() == 14
     item.setSelected(True)
     app.processEvents()
