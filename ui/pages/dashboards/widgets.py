@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QProgressBar,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -24,6 +25,11 @@ from ui.assessment_result_presentation import (
 from ui.pages.block_card_widgets import CardFrame
 from ui.pages.entity_overview_widgets import OverviewLinkButton
 
+
+DASHBOARD_CARD_STYLE = (
+    "QFrame#OverviewCard{background:#ffffff;border:1px solid #d9dee7;"
+    "border-radius:6px;}"
+)
 
 # Compatibility name retained for the existing dashboard repository/tests.
 QuadrantPresentation = AssessmentResultPresentation
@@ -50,9 +56,10 @@ class MetricCard(CardFrame):
 
     def __init__(self, title, value, detail="", icon="analytics"):
         super().__init__()
+        self.setStyleSheet(DASHBOARD_CARD_STYLE)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setMinimumHeight(78)
-        self.setMaximumHeight(92)
+        self.setMinimumHeight(72)
+        self.setMaximumHeight(82)
         row = QHBoxLayout()
         row.setSpacing(10)
         image = QLabel()
@@ -61,7 +68,7 @@ class MetricCard(CardFrame):
         row.addWidget(image)
         box = QVBoxLayout()
         box.setContentsMargins(0, 0, 0, 0)
-        box.setSpacing(2)
+        box.setSpacing(1)
         title_label = QLabel(tr(str(title)))
         title_label.setObjectName("MutedText")
         self.value_label = QLabel(str(value))
@@ -98,6 +105,7 @@ class DashboardCard(CardFrame):
         super().__init__()
         if parent is not None:
             self.setParent(parent)
+        self.setStyleSheet(DASHBOARD_CARD_STYLE)
         self.header = QHBoxLayout()
         self.header.setSpacing(6)
         self.heading = QLabel(tr(title))
@@ -128,17 +136,18 @@ class SummaryRow:
     title: str
     detail: str = ""
     trailing: str = ""
+    accent: str | None = None
 
 
 class CompactSummaryList(DashboardCard):
-    """Card-like rows for Domain/Interval summaries; only the inner list may scroll."""
+    """Card-like rows; only this bounded inner list may scroll."""
 
     activated = Signal(str)
-    VISIBLE_ROWS = 4
     ROW_HEIGHT = 46
 
-    def __init__(self, title: str, parent=None):
+    def __init__(self, title: str, parent=None, *, visible_rows: int = 4):
         super().__init__(title, parent)
+        self.visible_rows = max(1, int(visible_rows))
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(4)
@@ -152,9 +161,9 @@ class CompactSummaryList(DashboardCard):
     def set_rows(self, rows: list[SummaryRow], *, empty_text="No data yet"):
         self.list.clear()
         rows = list(rows)
-        visible_height = self.ROW_HEIGHT * min(max(1, len(rows)), self.VISIBLE_ROWS) + 6
+        visible_height = self.ROW_HEIGHT * min(max(1, len(rows)), self.visible_rows) + 6
         self.list.setMinimumHeight(visible_height)
-        self.list.setMaximumHeight(self.ROW_HEIGHT * self.VISIBLE_ROWS + 6)
+        self.list.setMaximumHeight(self.ROW_HEIGHT * self.visible_rows + 6)
         if not rows:
             item = QListWidgetItem(tr(empty_text))
             item.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -174,8 +183,15 @@ class CompactSummaryList(DashboardCard):
                 "border:1px solid #d9dee7;border-radius:5px;}"
             )
             layout = QHBoxLayout(holder)
-            layout.setContentsMargins(9, 5, 10, 5)
+            layout.setContentsMargins(7, 5, 10, 5)
             layout.setSpacing(8)
+            if row.accent:
+                accent = QFrame()
+                accent.setFixedWidth(4)
+                accent.setStyleSheet(
+                    f"background:{row.accent};border:0;border-radius:2px;"
+                )
+                layout.addWidget(accent)
             text = QVBoxLayout()
             text.setContentsMargins(0, 0, 0, 0)
             text.setSpacing(0)
@@ -200,6 +216,67 @@ class CompactSummaryList(DashboardCard):
         key = item.data(Qt.ItemDataRole.UserRole)
         if key not in (None, ""):
             self.activated.emit(str(key))
+
+
+class AssessmentProgressCard(DashboardCard):
+    """Compact progress overview without inventing a new scoring metric."""
+
+    def __init__(self, parent=None):
+        super().__init__("Assessment progress", parent)
+        self.counts = QLabel()
+        self.counts.setObjectName("SummaryValue")
+        self.progress = QProgressBar()
+        self.progress.setTextVisible(False)
+        self.progress.setRange(0, 100)
+        self.progress.setFixedHeight(10)
+        self.progress.setStyleSheet(
+            "QProgressBar{border:1px solid #d9dee7;border-radius:5px;background:#f3f5f8;}"
+            "QProgressBar::chunk{background:#4f78a8;border-radius:4px;}"
+        )
+        self.layout.addWidget(self.counts)
+        self.layout.addWidget(self.progress)
+
+    def set_counts(self, total: int, completed: int, drafts: int):
+        total = max(0, int(total))
+        completed = max(0, int(completed))
+        drafts = max(0, int(drafts))
+        pending = max(0, total - completed - drafts)
+        self.counts.setText(
+            tr("Completed: %1  ·  Draft: %2  ·  Not evaluated: %3")
+            .replace("%1", str(completed))
+            .replace("%2", str(drafts))
+            .replace("%3", str(pending))
+        )
+        self.progress.setValue(round(100 * completed / total) if total else 0)
+
+
+class BlastActivityCard(DashboardCard):
+    """Small factual Blast Event summary for a Domain overview."""
+
+    def __init__(self, parent=None):
+        super().__init__("Blast activity", parent)
+        self.counts = QLabel()
+        self.counts.setObjectName("SummaryValue")
+        self.latest = QLabel()
+        self.latest.setObjectName("MutedText")
+        self.layout.addWidget(self.counts)
+        self.layout.addWidget(self.latest)
+
+    def set_data(self, production: int, contour: int, blasts):
+        self.counts.setText(
+            tr("Production: %1  ·  Contour: %2")
+            .replace("%1", str(production))
+            .replace("%2", str(contour))
+        )
+        dated = [item for item in blasts if getattr(item, "event_date", None) is not None]
+        latest = max(dated, key=lambda item: item.event_date) if dated else None
+        if latest is None:
+            self.latest.setText(tr("No dated Blast Events yet"))
+        else:
+            self.latest.setText(
+                f"{tr('Latest blast')}: {latest.name}  ·  "
+                f"{format_dashboard_datetime(latest.event_date)}"
+            )
 
 
 class ProjectLinesCard(DashboardCard):
