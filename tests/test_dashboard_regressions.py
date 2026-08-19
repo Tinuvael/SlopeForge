@@ -49,7 +49,9 @@ def test_plan_overview_is_read_only_and_actions_live_in_card_header():
     assert 'OverviewLinkButton("Center")' in plan
     assert "primary_action_requested = Signal()" in plan
     assert "secondary_action_requested = Signal()" in plan
-    assert 'primary_action_label="Import / Update Project Lines"' in project
+    assert 'primary_action_label="Project Lines"' in project
+    assert 'tr("Import Project Lines")' in project
+    assert 'tr("Update Project Lines")' in project
     for forbidden in ("edit_vertices", "setFlag", "ItemIsMovable", "ItemIsSelectable"):
         assert forbidden not in plan
 
