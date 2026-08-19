@@ -20,7 +20,10 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
         assert "MetricCard" in page
         assert "DashboardRecentActivityCard" in page
         assert "CompactSummaryList" in page
-        assert 'CompactSummaryList(\n            "Attention required", visible_rows=2, show_go_to=True' in page
+        assert '"Attention required",\n            visible_rows=4' in page
+        assert "fill_available=True" in page
+        assert "AssessmentTrendCard" in page
+        assert "self.trend_card.set_rows(self.snapshot.trend_rows)" in page
         assert 'setObjectName("DashboardPage")' in page
         assert "workspace.setColumnStretch(0, 1)" in page
         assert "workspace.setColumnStretch(1, 1)" in page
@@ -34,7 +37,7 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
     assert "ProjectLinesCard" in project
     assert 'primary_action_label="Project Lines"' in project
     assert '"Domain summary", visible_rows=3, show_go_to=True' in project
-    assert "AssessmentProgressCard" in project
+    assert "AssessmentProgressCard" not in project
     assert "lines_card.add_header_action(\"Add\")" in project
     assert "assessment_area_requested = Signal(str, int)" in project
     assert "self._filter_domain" in project and 'set_filter("domain"' in project
@@ -42,7 +45,7 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
 
     assert 'CompactSummaryList("Elevation intervals", visible_rows=3)' in domain
     assert '"Latest assessments", visible_rows=3, show_go_to=True' in domain
-    assert "BlastActivityCard" in domain
+    assert "BlastActivityCard" not in domain
     assert 'primary_action_label="Import"' in domain
     assert 'secondary_action_label="Draw geometry"' in domain
     assert 'add_header_action("Clear")' not in domain
@@ -89,6 +92,8 @@ def test_dashboard_projection_uses_only_current_completed_assessment_result():
     assert "dai=row.dai if row else None" in repository
     assert "fci=row.fci if row else None" in repository
     assert "def assessment_geometries(self)" in repository
+    assert "def trend_rows(self)" in repository
+    assert 'row.status == "completed"' in repository
 
 
 def test_dashboard_result_palette_matches_full_assessment_matrix():
@@ -112,6 +117,7 @@ def test_dashboard_result_palette_matches_full_assessment_matrix():
 def test_dashboard_internal_lists_have_explicit_filter_and_navigation_actions():
     widgets = source("ui/pages/dashboards/widgets.py")
     assert "show_go_to: bool = False" in widgets
+    assert "fill_available: bool = False" in widgets
     assert "go_to_requested = Signal(str)" in widgets
     assert "class SummaryRowWidget" in widgets
     assert 'OverviewLinkButton("Go to ›")' in widgets
@@ -124,22 +130,35 @@ def test_dashboard_internal_lists_have_explicit_filter_and_navigation_actions():
     assert "QFrame#DashboardMetricCard" in widgets
     assert "ScrollBarAsNeeded" in widgets
     assert "ScrollBarAlwaysOff" in widgets
+    assert "self.list.setMaximumHeight(16777215)" in widgets
 
 
-def test_progress_donut_and_activity_cards_are_visually_polished_without_new_metrics():
+def test_donut_trends_and_activity_cards_are_compact_without_new_engineering_metrics():
     widgets = source("ui/pages/dashboards/widgets.py")
     charts = source("ui/pages/dashboards/charts.py")
-    assert "self.progress.setFixedHeight(17)" in widgets
-    assert 'self.percent = QLabel("0%")' in widgets
+    repository = source("repositories/dashboard_repository.py")
     assert "self.setMinimumHeight(150 if kind == \"donut\" else 92)" in charts
     assert "shadow.setWidth(width + 4)" in charts
     assert "center_font.setBold(True)" in charts
     assert "Qt.TextFlag.TextWordWrap" in charts
-    assert 'slot.setObjectName("DashboardActivityRow")' in widgets
+    assert "class IndexTrendChart" in charts
+    assert "class AssessmentTrendCard" in charts
+    assert 'super().__init__("DAI / FCI over time", parent)' in charts
+    assert 'IndexTrendChart("DAI", "dai")' in charts
+    assert 'IndexTrendChart("FCI", "fci")' in charts
+    assert "grouped[when].append(float(value))" in charts
+    assert "sum(values) / len(values)" in charts
+    assert 'holder.setObjectName("DashboardActivityRow")' in widgets
     assert "border-bottom:1px solid #eef1f5" in widgets
-    assert "len(entry) > 2" in widgets
+    assert "hasattr(entry, \"changed_at\")" in widgets
+    assert "ActivityRow" in repository
+    assert "_audit_actor_maps" in repository
+    assert '"Block"' in repository
+    assert '"Contour blast"' in repository
+    assert '"Assessment Area"' in repository
     assert "risk_score" not in widgets.lower()
     assert "risk_score" not in charts.lower()
+    assert "risk_score" not in repository.lower()
 
 
 def test_attention_uses_existing_assessment_result_severity_not_new_scoring():
