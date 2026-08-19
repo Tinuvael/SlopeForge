@@ -126,6 +126,8 @@ class CompactChart(QWidget):
         legend_font.setPointSize(8)
         legend_font.setBold(False)
         painter.setFont(legend_font)
+        text_flags = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        text_flags |= int(Qt.TextFlag.TextWordWrap)
         for index, (key, value) in enumerate(self.data.items()):
             presentation = quadrant_presentation(key)
             y = top + index * row_height
@@ -136,6 +138,6 @@ class CompactChart(QWidget):
             label = f"{presentation.label}  {value}"
             painter.drawText(
                 QRectF(legend_x + 16, y + 1, legend_width - 16, row_height - 2),
-                Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
+                text_flags,
                 label,
             )
