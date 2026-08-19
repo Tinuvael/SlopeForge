@@ -13,6 +13,13 @@ from PySide6.QtWidgets import QApplication,QDialogButtonBox,QMessageBox,QTabWidg
 def app():return QApplication.instance() or QApplication([])
 
 
+def stub_assessment_domain_repository(monkeypatch,module):
+    class DomainRepositoryStub:
+        def __init__(self,*_args,**_kwargs):pass
+        def get(self,_domain_id):return SimpleNamespace(site=SimpleNamespace(name="Project"))
+    monkeypatch.setattr(module,"DomainRepository",DomainRepositoryStub)
+
+
 def test_assessment_editor_tabs_are_explicitly_detached_and_keep_content():
     app()
     from tests.test_wall_assessment_persistence_ui import make_state,filled_draft
@@ -51,7 +58,8 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
         def ensure_evaluation_owner(self,*_args):raise AssertionError("opening must not create an owner")
         def save(self):raise AssertionError("construction must not persist")
     monkeypatch.setattr(module,"EntityPageController",Controller)
-    context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True,display_name="Current User"))
+    stub_assessment_domain_repository(monkeypatch,module)
+    context=SimpleNamespace(session_factory=None,current_user=SimpleNamespace(can_edit=True,display_name="Current User"))
     before=len(evaluation.revisions); page=module.AssessmentAreaPage(context,1,"Domain",area.id); page.resize(1920,1080)
     page.show(); page.tabs.setCurrentWidget(page.assessment_tab); application.processEvents()
     splitter=page.assessment_splitter; inputs=page.assessment_inputs; live=page.result
@@ -128,7 +136,8 @@ def test_assessment_page_opens_real_new_draft_sources(monkeypatch,manual_overrid
         def evaluation_draft(self,_area):return evaluation,draft
         def save_evaluation(self,*_args):raise AssertionError("opening and preview must not save")
     monkeypatch.setattr(module,"EntityPageController",Controller)
-    context=SimpleNamespace(current_user=SimpleNamespace(can_edit=True,display_name="Current Inspector"))
+    stub_assessment_domain_repository(monkeypatch,module)
+    context=SimpleNamespace(session_factory=None,current_user=SimpleNamespace(can_edit=True,display_name="Current Inspector"))
     page=module.AssessmentAreaPage(context,1,"Domain",area.id); page.resize(1920,1080); page.show(); page.tabs.setCurrentWidget(page.assessment_tab); application.processEvents()
     assert page.evaluation_editor.inspector.text()=="Current Inspector"
     assert page.assessment_basis_value.text()==("Controlled blasting" if manual_override else "Standard blasting")

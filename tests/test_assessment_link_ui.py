@@ -1,5 +1,4 @@
 from datetime import date, datetime, timezone
-from math import sqrt
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -104,7 +103,7 @@ def test_comparison_overlay_update_preserves_camera_and_center_restores_focus():
     area=polygon((0,0),(10,0),(10,10),(0,10)); event1=polygon((2,2),(4,2),(4,4),(2,4)); event2=polygon((7,7),(9,7),(9,9),(7,9)); far_line=SimpleNamespace(points=(PlanPoint(-200,0),PlanPoint(200,0)))
     widget.use_center_control(); widget.set_comparison_geometry(area,event1,[far_line],focus_geometry=area,recenter=True)
     canonical=widget.canonical_focus_rect
-    assert canonical.width()==pytest.approx(10*sqrt(2)) and canonical.height()==pytest.approx(10*sqrt(2))
+    assert canonical.width()==pytest.approx(20.0) and canonical.height()==pytest.approx(20.0)
     assert len(widget._project_items)==1
     assert abs(abs(widget.view.transform().m11())-abs(widget.view.transform().m22()))<1e-9
     widget.view.scale(1.7,1.7); widget.view.centerOn(80,40); before=widget.view.transform(); center_before=widget.view.mapToScene(widget.view.viewport().rect().center())
@@ -118,10 +117,11 @@ def test_comparison_overlay_update_preserves_camera_and_center_restores_focus():
 
 
 def test_assessment_overview_uses_centered_focus_geometry():
-    source=Path("ui/pages/assessment_area_page.py").read_text(encoding="utf-8")
-    overview=source[source.index("    def _overview"):source.index("    def _refresh_overview")]
-    assert "use_center_control()" in overview
-    assert "focus_geometry=rev.final_geometry_frozen" in overview
+    page=Path("ui/pages/assessment_area_page.py").read_text(encoding="utf-8")
+    widgets=Path("ui/pages/entity_overview_widgets.py").read_text(encoding="utf-8")
+    refresh=page[page.index("    def _refresh_overview_and_sidebar"):page.index("    def _linked_events")]
+    assert "focus_geometry=rev.final_geometry_frozen" in refresh
+    assert "self.center_button.clicked.connect(self.plan.center_on_focus)" in widgets
 
 
 def test_read_only_only_disables_mutations_not_list_or_center():

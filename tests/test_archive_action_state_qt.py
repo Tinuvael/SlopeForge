@@ -20,6 +20,8 @@ def app():
 class EntityPage(QWidget):
     edit_boundaries_requested = Signal(object)
     metadata_saved = Signal(object, object)
+    related_assessment_requested = Signal(object, object)
+    related_blast_event_requested = Signal(object, object, object)
 
     def __init__(self, entity, controller=None):
         super().__init__()

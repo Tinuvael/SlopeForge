@@ -40,6 +40,22 @@ def _dash(value) -> str:
     return str(value) if value not in (None, "") else "—"
 
 
+def _number(value, unit="") -> str:
+    if value is None:
+        return "—"
+    try:
+        text=f"{float(value):g}"
+    except (TypeError,ValueError):
+        text=str(value)
+    return f"{text}{unit}"
+
+
+def _pattern(burden, spacing) -> str:
+    if burden is None and spacing is None:
+        return "—"
+    return f"{_number(burden)} × {_number(spacing)} m"
+
+
 def format_datetime(value) -> str:
     return value.strftime("%d.%m.%Y %H:%M") if value else "—"
 
@@ -161,14 +177,80 @@ class BlockSchemePlaceholder(CardFrame):
 
 
 class CompactInfoCards(QWidget):
+    """Read-only Block summaries sourced from one current Technical Card revision."""
+
     def __init__(self):
-        super().__init__(); layout = QHBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); self.cards = []
+        super().__init__()
+        layout = QHBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0)
+        self.labels=[]; self.open_buttons=[]
         for title in ("Geomechanical parameters", "Blast design parameters", "Execution fact"):
-            card = CardFrame(title); label = QLabel(tr("—")); label.setObjectName("MutedText")
-            card.layout.addWidget(label); card.layout.addStretch(); self.cards.append(label); layout.addWidget(card)
+            card = CardFrame(title)
+            label = QLabel(tr("No data yet")); label.setObjectName("MutedText"); label.setWordWrap(True)
+            button=QPushButton(tr("Open section"))
+            card.layout.addWidget(label); card.layout.addStretch(); card.layout.addWidget(button)
+            self.labels.append(label); self.open_buttons.append(button); layout.addWidget(card)
 
     def set_block(self, block: ProductionBlastRow | None) -> None:
-        for label in self.cards: label.setText(tr("—"))
+        if block is None:self.set_revision(None)
+
+    def set_revision(self, revision) -> None:
+        if revision is None:
+            for label in self.labels:label.setText(tr("No data yet"))
+            return
+
+        geo=revision.geomechanical_parameters
+        if geo is None:
+            geo_text=tr("No geomechanics data yet")
+        else:
+            joint_sets=len(geo.joint_sets or [])
+            rows=(
+                ("Lithology",geo.lithology or "—"),
+                ("UCS",_number(geo.ucs_mpa," MPa")),
+                ("RQD",_number(geo.rqd_percent," %")),
+                ("GSI",_number(geo.gsi)),
+                ("FF",_number(geo.ff)),
+                ("Joint sets",joint_sets if joint_sets else "—"),
+            )
+            geo_text="\n".join(f"{tr(name)}: {value}" for name,value in rows)
+
+        main=next((g for g in revision.drilling_groups if g.included and g.group_type=="main_pattern"),None)
+        if main is None:
+            main=next((g for g in revision.drilling_groups if g.included),None)
+        if main is None:
+            design_text=tr("No blast-design data yet")
+        else:
+            explosive=main.explosive_names() or main.explosive_type or "—"
+            rows=(
+                ("Hole diameter",_number(main.diameter_mm," mm")),
+                ("Drilling pattern",_pattern(main.burden_m,main.spacing_m)),
+                ("Average depth",_number(main.average_depth_m," m")),
+                ("Inclination",_number(main.inclination_deg,"°")),
+                ("Hole count",_number(main.hole_count)),
+                ("Explosive",explosive),
+                ("Charge per hole",_number(main.explosive_mass_per_hole_kg()," kg")),
+            )
+            design_text="\n".join(f"{tr(name)}: {value}" for name,value in rows)
+
+        actual=revision.actual_execution
+        actual_main=next((g for g in actual.actual_drilling_groups if g.included and g.group_type=="main_pattern"),None)
+        if actual_main is None:
+            actual_main=next((g for g in actual.actual_drilling_groups if g.included),None)
+        has_fact=bool(actual.actual_drilling_groups or actual.actual_blast_date or actual.completion_status=="completed")
+        if not has_fact:
+            execution_text=tr("No execution data yet")
+        else:
+            rows=(
+                ("Actual blast date",actual.actual_blast_date or "—"),
+                ("Actual drilling pattern",_pattern(actual_main.burden_m,actual_main.spacing_m) if actual_main else "—"),
+                ("Actual average depth",_number(actual.actual_average_depth_m," m")),
+                ("Actual hole count",_number(actual.actual_total_hole_count)),
+                ("Actual drilling length",_number(actual.actual_total_drilling_length_m," m")),
+                ("Actual explosive mass",_number(actual.actual_total_explosive_mass_kg," kg")),
+                ("Completion status",tr((actual.completion_status or "planned").replace("_"," ").title())),
+            )
+            execution_text="\n".join(f"{tr(name)}: {value}" for name,value in rows)
+
+        for label,text in zip(self.labels,(geo_text,design_text,execution_text)):label.setText(text)
 
 
 class BlockSummaryWidget(CardFrame):

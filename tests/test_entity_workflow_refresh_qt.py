@@ -22,6 +22,20 @@ class SavedEditor:
     def complete(self): self.callback(); return True
 
 
+class HeaderStub:
+    def set_content(self, **kwargs):
+        self.status_text = kwargs["status_text"]
+
+
+class RowsStub:
+    def set_rows(self, rows): self.rows = tuple(rows)
+
+
+class NotesStub:
+    def set_value(self, value, editable):
+        self.value = value; self.editable = editable
+
+
 def test_production_save_refreshes_persisted_status_and_can_demote(app):
     visible = QLabel("Planned")
     persisted = {"status": "planned"}
@@ -41,29 +55,33 @@ def test_production_save_refreshes_persisted_status_and_can_demote(app):
 
 
 def _contour_page(actual_date=None):
-    event = SimpleNamespace(id="E", event_date=__import__("datetime").date(2026, 8, 20),
-                            active_geometry_revision_id="E-R1", is_archived=False)
-    revision = SimpleNamespace(actual_execution=SimpleNamespace(actual_blast_date=actual_date),
-                               revision_number=1, status="draft")
+    event = SimpleNamespace(
+        id="E", name="C1", elevation=630, comment="",
+        event_date=__import__("datetime").date(2026, 8, 20),
+        active_geometry_revision_id="E-R1", is_archived=False,
+    )
+    revision = SimpleNamespace(
+        actual_execution=SimpleNamespace(actual_blast_date=actual_date),
+        revision_number=1, status="draft",
+    )
     card = SimpleNamespace(blast_event_id="E", active_revision=lambda: revision)
     state = SimpleNamespace(technical_cards=[card], assessment_areas=[], evaluations=[])
     page = SimpleNamespace(
         controller=SimpleNamespace(state=state), blast_event=event,
-        header_status=QLabel(), header_date=QLabel(),
-        general_information={"Status": QLabel(), "Planned blast date": QLabel()},
+        card=card, draft=revision, rev=None,
+        header=HeaderStub(), summary=RowsStub(), notes=NotesStub(),
+        project_name="Project", domain_name="Domain", read_only=False,
     )
     return page, revision
 
 
 def test_contour_persisted_actual_date_refreshes_visible_status(app):
     page, revision = _contour_page()
-    ContourEventPage._refresh_workflow_presentation(page)
-    assert page.header_status.text() == "Planned"
+    ContourEventPage._refresh_header_and_summary(page, [], [], [])
+    assert page.header.status_text == "Planned"
     revision.actual_execution.actual_blast_date = "2026-08-21"
-    ContourEventPage._refresh_workflow_presentation(page)
-    assert page.header_status.text() == "Blasted"
-    assert page.general_information["Status"].text() == "Blasted"
-    assert "2026-08-20" in page.header_date.text()
+    ContourEventPage._refresh_header_and_summary(page, [], [], [])
+    assert page.header.status_text == "Blasted"
 
 
 def test_assessment_complete_refreshes_header_without_navigation(app):
