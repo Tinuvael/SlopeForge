@@ -20,12 +20,14 @@ from application.state.assessment_domain_state import AssessmentDomainState
 from application.use_cases.rename_project import RenameProjectCommand
 from repositories.dashboard_repository import DashboardRepository
 from repositories.project_lines_repository import ProjectLinesRepository
+from ui.assessment_result_presentation import assessment_result_presentation
 from ui.dialogs.rename_entity_dialog import RenameEntityDialog
 from ui.presentation_labels import domain_message
 
 from .charts import CompactChart
 from .plan_overview import DashboardPlanCard
 from .widgets import (
+    AssessmentProgressCard,
     CompactSummaryList,
     DashboardCard,
     DashboardRecentActivityCard,
@@ -40,6 +42,7 @@ class SiteDashboardPage(QWidget):
     """Single-screen Project operational overview; no dashboard tabs or page scroll."""
 
     domain_requested = Signal(int)
+    assessment_area_requested = Signal(str, int)
     project_renamed = Signal(int, str)
 
     def __init__(self, context, site_id, name):
@@ -84,15 +87,16 @@ class SiteDashboardPage(QWidget):
         workspace.setContentsMargins(0, 0, 0, 0)
         workspace.setHorizontalSpacing(8)
         workspace.setVerticalSpacing(8)
-        workspace.setColumnStretch(0, 7)
-        workspace.setColumnStretch(1, 3)
-        workspace.setRowStretch(0, 5)
+        workspace.setColumnStretch(0, 6)
+        workspace.setColumnStretch(1, 4)
+        workspace.setRowStretch(0, 4)
         workspace.setRowStretch(1, 2)
+        workspace.setRowStretch(2, 2)
         root.addLayout(workspace, 1)
 
         self.plan_card = DashboardPlanCard(
             self.snapshot,
-            primary_action_label="Import / Update Project Lines",
+            primary_action_label="Project Lines",
         )
         self.plan_card.primary_action_requested.connect(self.import_lines)
         self.plan_card.set_actions_enabled(self._can_edit())
@@ -108,18 +112,27 @@ class SiteDashboardPage(QWidget):
         self.result_card.layout.addWidget(self.result_chart, 1)
         right_layout.addWidget(self.result_card, 3)
 
-        self.lines_card = ProjectLinesCard()
-        right_layout.addWidget(self.lines_card, 2)
+        self.attention_card = CompactSummaryList(
+            "Attention required", visible_rows=3
+        )
+        self.attention_card.activated.connect(self._open_attention_area)
+        right_layout.addWidget(self.attention_card, 2)
         workspace.addWidget(right_top, 0, 1)
 
-        self.domain_summary = CompactSummaryList("Domain summary")
+        self.domain_summary = CompactSummaryList("Domain summary", visible_rows=4)
         self.domain_summary.activated.connect(
             lambda value: self.domain_requested.emit(int(value))
         )
         workspace.addWidget(self.domain_summary, 1, 0)
 
+        self.lines_card = ProjectLinesCard()
+        workspace.addWidget(self.lines_card, 1, 1)
+
+        self.progress_card = AssessmentProgressCard()
+        workspace.addWidget(self.progress_card, 2, 0)
+
         self.recent_card = DashboardRecentActivityCard()
-        workspace.addWidget(self.recent_card, 1, 1)
+        workspace.addWidget(self.recent_card, 2, 1)
 
         self._render_snapshot()
 
@@ -178,20 +191,58 @@ class SiteDashboardPage(QWidget):
             rows.append(SummaryRow(str(domain.id), domain.name, detail, trailing))
         return rows
 
+    def _attention_rows(self):
+        rows = []
+        for domain_snapshot in self.snapshot.domains:
+            for area in domain_snapshot.areas:
+                presentation = assessment_result_presentation(area.quadrant)
+                if area.status != "completed" or not presentation.requires_attention:
+                    continue
+                detail = f"{domain_snapshot.domain.name}  ·  {area.interval} m  ·  {presentation.label}"
+                trailing = f"DAI {metric(area.dai)}  ·  FCI {metric(area.fci)}"
+                rows.append(
+                    (
+                        presentation.severity,
+                        SummaryRow(
+                            f"{domain_snapshot.domain.id}|{area.id}",
+                            area.name,
+                            detail,
+                            trailing,
+                            presentation.color,
+                        ),
+                    )
+                )
+        rows.sort(key=lambda item: (-item[0], item[1].title.lower()))
+        return [row for _, row in rows]
+
+    def _open_attention_area(self, value: str):
+        domain_id, area_id = value.split("|", 1)
+        self.assessment_area_requested.emit(area_id, int(domain_id))
+
     def _render_snapshot(self):
         self._render_metrics()
         self.plan_card.set_snapshot(self.snapshot)
         active = self.snapshot.active_dataset
         if active is None:
             self.plan_card.set_subtitle(tr("No Project Lines loaded"))
+            action_label = tr("Import Project Lines")
         else:
             imported = active.imported_at.strftime("%d.%m.%Y") if active.imported_at else "—"
             self.plan_card.set_subtitle(f"{active.name} · {imported}")
+            action_label = tr("Update Project Lines")
+        if self.plan_card.primary_action is not None:
+            self.plan_card.primary_action.setText(action_label)
         self.plan_card.set_actions_enabled(self._can_edit())
         self.result_chart.set_data(self.snapshot.quadrants)
-        self.lines_card.set_datasets(self.snapshot.datasets)
+        self.attention_card.set_rows(
+            self._attention_rows(), empty_text="No areas require attention"
+        )
         self.domain_summary.set_rows(
             self._domain_rows(), empty_text="No Domains yet"
+        )
+        self.lines_card.set_datasets(self.snapshot.datasets)
+        self.progress_card.set_counts(
+            self.snapshot.areas, self.snapshot.completed, self.snapshot.drafts
         )
         self.recent_card.set_entries(self.snapshot.recent)
 
