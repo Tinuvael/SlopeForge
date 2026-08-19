@@ -30,13 +30,16 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
         )
     ])
     item = related.list.item(0)
-    holder = related.list.itemWidget(item)
+    wrapper = related.list.itemWidget(item)
+    holder = related._row_card(item)
     assert related.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Fixed
-    assert related.list.minimumHeight() == related.list.maximumHeight() == related.LIST_HEIGHT
+    assert related.list.minimumHeight() == related.list.maximumHeight() == related.LIST_HEIGHT == 136
     assert related.sizeHint().height() > related.LIST_HEIGHT
     assert item.sizeHint().width() == 0
+    assert wrapper.objectName() == "BlockRelatedEntityWrapper"
+    assert wrapper.layout().contentsMargins().right() == related.ROW_RIGHT_INSET == 10
+    assert holder is not None
     assert holder.sizePolicy().horizontalPolicy() == widgets.QSizePolicy.Policy.Expanding
-    assert "padding-right:5px" in related.list.styleSheet()
     assert "background:#edf8f0" in holder.styleSheet()
     assert "border:1px solid #58a66a" in holder.styleSheet()
     item.setSelected(True)
@@ -159,7 +162,8 @@ def test_block_page_has_no_layout_feedback_loop_or_tab_reinsertion():
     assert "BlockRecentActivityCard" in text
     assert "top.addWidget(self.geometry_card, 0)" in text
     assert "PREFERRED_WIDTH = 700" in helpers
-    assert "LIST_HEIGHT = 88" in helpers
+    assert "LIST_HEIGHT = 136" in helpers
+    assert "ROW_RIGHT_INSET = 10" in helpers
     assert "BlockNotesCard" in helpers
 
 
