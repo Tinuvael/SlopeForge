@@ -74,11 +74,12 @@ def test_contour_keeps_hidden_general_widgets_required_by_technical_card_save():
     assert "self.editor.complete()" in page
 
 
-def test_contour_engineering_notes_fill_activity_row_with_equal_section_space():
+def test_contour_bottom_cards_share_row_height_and_notes_split_space_evenly():
     page = Path("ui/pages/contour_event_page.py").read_text(encoding="utf-8")
 
     assert 'self.engineering_notes = ContourEngineeringNotesCard("Engineering notes")' in page
     assert "bottom.setAlignment(Qt.AlignmentFlag.AlignTop)" in page
+    assert "QSizePolicy.Policy.Preferred" in page
     assert "bottom.addWidget(self.engineering_notes, 3)" in page
-    assert "bottom.addWidget(self.engineering_notes, 3, Qt.AlignmentFlag.AlignTop)" not in page
-    assert "bottom.addWidget(self.recent_activity, 2, Qt.AlignmentFlag.AlignTop)" in page
+    assert "bottom.addWidget(self.recent_activity, 2)" in page
+    assert "bottom.addWidget(self.recent_activity, 2, Qt.AlignmentFlag.AlignTop)" not in page
