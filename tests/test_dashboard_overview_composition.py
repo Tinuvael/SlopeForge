@@ -42,14 +42,14 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
 def test_dashboard_plan_has_stable_near_four_three_footprint_and_uses_1_5x_framing():
     plan = source("ui/pages/dashboards/plan_overview.py")
     assert "FRAME_FACTOR = 1.5" in plan
-    assert "self.view.setMinimumHeight(235)" in plan
-    assert "self.setMinimumWidth(460)" in plan
-    assert "self.setMaximumWidth(620)" in plan
-    assert "self.setMinimumHeight(300)" in plan
-    assert "self.setMaximumHeight(360)" in plan
+    assert "self.view.setMinimumHeight(245)" in plan
+    assert "self.setMinimumWidth(440)" in plan
+    assert "self.setMaximumWidth(560)" in plan
+    assert "self.setMinimumHeight(310)" in plan
+    assert "self.setMaximumHeight(370)" in plan
     assert "def hasHeightForWidth" in plan
-    assert "int(width * 0.62)" in plan
-    assert "return QSize(540, 335)" in plan
+    assert "int(width * 0.69)" in plan
+    assert "return QSize(510, 350)" in plan
     assert 'getattr(self.snapshot, "assessment_geometries", ())' in plan
     assert 'getattr(self.snapshot, "project_lines", ())' in plan
     assert 'getattr(self.snapshot, "domain_geometries", ())' in plan
