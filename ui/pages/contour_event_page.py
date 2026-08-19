@@ -2,8 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMessageBox, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.localization import tr
 from domain.blasting.workflow import (
@@ -14,18 +22,20 @@ from domain.blasting.workflow import (
 )
 from repositories.domain_repository import DomainRepository
 from repositories.entity_history_repository import EntityHistoryRepository
+from ui.pages.contour_overview_widgets import (
+    ContourAttachmentPreview,
+    ContourGeometryCard,
+    ContourNotesCard,
+    ContourRecentActivityCard,
+    ContourRelatedEntityList,
+)
 from ui.pages.entity_history_revision_viewer import open_geometry_revision, open_technical_card_revision
 from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_overview_widgets import (
     EngineeringSummaryCard,
     EntityHeaderWidget,
-    InlineAutosaveNotes,
     OverviewKeyValueCard,
-    QuickAttachmentPreview,
-    RecentActivityCard,
-    RelatedEntityList,
     RelatedEntityRow,
-    SquareGeometryCard,
 )
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
@@ -105,6 +115,7 @@ class ContourEventPage(QWidget):
         )
         self.read_only = not context.current_user.can_edit or self.blast_event.is_archived
         self.rev = self.blast_event.active_geometry_revision()
+        self._related_area_preview_id = None
 
         from app.use_case_factory import create_charge_presets, create_explosive_catalogue
         card, draft = self.controller.technical_card_draft(self.blast_event)
@@ -121,10 +132,14 @@ class ContourEventPage(QWidget):
         )
 
         root = QVBoxLayout(self)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(8)
         self._header(root)
+
         body = QHBoxLayout()
         left = QVBoxLayout()
         self.tabs = create_entity_tabs()
+        self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         left.addWidget(self.tabs)
 
         self.engineering_actions_widget = QWidget()
@@ -140,7 +155,7 @@ class ContourEventPage(QWidget):
         actions.addWidget(self.draft_button)
         actions.addWidget(self.complete_button)
         left.addWidget(self.engineering_actions_widget)
-        body.addLayout(left, 4)
+        body.addLayout(left, 1)
         self._sidebar(body)
         root.addLayout(body)
 
@@ -168,13 +183,67 @@ class ContourEventPage(QWidget):
             "#CardTitle,#EngineeringSectionTitle,#RelatedEntityTitle{font-weight:600;color:#111827}"
             "#EntityTitle{font-size:24px;font-weight:700}#EntityContextLine{color:#667085}"
             "#MutedText{color:#6b7280}#SummaryValue{color:#111827;font-weight:600}"
+            "#ActivityTitle{color:#111827}"
             "#EngineeringSummaryText{color:#374151}"
             "#OverviewDivider{color:#e5e7eb;background:#e5e7eb;max-height:1px;border:0}"
             "#StaleBadge{background:#fff1c2;color:#8a5a00;border:1px solid #e5b94d;border-radius:4px;padding:2px 5px}"
         )
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_sidebar_density()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._related_area_preview_id is not None:
+            self._clear_related_area_preview()
+        self._sync_sidebar_density()
+        if self._related_area_preview_id is None:
+            self.geometry_card.plan.center_on_focus()
+
+    def eventFilter(self, watched, event):
+        if (
+            watched is getattr(self, "_geometry_viewport", None)
+            and self._related_area_preview_id is not None
+            and event.type() == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
+            self._clear_related_area_preview()
+        return super().eventFilter(watched, event)
+
     def _sync_engineering_actions_visibility(self, *_args):
         self.engineering_actions_widget.setVisible(self.tabs.currentIndex() in (1, 2))
+
+    def _sync_sidebar_density(self) -> None:
+        if not hasattr(self, "photo_preview") or not hasattr(self, "document_preview"):
+            return
+        if not hasattr(self, "tabs") or not self.isVisible() or self.tabs.height() < 100:
+            self.photo_preview.set_visible_item_limit(4)
+            self.document_preview.set_visible_item_limit(4)
+            return
+
+        available = max(0, self.tabs.height() - 4)
+        photo_limit = min(6, self.photo_preview._max_items)
+        document_limit = min(7, self.document_preview._max_items)
+        self.photo_preview.set_visible_item_limit(photo_limit)
+        self.document_preview.set_visible_item_limit(document_limit)
+
+        def required_height():
+            spacing = self._sidebar_layout.spacing()
+            return (
+                self.summary.sizeHint().height()
+                + self.photo_preview.sizeHint().height()
+                + self.document_preview.sizeHint().height()
+                + max(0, spacing) * 2
+            )
+
+        while required_height() > available and (document_limit > 4 or photo_limit > 4):
+            if document_limit > 4:
+                document_limit -= 1
+                self.document_preview.set_visible_item_limit(document_limit)
+            elif photo_limit > 4:
+                photo_limit -= 2
+                self.photo_preview.set_visible_item_limit(photo_limit)
 
     def _open_tab(self, key):
         target = {"blast_design": self.design_tab, "execution": self.execution_tab}.get(key)
@@ -227,9 +296,10 @@ class ContourEventPage(QWidget):
 
     def _sidebar(self, body):
         right = QVBoxLayout()
+        right.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.summary = OverviewKeyValueCard("Summary")
-        self.photo_preview = QuickAttachmentPreview("Photos", "photo")
-        self.document_preview = QuickAttachmentPreview("Documents", "document")
+        self.photo_preview = ContourAttachmentPreview("Photos", "photo", max_items=6)
+        self.document_preview = ContourAttachmentPreview("Documents", "document", max_items=7)
         for widget in (self.summary, self.photo_preview, self.document_preview):
             widget.setMinimumWidth(250)
             widget.setMaximumWidth(300)
@@ -237,31 +307,43 @@ class ContourEventPage(QWidget):
         right.addWidget(self.photo_preview)
         right.addWidget(self.document_preview)
         right.addStretch()
-        body.addLayout(right, 1)
+        self._sidebar_layout = right
+        body.addLayout(right, 0)
 
     def _general(self):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
         top = QHBoxLayout()
         top.setSpacing(8)
-        overview_stack = QVBoxLayout()
+        self.overview_stack_widget = QWidget()
+        self.overview_stack_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        overview_stack = QVBoxLayout(self.overview_stack_widget)
+        overview_stack.setContentsMargins(0, 0, 0, 0)
         overview_stack.setSpacing(8)
+        overview_stack.setAlignment(Qt.AlignmentFlag.AlignTop)
+
         self.general_info = OverviewKeyValueCard("General information")
-        self.notes = InlineAutosaveNotes("Notes")
+        self.related_areas = ContourRelatedEntityList("Related assessment areas")
+        self.related_areas.entity_activated.connect(self._preview_related_area)
+        self.related_areas.entity_action_requested.connect(self._open_related_area)
+        self.notes = ContourNotesCard("Notes")
         self.notes.save_requested.connect(self._autosave_note)
-        self.related_areas = RelatedEntityList("Related assessment areas")
-        self.related_areas.entity_activated.connect(
-            lambda area_id: self.related_assessment_requested.emit(area_id, self.controller.domain_id)
-        )
         overview_stack.addWidget(self.general_info)
+        overview_stack.addWidget(self.related_areas)
         overview_stack.addWidget(self.notes)
-        overview_stack.addWidget(self.related_areas, 1)
-        self.geometry_card = SquareGeometryCard(
-            "Plan / geometry", action_label="Reimport geometry"
-        )
+
+        self.geometry_card = ContourGeometryCard("Plan / geometry", action_label="Reimport")
         self.geometry_card.action_requested.connect(self.reimport_geometry)
-        top.addLayout(overview_stack, 1)
+        self.geometry_card.plan.view.escape_requested.connect(self._clear_related_area_preview)
+        self._geometry_viewport = self.geometry_card.plan.view.viewport()
+        self._geometry_viewport.installEventFilter(self)
+        top.addWidget(self.overview_stack_widget, 1)
         top.addWidget(self.geometry_card, 0)
         layout.addLayout(top)
 
@@ -270,14 +352,68 @@ class ContourEventPage(QWidget):
         layout.addWidget(self.engineering_summary)
 
         bottom = QHBoxLayout()
+        bottom.setSpacing(8)
         self.engineering_notes = EngineeringSummaryCard("Engineering notes")
         self.engineering_notes.section_open_requested.connect(self._open_tab)
-        self.recent_activity = RecentActivityCard()
+        self.recent_activity = ContourRecentActivityCard()
         self.recent_activity.open_history_requested.connect(lambda: self.tabs.setCurrentWidget(self.history))
         bottom.addWidget(self.engineering_notes, 3)
         bottom.addWidget(self.recent_activity, 2)
         layout.addLayout(bottom)
         self.tabs.addTab(page, tr("General information"))
+
+    def _open_related_area(self, area_id):
+        self.related_assessment_requested.emit(area_id, self.controller.domain_id)
+
+    def _preview_related_area(self, area_id):
+        area = next(
+            (item for item in self.controller.state.assessment_areas if item.id == area_id),
+            None,
+        )
+        area_revision = area.active_geometry_revision() if area is not None else None
+        if self.rev is None or area_revision is None:
+            return
+        area_geometry = area_revision.final_geometry_frozen
+        if area_geometry is None:
+            return
+
+        dataset = self.controller.state.active_dataset()
+        lines = dataset.lines if dataset else []
+        plan = self.geometry_card.plan
+        plan.set_comparison_geometry(
+            self.rev.plan_geometry,
+            area_geometry,
+            lines,
+            focus_geometry=self.rev.plan_geometry,
+            recenter=False,
+        )
+        plan._toggle_lines(self.geometry_card.lines.isChecked())
+        contour_rect = plan._geometry_path(self.rev.plan_geometry).boundingRect()
+        area_rect = plan._geometry_path(area_geometry).boundingRect()
+        combined = contour_rect.united(area_rect)
+        if not combined.isNull():
+            margin = max(max(combined.width(), combined.height()) * 0.12, 1.0)
+            plan.view.fit_to_rect(combined.adjusted(-margin, -margin, margin, margin))
+        self._related_area_preview_id = area_id
+        plan.view.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _clear_related_area_preview(self):
+        if self._related_area_preview_id is None:
+            return
+        self._related_area_preview_id = None
+        self.related_areas.list.clearSelection()
+        if self.rev is None:
+            return
+        dataset = self.controller.state.active_dataset()
+        lines = dataset.lines if dataset else []
+        plan = self.geometry_card.plan
+        self.geometry_card.set_geometry(
+            self.rev.plan_geometry,
+            lines,
+            focus_geometry=self.rev.plan_geometry,
+        )
+        plan._toggle_lines(self.geometry_card.lines.isChecked())
+        plan.center_on_focus()
 
     def _autosave_note(self, text):
         if self.read_only:
@@ -331,10 +467,10 @@ class ContourEventPage(QWidget):
         contour = revision.contour_parameters
         actual = revision.actual_execution
         group = _primary_contour_group(revision)
-        spacing = (contour.average_spacing_m if contour else None)
+        spacing = contour.average_spacing_m if contour else None
         if spacing is None and group is not None:
             spacing = group.spacing_m
-        depth = (contour.average_depth_m if contour else None)
+        depth = contour.average_depth_m if contour else None
         if depth is None and group is not None:
             depth = group.average_depth_m
         inclination = group.inclination_deg if group and group.inclination_deg is not None else (contour.inclination_deg if contour else None)
@@ -409,10 +545,12 @@ class ContourEventPage(QWidget):
                 f"{area.id} · {format_assessment_elevation_interval(rev.min_elevation, rev.max_elevation)}",
                 tr(ASSESSMENT_PROGRESS_LABELS[progress]),
                 getattr(progress, "value", progress),
+                action_text="Go to ›",
             ))
         self.related_areas.set_rows(rows, empty_text="No linked assessment areas")
 
     def _refresh_all(self):
+        self._related_area_preview_id = None
         self.rev = self.blast_event.active_geometry_revision()
         history_entries = self.history_repo.for_blast_event(self.blast_event.id)
         photos = self.controller.attachments.list_for_owner("blast_event", self.blast_event.id, "photo")
@@ -422,8 +560,6 @@ class ContourEventPage(QWidget):
         self.geometry_card.set_geometry(
             self.rev.plan_geometry if self.rev else None,
             dataset.lines if dataset else [],
-            revision=self.rev.revision_number if self.rev else None,
-            source=self.rev.source_file_name if self.rev else "",
             focus_geometry=self.rev.plan_geometry if self.rev else None,
         )
         self.geometry_card.set_action_enabled(not self.read_only)
@@ -431,13 +567,28 @@ class ContourEventPage(QWidget):
         self._refresh_related_areas()
         self.recent_activity.set_entries(history_entries)
         self.history.set_entries(history_entries)
-        self.photo_preview.set_items(self.controller.attachments, photos, "No photos yet", can_add=not self.read_only)
-        self.document_preview.set_items(self.controller.attachments, documents, "No documents yet", can_add=not self.read_only)
+        self.photo_preview.set_items(
+            self.controller.attachments,
+            photos,
+            "No photos yet",
+            can_add=not self.read_only,
+        )
+        self.document_preview.set_items(
+            self.controller.attachments,
+            documents,
+            "No documents yet",
+            can_add=not self.read_only,
+        )
+        self._sync_sidebar_density()
 
     def _attachments(self, title):
         kind = "photo" if title == "Photos" else "document"
         page, manager = create_attachment_tab_page(
-            self.controller.attachments, "blast_event", self.blast_event.id, kind, read_only=self.read_only
+            self.controller.attachments,
+            "blast_event",
+            self.blast_event.id,
+            kind,
+            read_only=self.read_only,
         )
         manager.changed.connect(self._after_attachment_change)
         if kind == "photo":
