@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -97,7 +98,9 @@ class DomainDashboardPage(QWidget):
         workspace.setVerticalSpacing(9)
         workspace.setColumnStretch(0, 1)
         workspace.setColumnStretch(1, 1)
-        root.addLayout(workspace)
+        workspace.setRowMinimumHeight(0, 405)
+        workspace.setRowStretch(0, 1)
+        root.addLayout(workspace, 1)
 
         self.plan_card = DashboardPlanCard(
             self.snapshot,
@@ -106,41 +109,46 @@ class DomainDashboardPage(QWidget):
         )
         self.plan_card.primary_action_requested.connect(self.import_geometry)
         self.plan_card.secondary_action_requested.connect(self.edit_geometry)
+        self.plan_card.filter_cleared.connect(self._clear_filter_selections)
         self.clear_geometry_button = self.plan_card.add_header_action("Clear")
         self.clear_geometry_button.clicked.connect(self.clear_geometry)
-        workspace.addWidget(
-            self.plan_card,
-            0,
-            0,
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
-        )
+        workspace.addWidget(self.plan_card, 0, 0)
 
         right_top = QWidget()
-        right_top.setMinimumHeight(300)
-        right_top.setMaximumHeight(360)
+        right_top.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        right_top.setMinimumHeight(405)
+        right_top.setMaximumHeight(455)
         right_layout = QVBoxLayout(right_top)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(9)
 
         self.result_card = DashboardCard("Assessment result distribution")
+        self.result_card.setMinimumHeight(245)
         self.result_chart = CompactChart({}, "donut")
         self.result_card.layout.addWidget(self.result_chart, 1)
-        right_layout.addWidget(self.result_card, 3)
+        right_layout.addWidget(self.result_card, 1)
 
         self.attention_card = CompactSummaryList(
-            "Attention required", visible_rows=2
+            "Attention required", visible_rows=2, show_go_to=True
         )
-        self.attention_card.activated.connect(self.assessment_area_requested)
-        right_layout.addWidget(self.attention_card, 2)
+        self.attention_card.activated.connect(
+            lambda value: self._filter_area(value, self.attention_card)
+        )
+        self.attention_card.go_to_requested.connect(self.assessment_area_requested)
+        right_layout.addWidget(self.attention_card)
         workspace.addWidget(right_top, 0, 1)
 
         self.interval_summary = CompactSummaryList("Elevation intervals", visible_rows=3)
+        self.interval_summary.activated.connect(self._filter_interval)
         workspace.addWidget(self.interval_summary, 1, 0)
 
         self.latest_assessments = CompactSummaryList(
-            "Latest assessments", visible_rows=3
+            "Latest assessments", visible_rows=3, show_go_to=True
         )
-        self.latest_assessments.activated.connect(self.assessment_area_requested)
+        self.latest_assessments.activated.connect(
+            lambda value: self._filter_area(value, self.latest_assessments)
+        )
+        self.latest_assessments.go_to_requested.connect(self.assessment_area_requested)
         workspace.addWidget(self.latest_assessments, 1, 1)
 
         self.blast_activity = BlastActivityCard()
@@ -149,7 +157,6 @@ class DomainDashboardPage(QWidget):
         self.recent_card = DashboardRecentActivityCard()
         workspace.addWidget(self.recent_card, 2, 1)
 
-        root.addStretch(1)
         self._render_snapshot()
 
     def _can_edit(self) -> bool:
@@ -161,6 +168,22 @@ class DomainDashboardPage(QWidget):
             item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+    def _clear_filter_selections(self):
+        self.interval_summary.clear_selection()
+        self.attention_card.clear_selection()
+        self.latest_assessments.clear_selection()
+
+    def _filter_interval(self, interval: str):
+        self.attention_card.clear_selection()
+        self.latest_assessments.clear_selection()
+        self.plan_card.set_filter("interval", interval)
+
+    def _filter_area(self, area_id: str, source):
+        for card in (self.interval_summary, self.attention_card, self.latest_assessments):
+            if card is not source:
+                card.clear_selection()
+        self.plan_card.set_filter("area", area_id)
 
     def _render_metrics(self):
         self._clear_layout(self.metrics_layout)
@@ -248,6 +271,7 @@ class DomainDashboardPage(QWidget):
         return rows
 
     def _render_snapshot(self):
+        self._clear_filter_selections()
         self._render_metrics()
         self.plan_card.set_snapshot(self.snapshot)
         current = [
