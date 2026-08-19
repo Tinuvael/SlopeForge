@@ -193,6 +193,14 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Good results": "Хорошие результаты",
     "Unacceptable results": "Неприемлемые результаты",
     "Condition good, geometry unacceptable": "Состояние борта хорошее, геометрия неприемлема",
+    "DAI / FCI over time": "DAI / FCI во времени",
+    "Daily average · all completed assessments": "Среднее за день · все завершённые оценки",
+    "No completed data": "Нет завершённых данных",
+    "Assessment Area": "Участок оценки",
+    "Created": "Создано",
+    "Updated": "Обновлено",
+    "Assessment completed": "Оценка завершена",
+    "Assessment draft saved": "Черновик оценки сохранён",
     "Clear": "Очистить",
 }
 
