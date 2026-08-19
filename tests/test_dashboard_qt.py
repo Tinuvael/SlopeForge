@@ -12,6 +12,7 @@ try:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication, QLabel
     from repositories.dashboard_repository import (
+        ActivityRow,
         AreaRow,
         BlastRow,
         DomainDashboardSnapshot,
@@ -20,13 +21,14 @@ try:
         SiteDashboardSnapshot,
         _project_line_geometries,
     )
-    from ui.pages.dashboards.charts import CompactChart
+    from ui.pages.dashboards.charts import AssessmentTrendCard, CompactChart
     from ui.pages.dashboards.domain_dashboard import DomainDashboardPage
     from ui.pages.dashboards.site_dashboard import SiteDashboardPage
     from ui.pages.dashboards.plan_overview import (
         DashboardPlanCard,
         DashboardPlanOverviewWidget,
     )
+    from ui.pages.dashboards.widgets import DashboardRecentActivityCard
 except ImportError as exc:
     pytest.skip(f"Qt runtime unavailable: {exc}", allow_module_level=True)
 
@@ -80,6 +82,29 @@ def test_native_charts_construct_with_and_without_data(app):
     assert CompactChart({}).data == {}
 
 
+def test_trends_group_same_date_and_activity_shows_entity_actor_and_time(app):
+    rows = [
+        AreaRow("A1", "1", "10–20", date(2026, 8, 1), "completed", .6, .5, "good_results"),
+        AreaRow("A2", "2", "10–20", date(2026, 8, 1), "completed", .8, .7, "good_results"),
+        AreaRow("A3", "3", "10–20", date(2026, 8, 3), "completed", 1.0, .9, "good_results"),
+    ]
+    trend = AssessmentTrendCard()
+    trend.set_rows(rows)
+    assert trend.dai.points == [(date(2026, 8, 1), pytest.approx(.7)), (date(2026, 8, 3), 1.0)]
+    assert trend.fci.points == [(date(2026, 8, 1), pytest.approx(.6)), (date(2026, 8, 3), .9)]
+
+    recent = DashboardRecentActivityCard()
+    recent.set_entries([
+        ActivityRow("Block", "B23", "Updated", datetime(2026, 8, 20, 8, 24), "Engineer One")
+    ])
+    holder = recent.list.itemWidget(recent.list.item(0))
+    texts = [label.text() for label in holder.findChildren(QLabel)]
+    assert any("Block B23" in text and "Updated" in text for text in texts)
+    assert any("Engineer One" in text and "20.08.2026 08:24" in text for text in texts)
+    trend.close()
+    recent.close()
+
+
 def test_project_domain_summary_filters_first_and_go_to_emits_real_domain_id(app, monkeypatch):
     snap = snapshot()
     site_snap = SiteDashboardSnapshot(3, [snap], None, [])
@@ -100,6 +125,7 @@ def test_project_domain_summary_filters_first_and_go_to_emits_real_domain_id(app
     holder.clicked.emit()
     assert page.plan_card.plan._filter_state == ("domain", "North")
     assert received == []
+    assert page.trend_card.dai.points
 
     page.domain_summary.go_to_requested.emit("7")
     assert received == [7]
@@ -125,6 +151,8 @@ def test_domain_interval_summary_filters_plan_without_virtual_navigation(app, mo
     assert "10–20 m" in " ".join(label.text() for label in holder.findChildren(QLabel))
     holder.clicked.emit()
     assert page.plan_card.plan._filter_state == ("interval", "10–20")
+    assert page.trend_card.fci.points
+    assert page.attention_card.fill_available is True
     assert not hasattr(page, "tabs")
     page.close()
 
