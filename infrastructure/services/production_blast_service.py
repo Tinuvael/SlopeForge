@@ -108,17 +108,30 @@ class ProductionBlastService:
             target_expected_version=target_expected_version,
         )
 
-    def update_comment(self, event_id, comment, user, *, expected_version):
-        current = self.get_block(event_id)
-        if current is None:
-            raise ValidationError("Production Blast Event not found")
-        return self.update_block(
-            event_id,
-            ProductionBlastInput(current.domain_id, current.block_number,
-                                 str(current.horizon_m), comment),
-            user,
-            expected_version=expected_version,
-        )
+    def update_comment(self, event_id, comment, user, *, expected_version) -> int:
+        """Persist only the inline note and return the new Domain version."""
+        self._check_can_edit(user)
+        text = str(comment or "")
+        with self.session_factory.begin() as session:
+            event = self._event(session, event_id)
+            new_version = guard_domain_versions(
+                session, {event.domain_id: expected_version})[event.domain_id]
+            old = event.comment or ""
+            if old == text:
+                return new_version
+            event.comment = text or None
+            self.audit_repository.add_entry(
+                session,
+                user_id=user.id,
+                action="update",
+                entity_type="blast_event",
+                entity_id=event.logical_id,
+                field_name="comment",
+                old_value=old or None,
+                new_value=text or None,
+                description="Changed field: Comment",
+            )
+            return new_version
 
     def update_block(self, event_id: str, data: ProductionBlastInput, user: CurrentUser,
                      *, expected_version: int, target_expected_version: int | None = None) -> str:
