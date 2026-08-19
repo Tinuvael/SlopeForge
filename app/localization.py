@@ -64,7 +64,7 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Copy error": "Ошибка копирования",
     "Edit error": "Ошибка изменения",
     "Delete error": "Ошибка удаления",
-    "The file will be removed from the database and disk.": "Файл будет удалён из базы данных и с диска.",
+    "The file will be removed from the database and disk.": "Файл будет удалён из базы данных и диска.",
     "Cleanup warning": "Предупреждение очистки",
     "The attachment was deleted, but a temporary file could not be removed.": "Вложение удалено, но временный файл удалить не удалось.",
     "Photos and documents": "Фото и документы",
@@ -166,6 +166,9 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Import / Update Project Lines": "Импорт / обновить проектные линии",
     "Import Project Lines": "Импортировать проектные линии",
     "Update Project Lines": "Обновить проектные линии",
+    "No Project Lines": "Проектные линии не загружены",
+    "Import lines": "Импортировать линии",
+    "Update lines": "Обновить линии",
     "Assessment result distribution": "Распределение результатов оценки",
     "Attention required": "Требуют внимания",
     "No areas require attention": "Нет участков, требующих внимания",
@@ -182,6 +185,7 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "No dated Blast Events yet": "Взрывных событий с датой пока нет",
     "Latest blast": "Последний взрыв",
     "No Domain geometry defined": "Геометрия домена не задана",
+    "No Domain geometry": "Геометрия домена не задана",
     "No Assessment Areas yet": "Участков оценки пока нет",
     "No completed assessment": "Нет завершённой оценки",
     "Geometry achieved, condition insufficient": "Геометрия достигнута, состояние борта недостаточно",
@@ -247,7 +251,6 @@ class TsTranslator(QTranslator):
             return translated
         if context == "SlopeForge" and source_text in RUSSIAN_RUNTIME_FALLBACKS:
             return RUSSIAN_RUNTIME_FALLBACKS[source_text]
-        # Platform captions may contain mnemonic markers or an ellipsis.
         normalized = source_text.replace("&", "").removesuffix("...")
         canonical = _STANDARD_BUTTON_SOURCES.get(normalized)
         if canonical:
