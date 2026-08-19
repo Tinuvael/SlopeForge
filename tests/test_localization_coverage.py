@@ -69,6 +69,14 @@ def test_runtime_dashboard_card_labels_have_russian_fallbacks():
         "Update lines",
         "Import",
         "No Domain geometry",
+        "DAI / FCI over time",
+        "Daily average · all completed assessments",
+        "No completed data",
+        "Assessment Area",
+        "Created",
+        "Updated",
+        "Assessment completed",
+        "Assessment draft saved",
     }
     assert required <= RUSSIAN_RUNTIME_FALLBACKS.keys()
 
