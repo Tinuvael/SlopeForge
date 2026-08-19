@@ -19,10 +19,13 @@ def test_operational_pages_use_shared_overview_primitives():
     for text in (block, contour, assessment):
         assert "EntityHeaderWidget" in text
         assert "OverviewKeyValueCard" in text
-        assert "RecentActivityCard" in text or "BlockRecentActivityCard" in text or "ContourRecentActivityCard" in text
-    assert "QuickAttachmentPreview" in assessment
-    assert "SquareGeometryCard" in assessment
-    assert "RelatedEntityList" in assessment
+    assert "BlockRecentActivityCard" in block
+    assert "ContourRecentActivityCard" in contour
+    assert "AssessmentRecentActivityCard" in assessment
+    assert "AssessmentAttachmentPreview" in assessment
+    assert "AssessmentGeometryCard" in assessment
+    assert "AssessmentRelatedEventList" in assessment
+    assert "AssessmentMatrixCard" in assessment
     assert "BlockAttachmentPreview" in block
     assert "BlockGeometryCard" in block
     assert "BlockRelatedEntityList" in block
@@ -34,7 +37,6 @@ def test_operational_pages_use_shared_overview_primitives():
     assert "focus_geometry=geometry.plan_geometry" in block
     assert "focus_geometry=self.rev.plan_geometry" in contour
     assert "focus_geometry=rev.final_geometry_frozen" in assessment
-    assert "AssessmentMatrixPreview" in assessment
 
 
 def test_shared_square_geometry_card_is_large_and_near_square():
@@ -221,13 +223,20 @@ def test_assessment_overview_uses_saved_results_once_and_real_related_events():
     assert "photo_manager.add()" in text
     assert "document_manager.add()" in text
     assert "Related blast events" in text
-    assert "link.status == \"confirmed\"" in text
+    assert 'item.status == "confirmed" and item.blast_event_id == event_id' in text
     assert "self.controller.links.is_stale(link)" in text
+    assert "self.controller.links.linked_revision(event, link)" in text
     assert "related_blast_event_requested" in text
+    assert '("Area height", _number(area_height, " m"))' in text
+    for field in ("bench_angle_shortfall_deg", "berm_width_deficit_m", "toe_offset_from_design_m"):
+        assert field in text
     assert '("DAI", dai)' in text
     assert '("FCI", fci)' in text
     assert text.count('(\"DAI\", dai)') == 1
     assert text.count('(\"FCI\", fci)') == 1
+    assert 'action_text="Go to ›"' in text
+    assert "set_comparison_geometry(" in text
+    assert "event_rect" in text
 
 
 def test_block_overview_uses_main_pattern_depth_and_execution_exceptions():
