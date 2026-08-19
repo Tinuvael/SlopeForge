@@ -52,6 +52,8 @@ def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
     assert state.maximumWidth() == state.MAXIMUM_WIDTH == 400
     assert state.sizePolicy().horizontalPolicy() == widgets.QSizePolicy.Policy.Preferred
     assert state.layout.contentsMargins().top() == 8
+    assert state.sections.alignment() & core.Qt.AlignmentFlag.AlignTop
+    assert state.layout.stretch(state.layout.count() - 1) == 1
     assert matrix.minimumWidth() == 250
     assert matrix.maximumWidth() == 310
     assert matrix.preview.minimumWidth() == 190
@@ -60,6 +62,19 @@ def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
     assert matrix.preview.sizeHint().height() == 220
     assert state.sections.count() == 3
     assert state.open_button.text() == "Open ›"
+
+    state_section_widgets = []
+    for index in range(state.sections.count()):
+        widget = state.sections.itemAt(index).widget()
+        if widget is None or widget.objectName() == "OverviewDivider":
+            continue
+        state_section_widgets.append(widget)
+        assert widget.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Fixed
+        assert widget.layout().alignment() & core.Qt.AlignmentFlag.AlignTop
+        labels = widget.findChildren(widgets.QLabel)
+        assert labels[-1].alignment() & core.Qt.AlignmentFlag.AlignTop
+        assert labels[-1].sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Fixed
+    assert len(state_section_widgets) == 2
 
     section_indexes = []
     for index in range(comments.sections.count()):
