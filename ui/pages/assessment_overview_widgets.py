@@ -83,7 +83,7 @@ class AssessmentCommentsCard(EngineeringSummaryCard):
 
 
 class AssessmentStateSummaryCard(CardFrame):
-    """Compact Geometry and Face condition summary with one Assessment action."""
+    """Compact Geometry and taller Face condition summary with one Assessment action."""
 
     open_requested = Signal()
     MINIMUM_WIDTH = 320
@@ -112,12 +112,7 @@ class AssessmentStateSummaryCard(CardFrame):
 
         self.sections = QVBoxLayout()
         self.sections.setSpacing(6)
-        self.sections.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.layout.addLayout(self.sections)
-        # The matrix fixes the row height. Keep summary content packed against
-        # the top instead of letting QLabel widgets absorb the extra height and
-        # vertically centring their text far away from each section heading.
-        self.layout.addStretch(1)
+        self.layout.addLayout(self.sections, 1)
 
     def set_sections(self, sections):
         while self.sections.count():
@@ -125,9 +120,14 @@ class AssessmentStateSummaryCard(CardFrame):
             if item.widget():
                 item.widget().deleteLater()
 
+        sections = list(sections)
         for index, (title, lines) in enumerate(sections):
+            is_face_condition = index == len(sections) - 1 and len(sections) > 1
             section = QWidget()
-            section.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            section.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Expanding if is_face_condition else QSizePolicy.Policy.Fixed,
+            )
             layout = QVBoxLayout(section)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(2)
@@ -145,12 +145,14 @@ class AssessmentStateSummaryCard(CardFrame):
             text.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             layout.addWidget(text)
-            self.sections.addWidget(section)
+            if is_face_condition:
+                layout.addStretch(1)
+            self.sections.addWidget(section, 1 if is_face_condition else 0)
             if index < len(sections) - 1:
                 divider = QFrame()
                 divider.setFrameShape(QFrame.Shape.HLine)
                 divider.setObjectName("OverviewDivider")
-                self.sections.addWidget(divider)
+                self.sections.addWidget(divider, 0)
 
 
 class CompactAssessmentMatrixPreview(AssessmentMatrixPreview):
