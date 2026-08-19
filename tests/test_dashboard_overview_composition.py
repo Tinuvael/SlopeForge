@@ -81,6 +81,8 @@ def test_dashboard_internal_lists_are_bounded_and_card_styled():
 
 def test_plan_focus_rect_expands_assessment_bounds_only():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    gui = pytest.importorskip("PySide6.QtGui", exc_type=ImportError)
+    from ui.assessment_result_presentation import assessment_result_presentation
     from ui.pages.dashboards.plan_overview import DashboardPlanOverviewWidget
 
     app = widgets.QApplication.instance() or widgets.QApplication([])
@@ -113,6 +115,10 @@ def test_plan_focus_rect_expands_assessment_bounds_only():
     assert len(plan._project_items) == 1
     assert "DAI: 0.75" in plan._assessment_items[0].toolTip()
     assert "FCI: 0.80" in plan._assessment_items[0].toolTip()
+    expected_colour = gui.QColor(
+        assessment_result_presentation("good_results").color
+    )
+    assert plan._assessment_items[0].pen().color() == expected_colour
 
     plan.close()
     app.processEvents()
