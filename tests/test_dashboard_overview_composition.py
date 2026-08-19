@@ -22,7 +22,7 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
         assert "CompactSummaryList" in page
 
     assert "ProjectLinesCard" in project
-    assert 'primary_action_label="Import / Update"' in project
+    assert 'primary_action_label="Import / Update Project Lines"' in project
     assert 'CompactSummaryList("Domain summary")' in project
 
     assert 'CompactSummaryList("Elevation intervals")' in domain
