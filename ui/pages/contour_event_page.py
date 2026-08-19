@@ -164,8 +164,9 @@ class ContourEventPage(QWidget):
         self.execution_tab = ActualExecutionEditorWidget(self.editor.take_tab(tr("Execution fact")))
         self.tabs.addTab(self.design_tab, tr("Blast design"))
         self.tabs.addTab(self.execution_tab, tr("Execution fact"))
-        general_page = self.editor.take_tab(tr("General"))
-        general_page.deleteLater()
+        # The Technical Card General page remains hidden inside self.editor.
+        # Its widgets are still canonical inputs used by TechnicalCardDialog._save;
+        # deleting that page makes Design/Execution saves fail before persistence.
         self.photos_tab = self._attachments("Photos")
         self.documents_tab = self._attachments("Documents")
         self.tabs.addTab(self.photos_tab, tr("Photos"))
@@ -353,12 +354,21 @@ class ContourEventPage(QWidget):
 
         bottom = QHBoxLayout()
         bottom.setSpacing(8)
+        bottom.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.engineering_notes = EngineeringSummaryCard("Engineering notes")
+        self.engineering_notes.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         self.engineering_notes.section_open_requested.connect(self._open_tab)
         self.recent_activity = ContourRecentActivityCard()
+        self.recent_activity.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         self.recent_activity.open_history_requested.connect(lambda: self.tabs.setCurrentWidget(self.history))
-        bottom.addWidget(self.engineering_notes, 3)
-        bottom.addWidget(self.recent_activity, 2)
+        bottom.addWidget(self.engineering_notes, 3, Qt.AlignmentFlag.AlignTop)
+        bottom.addWidget(self.recent_activity, 2, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(bottom)
         self.tabs.addTab(page, tr("General information"))
 
