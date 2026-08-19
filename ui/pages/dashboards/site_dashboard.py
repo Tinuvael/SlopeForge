@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -91,47 +92,53 @@ class SiteDashboardPage(QWidget):
         workspace.setVerticalSpacing(9)
         workspace.setColumnStretch(0, 1)
         workspace.setColumnStretch(1, 1)
-        root.addLayout(workspace)
+        workspace.setRowMinimumHeight(0, 405)
+        workspace.setRowStretch(0, 1)
+        root.addLayout(workspace, 1)
 
         self.plan_card = DashboardPlanCard(
             self.snapshot,
             primary_action_label="Project Lines",
         )
         self.plan_card.primary_action_requested.connect(self.import_lines)
+        self.plan_card.filter_cleared.connect(self._clear_filter_selections)
         self.plan_card.set_actions_enabled(self._can_edit())
-        workspace.addWidget(
-            self.plan_card,
-            0,
-            0,
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
-        )
+        workspace.addWidget(self.plan_card, 0, 0)
 
         right_top = QWidget()
-        right_top.setMinimumHeight(300)
-        right_top.setMaximumHeight(360)
+        right_top.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        right_top.setMinimumHeight(405)
+        right_top.setMaximumHeight(455)
         right_layout = QVBoxLayout(right_top)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(9)
 
         self.result_card = DashboardCard("Assessment result distribution")
+        self.result_card.setMinimumHeight(245)
         self.result_chart = CompactChart({}, "donut")
         self.result_card.layout.addWidget(self.result_chart, 1)
-        right_layout.addWidget(self.result_card, 3)
+        right_layout.addWidget(self.result_card, 1)
 
         self.attention_card = CompactSummaryList(
-            "Attention required", visible_rows=2
+            "Attention required", visible_rows=2, show_go_to=True
         )
-        self.attention_card.activated.connect(self._open_attention_area)
-        right_layout.addWidget(self.attention_card, 2)
+        self.attention_card.activated.connect(self._filter_attention_area)
+        self.attention_card.go_to_requested.connect(self._open_attention_area)
+        right_layout.addWidget(self.attention_card)
         workspace.addWidget(right_top, 0, 1)
 
-        self.domain_summary = CompactSummaryList("Domain summary", visible_rows=3)
-        self.domain_summary.activated.connect(
+        self.domain_summary = CompactSummaryList(
+            "Domain summary", visible_rows=3, show_go_to=True
+        )
+        self.domain_summary.activated.connect(self._filter_domain)
+        self.domain_summary.go_to_requested.connect(
             lambda value: self.domain_requested.emit(int(value))
         )
         workspace.addWidget(self.domain_summary, 1, 0)
 
         self.lines_card = ProjectLinesCard()
+        self.lines_add_button = self.lines_card.add_header_action("Add")
+        self.lines_add_button.clicked.connect(self.import_lines)
         workspace.addWidget(self.lines_card, 1, 1)
 
         self.progress_card = AssessmentProgressCard()
@@ -140,7 +147,6 @@ class SiteDashboardPage(QWidget):
         self.recent_card = DashboardRecentActivityCard()
         workspace.addWidget(self.recent_card, 2, 1)
 
-        root.addStretch(1)
         self._render_snapshot()
 
     def _can_edit(self) -> bool:
@@ -152,6 +158,25 @@ class SiteDashboardPage(QWidget):
             item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+    def _clear_filter_selections(self):
+        self.domain_summary.clear_selection()
+        self.attention_card.clear_selection()
+
+    def _filter_domain(self, value: str):
+        self.attention_card.clear_selection()
+        domain_id = int(value)
+        domain = next(
+            (item.domain for item in self.snapshot.domains if item.domain.id == domain_id),
+            None,
+        )
+        if domain is not None:
+            self.plan_card.set_filter("domain", domain.name)
+
+    def _filter_attention_area(self, value: str):
+        self.domain_summary.clear_selection()
+        _domain_id, area_id = value.split("|", 1)
+        self.plan_card.set_filter("area", area_id)
 
     def _render_metrics(self):
         self._clear_layout(self.metrics_layout)
@@ -227,6 +252,7 @@ class SiteDashboardPage(QWidget):
         self.assessment_area_requested.emit(area_id, int(domain_id))
 
     def _render_snapshot(self):
+        self._clear_filter_selections()
         self._render_metrics()
         self.plan_card.set_snapshot(self.snapshot)
         active = self.snapshot.active_dataset
@@ -239,7 +265,9 @@ class SiteDashboardPage(QWidget):
             action_label = tr("Update Project Lines")
         if self.plan_card.primary_action is not None:
             self.plan_card.primary_action.setText(action_label)
-        self.plan_card.set_actions_enabled(self._can_edit())
+        editable = self._can_edit()
+        self.plan_card.set_actions_enabled(editable)
+        self.lines_add_button.setEnabled(editable)
         self.result_chart.set_data(self.snapshot.quadrants)
         self.attention_card.set_rows(
             self._attention_rows(), empty_text="No areas require attention"
