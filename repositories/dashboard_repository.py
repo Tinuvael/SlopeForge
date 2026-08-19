@@ -6,9 +6,10 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from database import assessment_models as a
-from database.models import Domain, DomainGeometry
+from database.models import AuditLogEntry, Domain, DomainGeometry
 from domain.blasting.workflow import derive_assessment_progress_state
 from infrastructure.db.workflow_status_queries import blast_workflow_states
 
@@ -33,6 +34,15 @@ class BlastRow:
     horizon: str
     event_date: date | None
     status: str
+
+
+@dataclass(frozen=True)
+class ActivityRow:
+    entity_type: str
+    entity_name: str
+    action: str
+    changed_at: datetime | date | None
+    actor: str = ""
 
 
 @dataclass(frozen=True)
@@ -107,7 +117,7 @@ class DomainDashboardSnapshot:
     blasts: list[BlastRow] = field(default_factory=list)
     intervals: dict[str, int] = field(default_factory=dict)
     quadrants: dict[str, int] = field(default_factory=dict)
-    recent: list[tuple[str, datetime | date | None]] = field(default_factory=list)
+    recent: list[ActivityRow] = field(default_factory=list)
     project_lines: tuple[MapGeometry, ...] = ()
     production_geometries: tuple[MapGeometry, ...] = ()
     contour_geometries: tuple[MapGeometry, ...] = ()
@@ -116,6 +126,16 @@ class DomainDashboardSnapshot:
     geometry_source_kind: str | None = None
     geometry_source_file_name: str | None = None
 
+    @property
+    def trend_rows(self):
+        return [
+            row
+            for row in self.areas
+            if row.status == "completed"
+            and row.assessment_date is not None
+            and (row.dai is not None or row.fci is not None)
+        ]
+
 
 @dataclass(frozen=True)
 class SiteDashboardSnapshot:
@@ -123,7 +143,7 @@ class SiteDashboardSnapshot:
     domains: list[DomainDashboardSnapshot]
     active_dataset: object | None
     datasets: list[object]
-    recent: list[tuple[str, datetime | date | None]] = field(default_factory=list)
+    recent: list[ActivityRow] = field(default_factory=list)
     project_lines: tuple[MapGeometry, ...] = ()
 
     @property
@@ -164,6 +184,10 @@ class SiteDashboardSnapshot:
         return self._average("fci")
 
     @property
+    def trend_rows(self):
+        return [row for domain in self.domains for row in domain.trend_rows]
+
+    @property
     def domain_geometries(self):
         if not self.domains:
             return ()
@@ -200,6 +224,51 @@ def _number(value):
         return "—"
     text = format(Decimal(value).normalize(), "f")
     return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _actor(user) -> str:
+    if user is None:
+        return ""
+    return user.full_name or user.username or ""
+
+
+def _audit_actor_maps(session, entity_type: str, entity_ids) -> tuple[dict, dict, dict]:
+    ids = [str(value) for value in entity_ids]
+    if not ids:
+        return {}, {}, {}
+    audits = list(
+        session.scalars(
+            select(AuditLogEntry)
+            .options(joinedload(AuditLogEntry.user))
+            .where(
+                AuditLogEntry.entity_type == entity_type,
+                AuditLogEntry.entity_id.in_(ids),
+            )
+            .order_by(AuditLogEntry.created_at.desc(), AuditLogEntry.id.desc())
+        )
+    )
+    latest: dict[str, str] = {}
+    created: dict[str, str] = {}
+    revision: dict[str, str] = {}
+    revision_markers = {"geometry_revision", "assessment_revision", "technical_revision"}
+    for entry in audits:
+        actor = _actor(entry.user)
+        if actor:
+            latest.setdefault(entry.entity_id, actor)
+            if entry.action == "create":
+                created[entry.entity_id] = actor
+            if entry.field_name in revision_markers and entry.new_value:
+                revision[entry.new_value] = actor
+    return latest, created, revision
+
+
+def _activity_sort_key(item: ActivityRow):
+    changed = item.changed_at
+    if isinstance(changed, datetime):
+        return changed.timestamp()
+    if isinstance(changed, date):
+        return datetime.combine(changed, datetime.min.time()).timestamp()
+    return 0
 
 
 class DashboardRepository:
@@ -355,26 +424,65 @@ class DashboardRepository:
                 for item in contours
             ]
 
-            activity = [
-                (f"Assessment Area: {area.name}", area.updated_at)
-                for area, _, _ in rows
-            ]
-            activity += [
-                (f"Evaluation: {area.name}", evaluation.created_at)
-                for area, _, evaluation in rows
-                if evaluation is not None
-            ]
-            activity += [
-                (f"Block {item.name}", item.updated_at) for item in production
-            ]
-            activity += [(item.name, item.updated_at) for item in contours]
-            recent = sorted(
-                activity,
-                key=lambda item: item[1].timestamp()
-                if isinstance(item[1], datetime)
-                else 0,
-                reverse=True,
-            )[:10]
+            area_ids = [area.logical_id for area, _, _ in rows]
+            event_ids = [item.logical_id for item in all_events]
+            area_latest_actor, area_created_actor, revision_actor = _audit_actor_maps(
+                session, "assessment_area", area_ids
+            )
+            event_latest_actor, _event_created_actor, _ = _audit_actor_maps(
+                session, "blast_event", event_ids
+            )
+
+            activity: list[ActivityRow] = []
+            for area, _, evaluation in rows:
+                area_id = str(area.logical_id)
+                created = area.created_at == area.updated_at
+                activity.append(
+                    ActivityRow(
+                        "Assessment Area",
+                        area.name,
+                        "Created" if created else "Updated",
+                        area.updated_at,
+                        area_latest_actor.get(area_id)
+                        or area_created_actor.get(area_id, ""),
+                    )
+                )
+                if evaluation is not None:
+                    activity.append(
+                        ActivityRow(
+                            "Assessment Area",
+                            area.name,
+                            "Assessment completed"
+                            if evaluation.status == "completed"
+                            else "Assessment draft saved",
+                            evaluation.created_at,
+                            revision_actor.get(evaluation.logical_id)
+                            or area_latest_actor.get(area_id, ""),
+                        )
+                    )
+            for item in production:
+                activity.append(
+                    ActivityRow(
+                        "Block",
+                        item.name,
+                        "Created" if item.created_at == item.updated_at else "Updated",
+                        item.updated_at,
+                        event_latest_actor.get(str(item.logical_id))
+                        or _actor(item.created_by_user),
+                    )
+                )
+            for item in contours:
+                activity.append(
+                    ActivityRow(
+                        "Contour blast",
+                        item.name,
+                        "Created" if item.created_at == item.updated_at else "Updated",
+                        item.updated_at,
+                        event_latest_actor.get(str(item.logical_id))
+                        or _actor(item.created_by_user),
+                    )
+                )
+            recent = sorted(activity, key=_activity_sort_key, reverse=True)[:10]
 
             dataset = session.scalar(
                 select(a.ProjectLinesDataset).where(
@@ -472,14 +580,12 @@ class DashboardRepository:
             for row in datasets:
                 session.expunge(row)
         domains = [self._domain_snapshot(item, site_geometry) for item in ids]
-        activity = [(f"Project Lines: {item.name}", item.imported_at) for item in datasets]
+        activity = [
+            ActivityRow("Project Lines", item.name, "Imported", item.imported_at)
+            for item in datasets
+        ]
         activity += [item for domain in domains for item in domain.recent]
-        activity.sort(
-            key=lambda item: item[1].timestamp()
-            if isinstance(item[1], datetime)
-            else 0,
-            reverse=True,
-        )
+        activity.sort(key=_activity_sort_key, reverse=True)
         return SiteDashboardSnapshot(
             site_id,
             domains,
