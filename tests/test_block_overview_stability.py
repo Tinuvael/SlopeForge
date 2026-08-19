@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -56,3 +57,16 @@ def test_block_attachment_preview_hides_old_rows_before_rebuild():
     assert all(row.isHidden() for row in old_rows)
     preview.close()
     app.processEvents()
+
+
+def test_block_page_settles_reentry_before_repaint_and_matches_left_stack_height():
+    text = Path("ui/pages/block_page.py").read_text(encoding="utf-8")
+    assert "from PySide6.QtCore import QEvent, QTimer, Qt, Signal" in text
+    assert "self.setUpdatesEnabled(False)" in text
+    assert "QTimer.singleShot(0, self._finish_show_layout)" in text
+    assert "def _settle_visible_layout(self)" in text
+    assert "layout.activate()" in text
+    assert "self.setUpdatesEnabled(True)" in text
+    assert "target = max(360, self.overview_stack_widget.sizeHint().height())" in text
+    assert "min(520" not in text
+    assert "self.geometry_card.plan.center_on_focus()" in text
