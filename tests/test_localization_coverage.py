@@ -64,6 +64,11 @@ def test_runtime_dashboard_card_labels_have_russian_fallbacks():
         "Good results",
         "Unacceptable results",
         "Condition good, geometry unacceptable",
+        "No Project Lines",
+        "Import lines",
+        "Update lines",
+        "Import",
+        "No Domain geometry",
     }
     assert required <= RUSSIAN_RUNTIME_FALLBACKS.keys()
 
