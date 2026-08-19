@@ -20,47 +20,50 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
         assert "MetricCard" in page
         assert "DashboardRecentActivityCard" in page
         assert "CompactSummaryList" in page
-        assert 'CompactSummaryList(\n            "Attention required", visible_rows=2' in page
+        assert 'CompactSummaryList(\n            "Attention required", visible_rows=2, show_go_to=True' in page
         assert 'setObjectName("DashboardPage")' in page
         assert "workspace.setColumnStretch(0, 1)" in page
         assert "workspace.setColumnStretch(1, 1)" in page
-        assert "setRowStretch" not in page
+        assert "workspace.setRowMinimumHeight(0, 405)" in page
+        assert "workspace.setRowStretch(0, 1)" in page
+        assert "root.addLayout(workspace, 1)" in page
 
     assert "ProjectLinesCard" in project
     assert 'primary_action_label="Project Lines"' in project
-    assert 'CompactSummaryList("Domain summary", visible_rows=3)' in project
+    assert '"Domain summary", visible_rows=3, show_go_to=True' in project
     assert "AssessmentProgressCard" in project
+    assert "lines_card.add_header_action(\"Add\")" in project
     assert "assessment_area_requested = Signal(str, int)" in project
+    assert "self._filter_domain" in project and 'set_filter("domain"' in project
 
     assert 'CompactSummaryList("Elevation intervals", visible_rows=3)' in domain
-    assert '"Latest assessments", visible_rows=3' in domain
+    assert '"Latest assessments", visible_rows=3, show_go_to=True' in domain
     assert "BlastActivityCard" in domain
     assert 'primary_action_label="Import geometry"' in domain
     assert 'secondary_action_label="Draw geometry"' in domain
+    assert 'set_filter("interval"' in domain and 'set_filter("area"' in domain
 
 
-def test_dashboard_plan_has_stable_near_four_three_footprint_and_split_controls():
+def test_dashboard_plan_fills_top_row_and_supports_transient_filtering():
     plan = source("ui/pages/dashboards/plan_overview.py")
     assert "FRAME_FACTOR = 1.5" in plan
-    assert "self.view.setMinimumHeight(245)" in plan
-    assert "self.setMinimumWidth(440)" in plan
-    assert "self.setMaximumWidth(560)" in plan
-    assert "self.setMinimumHeight(325)" in plan
-    assert "self.setMaximumHeight(385)" in plan
-    assert "def hasHeightForWidth" in plan
-    assert "int(width * 0.72)" in plan
-    assert "return QSize(510, 365)" in plan
-    assert "self.controls = QHBoxLayout()" in plan
-    assert "self.layout.addLayout(self.controls)" in plan
-    assert "self.controls.addWidget(self.lines)" in plan
-    assert "def add_header_action" in plan
+    assert "class DashboardGraphicsView" in plan
+    assert "clear_filter_requested = Signal()" in plan
+    assert "Qt.Key.Key_Escape" in plan
+    assert "self.itemAt(event.position().toPoint()) is None" in plan
+    assert "self.view.setMinimumHeight(320)" in plan
+    assert "self.setMinimumHeight(405)" in plan
+    assert "self.setMaximumHeight(455)" in plan
+    assert "QSizePolicy.Policy.Expanding" in plan
+    assert "return QSize(600, 430)" in plan
+    assert "def set_filter" in plan and "def clear_filter" in plan
+    assert 'kind == "domain"' in plan
+    assert 'kind == "interval"' in plan
+    assert 'kind == "area"' in plan
+    assert 'QColor("#aeb8c5")' in plan
     assert 'getattr(self.snapshot, "assessment_geometries", ())' in plan
-    assert 'getattr(self.snapshot, "project_lines", ())' in plan
-    assert 'getattr(self.snapshot, "domain_geometries", ())' in plan
     assert "production_geometries" not in plan
     assert "contour_geometries" not in plan
-    assert "assessment_result_presentation" in plan
-    assert "DAI:" in plan and "FCI:" in plan
 
 
 def test_dashboard_projection_uses_only_current_completed_assessment_result():
@@ -90,19 +93,33 @@ def test_dashboard_result_palette_matches_full_assessment_matrix():
         assert colour in editor
 
 
-def test_dashboard_internal_lists_are_bounded_and_card_styled():
+def test_dashboard_internal_lists_have_explicit_filter_and_navigation_actions():
     widgets = source("ui/pages/dashboards/widgets.py")
-    assert "visible_rows: int = 3" in widgets
-    assert "self.visible_rows" in widgets
-    assert "DashboardSummaryRow" in widgets
+    assert "show_go_to: bool = False" in widgets
+    assert "go_to_requested = Signal(str)" in widgets
+    assert "class SummaryRowWidget" in widgets
+    assert 'OverviewLinkButton("Go to ›")' in widgets
+    assert "WA_TransparentForMouseEvents" in widgets
+    assert "def clear_selection" in widgets
     assert "ProjectLinesDatasetRow" in widgets
     assert 'self.setObjectName("DashboardCard")' in widgets
     assert 'self.setObjectName("DashboardMetricCard")' in widgets
     assert "QFrame#DashboardCard" in widgets
     assert "QFrame#DashboardMetricCard" in widgets
-    assert "QFrame#OverviewCard" not in widgets
     assert "ScrollBarAsNeeded" in widgets
     assert "ScrollBarAlwaysOff" in widgets
+
+
+def test_progress_and_donut_are_visually_strengthened_without_new_metrics():
+    widgets = source("ui/pages/dashboards/widgets.py")
+    charts = source("ui/pages/dashboards/charts.py")
+    assert "self.progress.setFixedHeight(17)" in widgets
+    assert 'self.percent = QLabel("0%")' in widgets
+    assert "self.setMinimumHeight(205 if kind == \"donut\" else 92)" in charts
+    assert "shadow.setWidth(width + 5)" in charts
+    assert "center_font.setBold(True)" in charts
+    assert "risk_score" not in widgets.lower()
+    assert "risk_score" not in charts.lower()
 
 
 def test_attention_uses_existing_assessment_result_severity_not_new_scoring():
@@ -115,14 +132,14 @@ def test_attention_uses_existing_assessment_result_severity_not_new_scoring():
         assert "risk_score" not in page.lower()
 
 
-def test_plan_focus_rect_expands_assessment_bounds_only():
+def test_plan_filter_dims_non_matches_and_restores_original_quadrant_colour():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     gui = pytest.importorskip("PySide6.QtGui", exc_type=ImportError)
     from ui.assessment_result_presentation import assessment_result_presentation
     from ui.pages.dashboards.plan_overview import DashboardPlanOverviewWidget
 
     app = widgets.QApplication.instance() or widgets.QApplication([])
-    assessment = SimpleNamespace(
+    north = SimpleNamespace(
         entity_id="AA-001",
         points=((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)),
         quadrant="good_results",
@@ -132,29 +149,38 @@ def test_plan_focus_rect_expands_assessment_bounds_only():
         dai=0.75,
         fci=0.80,
     )
-    far_line = SimpleNamespace(
-        entity_id="PL-1",
-        points=((-1000.0, 0.0), (1000.0, 0.0)),
+    south = SimpleNamespace(
+        entity_id="AA-002",
+        points=((20.0, 0.0), (30.0, 0.0), (30.0, 10.0), (20.0, 10.0)),
+        quadrant="unacceptable",
+        name="Area 2",
+        domain_name="South",
+        interval="570–600",
+        dai=0.30,
+        fci=0.40,
     )
     snapshot = SimpleNamespace(
         domain_geometries=(),
-        project_lines=(far_line,),
-        assessment_geometries=(assessment,),
+        project_lines=(),
+        assessment_geometries=(north, south),
     )
     plan = DashboardPlanOverviewWidget(snapshot)
     base = plan._items_rect(plan._assessment_items)
     focus = plan.focus_rect()
-
     assert focus.width() == pytest.approx(base.width() * 1.5)
-    assert focus.height() == pytest.approx(base.height() * 1.5)
-    assert focus.width() < 100
-    assert len(plan._project_items) == 1
-    assert "DAI: 0.75" in plan._assessment_items[0].toolTip()
-    assert "FCI: 0.80" in plan._assessment_items[0].toolTip()
-    expected_colour = gui.QColor(
+
+    plan.set_filter("domain", "North")
+    north_item, south_item = plan._assessment_items
+    assert north_item.pen().color() == gui.QColor(
         assessment_result_presentation("good_results").color
     )
-    assert plan._assessment_items[0].pen().color() == expected_colour
+    assert south_item.pen().widthF() == pytest.approx(1.0)
+
+    plan.clear_filter()
+    assert south_item.pen().color() == gui.QColor(
+        assessment_result_presentation("unacceptable").color
+    )
+    assert south_item.pen().widthF() == pytest.approx(2.8)
 
     plan.close()
     app.processEvents()
