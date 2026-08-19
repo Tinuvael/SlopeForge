@@ -69,6 +69,16 @@ def test_dashboard_result_palette_matches_full_assessment_matrix():
         assert colour in editor
 
 
+def test_dashboard_internal_lists_are_bounded_and_card_styled():
+    widgets = source("ui/pages/dashboards/widgets.py")
+    assert "VISIBLE_ROWS = 4" in widgets
+    assert "VISIBLE_ROWS = 3" in widgets
+    assert "DashboardSummaryRow" in widgets
+    assert "ProjectLinesDatasetRow" in widgets
+    assert "ScrollBarAsNeeded" in widgets
+    assert "ScrollBarAlwaysOff" in widgets
+
+
 def test_plan_focus_rect_expands_assessment_bounds_only():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.dashboards.plan_overview import DashboardPlanOverviewWidget
