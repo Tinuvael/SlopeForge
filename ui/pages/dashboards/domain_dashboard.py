@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
@@ -51,6 +51,8 @@ class DomainDashboardPage(QWidget):
 
     def __init__(self, context, domain_id, name=None):
         super().__init__()
+        self.setObjectName("DashboardPage")
+        self.setStyleSheet("QWidget#DashboardPage{background:#f4f6f9;}")
         self.context = context
         self.domain_id = domain_id
         self.repo = DashboardRepository(context.session_factory)
@@ -61,8 +63,8 @@ class DomainDashboardPage(QWidget):
         domain = self.snapshot.domain
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 10, 12, 10)
-        root.setSpacing(8)
+        root.setContentsMargins(14, 12, 14, 12)
+        root.setSpacing(9)
 
         header = QHBoxLayout()
         header.setSpacing(8)
@@ -91,14 +93,11 @@ class DomainDashboardPage(QWidget):
 
         workspace = QGridLayout()
         workspace.setContentsMargins(0, 0, 0, 0)
-        workspace.setHorizontalSpacing(8)
-        workspace.setVerticalSpacing(8)
-        workspace.setColumnStretch(0, 6)
-        workspace.setColumnStretch(1, 4)
-        workspace.setRowStretch(0, 4)
-        workspace.setRowStretch(1, 2)
-        workspace.setRowStretch(2, 2)
-        root.addLayout(workspace, 1)
+        workspace.setHorizontalSpacing(9)
+        workspace.setVerticalSpacing(9)
+        workspace.setColumnStretch(0, 1)
+        workspace.setColumnStretch(1, 1)
+        root.addLayout(workspace)
 
         self.plan_card = DashboardPlanCard(
             self.snapshot,
@@ -109,12 +108,19 @@ class DomainDashboardPage(QWidget):
         self.plan_card.secondary_action_requested.connect(self.edit_geometry)
         self.clear_geometry_button = self.plan_card.add_header_action("Clear")
         self.clear_geometry_button.clicked.connect(self.clear_geometry)
-        workspace.addWidget(self.plan_card, 0, 0)
+        workspace.addWidget(
+            self.plan_card,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
+        )
 
         right_top = QWidget()
+        right_top.setMinimumHeight(300)
+        right_top.setMaximumHeight(360)
         right_layout = QVBoxLayout(right_top)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(8)
+        right_layout.setSpacing(9)
 
         self.result_card = DashboardCard("Assessment result distribution")
         self.result_chart = CompactChart({}, "donut")
@@ -122,13 +128,13 @@ class DomainDashboardPage(QWidget):
         right_layout.addWidget(self.result_card, 3)
 
         self.attention_card = CompactSummaryList(
-            "Attention required", visible_rows=3
+            "Attention required", visible_rows=2
         )
         self.attention_card.activated.connect(self.assessment_area_requested)
         right_layout.addWidget(self.attention_card, 2)
         workspace.addWidget(right_top, 0, 1)
 
-        self.interval_summary = CompactSummaryList("Elevation intervals", visible_rows=4)
+        self.interval_summary = CompactSummaryList("Elevation intervals", visible_rows=3)
         workspace.addWidget(self.interval_summary, 1, 0)
 
         self.latest_assessments = CompactSummaryList(
@@ -143,6 +149,7 @@ class DomainDashboardPage(QWidget):
         self.recent_card = DashboardRecentActivityCard()
         workspace.addWidget(self.recent_card, 2, 1)
 
+        root.addStretch(1)
         self._render_snapshot()
 
     def _can_edit(self) -> bool:
