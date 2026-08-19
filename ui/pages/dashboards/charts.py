@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from app.localization import tr
@@ -20,8 +20,8 @@ class CompactChart(QWidget):
             if value is not None and int(value) > 0
         }
         self.kind = kind
-        self.setMinimumHeight(118 if kind == "donut" else 92)
-        self.setMaximumHeight(190 if kind == "donut" else 150)
+        self.setMinimumHeight(205 if kind == "donut" else 92)
+        self.setMaximumHeight(285 if kind == "donut" else 150)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_data(self, data):
@@ -82,50 +82,65 @@ class CompactChart(QWidget):
             )
 
     def _paint_donut(self, painter):
-        size = max(82, min(self.height() - 12, self.width() * 0.42))
-        ring = QRectF(4, (self.height() - size) / 2, size, size)
+        size = max(132, min(self.height() - 16, self.width() * 0.40))
+        ring = QRectF(8, (self.height() - size) / 2, size, size)
         total = sum(self.data.values())
+        width = max(20, int(size * 0.18))
+        arc_rect = ring.adjusted(width / 2, width / 2, -width / 2, -width / 2)
+
+        shadow = QPen(QColor("#d8dee7"))
+        shadow.setWidth(width + 5)
+        shadow.setCapStyle(Qt.PenCapStyle.FlatCap)
+        painter.setPen(shadow)
+        painter.drawArc(arc_rect, 0, 360 * 16)
+
+        base = QPen(QColor("#eef2f6"))
+        base.setWidth(width)
+        base.setCapStyle(Qt.PenCapStyle.FlatCap)
+        painter.setPen(base)
+        painter.drawArc(arc_rect, 0, 360 * 16)
+
         start = 90 * 16
         pen = QPen()
-        pen.setWidth(max(12, int(size * 0.19)))
+        pen.setWidth(width)
         pen.setCapStyle(Qt.PenCapStyle.FlatCap)
         for key, value in self.data.items():
             pen.setColor(QColor(quadrant_presentation(key).color))
             painter.setPen(pen)
             span = -round(360 * 16 * value / total)
-            painter.drawArc(
-                ring.adjusted(
-                    pen.width() / 2,
-                    pen.width() / 2,
-                    -pen.width() / 2,
-                    -pen.width() / 2,
-                ),
-                start,
-                span,
-            )
+            painter.drawArc(arc_rect, start, span)
             start += span
+
+        center_font = QFont(painter.font())
+        center_font.setBold(True)
+        center_font.setPointSize(max(14, min(21, int(size * 0.095))))
+        painter.setFont(center_font)
         painter.setPen(QColor("#0f172a"))
         painter.drawText(ring, Qt.AlignmentFlag.AlignCenter, str(total))
 
-        legend_x = ring.right() + 14
-        legend_width = max(20, self.width() - int(legend_x) - 4)
-        row_height = max(20, min(25, self.height() // max(1, len(self.data))))
+        legend_x = ring.right() + 18
+        legend_width = max(20, self.width() - int(legend_x) - 6)
+        row_height = max(23, min(30, self.height() // max(1, len(self.data))))
         top = max(2, (self.height() - row_height * len(self.data)) // 2)
-        metrics = QFontMetrics(painter.font())
+        legend_font = QFont(painter.font())
+        legend_font.setPointSize(max(8, center_font.pointSize() - 7))
+        legend_font.setBold(False)
+        painter.setFont(legend_font)
+        metrics = QFontMetrics(legend_font)
         for index, (key, value) in enumerate(self.data.items()):
             presentation = quadrant_presentation(key)
             y = top + index * row_height
-            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setPen(QPen(QColor("#d4dae3"), 1))
             painter.setBrush(QColor(presentation.color))
-            painter.drawRoundedRect(QRectF(legend_x, y + 6, 9, 9), 2, 2)
+            painter.drawRoundedRect(QRectF(legend_x, y + 7, 11, 11), 2, 2)
             painter.setPen(QColor("#334155"))
             label = f"{presentation.label}  {value}"
             painter.drawText(
-                QRectF(legend_x + 15, y, legend_width - 15, row_height),
+                QRectF(legend_x + 17, y, legend_width - 17, row_height),
                 Qt.AlignmentFlag.AlignVCenter,
                 metrics.elidedText(
                     label,
                     Qt.TextElideMode.ElideRight,
-                    max(20, legend_width - 15),
+                    max(20, legend_width - 17),
                 ),
             )
