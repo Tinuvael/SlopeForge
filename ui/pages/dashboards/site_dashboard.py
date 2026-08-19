@@ -25,10 +25,9 @@ from ui.assessment_result_presentation import assessment_result_presentation
 from ui.dialogs.rename_entity_dialog import RenameEntityDialog
 from ui.presentation_labels import domain_message
 
-from .charts import CompactChart
+from .charts import AssessmentTrendCard, CompactChart
 from .plan_overview import DashboardPlanCard
 from .widgets import (
-    AssessmentProgressCard,
     CompactSummaryList,
     DashboardCard,
     DashboardRecentActivityCard,
@@ -121,7 +120,10 @@ class SiteDashboardPage(QWidget):
         right_layout.addWidget(self.result_card)
 
         self.attention_card = CompactSummaryList(
-            "Attention required", visible_rows=2, show_go_to=True
+            "Attention required",
+            visible_rows=4,
+            show_go_to=True,
+            fill_available=True,
         )
         self.attention_card.setMinimumHeight(160)
         self.attention_card.activated.connect(self._filter_attention_area)
@@ -143,8 +145,8 @@ class SiteDashboardPage(QWidget):
         self.lines_add_button.clicked.connect(self.import_lines)
         workspace.addWidget(self.lines_card, 1, 1)
 
-        self.progress_card = AssessmentProgressCard()
-        workspace.addWidget(self.progress_card, 2, 0)
+        self.trend_card = AssessmentTrendCard()
+        workspace.addWidget(self.trend_card, 2, 0)
 
         self.recent_card = DashboardRecentActivityCard()
         workspace.addWidget(self.recent_card, 2, 1)
@@ -277,9 +279,7 @@ class SiteDashboardPage(QWidget):
             self._domain_rows(), empty_text="No Domains yet"
         )
         self.lines_card.set_datasets(self.snapshot.datasets)
-        self.progress_card.set_counts(
-            self.snapshot.areas, self.snapshot.completed, self.snapshot.drafts
-        )
+        self.trend_card.set_rows(self.snapshot.trend_rows)
         self.recent_card.set_entries(self.snapshot.recent)
 
     def refresh(self):
