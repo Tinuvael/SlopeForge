@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -120,37 +121,45 @@ def test_quick_attachment_preview_exposes_add_and_open_actions():
     preview.close(); app.processEvents()
 
 
-def test_quick_attachment_preview_extra_items_collapse_without_overflow():
+def test_quick_attachment_preview_extra_items_collapse_without_rebuild_or_overflow():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.entity_overview_widgets import QuickAttachmentPreview
 
     app = widgets.QApplication.instance() or widgets.QApplication([])
-    host = widgets.QWidget()
-    host.resize(1000, 900)
     photos = QuickAttachmentPreview("Photos", "photo", max_items=6)
     documents = QuickAttachmentPreview("Documents", "document", max_items=7)
-    photos.setParent(host)
-    documents.setParent(host)
-    photos._items = [object()] * 6
-    documents._items = [object()] * 7
+    fake_photos = [SimpleNamespace(id=f"p{i}", title="", original_filename=f"p{i}.jpg") for i in range(6)]
+    fake_docs = [SimpleNamespace(id=f"d{i}", title="", original_filename=f"d{i}.pdf") for i in range(7)]
+    photos.set_items(None, fake_photos, "No photos yet")
+    documents.set_items(None, fake_docs, "No documents yet")
 
-    assert photos._visible_item_limit() == 6
-    assert documents._visible_item_limit() == 7
-
-    host.resize(1000, 790)
-    assert photos._visible_item_limit() == 4
-    assert documents._visible_item_limit() == 6
-    host.resize(1000, 710)
-    assert documents._visible_item_limit() == 5
-    host.resize(1000, 640)
-    assert documents._visible_item_limit() == 4
+    assert len(photos._item_rows) == 3
+    assert len(documents._item_rows) == 7
+    photos.set_visible_item_limit(6)
+    assert sum(row.isHidden() for row in photos._item_rows) == 0
+    photos.set_visible_item_limit(4)
+    assert [row.isHidden() for row in photos._item_rows] == [False, False, True]
+    documents.set_visible_item_limit(5)
+    assert [row.isHidden() for row in documents._item_rows] == [False, False, False, False, False, True, True]
 
     photos.resize(250, 180)
-    width, _height = photos._photo_tile_size()
     margins = photos.layout.contentsMargins()
     available = photos.width() - margins.left() - margins.right()
-    assert width * 2 + 6 <= available
-    photos.close(); documents.close(); host.close(); app.processEvents()
+    assert photos.PHOTO_TILE_WIDTH * 2 + 6 <= available
+    photos.close(); documents.close(); app.processEvents()
+
+
+def test_related_entity_list_empty_state_is_compact_and_unframed():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.entity_overview_widgets import RelatedEntityList
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    related = RelatedEntityList("Related assessment areas")
+    related.set_rows([], empty_text="No linked assessment areas")
+    assert related.list.minimumHeight() == 38
+    assert related.list.maximumHeight() == 38
+    assert related.list.frameShape() == widgets.QFrame.Shape.NoFrame
+    related.close(); app.processEvents()
 
 
 def test_related_entity_list_separates_preview_click_from_go_to_action():
@@ -238,12 +247,14 @@ def test_block_overview_uses_main_pattern_depth_and_execution_exceptions():
 def test_block_overview_refinements_keep_preview_and_navigation_distinct():
     page = Path("ui/pages/block_page.py").read_text(encoding="utf-8")
     general = page.index("overview_stack.addWidget(self.general_info)")
-    related = page.index("overview_stack.addWidget(self.related_areas, 1)")
+    related = page.index("overview_stack.addWidget(self.related_areas)")
     notes = page.index("overview_stack.addWidget(self.notes)")
     assert general < related < notes
     assert 'QuickAttachmentPreview("Photos", "photo", max_items=6)' in page
     assert 'QuickAttachmentPreview("Documents", "document", max_items=7)' in page
-    assert 'action_label="Reimport"' in page
+    assert 'action_label="Reimport", enforce_square=False' in page
+    assert "set_visible_item_limit(photo_limit)" in page
+    assert "set_visible_item_limit(document_limit)" in page
     assert "entity_activated.connect(self._preview_related_area)" in page
     assert "entity_action_requested.connect(self._open_related_area)" in page
     assert "escape_requested.connect(self._clear_related_area_preview)" in page
@@ -251,6 +262,8 @@ def test_block_overview_refinements_keep_preview_and_navigation_distinct():
     assert "set_comparison_geometry(" in page
     assert "block_rect.united(area_rect)" in page
     assert "QEvent.Type.MouseButtonPress" in page
+    assert "revision=geometry.revision_number" not in page.split("def _render_engineering", 1)[1].split("card, draft", 1)[0]
+    assert "source=geometry.source_file_name" not in page.split("def _render_engineering", 1)[1].split("card, draft", 1)[0]
 
 
 def test_contour_overview_has_safe_metadata_and_related_assessment_access():
