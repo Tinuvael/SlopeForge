@@ -2,8 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import QEvent, QTimer, Qt, Signal
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.context import AppContext
 from app.localization import tr
@@ -24,6 +33,7 @@ from ui.pages.block_overview_widgets import (
     BlockAttachmentPreview,
     BlockGeometryCard,
     BlockRelatedEntityList,
+    BlockSectionHost,
 )
 from ui.pages.entity_history_revision_viewer import open_geometry_revision, open_technical_card_revision
 from ui.pages.entity_history_widget import EntityHistoryWidget
@@ -128,7 +138,7 @@ class BlockPage(QWidget):
         self._overview_document_count = 0
         self._overview_history_entries = []
         self._related_area_preview_id = None
-        self._show_settle_pending = False
+        self.technical_card_editor = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -141,6 +151,10 @@ class BlockPage(QWidget):
         body = QHBoxLayout()
         left = QVBoxLayout()
         self.tabs = create_entity_tabs()
+        # Heavy editor tabs must not dictate the minimum height of the whole Block
+        # page while Overview is current. The tab widget still expands to all space
+        # offered by the body layout, but its hidden-page size hints are ignored.
+        self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         self.overview_tab = QWidget()
         overview_layout = QVBoxLayout(self.overview_tab)
         overview_layout.setSpacing(8)
@@ -148,7 +162,6 @@ class BlockPage(QWidget):
 
         top = QHBoxLayout()
         top.setSpacing(8)
-        top.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.overview_stack_widget = QWidget()
         overview_stack = QVBoxLayout(self.overview_stack_widget)
         overview_stack.setContentsMargins(0, 0, 0, 0)
@@ -169,7 +182,10 @@ class BlockPage(QWidget):
         self._geometry_viewport = self.geometry_card.plan.view.viewport()
         self._geometry_viewport.installEventFilter(self)
         top.addWidget(self.overview_stack_widget, 1)
-        top.addWidget(self.geometry_card, 0, Qt.AlignmentFlag.AlignTop)
+        # No vertical alignment and no fixed height: both widgets receive the
+        # height of this single layout row. BlockGeometryCard ignores its old
+        # inherited 440 px vertical hint, so the left stack is the source of truth.
+        top.addWidget(self.geometry_card, 0)
         overview_layout.addLayout(top)
 
         self.engineering_summary = EngineeringSummaryCard()
@@ -187,9 +203,11 @@ class BlockPage(QWidget):
         overview_layout.addLayout(bottom)
 
         self.tabs.addTab(self.overview_tab, tr("General information"))
-        self.geomechanics_tab = EmptySection()
-        self.design_tab = EmptySection()
-        self.execution_tab = EmptySection()
+        # These are permanent tab pages. Switching Block data only replaces the
+        # editor inside each host; QTabWidget itself is never remove/insert churned.
+        self.geomechanics_tab = BlockSectionHost(EmptySection())
+        self.design_tab = BlockSectionHost(EmptySection())
+        self.execution_tab = BlockSectionHost(EmptySection())
         self.tabs.addTab(self.design_tab, tr("Blast design"))
         self.tabs.addTab(self.geomechanics_tab, tr("Geomechanics"))
         self.tabs.addTab(self.execution_tab, tr("Execution fact"))
@@ -234,6 +252,7 @@ class BlockPage(QWidget):
         right.addWidget(self.photos)
         right.addWidget(self.documents)
         right.addStretch()
+        self._sidebar_layout = right
         body.addLayout(right, 0)
         layout.addLayout(body)
 
@@ -252,7 +271,6 @@ class BlockPage(QWidget):
             """
         )
         self._sync_engineering_actions_visibility()
-        self._sync_sidebar_density()
         self.refresh()
 
     def _make_attachment_tab(self, kind):
@@ -269,68 +287,48 @@ class BlockPage(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._sync_sidebar_density()
-        self._sync_top_row_height()
 
     def showEvent(self, event):
         super().showEvent(event)
-        self.setUpdatesEnabled(False)
         if self._related_area_preview_id is not None:
             self._clear_related_area_preview()
-        self._settle_visible_layout()
-        if not self._show_settle_pending:
-            self._show_settle_pending = True
-            QTimer.singleShot(0, self._finish_show_layout)
-
-    def _settle_visible_layout(self) -> None:
         self._sync_sidebar_density()
-        self._sync_top_row_height()
-        for widget in (
-            self,
-            self.overview_tab,
-            self.overview_stack_widget,
-            self.photos,
-            self.documents,
-        ):
-            layout = widget.layout()
-            if layout is not None:
-                layout.activate()
         if self._related_area_preview_id is None:
             self.geometry_card.plan.center_on_focus()
-
-    def _finish_show_layout(self) -> None:
-        self._show_settle_pending = False
-        try:
-            if self.isVisible():
-                self._settle_visible_layout()
-        finally:
-            self.setUpdatesEnabled(True)
-            self.update()
 
     def _sync_sidebar_density(self) -> None:
         if not hasattr(self, "photos") or not hasattr(self, "documents"):
             return
-        window = self.window()
-        height = window.height() if window is not None and window is not self else self.height()
-        if height >= 800:
-            photo_limit, document_limit = 6, 7
-        elif height >= 730:
-            photo_limit, document_limit = 4, 6
-        elif height >= 660:
-            photo_limit, document_limit = 4, 5
-        else:
-            photo_limit, document_limit = 4, 4
+        if not hasattr(self, "tabs") or not self.isVisible() or self.tabs.height() < 100:
+            self.photos.set_visible_item_limit(4)
+            self.documents.set_visible_item_limit(4)
+            return
+
+        # Fit the sidebar to the actual entity-page viewport, not the top-level
+        # window height. Start with the requested 6/7 and shrink documents one at
+        # a time, then photos by one complete two-column row.
+        available = max(0, self.tabs.height() - 4)
+        photo_limit = min(6, self.photos._max_items)
+        document_limit = min(7, self.documents._max_items)
         self.photos.set_visible_item_limit(photo_limit)
         self.documents.set_visible_item_limit(document_limit)
 
-    def _sync_top_row_height(self) -> None:
-        if not hasattr(self, "overview_stack_widget") or not hasattr(self, "geometry_card"):
-            return
-        stack_layout = self.overview_stack_widget.layout()
-        if stack_layout is not None:
-            stack_layout.activate()
-        target = max(360, self.overview_stack_widget.sizeHint().height())
-        if self.geometry_card.height() != target or self.geometry_card.minimumHeight() != target:
-            self.geometry_card.setFixedHeight(target)
+        def required_height():
+            spacing = self._sidebar_layout.spacing()
+            return (
+                self.summary.sizeHint().height()
+                + self.photos.sizeHint().height()
+                + self.documents.sizeHint().height()
+                + max(0, spacing) * 2
+            )
+
+        while required_height() > available and (document_limit > 4 or photo_limit > 4):
+            if document_limit > 4:
+                document_limit -= 1
+                self.documents.set_visible_item_limit(document_limit)
+            elif photo_limit > 4:
+                photo_limit -= 2
+                self.photos.set_visible_item_limit(photo_limit)
 
     def _sync_engineering_actions_visibility(self, *_args):
         self.engineering_actions_widget.setVisible(self.tabs.currentIndex() in (1, 2, 3))
@@ -430,13 +428,8 @@ class BlockPage(QWidget):
         self._render_current_block()
 
     def open_block_id(self, event_id: str) -> None:
-        self.setUpdatesEnabled(False)
-        try:
-            self.current_block = self.block_service.get_block(event_id)
-            self._render_current_block()
-        finally:
-            self.setUpdatesEnabled(True)
-        self.update()
+        self.current_block = self.block_service.get_block(event_id)
+        self._render_current_block()
 
     def edit_current_block(self) -> None:
         if not self.current_block or not self.context.current_user.can_edit or self.current_block.is_archived:
@@ -533,12 +526,13 @@ class BlockPage(QWidget):
         service = self.entity_controller.attachments if self.entity_controller else None
         self.photos.set_items(service, photos, "No photos yet", can_add=can_add)
         self.documents.set_items(service, documents, "No documents yet", can_add=can_add)
-        self._sync_sidebar_density()
         self.history_tab.set_entries(history_entries)
         self.recent_activity.set_entries(history_entries)
         self._render_related_areas(event)
         self._render_engineering(block)
-        self._sync_top_row_height()
+        # Summary rows are populated by _render_engineering, so density must be
+        # calculated only after the sidebar has its final current-block content.
+        self._sync_sidebar_density()
         self._sync_engineering_actions_visibility()
 
     def _render_related_areas(self, event):
@@ -601,18 +595,26 @@ class BlockPage(QWidget):
     def _open_attachments(self, kind):
         self.tabs.setCurrentWidget(self.photos_tab if kind == "photo" else self.documents_tab)
 
-    def _replace_tab(self, old, new, title):
-        index = self.tabs.indexOf(old)
-        self.tabs.removeTab(index)
-        self.tabs.insertTab(index, new, title)
-        return new
+    def _dispose_technical_card_editor(self):
+        editor = self.technical_card_editor
+        if editor is None:
+            return
+        self.technical_card_editor = None
+        try:
+            editor.editor.hide()
+            editor.editor.deleteLater()
+        except RuntimeError:
+            pass
+        editor.hide()
+        editor.deleteLater()
 
     def _render_engineering(self, block):
-        self._clear_engineering()
         if block is None:
+            self._clear_engineering()
             return
         event = self.entity_controller.production_event(block.id)
         if event is None:
+            self._clear_engineering()
             self.geometry_card.set_geometry(None)
             return
         editable = self.context.current_user.can_edit and not block.is_archived
@@ -702,6 +704,7 @@ class BlockPage(QWidget):
         ))
 
         from app.use_case_factory import create_charge_presets, create_explosive_catalogue
+        old_editor = self.technical_card_editor
         editor = TechnicalCardEditorWidget(
             event,
             card,
@@ -713,22 +716,24 @@ class BlockPage(QWidget):
             explosive_products=create_explosive_catalogue(self.context).list_enabled_products(),
             charge_presets=create_charge_presets(self.context, self.entity_controller.site_id),
         )
-        self.geomechanics_tab = self._replace_tab(
-            self.geomechanics_tab,
-            GeomechanicsEditorWidget(editor.take_tab(tr("Geomechanics"))),
-            "Geomechanics",
+        self.geomechanics_tab.set_content(
+            GeomechanicsEditorWidget(editor.take_tab(tr("Geomechanics")))
         )
-        self.design_tab = self._replace_tab(
-            self.design_tab,
-            BlastDesignEditorWidget(editor.take_tab(tr("Drilling and charging"))),
-            "Blast design",
+        self.design_tab.set_content(
+            BlastDesignEditorWidget(editor.take_tab(tr("Drilling and charging")))
         )
-        self.execution_tab = self._replace_tab(
-            self.execution_tab,
-            ActualExecutionEditorWidget(editor.take_tab(tr("Execution fact"))),
-            "Execution fact",
+        self.execution_tab.set_content(
+            ActualExecutionEditorWidget(editor.take_tab(tr("Execution fact")))
         )
         self.technical_card_editor = editor
+        if old_editor is not None:
+            try:
+                old_editor.editor.hide()
+                old_editor.editor.deleteLater()
+            except RuntimeError:
+                pass
+            old_editor.hide()
+            old_editor.deleteLater()
         self.save_engineering_draft.setEnabled(not editor.editor.read_only)
         self.complete_engineering.setEnabled(not editor.editor.read_only)
 
@@ -737,16 +742,12 @@ class BlockPage(QWidget):
         self.engineering_notes.set_sections(())
         self.general_info.set_rows(())
         self.summary.set_rows(())
-        for attr, title in (
-            ("geomechanics_tab", "Geomechanics"),
-            ("design_tab", "Blast design"),
-            ("execution_tab", "Execution fact"),
-        ):
-            old = getattr(self, attr)
-            setattr(self, attr, self._replace_tab(old, EmptySection(), title))
+        self.geomechanics_tab.set_content(EmptySection())
+        self.design_tab.set_content(EmptySection())
+        self.execution_tab.set_content(EmptySection())
         self.save_engineering_draft.setEnabled(False)
         self.complete_engineering.setEnabled(False)
-        self.technical_card_editor = None
+        self._dispose_technical_card_editor()
         self.geometry_card.set_action_enabled(False)
 
     def _reimport_current_geometry(self):
