@@ -1,7 +1,7 @@
 """Read-only Project/Domain plan used by compact dashboard overviews."""
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -36,9 +36,11 @@ class DashboardPlanOverviewWidget(QWidget):
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.view.setFrameShape(QFrame.Shape.NoFrame)
-        self.view.setStyleSheet("QGraphicsView{border:0;background:#fbfcfd;}")
+        self.view.setStyleSheet(
+            "QGraphicsView{border:1px solid #e4e8ee;border-radius:5px;background:#fbfcfd;}"
+        )
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.view.setMinimumHeight(185)
+        self.view.setMinimumHeight(235)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -184,7 +186,7 @@ class DashboardPlanOverviewWidget(QWidget):
 
 
 class DashboardPlanCard(DashboardCard):
-    """Dashboard plan card with entity-style header actions."""
+    """Compact dashboard plan with a stable near-4:3 sizing contract."""
 
     primary_action_requested = Signal()
     secondary_action_requested = Signal()
@@ -199,9 +201,11 @@ class DashboardPlanCard(DashboardCard):
         parent=None,
     ):
         super().__init__(title, parent)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.setMinimumHeight(230)
-        self.setMaximumHeight(310)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(460)
+        self.setMaximumWidth(620)
+        self.setMinimumHeight(300)
+        self.setMaximumHeight(360)
 
         self.lines = QCheckBox(tr("Project Lines"))
         self.lines.setChecked(True)
@@ -225,6 +229,15 @@ class DashboardPlanCard(DashboardCard):
         self.layout.addWidget(self.plan, 1)
         self.lines.toggled.connect(self.plan.set_project_lines_visible)
         self.center_button.clicked.connect(self.plan.fit_assessments)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return max(300, min(360, int(width * 0.62)))
+
+    def sizeHint(self):
+        return QSize(540, 335)
 
     def set_snapshot(self, snapshot):
         self.plan.set_snapshot(snapshot)
