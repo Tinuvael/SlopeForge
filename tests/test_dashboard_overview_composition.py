@@ -18,6 +18,7 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
         assert "QTableWidget" not in page
         assert "DashboardPlanCard" in page
         assert "MetricCard" in page
+        assert "DashboardEntityHeader" in page
         assert "DashboardRecentActivityCard" in page
         assert "CompactSummaryList" in page
         assert '"Attention required",\n            visible_rows=4' in page
@@ -34,6 +35,7 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
         assert "self.result_card.setMaximumHeight(225)" in page
         assert "self.attention_card.setMinimumHeight(160)" in page
 
+    assert 'DashboardEntityHeader(name, "Project overview")' in project
     assert "ProjectLinesCard" in project
     assert 'primary_action_label="Project Lines"' in project
     assert '"Domain summary", visible_rows=3, show_go_to=True' in project
@@ -43,6 +45,7 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
     assert "self._filter_domain" in project and 'set_filter("domain"' in project
     assert 'action_label = tr("Update lines")' in project
 
+    assert 'DashboardEntityHeader(name or domain.name, "Domain overview")' in domain
     assert 'CompactSummaryList("Elevation intervals", visible_rows=3)' in domain
     assert '"Latest assessments", visible_rows=3, show_go_to=True' in domain
     assert "BlastActivityCard" not in domain
@@ -118,7 +121,7 @@ def test_dashboard_result_palette_matches_full_assessment_matrix():
         assert colour in editor
 
 
-def test_dashboard_internal_lists_have_explicit_filter_and_navigation_actions():
+def test_dashboard_internal_lists_have_consistent_bordered_rows_and_actions():
     widgets = source("ui/pages/dashboards/widgets.py")
     assert "show_go_to: bool = False" in widgets
     assert "fill_available: bool = False" in widgets
@@ -128,10 +131,15 @@ def test_dashboard_internal_lists_have_explicit_filter_and_navigation_actions():
     assert "WA_TransparentForMouseEvents" in widgets
     assert "def clear_selection" in widgets
     assert "ProjectLinesDatasetRow" in widgets
+    assert "DASHBOARD_ROW_STYLE" in widgets
+    assert 'background:#ffffff;border:1px solid #d7dde6;border-radius:5px' in widgets
+    assert "holder.setStyleSheet(DASHBOARD_ROW_STYLE)" in widgets
     assert 'self.setObjectName("DashboardCard")' in widgets
     assert 'self.setObjectName("DashboardMetricCard")' in widgets
+    assert 'self.setObjectName("DashboardHeaderCard")' in widgets
     assert "QFrame#DashboardCard" in widgets
     assert "QFrame#DashboardMetricCard" in widgets
+    assert "QFrame#DashboardHeaderCard" in widgets
     assert "ScrollBarAsNeeded" in widgets
     assert "ScrollBarAlwaysOff" in widgets
     assert "self.list.setMaximumHeight(16777215)" in widgets
@@ -148,12 +156,16 @@ def test_donut_trends_and_activity_cards_are_compact_without_new_engineering_met
     assert "class IndexTrendChart" in charts
     assert "class AssessmentTrendCard" in charts
     assert 'super().__init__("DAI / FCI over time", parent)' in charts
+    assert 'Daily average · all completed assessments' not in charts
     assert 'IndexTrendChart("DAI", "dai")' in charts
     assert 'IndexTrendChart("FCI", "fci")' in charts
     assert "grouped[when].append(float(value))" in charts
     assert "sum(values) / len(values)" in charts
     assert 'holder.setObjectName("DashboardActivityRow")' in widgets
     assert "border-bottom:1px solid #eef1f5" in widgets
+    assert "META_WIDTH = 190" in widgets
+    assert "meta.setFixedWidth(self.META_WIDTH)" in widgets
+    assert "layout.setContentsMargins(2, 0, 12, 0)" in widgets
     assert "hasattr(entry, \"changed_at\")" in widgets
     assert "ActivityRow" in repository
     assert "_audit_actor_maps" in repository
@@ -164,6 +176,13 @@ def test_donut_trends_and_activity_cards_are_compact_without_new_engineering_met
     assert "risk_score" not in widgets.lower()
     assert "risk_score" not in charts.lower()
     assert "risk_score" not in repository.lower()
+
+
+def test_operational_edit_and_global_report_actions_use_existing_icons():
+    entity_widgets = source("ui/pages/entity_overview_widgets.py")
+    header = source("ui/header.py")
+    assert 'self.edit_button.setIcon(ui_icon("edit", "blue"))' in entity_widgets
+    assert 'self.report_button.setIcon(ui_icon("report","blue"))' in header
 
 
 def test_attention_uses_existing_assessment_result_severity_not_new_scoring():
