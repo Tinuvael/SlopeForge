@@ -319,6 +319,7 @@ class BlockPage(QWidget):
                 combined.adjusted(-margin, -margin, margin, margin)
             )
         self._related_area_preview_id = area_id
+        plan.view.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _clear_related_area_preview(self):
         if self._related_area_preview_id is None:
