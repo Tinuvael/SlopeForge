@@ -32,6 +32,7 @@ from ui.pages.block_card_widgets import EmptySection, format_datetime, format_de
 from ui.pages.block_overview_widgets import (
     BlockAttachmentPreview,
     BlockGeometryCard,
+    BlockNotesCard,
     BlockRecentActivityCard,
     BlockRelatedEntityList,
     BlockSectionHost,
@@ -41,7 +42,6 @@ from ui.pages.entity_history_widget import EntityHistoryWidget
 from ui.pages.entity_overview_widgets import (
     EngineeringSummaryCard,
     EntityHeaderWidget,
-    InlineAutosaveNotes,
     OverviewKeyValueCard,
     RelatedEntityRow,
 )
@@ -151,9 +151,6 @@ class BlockPage(QWidget):
         body = QHBoxLayout()
         left = QVBoxLayout()
         self.tabs = create_entity_tabs()
-        # Heavy editor tabs must not dictate the minimum height of the whole Block
-        # page while Overview is current. The tab widget still expands to all space
-        # offered by the body layout, but its hidden-page size hints are ignored.
         self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         self.overview_tab = QWidget()
         overview_layout = QVBoxLayout(self.overview_tab)
@@ -175,9 +172,7 @@ class BlockPage(QWidget):
         self.related_areas = BlockRelatedEntityList("Related assessment areas")
         self.related_areas.entity_activated.connect(self._preview_related_area)
         self.related_areas.entity_action_requested.connect(self._open_related_area)
-        self.notes = InlineAutosaveNotes("Notes")
-        self.notes.setFixedHeight(108)
-        self.notes.editor.setFixedHeight(58)
+        self.notes = BlockNotesCard("Notes")
         self.notes.save_requested.connect(self._autosave_comment)
         overview_stack.addWidget(self.general_info)
         overview_stack.addWidget(self.related_areas)
@@ -188,9 +183,6 @@ class BlockPage(QWidget):
         self._geometry_viewport = self.geometry_card.plan.view.viewport()
         self._geometry_viewport.installEventFilter(self)
         top.addWidget(self.overview_stack_widget, 1)
-        # No vertical alignment and no fixed height: both widgets receive the
-        # height of this single layout row. BlockGeometryCard ignores its old
-        # inherited 440 px vertical hint, so the left stack is the source of truth.
         top.addWidget(self.geometry_card, 0)
         overview_layout.addLayout(top)
 
@@ -209,8 +201,6 @@ class BlockPage(QWidget):
         overview_layout.addLayout(bottom)
 
         self.tabs.addTab(self.overview_tab, tr("General information"))
-        # These are permanent tab pages. Switching Block data only replaces the
-        # editor inside each host; QTabWidget itself is never remove/insert churned.
         self.geomechanics_tab = BlockSectionHost(EmptySection())
         self.design_tab = BlockSectionHost(EmptySection())
         self.execution_tab = BlockSectionHost(EmptySection())
@@ -309,10 +299,6 @@ class BlockPage(QWidget):
             self.photos.set_visible_item_limit(4)
             self.documents.set_visible_item_limit(4)
             return
-
-        # Fit the sidebar to the actual entity-page viewport, not the top-level
-        # window height. Start with the requested 6/7 and shrink documents one at
-        # a time, then photos by one complete two-column row.
         available = max(0, self.tabs.height() - 4)
         photo_limit = min(6, self.photos._max_items)
         document_limit = min(7, self.documents._max_items)
@@ -475,7 +461,6 @@ class BlockPage(QWidget):
         self.data_changed.emit()
 
     def edit_comment(self):
-        """Compatibility entry point; Notes are now edited inline and autosaved."""
         if not self.notes.editor.isReadOnly():
             self.notes.editor.setFocus()
 
@@ -536,8 +521,6 @@ class BlockPage(QWidget):
         self.recent_activity.set_entries(history_entries)
         self._render_related_areas(event)
         self._render_engineering(block)
-        # Summary rows are populated by _render_engineering, so density must be
-        # calculated only after the sidebar has its final current-block content.
         self._sync_sidebar_density()
         self._sync_engineering_actions_visibility()
 
