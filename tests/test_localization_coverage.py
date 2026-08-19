@@ -114,6 +114,7 @@ def test_representative_active_screen_labels_are_translated():
         "Add assessment area": "Добавить участок оценки",
         "Assessment areas": "Участки оценки", "Horizon": "Горизонт",
         "Interval": "Интервал", "Block": "Блок",
+        "Contour blast": "Контурный взрыв",
     }
     assert {source: catalogue[source] for source in expected} == expected
     assert RUSSIAN_RUNTIME_FALLBACKS["Project tree"] == "Дерево проекта"
