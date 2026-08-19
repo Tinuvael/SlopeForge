@@ -1,7 +1,7 @@
 """Read-only Project/Domain plan used by compact dashboard overviews."""
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -12,6 +12,7 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
     QShortcut,
+    QWheelEvent,
 )
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -19,10 +20,8 @@ from PySide6.QtWidgets import (
     QGraphicsPathItem,
     QGraphicsScene,
     QGraphicsView,
-    QHBoxLayout,
     QLabel,
     QSizePolicy,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -34,10 +33,17 @@ from .widgets import DashboardCard, metric
 
 class DashboardGraphicsView(QGraphicsView):
     clear_filter_requested = Signal()
+    MIN_ZOOM_STEPS = -10
+    MAX_ZOOM_STEPS = 18
+    ZOOM_FACTOR = 1.15
 
     def __init__(self, scene, parent=None):
         super().__init__(scene, parent)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._zoom_steps = 0
+
+    def reset_zoom_state(self):
+        self._zoom_steps = 0
 
     def mousePressEvent(self, event: QMouseEvent):
         if self.itemAt(event.position().toPoint()) is None:
@@ -50,6 +56,22 @@ class DashboardGraphicsView(QGraphicsView):
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def wheelEvent(self, event: QWheelEvent):
+        delta = event.angleDelta().y()
+        if not delta:
+            event.accept()
+            return
+        step = 1 if delta > 0 else -1
+        next_steps = self._zoom_steps + step
+        if next_steps < self.MIN_ZOOM_STEPS or next_steps > self.MAX_ZOOM_STEPS:
+            event.accept()
+            return
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        factor = self.ZOOM_FACTOR if step > 0 else 1.0 / self.ZOOM_FACTOR
+        self.scale(factor, factor)
+        self._zoom_steps = next_steps
+        event.accept()
 
 
 class DashboardPlanOverviewWidget(QWidget):
@@ -75,6 +97,8 @@ class DashboardPlanOverviewWidget(QWidget):
         self.view.setMinimumHeight(320)
         self.view.clear_filter_requested.connect(self.clear_filter)
 
+        from PySide6.QtWidgets import QVBoxLayout
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -90,6 +114,7 @@ class DashboardPlanOverviewWidget(QWidget):
         self._assessment_items: list[QGraphicsPathItem] = []
         self._assessment_entries: list[tuple[QGraphicsPathItem, object]] = []
         self._filter_state: tuple[str, str] | None = None
+        self._initial_fit_pending = True
         self._render()
 
     @staticmethod
@@ -107,7 +132,10 @@ class DashboardPlanOverviewWidget(QWidget):
     def set_snapshot(self, snapshot):
         self.snapshot = snapshot
         self._filter_state = None
+        self._initial_fit_pending = True
         self._render()
+        if self.isVisible():
+            QTimer.singleShot(0, self._fit_initial_view)
 
     @staticmethod
     def _normal_assessment_style(item, geometry):
@@ -177,7 +205,17 @@ class DashboardPlanOverviewWidget(QWidget):
         self.empty_label.setVisible(not bool(self.scene.items()))
         self.empty_label.adjustSize()
         self.empty_label.move(16, 16)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._initial_fit_pending = True
+        QTimer.singleShot(0, self._fit_initial_view)
+
+    def _fit_initial_view(self):
+        if not self._initial_fit_pending or not self.isVisible():
+            return
         self.fit_assessments()
+        self._initial_fit_pending = False
 
     @staticmethod
     def _assessment_tooltip(geometry, result_label: str) -> str:
@@ -265,7 +303,9 @@ class DashboardPlanOverviewWidget(QWidget):
     def fit_assessments(self):
         rect = self.focus_rect()
         if not rect.isNull():
+            self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
             self.view.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+            self.view.reset_zoom_state()
 
 
 class DashboardPlanCard(DashboardCard):
@@ -286,31 +326,27 @@ class DashboardPlanCard(DashboardCard):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumHeight(405)
         self.setMaximumHeight(455)
-
-        self.controls = QHBoxLayout()
-        self.controls.setContentsMargins(0, 0, 0, 0)
-        self.controls.setSpacing(6)
-        self.controls.addStretch()
+        self.header.setSpacing(5)
+        self.subtitle.setMaximumWidth(135)
 
         self.lines = QCheckBox(tr("Project Lines"))
         self.lines.setChecked(True)
-        self.controls.addWidget(self.lines)
+        self.header.addWidget(self.lines)
         self.center_button = OverviewLinkButton("Center")
-        self.controls.addWidget(self.center_button)
+        self.header.addWidget(self.center_button)
 
         self.primary_action = None
         if primary_action_label:
             self.primary_action = OverviewLinkButton(primary_action_label)
             self.primary_action.clicked.connect(self.primary_action_requested)
-            self.controls.addWidget(self.primary_action)
+            self.header.addWidget(self.primary_action)
 
         self.secondary_action = None
         if secondary_action_label:
             self.secondary_action = OverviewLinkButton(secondary_action_label)
             self.secondary_action.clicked.connect(self.secondary_action_requested)
-            self.controls.addWidget(self.secondary_action)
+            self.header.addWidget(self.secondary_action)
 
-        self.layout.addLayout(self.controls)
         self.plan = DashboardPlanOverviewWidget(snapshot, self)
         self.layout.addWidget(self.plan, 1)
         self.lines.toggled.connect(self.plan.set_project_lines_visible)
@@ -320,10 +356,9 @@ class DashboardPlanCard(DashboardCard):
         self.clear_filter_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         self.clear_filter_shortcut.activated.connect(self.plan.clear_filter)
 
-    def add_header_action(self, text: str) -> OverviewLinkButton:
-        button = OverviewLinkButton(text)
-        self.controls.addWidget(button)
-        return button
+    def set_subtitle(self, text: str | None):
+        super().set_subtitle(text)
+        self.subtitle.setToolTip(str(text or ""))
 
     def hasHeightForWidth(self):
         return True
