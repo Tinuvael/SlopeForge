@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QBrush, QColor, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -22,16 +22,37 @@ from ui.pages.entity_overview_widgets import OverviewLinkButton
 from .widgets import DashboardCard, metric
 
 
+class DashboardGraphicsView(QGraphicsView):
+    clear_filter_requested = Signal()
+
+    def __init__(self, scene, parent=None):
+        super().__init__(scene, parent)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if self.itemAt(event.position().toPoint()) is None:
+            self.clear_filter_requested.emit()
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key.Key_Escape:
+            self.clear_filter_requested.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
 class DashboardPlanOverviewWidget(QWidget):
-    """Assessment-focused plan with Project Lines and optional Domain context."""
+    """Assessment-focused plan with transient Domain/Interval/Area filtering."""
 
     FRAME_FACTOR = 1.5
+    filter_cleared = Signal()
 
     def __init__(self, snapshot, parent=None):
         super().__init__(parent)
         self.snapshot = snapshot
         self.scene = QGraphicsScene(self)
-        self.view = QGraphicsView(self.scene, self)
+        self.view = DashboardGraphicsView(self.scene, self)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -41,7 +62,8 @@ class DashboardPlanOverviewWidget(QWidget):
             "QGraphicsView{border:1px solid #e4e8ee;border-radius:5px;background:#fbfcfd;}"
         )
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.view.setMinimumHeight(245)
+        self.view.setMinimumHeight(320)
+        self.view.clear_filter_requested.connect(self.clear_filter)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -56,6 +78,8 @@ class DashboardPlanOverviewWidget(QWidget):
         self._project_items: list[QGraphicsPathItem] = []
         self._domain_items: list[QGraphicsPathItem] = []
         self._assessment_items: list[QGraphicsPathItem] = []
+        self._assessment_entries: list[tuple[QGraphicsPathItem, object]] = []
+        self._filter_state: tuple[str, str] | None = None
         self._render()
 
     @staticmethod
@@ -72,13 +96,35 @@ class DashboardPlanOverviewWidget(QWidget):
 
     def set_snapshot(self, snapshot):
         self.snapshot = snapshot
+        self._filter_state = None
         self._render()
+
+    @staticmethod
+    def _normal_assessment_style(item, geometry):
+        presentation = assessment_result_presentation(geometry.quadrant)
+        border = QColor(presentation.color)
+        fill = QColor(presentation.color)
+        fill.setAlpha(44 if geometry.quadrant else 24)
+        item.setPen(QPen(border, 2.8))
+        item.setBrush(QBrush(fill))
+        item.setZValue(20)
+
+    @staticmethod
+    def _dim_assessment_style(item):
+        border = QColor("#aeb8c5")
+        border.setAlpha(125)
+        fill = QColor("#dbe1e8")
+        fill.setAlpha(18)
+        item.setPen(QPen(border, 1.0))
+        item.setBrush(QBrush(fill))
+        item.setZValue(10)
 
     def _render(self):
         self.scene.clear()
         self._project_items = []
         self._domain_items = []
         self._assessment_items = []
+        self._assessment_entries = []
 
         for geometry in getattr(self.snapshot, "domain_geometries", ()):
             path = self._path(geometry.points, close=True)
@@ -110,17 +156,13 @@ class DashboardPlanOverviewWidget(QWidget):
             self._project_items.append(item)
 
         for geometry in getattr(self.snapshot, "assessment_geometries", ()):
-            presentation = assessment_result_presentation(geometry.quadrant)
-            border = QColor(presentation.color)
-            fill = QColor(presentation.color)
-            fill.setAlpha(44 if geometry.quadrant else 24)
             item = QGraphicsPathItem(self._path(geometry.points, close=True))
-            item.setPen(QPen(border, 2.8))
-            item.setBrush(QBrush(fill))
-            item.setZValue(20)
+            self._normal_assessment_style(item, geometry)
+            presentation = assessment_result_presentation(geometry.quadrant)
             item.setToolTip(self._assessment_tooltip(geometry, presentation.label))
             self.scene.addItem(item)
             self._assessment_items.append(item)
+            self._assessment_entries.append((item, geometry))
 
         self.empty_label.setVisible(not bool(self.scene.items()))
         self.empty_label.adjustSize()
@@ -140,6 +182,38 @@ class DashboardPlanOverviewWidget(QWidget):
             lines.append(f"FCI: {metric(geometry.fci)}")
         lines.append(f"{tr('Result')}: {result_label}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _matches_filter(geometry, kind: str, value: str) -> bool:
+        if kind == "domain":
+            return str(geometry.domain_name) == value
+        if kind == "interval":
+            return str(geometry.interval) == value
+        if kind == "area":
+            return str(geometry.entity_id) == value
+        return True
+
+    def set_filter(self, kind: str, value):
+        state = (str(kind), str(value))
+        if self._filter_state == state:
+            self.clear_filter()
+            return
+        self._filter_state = state
+        for item, geometry in self._assessment_entries:
+            if self._matches_filter(geometry, *state):
+                self._normal_assessment_style(item, geometry)
+            else:
+                self._dim_assessment_style(item)
+        self.view.viewport().update()
+
+    def clear_filter(self):
+        had_filter = self._filter_state is not None
+        self._filter_state = None
+        for item, geometry in self._assessment_entries:
+            self._normal_assessment_style(item, geometry)
+        self.view.viewport().update()
+        if had_filter:
+            self.filter_cleared.emit()
 
     def set_project_lines_visible(self, visible: bool):
         for item in self._project_items:
@@ -171,8 +245,6 @@ class DashboardPlanOverviewWidget(QWidget):
         )
 
     def focus_rect(self) -> QRectF:
-        # Assessment Areas are the operational focus. Domain geometry is context;
-        # Project Lines are only a final fallback when no area/boundary exists.
         rect = self._items_rect(self._assessment_items)
         if rect.isNull():
             rect = self._items_rect(self._domain_items)
@@ -187,10 +259,9 @@ class DashboardPlanOverviewWidget(QWidget):
 
 
 class DashboardPlanCard(DashboardCard):
-    """Compact dashboard plan with a stable near-4:3 sizing contract."""
-
     primary_action_requested = Signal()
     secondary_action_requested = Signal()
+    filter_cleared = Signal()
 
     def __init__(
         self,
@@ -202,11 +273,9 @@ class DashboardPlanCard(DashboardCard):
         parent=None,
     ):
         super().__init__(title, parent)
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        self.setMinimumWidth(440)
-        self.setMaximumWidth(560)
-        self.setMinimumHeight(325)
-        self.setMaximumHeight(385)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumHeight(405)
+        self.setMaximumHeight(455)
 
         self.controls = QHBoxLayout()
         self.controls.setContentsMargins(0, 0, 0, 0)
@@ -236,6 +305,7 @@ class DashboardPlanCard(DashboardCard):
         self.layout.addWidget(self.plan, 1)
         self.lines.toggled.connect(self.plan.set_project_lines_visible)
         self.center_button.clicked.connect(self.plan.fit_assessments)
+        self.plan.filter_cleared.connect(self.filter_cleared)
 
     def add_header_action(self, text: str) -> OverviewLinkButton:
         button = OverviewLinkButton(text)
@@ -246,13 +316,19 @@ class DashboardPlanCard(DashboardCard):
         return True
 
     def heightForWidth(self, width):
-        return max(325, min(385, int(width * 0.72)))
+        return max(405, min(455, int(width * 0.72)))
 
     def sizeHint(self):
-        return QSize(510, 365)
+        return QSize(600, 430)
 
     def set_snapshot(self, snapshot):
         self.plan.set_snapshot(snapshot)
+
+    def set_filter(self, kind: str, value):
+        self.plan.set_filter(kind, value)
+
+    def clear_filter(self):
+        self.plan.clear_filter()
 
     def set_actions_enabled(self, enabled: bool):
         if self.primary_action is not None:
