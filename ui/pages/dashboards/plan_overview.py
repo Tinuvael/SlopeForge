@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QGraphicsView,
     QLabel,
     QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -96,8 +97,6 @@ class DashboardPlanOverviewWidget(QWidget):
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.view.setMinimumHeight(320)
         self.view.clear_filter_requested.connect(self.clear_filter)
-
-        from PySide6.QtWidgets import QVBoxLayout
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
