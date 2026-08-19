@@ -402,13 +402,14 @@ class ProjectLinesCard(DashboardCard):
 
 class DashboardRecentActivityCard(DashboardCard):
     SLOT_COUNT = 4
-    SLOT_HEIGHT = 27
+    SLOT_HEIGHT = 29
 
     def __init__(self, parent=None):
         super().__init__("Recent activity", parent)
-        self.setMinimumHeight(118)
+        self.setMinimumHeight(142)
         self.rows = QVBoxLayout()
-        self.rows.setSpacing(2)
+        self.rows.setContentsMargins(0, 0, 0, 0)
+        self.rows.setSpacing(0)
         self.layout.addLayout(self.rows)
 
     def set_entries(self, entries):
@@ -419,21 +420,30 @@ class DashboardRecentActivityCard(DashboardCard):
         visible = list(entries[: self.SLOT_COUNT])
         for index in range(self.SLOT_COUNT):
             slot = QWidget()
+            slot.setObjectName("DashboardActivityRow")
             slot.setFixedHeight(self.SLOT_HEIGHT)
+            slot.setStyleSheet(
+                "QWidget#DashboardActivityRow{border-bottom:1px solid #eef1f5;}"
+            )
             layout = QHBoxLayout(slot)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(8)
+            layout.setContentsMargins(2, 0, 2, 0)
+            layout.setSpacing(10)
             if index < len(visible):
-                name, changed = visible[index]
-                title = QLabel(f"●  {name}")
+                entry = visible[index]
+                name, changed = entry[:2]
+                author = str(entry[2] or "") if len(entry) > 2 else ""
+                title = QLabel(str(name))
                 title.setObjectName("ActivityTitle")
+                title.setStyleSheet("font-weight:500;color:#334155;")
                 title.setMinimumWidth(0)
                 title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-                stamp = QLabel(format_dashboard_datetime(changed))
-                stamp.setObjectName("MutedText")
-                stamp.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                stamp_text = format_dashboard_datetime(changed)
+                meta_text = f"{author}  ·  {stamp_text}" if author else stamp_text
+                meta = QLabel(meta_text)
+                meta.setObjectName("MutedText")
+                meta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 layout.addWidget(title, 1)
-                layout.addWidget(stamp)
+                layout.addWidget(meta)
             elif index == 0 and not visible:
                 empty = QLabel(tr("No recent activity"))
                 empty.setObjectName("MutedText")
