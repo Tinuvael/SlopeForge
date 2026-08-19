@@ -141,11 +141,14 @@ class BlockPage(QWidget):
         self.overview_tab = QWidget()
         overview_layout = QVBoxLayout(self.overview_tab)
         overview_layout.setSpacing(8)
+        overview_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         top = QHBoxLayout()
         top.setSpacing(8)
+        top.setAlignment(Qt.AlignmentFlag.AlignTop)
         overview_stack = QVBoxLayout()
         overview_stack.setSpacing(8)
+        overview_stack.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.general_info = OverviewKeyValueCard("General information")
         self.related_areas = RelatedEntityList("Related assessment areas")
         self.related_areas.entity_activated.connect(self._preview_related_area)
@@ -153,17 +156,17 @@ class BlockPage(QWidget):
         self.notes = InlineAutosaveNotes("Notes")
         self.notes.save_requested.connect(self._autosave_comment)
         overview_stack.addWidget(self.general_info)
-        overview_stack.addWidget(self.related_areas, 1)
+        overview_stack.addWidget(self.related_areas)
         overview_stack.addWidget(self.notes)
         self.geometry_card = SquareGeometryCard(
-            "Plan / geometry", action_label="Reimport"
+            "Plan / geometry", action_label="Reimport", enforce_square=False
         )
         self.geometry_card.action_requested.connect(self._reimport_current_geometry)
         self.geometry_card.plan.view.escape_requested.connect(self._clear_related_area_preview)
         self._geometry_viewport = self.geometry_card.plan.view.viewport()
         self._geometry_viewport.installEventFilter(self)
         top.addLayout(overview_stack, 1)
-        top.addWidget(self.geometry_card, 0)
+        top.addWidget(self.geometry_card, 0, Qt.AlignmentFlag.AlignTop)
         overview_layout.addLayout(top)
 
         self.engineering_summary = EngineeringSummaryCard()
@@ -213,6 +216,7 @@ class BlockPage(QWidget):
         body.addLayout(left, 1)
 
         right = QVBoxLayout()
+        right.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.summary = OverviewKeyValueCard("Summary")
         self.photos = QuickAttachmentPreview("Photos", "photo", max_items=6)
         self.documents = QuickAttachmentPreview("Documents", "document", max_items=7)
@@ -245,6 +249,7 @@ class BlockPage(QWidget):
             """
         )
         self._sync_engineering_actions_visibility()
+        self._sync_sidebar_density(self.height())
         self.refresh()
 
     def _make_attachment_tab(self, kind):
@@ -257,6 +262,24 @@ class BlockPage(QWidget):
         else:
             self.document_manager = manager
         return page, QLabel(), manager.mutation_buttons[0]
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_sidebar_density(event.size().height())
+
+    def _sync_sidebar_density(self, height: int) -> None:
+        if not hasattr(self, "photos") or not hasattr(self, "documents"):
+            return
+        if height >= 800:
+            photo_limit, document_limit = 6, 7
+        elif height >= 730:
+            photo_limit, document_limit = 4, 6
+        elif height >= 660:
+            photo_limit, document_limit = 4, 5
+        else:
+            photo_limit, document_limit = 4, 4
+        self.photos.set_visible_item_limit(photo_limit)
+        self.documents.set_visible_item_limit(document_limit)
 
     def _sync_engineering_actions_visibility(self, *_args):
         self.engineering_actions_widget.setVisible(self.tabs.currentIndex() in (1, 2, 3))
@@ -340,8 +363,6 @@ class BlockPage(QWidget):
         self.geometry_card.set_geometry(
             geometry.plan_geometry,
             lines,
-            revision=geometry.revision_number,
-            source=geometry.source_file_name,
             focus_geometry=geometry.plan_geometry,
         )
         plan._toggle_lines(self.geometry_card.lines.isChecked())
@@ -459,6 +480,7 @@ class BlockPage(QWidget):
         service = self.entity_controller.attachments if self.entity_controller else None
         self.photos.set_items(service, photos, "No photos yet", can_add=can_add)
         self.documents.set_items(service, documents, "No documents yet", can_add=can_add)
+        self._sync_sidebar_density(self.height())
         self.history_tab.set_entries(history_entries)
         self.recent_activity.set_entries(history_entries)
         self._render_related_areas(event)
@@ -546,8 +568,6 @@ class BlockPage(QWidget):
         self.geometry_card.set_geometry(
             geometry.plan_geometry if geometry else None,
             lines,
-            revision=geometry.revision_number if geometry else None,
-            source=geometry.source_file_name if geometry else "",
             focus_geometry=geometry.plan_geometry if geometry else None,
         )
         self.geometry_card.set_action_enabled(editable)
