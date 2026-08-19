@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
+from app.localization import tr
 from ui.pages.entity_overview_widgets import (
     QuickAttachmentPreview,
     RelatedEntityList,
@@ -25,10 +26,26 @@ class BlockRelatedEntityList(RelatedEntityList):
 
     def __init__(self, title: str):
         super().__init__(title)
+        self.layout.setSpacing(4)
+        self.empty_label = QLabel()
+        self.empty_label.setObjectName("MutedText")
+        self.empty_label.setContentsMargins(2, 0, 0, 0)
+        self.empty_label.hide()
+        self.layout.addWidget(self.empty_label)
         self.list.itemSelectionChanged.connect(self._sync_row_styles)
 
     def set_rows(self, rows, *, empty_text="No linked entities"):
         rows = list(rows)
+        if not rows:
+            self.list.clear()
+            self.list.hide()
+            self.empty_label.setText(tr(empty_text))
+            self.empty_label.show()
+            self.updateGeometry()
+            return
+
+        self.empty_label.hide()
+        self.list.show()
         super().set_rows(rows, empty_text=empty_text)
         for index, row in enumerate(rows):
             item = self.list.item(index)
@@ -42,6 +59,7 @@ class BlockRelatedEntityList(RelatedEntityList):
                 layout.setContentsMargins(9, 7, 14, 7)
             item.setSizeHint(holder.sizeHint())
         self._sync_row_styles()
+        self.updateGeometry()
 
     def _sync_row_styles(self):
         for index in range(self.list.count()):
@@ -80,7 +98,7 @@ class BlockAttachmentPreview(QuickAttachmentPreview):
 
 
 class BlockGeometryCard(SquareGeometryCard):
-    """Block Overview geometry card driven by the neighbouring stack height."""
+    """Geometry card whose vertical hint never drives the Block Overview row."""
 
     def __init__(
         self,
@@ -98,6 +116,45 @@ class BlockGeometryCard(SquareGeometryCard):
         )
         self.setMinimumHeight(0)
         self.setMaximumHeight(16777215)
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        # The three cards on the left are the vertical source of truth.  Ignoring
+        # this widget's inherited 440 px height hint lets the row be sized by them;
+        # QHBoxLayout then gives the plan exactly the same row height.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         self.plan.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.plan.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+    def sizeHint(self):
+        return QSize(540, 0)
+
+    def minimumSizeHint(self):
+        return QSize(470, 0)
+
+
+class BlockSectionHost(QWidget):
+    """Permanent QTabWidget page; only its inner editor is replaced."""
+
+    def __init__(self, content: QWidget | None = None, parent=None):
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+        self._content: QWidget | None = None
+        if content is not None:
+            self.set_content(content)
+
+    def set_content(self, widget: QWidget) -> None:
+        old = self._content
+        if old is widget:
+            return
+        if old is not None:
+            self._layout.removeWidget(old)
+            old.hide()
+            old.setParent(None)
+            old.deleteLater()
+        self._content = widget
+        widget.setParent(self)
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._layout.addWidget(widget)
+        widget.show()
+        self.updateGeometry()
