@@ -140,7 +140,6 @@ class DomainDashboardSnapshot:
     def trend_rows(self):
         if self.trend_history:
             return self.trend_history
-        # Keeps lightweight/in-memory snapshots useful in tests and previews.
         return [
             row
             for row in self.areas
@@ -362,11 +361,7 @@ class DashboardRepository:
                     )
                 )
                 current_completed = status == "completed"
-                quadrant = (
-                    evaluation.result_quadrant
-                    if evaluation and current_completed
-                    else None
-                )
+                quadrant = evaluation.result_quadrant if evaluation and current_completed else None
                 if quadrant:
                     quadrants[quadrant] = quadrants.get(quadrant, 0) + 1
                 areas.append(
@@ -377,14 +372,10 @@ class DashboardRepository:
                         evaluation.assessment_date if evaluation else area.assessment_date,
                         status,
                         float(evaluation.design_achievement_index)
-                        if evaluation
-                        and current_completed
-                        and evaluation.design_achievement_index is not None
+                        if evaluation and current_completed and evaluation.design_achievement_index is not None
                         else None,
                         float(evaluation.face_condition_index)
-                        if evaluation
-                        and current_completed
-                        and evaluation.face_condition_index is not None
+                        if evaluation and current_completed and evaluation.face_condition_index is not None
                         else None,
                         quadrant,
                     )
@@ -393,11 +384,7 @@ class DashboardRepository:
             completed = [item for item in areas if item.status == "completed"]
 
             def average(key):
-                values = [
-                    getattr(item, key)
-                    for item in completed
-                    if getattr(item, key) is not None
-                ]
+                values = [getattr(item, key) for item in completed if getattr(item, key) is not None]
                 return sum(values) / len(values) if values else None
 
             summary = DomainSummary(
@@ -417,13 +404,11 @@ class DashboardRepository:
                     select(a.AssessmentAreaEvaluationRevision)
                     .join(
                         a.AssessmentAreaEvaluation,
-                        a.AssessmentAreaEvaluationRevision.evaluation_id
-                        == a.AssessmentAreaEvaluation.id,
+                        a.AssessmentAreaEvaluationRevision.evaluation_id == a.AssessmentAreaEvaluation.id,
                     )
                     .join(
                         a.AssessmentArea,
-                        a.AssessmentAreaEvaluation.assessment_area_id
-                        == a.AssessmentArea.id,
+                        a.AssessmentAreaEvaluation.assessment_area_id == a.AssessmentArea.id,
                     )
                     .where(
                         a.AssessmentArea.domain_id == domain_id,
@@ -443,11 +428,9 @@ class DashboardRepository:
                 TrendRow(
                     revision.assessment_date,
                     float(revision.design_achievement_index)
-                    if revision.design_achievement_index is not None
-                    else None,
+                    if revision.design_achievement_index is not None else None,
                     float(revision.face_condition_index)
-                    if revision.face_condition_index is not None
-                    else None,
+                    if revision.face_condition_index is not None else None,
                 )
                 for revision in historical_revisions
                 if revision.design_achievement_index is not None
@@ -457,25 +440,13 @@ class DashboardRepository:
             all_events = production + contours
             states = blast_workflow_states(session, all_events)
             blasts = [
-                BlastRow(
-                    item.logical_id,
-                    "Production",
-                    item.name,
-                    _number(item.elevation_m),
-                    item.event_date,
-                    str(states[item.id]),
-                )
+                BlastRow(item.logical_id, "Production", item.name, _number(item.elevation_m),
+                         item.event_date, str(states[item.id]))
                 for item in production
             ]
             blasts += [
-                BlastRow(
-                    item.logical_id,
-                    "Contour",
-                    item.name,
-                    _number(item.elevation_m),
-                    item.event_date,
-                    str(states[item.id]),
-                )
+                BlastRow(item.logical_id, "Contour", item.name, _number(item.elevation_m),
+                         item.event_date, str(states[item.id]))
                 for item in contours
             ]
 
@@ -498,8 +469,7 @@ class DashboardRepository:
                         area.name,
                         "Created" if created else "Updated",
                         area.updated_at,
-                        area_latest_actor.get(area_id)
-                        or area_created_actor.get(area_id, ""),
+                        (area_created_actor if created else area_latest_actor).get(area_id, ""),
                     )
                 )
                 if evaluation is not None:
@@ -507,33 +477,34 @@ class DashboardRepository:
                         ActivityRow(
                             "Assessment Area",
                             area.name,
-                            "Assessment completed"
-                            if evaluation.status == "completed"
+                            "Assessment completed" if evaluation.status == "completed"
                             else "Assessment draft saved",
                             evaluation.created_at,
                             revision_actor.get(evaluation.logical_id, ""),
                         )
                     )
             for item in production:
+                created = item.created_at == item.updated_at
                 activity.append(
                     ActivityRow(
                         "Block",
                         item.name,
-                        "Created" if item.created_at == item.updated_at else "Updated",
+                        "Created" if created else "Updated",
                         item.updated_at,
-                        event_latest_actor.get(str(item.logical_id))
-                        or _actor(item.created_by_user),
+                        event_latest_actor.get(str(item.logical_id), "")
+                        or (_actor(item.created_by_user) if created else ""),
                     )
                 )
             for item in contours:
+                created = item.created_at == item.updated_at
                 activity.append(
                     ActivityRow(
                         "Contour blast",
                         item.name,
-                        "Created" if item.created_at == item.updated_at else "Updated",
+                        "Created" if created else "Updated",
                         item.updated_at,
-                        event_latest_actor.get(str(item.logical_id))
-                        or _actor(item.created_by_user),
+                        event_latest_actor.get(str(item.logical_id), "")
+                        or (_actor(item.created_by_user) if created else ""),
                     )
                 )
             recent = sorted(activity, key=_activity_sort_key, reverse=True)[:10]
@@ -561,12 +532,8 @@ class DashboardRepository:
                 points = _geometry_points(revision.plan_geometry_json)
                 if not points:
                     continue
-                target = (
-                    production_geometries
-                    if event.event_type == "production"
-                    else contour_geometries
-                    if event.event_type == "contour"
-                    else None
+                target = production_geometries if event.event_type == "production" else (
+                    contour_geometries if event.event_type == "contour" else None
                 )
                 if target is not None:
                     target.append(MapGeometry(event.logical_id, points, name=event.name))
@@ -593,9 +560,7 @@ class DashboardRepository:
 
             if site_geometry is None:
                 site_geometry = _load_site_domain_geometry(session, domain.site_id)
-            domain_geometries, source_kind, source_file_name = site_geometry.for_domain(
-                domain_id
-            )
+            domain_geometries, source_kind, source_file_name = site_geometry.for_domain(domain_id)
             return DomainDashboardSnapshot(
                 domain=summary,
                 areas=areas,
@@ -617,9 +582,7 @@ class DashboardRepository:
         with self.session_factory() as session:
             ids = list(
                 session.scalars(
-                    select(Domain.id)
-                    .where(Domain.site_id == site_id)
-                    .order_by(Domain.name)
+                    select(Domain.id).where(Domain.site_id == site_id).order_by(Domain.name)
                 )
             )
             datasets = list(
@@ -662,19 +625,12 @@ def _load_site_domain_geometry(session, site_id: int) -> _SiteDomainGeometryProj
     metadata = []
     for palette_index, (domain, geometry) in enumerate(rows):
         if geometry is not None:
-            metadata.append(
-                (domain.id, geometry.source_kind, geometry.source_file_name)
-            )
+            metadata.append((domain.id, geometry.source_kind, geometry.source_file_name))
             for polygon in geometry.polygons_json:
                 points = _geometry_points(polygon)
                 if points:
                     geometries.append(
-                        DomainMapGeometry(
-                            domain.id,
-                            domain.name,
-                            points,
-                            palette_index,
-                        )
+                        DomainMapGeometry(domain.id, domain.name, points, palette_index)
                     )
     return _SiteDomainGeometryProjection(tuple(geometries), tuple(metadata))
 
@@ -683,10 +639,7 @@ def _project_line_geometries(dataset) -> tuple[MapGeometry, ...]:
     return tuple(
         MapGeometry(
             str(line.get("source_id", index)),
-            tuple(
-                (float(point["x"]), float(point["y"]))
-                for point in line.get("points", [])
-            ),
+            tuple((float(point["x"]), float(point["y"])) for point in line.get("points", [])),
         )
         for index, line in enumerate(dataset.lines_json if dataset else [])
         if len(line.get("points", [])) >= 2
