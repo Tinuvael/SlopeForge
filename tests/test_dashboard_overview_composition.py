@@ -39,17 +39,21 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
     assert 'secondary_action_label="Draw geometry"' in domain
 
 
-def test_dashboard_plan_has_stable_near_four_three_footprint_and_uses_1_5x_framing():
+def test_dashboard_plan_has_stable_near_four_three_footprint_and_split_controls():
     plan = source("ui/pages/dashboards/plan_overview.py")
     assert "FRAME_FACTOR = 1.5" in plan
     assert "self.view.setMinimumHeight(245)" in plan
     assert "self.setMinimumWidth(440)" in plan
     assert "self.setMaximumWidth(560)" in plan
-    assert "self.setMinimumHeight(310)" in plan
-    assert "self.setMaximumHeight(370)" in plan
+    assert "self.setMinimumHeight(325)" in plan
+    assert "self.setMaximumHeight(385)" in plan
     assert "def hasHeightForWidth" in plan
-    assert "int(width * 0.69)" in plan
-    assert "return QSize(510, 350)" in plan
+    assert "int(width * 0.72)" in plan
+    assert "return QSize(510, 365)" in plan
+    assert "self.controls = QHBoxLayout()" in plan
+    assert "self.layout.addLayout(self.controls)" in plan
+    assert "self.controls.addWidget(self.lines)" in plan
+    assert "def add_header_action" in plan
     assert 'getattr(self.snapshot, "assessment_geometries", ())' in plan
     assert 'getattr(self.snapshot, "project_lines", ())' in plan
     assert 'getattr(self.snapshot, "domain_geometries", ())' in plan
