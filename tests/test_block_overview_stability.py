@@ -23,23 +23,30 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     assert geometry.maximumWidth() == 800
 
     related = BlockRelatedEntityList("Related assessment areas")
+    related.resize(520, 190)
     related.set_rows([
         RelatedEntityRow(
             "AA-1", "Area 1", "AA-1 · 600–630 m",
             "Completed", "completed", action_text="Go to ›",
         )
     ])
+    related.show()
+    app.processEvents()
     item = related.list.item(0)
     wrapper = related.list.itemWidget(item)
     holder = related._row_card(item)
+    target_width = related.list.viewport().width() - related.ROW_RIGHT_INSET
     assert related.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Fixed
     assert related.list.minimumHeight() == related.list.maximumHeight() == related.LIST_HEIGHT == 136
     assert related.sizeHint().height() > related.LIST_HEIGHT
-    assert item.sizeHint().width() == 0
+    assert related.ROW_RIGHT_INSET == 14
+    assert item.sizeHint().width() == target_width
     assert wrapper.objectName() == "BlockRelatedEntityWrapper"
-    assert wrapper.layout().contentsMargins().right() == related.ROW_RIGHT_INSET == 10
+    assert wrapper.layout().contentsMargins().right() == 0
     assert holder is not None
-    assert holder.sizePolicy().horizontalPolicy() == widgets.QSizePolicy.Policy.Expanding
+    assert holder.width() == target_width
+    assert holder.width() < related.list.viewport().width()
+    assert holder.sizePolicy().horizontalPolicy() == widgets.QSizePolicy.Policy.Fixed
     labels = [label.text() for label in holder.findChildren(widgets.QLabel)]
     assert "Area 1" in labels
     assert "AA-1 · 600–630 m" in labels
@@ -171,7 +178,9 @@ def test_block_page_has_no_layout_feedback_loop_or_tab_reinsertion():
     assert "top.addWidget(self.geometry_card, 0)" in text
     assert "PREFERRED_WIDTH = 700" in helpers
     assert "LIST_HEIGHT = 136" in helpers
-    assert "ROW_RIGHT_INSET = 10" in helpers
+    assert "ROW_RIGHT_INSET = 14" in helpers
+    assert "viewport().installEventFilter(self)" in helpers
+    assert "def _sync_row_widths(self)" in helpers
     assert "BlockNotesCard" in helpers
 
 
