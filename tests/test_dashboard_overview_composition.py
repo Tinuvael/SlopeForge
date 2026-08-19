@@ -85,15 +85,19 @@ def test_dashboard_plan_has_one_line_header_auto_fit_and_wheel_zoom():
     assert "contour_geometries" not in plan
 
 
-def test_dashboard_projection_uses_only_current_completed_assessment_result():
+def test_dashboard_projection_uses_only_stored_assessment_results():
     repository = source("repositories/dashboard_repository.py")
     assert 'current_completed = status == "completed"' in repository
     assert "quadrant=row.quadrant if row else None" in repository
     assert "dai=row.dai if row else None" in repository
     assert "fci=row.fci if row else None" in repository
     assert "def assessment_geometries(self)" in repository
-    assert "def trend_rows(self)" in repository
-    assert 'row.status == "completed"' in repository
+    assert "class TrendRow" in repository
+    assert "trend_history" in repository
+    assert 'a.AssessmentAreaEvaluationRevision.status == "completed"' in repository
+    assert "revision.design_achievement_index" in repository
+    assert "revision.face_condition_index" in repository
+    assert "calculate_revision" not in repository
 
 
 def test_dashboard_result_palette_matches_full_assessment_matrix():
