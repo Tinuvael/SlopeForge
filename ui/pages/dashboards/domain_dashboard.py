@@ -29,10 +29,9 @@ from ui.dialogs.domain_geometry_editor import DomainGeometryEditorDialog
 from ui.dialogs.rename_entity_dialog import RenameEntityDialog
 from ui.presentation_labels import domain_message
 
-from .charts import CompactChart
+from .charts import AssessmentTrendCard, CompactChart
 from .plan_overview import DashboardPlanCard
 from .widgets import (
-    BlastActivityCard,
     CompactSummaryList,
     DashboardCard,
     DashboardRecentActivityCard,
@@ -128,7 +127,10 @@ class DomainDashboardPage(QWidget):
         right_layout.addWidget(self.result_card)
 
         self.attention_card = CompactSummaryList(
-            "Attention required", visible_rows=2, show_go_to=True
+            "Attention required",
+            visible_rows=4,
+            show_go_to=True,
+            fill_available=True,
         )
         self.attention_card.setMinimumHeight(160)
         self.attention_card.activated.connect(
@@ -151,8 +153,8 @@ class DomainDashboardPage(QWidget):
         self.latest_assessments.go_to_requested.connect(self.assessment_area_requested)
         workspace.addWidget(self.latest_assessments, 1, 1)
 
-        self.blast_activity = BlastActivityCard()
-        workspace.addWidget(self.blast_activity, 2, 0)
+        self.trend_card = AssessmentTrendCard()
+        workspace.addWidget(self.trend_card, 2, 0)
 
         self.recent_card = DashboardRecentActivityCard()
         workspace.addWidget(self.recent_card, 2, 1)
@@ -309,11 +311,7 @@ class DomainDashboardPage(QWidget):
         self.latest_assessments.set_rows(
             self._latest_rows(), empty_text="No completed assessments yet"
         )
-        self.blast_activity.set_data(
-            self.snapshot.domain.production,
-            self.snapshot.domain.contour,
-            self.snapshot.blasts,
-        )
+        self.trend_card.set_rows(self.snapshot.trend_rows)
         self.recent_card.set_entries(self.snapshot.recent)
 
     def _refresh(self):
