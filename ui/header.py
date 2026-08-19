@@ -30,7 +30,7 @@ class Header(QWidget):
         self.add_button.setMenu(self.add_menu); self.archive_button=QPushButton(tr("Archive")); self.archive_button.setEnabled(False); self.archive_button.clicked.connect(self.archive_requested)
         self.archive_button.setIcon(ui_icon("archive")); self.search=SearchLineEdit(); self.search.setClearButtonEnabled(True); self.search.setPlaceholderText(tr("Search...")); self.search.setMaximumWidth(350)
         self.analysis_button=QPushButton(tr("Analysis")); self.analysis_button.setIcon(ui_icon("analytics")); self.analysis_button.clicked.connect(self.analysis_requested)
-        self.report_button=QPushButton(tr("Report")); self.report_button.setEnabled(False); self.report_button.clicked.connect(self.report_requested); self.settings=QPushButton(tr("Settings")); self.settings.setIcon(ui_icon("settings")); self.settings.clicked.connect(self.open_settings)
+        self.report_button=QPushButton(tr("Report")); self.report_button.setIcon(ui_icon("report","blue")); self.report_button.setEnabled(False); self.report_button.clicked.connect(self.report_requested); self.settings=QPushButton(tr("Settings")); self.settings.setIcon(ui_icon("settings")); self.settings.clicked.connect(self.open_settings)
         self.search_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
         self.search_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.search_shortcut.activated.connect(self.focus_search)
