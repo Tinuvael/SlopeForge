@@ -111,8 +111,13 @@ class AssessmentStateSummaryCard(CardFrame):
         self.layout.addLayout(header)
 
         self.sections = QVBoxLayout()
-        self.sections.setSpacing(4)
+        self.sections.setSpacing(6)
+        self.sections.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.layout.addLayout(self.sections)
+        # The matrix fixes the row height. Keep summary content packed against
+        # the top instead of letting QLabel widgets absorb the extra height and
+        # vertically centring their text far away from each section heading.
+        self.layout.addStretch(1)
 
     def set_sections(self, sections):
         while self.sections.count():
@@ -122,11 +127,14 @@ class AssessmentStateSummaryCard(CardFrame):
 
         for index, (title, lines) in enumerate(sections):
             section = QWidget()
+            section.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             layout = QVBoxLayout(section)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(2)
+            layout.setAlignment(Qt.AlignmentFlag.AlignTop)
             heading = QLabel(tr(title))
             heading.setObjectName("EngineeringSectionTitle")
+            heading.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
             layout.addWidget(heading)
             text = QLabel(
                 "  ·  ".join(str(line) for line in lines if line not in (None, ""))
@@ -134,6 +142,8 @@ class AssessmentStateSummaryCard(CardFrame):
             )
             text.setWordWrap(True)
             text.setObjectName("EngineeringSummaryText")
+            text.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             layout.addWidget(text)
             self.sections.addWidget(section)
             if index < len(sections) - 1:
