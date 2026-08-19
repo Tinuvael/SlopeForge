@@ -48,6 +48,10 @@ def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
     assert activity.SLOT_HEIGHT == 32
     assert photos._max_items == 6
     assert documents._max_items == 7
+    assert state.minimumWidth() == state.MINIMUM_WIDTH == 320
+    assert state.maximumWidth() == state.MAXIMUM_WIDTH == 400
+    assert state.sizePolicy().horizontalPolicy() == widgets.QSizePolicy.Policy.Preferred
+    assert state.layout.contentsMargins().top() == 8
     assert matrix.minimumWidth() == 250
     assert matrix.maximumWidth() == 310
     assert matrix.preview.minimumWidth() == 190
@@ -95,6 +99,9 @@ def test_assessment_overview_page_uses_saved_geometry_and_stored_result_only():
     assert "self.state_summary_card.set_sections" in page
     assert "self.geometry_summary_card" not in page
     assert "self.face_condition_card" not in page
+    assert 'visible_links = [x for x in self.area.links_for_revision() if x.status != "excluded"]' in page
+    assert 'item.status != "excluded" and item.blast_event_id == event_id' in page
+    assert 'if link.status == "suggested"' in page
     assert "entity_activated.connect(self._preview_related_event)" in page
     assert "entity_action_requested.connect(self._open_related_event)" in page
     assert "escape_requested.connect(self._clear_related_event_preview)" in page
