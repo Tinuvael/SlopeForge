@@ -191,7 +191,7 @@ class BlockNotesCard(InlineAutosaveNotes):
 
 
 class BlockRecentActivityCard(RecentActivityCard):
-    """Four stable activity slots so Block cards do not change height by history count."""
+    """Four stable single-line activity slots shared by all operational overviews."""
 
     SLOT_COUNT = 4
     SLOT_HEIGHT = 32
@@ -210,23 +210,27 @@ class BlockRecentActivityCard(RecentActivityCard):
         for index in range(self.SLOT_COUNT):
             slot = QWidget()
             slot.setFixedHeight(self.SLOT_HEIGHT)
-            layout = QVBoxLayout(slot)
+            layout = QHBoxLayout(slot)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(0)
+            layout.setSpacing(8)
             if index < len(visible):
                 entry = visible[index]
                 title = QLabel(f"●  {tr(entry.title)}")
                 title.setObjectName("ActivityTitle")
+                title.setMinimumWidth(0)
+                title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
                 stamp = entry.timestamp.strftime("%d.%m.%Y %H:%M") if entry.timestamp else "—"
                 actor = entry.actor or "—"
-                meta = QLabel(f"   {actor} · {stamp}")
+                meta = QLabel(f"{actor} · {stamp}")
                 meta.setObjectName("MutedText")
-                layout.addWidget(title)
-                layout.addWidget(meta)
+                meta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                layout.addWidget(title, 1)
+                layout.addWidget(meta, 0)
             elif index == 0 and not visible:
                 empty = QLabel(tr("No history yet"))
                 empty.setObjectName("MutedText")
                 layout.addWidget(empty)
+                layout.addStretch()
             self.rows.addWidget(slot)
 
 
@@ -288,7 +292,7 @@ class BlockSectionHost(QWidget):
 
     def __init__(self, content: QWidget | None = None, parent=None):
         super().__init__(parent)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(0)
@@ -308,6 +312,6 @@ class BlockSectionHost(QWidget):
         self._content = widget
         widget.setParent(self)
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._layout.addWidget(widget)
+        self._layout.addWidget(widget, 1)
         widget.show()
         self.updateGeometry()
