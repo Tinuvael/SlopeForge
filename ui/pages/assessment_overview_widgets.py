@@ -111,7 +111,8 @@ class AssessmentStateSummaryCard(CardFrame):
         self.layout.addLayout(header)
 
         self.sections = QVBoxLayout()
-        self.sections.setSpacing(6)
+        self.sections.setContentsMargins(0, 8, 0, 0)
+        self.sections.setSpacing(8)
         self.layout.addLayout(self.sections, 1)
 
     def set_sections(self, sections):
