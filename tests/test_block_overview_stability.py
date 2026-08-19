@@ -94,7 +94,7 @@ def test_block_notes_card_fixes_only_editor_viewport():
     app.processEvents()
 
 
-def test_block_recent_activity_always_reserves_four_equal_slots():
+def test_block_recent_activity_always_reserves_four_equal_single_line_slots():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.block_overview_widgets import BlockRecentActivityCard
 
@@ -107,6 +107,10 @@ def test_block_recent_activity_always_reserves_four_equal_slots():
     card.set_entries(entries)
     assert card.rows.count() == 4
     assert [card.rows.itemAt(i).widget().height() for i in range(4)] == [card.SLOT_HEIGHT] * 4
+    first = card.rows.itemAt(0).widget()
+    assert isinstance(first.layout(), widgets.QHBoxLayout)
+    labels = first.findChildren(widgets.QLabel)
+    assert [label.text() for label in labels] == ["●  Created", "eugene · 19.08.2026 12:00"]
     assert card.rows.itemAt(2).widget().findChildren(widgets.QLabel) == []
     assert card.rows.itemAt(3).widget().findChildren(widgets.QLabel) == []
 
@@ -140,7 +144,7 @@ def test_block_attachment_preview_hides_old_rows_before_rebuild():
     app.processEvents()
 
 
-def test_block_section_host_keeps_tab_page_identity_stable():
+def test_block_section_host_keeps_tab_page_identity_stable_and_expands_editor():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.block_overview_widgets import BlockSectionHost
 
@@ -153,7 +157,9 @@ def test_block_section_host_keeps_tab_page_identity_stable():
     assert id(host) == identity
     assert host._content is second
     assert first.isHidden()
-    assert host.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Ignored
+    assert host.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Expanding
+    assert second.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Expanding
+    assert host._layout.stretch(0) == 1
     host.close()
     app.processEvents()
 
