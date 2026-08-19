@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QEvent, QSize, Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -26,7 +26,7 @@ class BlockRelatedEntityList(RelatedEntityList):
     """Stable Block relationship card with an internally scrollable viewport."""
 
     LIST_HEIGHT = 136
-    ROW_RIGHT_INSET = 10
+    ROW_RIGHT_INSET = 14
     STATE_COLORS = {
         "completed": ("#edf8f0", "#58a66a"),
         "assessed": ("#edf8f0", "#58a66a"),
@@ -45,6 +45,7 @@ class BlockRelatedEntityList(RelatedEntityList):
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setStyleSheet("QListWidget{background:transparent;border:0;}")
+        self.list.viewport().installEventFilter(self)
         self.empty_label = QLabel()
         self.empty_label.setObjectName("MutedText")
         self.empty_label.setFixedHeight(self.LIST_HEIGHT)
@@ -55,6 +56,24 @@ class BlockRelatedEntityList(RelatedEntityList):
         self.empty_label.hide()
         self.layout.addWidget(self.empty_label)
         self.list.itemSelectionChanged.connect(self._sync_row_styles)
+
+    def eventFilter(self, watched, event):
+        if watched is self.list.viewport() and event.type() == QEvent.Type.Resize:
+            self._sync_row_widths()
+        return super().eventFilter(watched, event)
+
+    def _row_target_width(self) -> int:
+        return max(1, self.list.viewport().width() - self.ROW_RIGHT_INSET)
+
+    def _sync_row_widths(self) -> None:
+        target = self._row_target_width()
+        for index in range(self.list.count()):
+            item = self.list.item(index)
+            holder = self._row_card(item)
+            if holder is None:
+                continue
+            holder.setFixedWidth(target)
+            item.setSizeHint(QSize(target, max(1, holder.sizeHint().height())))
 
     def set_rows(self, rows, *, empty_text="No linked entities"):
         """Build Block rows directly so QListWidget owns each wrapper only once."""
@@ -81,13 +100,15 @@ class BlockRelatedEntityList(RelatedEntityList):
             wrapper.setObjectName("BlockRelatedEntityWrapper")
             wrapper.setCursor(Qt.CursorShape.PointingHandCursor)
             wrapper_layout = QHBoxLayout(wrapper)
-            wrapper_layout.setContentsMargins(0, 0, self.ROW_RIGHT_INSET, 0)
+            wrapper_layout.setContentsMargins(0, 0, 0, 0)
             wrapper_layout.setSpacing(0)
+            wrapper_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
             holder = QWidget(wrapper)
             holder.setObjectName("BlockRelatedEntityItem")
             holder.setCursor(Qt.CursorShape.PointingHandCursor)
-            holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            holder.setMinimumWidth(0)
+            holder.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             layout = QVBoxLayout(holder)
             layout.setContentsMargins(9, 7, 12, 7)
             layout.setSpacing(2)
@@ -95,6 +116,7 @@ class BlockRelatedEntityList(RelatedEntityList):
             top = QHBoxLayout()
             title = QLabel(row.title)
             title.setObjectName("RelatedEntityTitle")
+            title.setMinimumWidth(0)
             top.addWidget(title)
             top.addStretch()
             if row.status_text:
@@ -116,13 +138,17 @@ class BlockRelatedEntityList(RelatedEntityList):
 
             subtitle = QLabel(row.subtitle)
             subtitle.setObjectName("MutedText")
+            subtitle.setMinimumWidth(0)
             layout.addWidget(subtitle)
             wrapper_layout.addWidget(holder)
 
-            item.setSizeHint(QSize(0, holder.sizeHint().height()))
+            target = self._row_target_width()
+            holder.setFixedWidth(target)
+            item.setSizeHint(QSize(target, holder.sizeHint().height()))
             self.list.addItem(item)
             self.list.setItemWidget(item, wrapper)
 
+        self._sync_row_widths()
         self._sync_row_styles()
         self.updateGeometry()
 
