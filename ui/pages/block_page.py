@@ -32,6 +32,7 @@ from ui.pages.block_card_widgets import EmptySection, format_datetime, format_de
 from ui.pages.block_overview_widgets import (
     BlockAttachmentPreview,
     BlockGeometryCard,
+    BlockRecentActivityCard,
     BlockRelatedEntityList,
     BlockSectionHost,
 )
@@ -42,7 +43,6 @@ from ui.pages.entity_overview_widgets import (
     EntityHeaderWidget,
     InlineAutosaveNotes,
     OverviewKeyValueCard,
-    RecentActivityCard,
     RelatedEntityRow,
 )
 from ui.pages.entity_page_controller import EntityPageController
@@ -163,6 +163,10 @@ class BlockPage(QWidget):
         top = QHBoxLayout()
         top.setSpacing(8)
         self.overview_stack_widget = QWidget()
+        self.overview_stack_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         overview_stack = QVBoxLayout(self.overview_stack_widget)
         overview_stack.setContentsMargins(0, 0, 0, 0)
         overview_stack.setSpacing(8)
@@ -172,6 +176,8 @@ class BlockPage(QWidget):
         self.related_areas.entity_activated.connect(self._preview_related_area)
         self.related_areas.entity_action_requested.connect(self._open_related_area)
         self.notes = InlineAutosaveNotes("Notes")
+        self.notes.setFixedHeight(108)
+        self.notes.editor.setFixedHeight(58)
         self.notes.save_requested.connect(self._autosave_comment)
         overview_stack.addWidget(self.general_info)
         overview_stack.addWidget(self.related_areas)
@@ -196,7 +202,7 @@ class BlockPage(QWidget):
         bottom.setSpacing(8)
         self.engineering_notes = EngineeringSummaryCard("Engineering notes")
         self.engineering_notes.section_open_requested.connect(self._open_engineering_section)
-        self.recent_activity = RecentActivityCard()
+        self.recent_activity = BlockRecentActivityCard()
         self.recent_activity.open_history_requested.connect(lambda: self.tabs.setCurrentWidget(self.history_tab))
         bottom.addWidget(self.engineering_notes, 3)
         bottom.addWidget(self.recent_activity, 2)
