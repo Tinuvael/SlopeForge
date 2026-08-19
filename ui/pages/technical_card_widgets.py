@@ -1,7 +1,7 @@
 
 from app.localization import tr
 """Reusable embedded views backed by the existing TechnicalCardDialog editor."""
-from PySide6.QtWidgets import QHBoxLayout,QPushButton,QVBoxLayout,QWidget
+from PySide6.QtWidgets import QHBoxLayout,QPushButton,QSizePolicy,QVBoxLayout,QWidget
 from ui.editors.technical_card_editor import TechnicalCardDialog
 
 class TechnicalCardEditorWidget(QWidget):
@@ -25,7 +25,18 @@ class TechnicalCardEditorWidget(QWidget):
 
 class _SectionWidget(QWidget):
     def __init__(self,page,parent=None):
-        super().__init__(parent); self.page=page; page.setParent(self); QVBoxLayout(self).addWidget(page); page.setVisible(True)
+        super().__init__(parent)
+        self.page=page
+        self.setMinimumHeight(0)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)
+        page.setParent(self)
+        page.setMinimumHeight(0)
+        page.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)
+        layout=QVBoxLayout(self)
+        layout.setContentsMargins(0,0,0,0)
+        layout.setSpacing(0)
+        layout.addWidget(page,1)
+        page.setVisible(True)
 class GeomechanicsEditorWidget(_SectionWidget): pass
 class BlastDesignEditorWidget(_SectionWidget): pass
 class ActualExecutionEditorWidget(_SectionWidget):
