@@ -19,16 +19,18 @@ def test_operational_pages_use_shared_overview_primitives():
     for text in (block, contour, assessment):
         assert "EntityHeaderWidget" in text
         assert "OverviewKeyValueCard" in text
-        assert "RecentActivityCard" in text or "BlockRecentActivityCard" in text
-    for text in (contour, assessment):
-        assert "QuickAttachmentPreview" in text
-        assert "SquareGeometryCard" in text
-        assert "RelatedEntityList" in text
+        assert "RecentActivityCard" in text or "BlockRecentActivityCard" in text or "ContourRecentActivityCard" in text
+    assert "QuickAttachmentPreview" in assessment
+    assert "SquareGeometryCard" in assessment
+    assert "RelatedEntityList" in assessment
     assert "BlockAttachmentPreview" in block
     assert "BlockGeometryCard" in block
     assert "BlockRelatedEntityList" in block
     assert "BlockNotesCard" in block
-    assert "InlineAutosaveNotes" in contour
+    assert "ContourAttachmentPreview" in contour
+    assert "ContourGeometryCard" in contour
+    assert "ContourRelatedEntityList" in contour
+    assert "ContourNotesCard" in contour
     assert "focus_geometry=geometry.plan_geometry" in block
     assert "focus_geometry=self.rev.plan_geometry" in contour
     assert "focus_geometry=rev.final_geometry_frozen" in assessment
@@ -287,8 +289,39 @@ def test_contour_overview_has_safe_metadata_and_related_assessment_access():
     assert "related_assessment_requested" in text
     assert "update_contour_comment" in text
     assert "self.blast_event.created_at" not in text
+    assert "GeomechanicsEditorWidget" not in text
     for field in ("rejected_hole_count", "wet_hole_count", "redrilled_hole_count", "uncharged_hole_count"):
         assert field in text
+
+
+def test_contour_overview_matches_stabilized_block_presentation_contract():
+    page = Path("ui/pages/contour_event_page.py").read_text(encoding="utf-8")
+    helpers = Path("ui/pages/contour_overview_widgets.py").read_text(encoding="utf-8")
+    general = page.index("overview_stack.addWidget(self.general_info)")
+    related = page.index("overview_stack.addWidget(self.related_areas)")
+    notes = page.index("overview_stack.addWidget(self.notes)")
+    assert general < related < notes
+    assert 'ContourAttachmentPreview("Photos", "photo", max_items=6)' in page
+    assert 'ContourAttachmentPreview("Documents", "document", max_items=7)' in page
+    assert 'ContourGeometryCard("Plan / geometry", action_label="Reimport")' in page
+    assert 'ContourNotesCard("Notes")' in page
+    assert "ContourRecentActivityCard" in page
+    assert "self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)" in page
+    assert "set_visible_item_limit(photo_limit)" in page
+    assert "set_visible_item_limit(document_limit)" in page
+    assert "entity_activated.connect(self._preview_related_area)" in page
+    assert "entity_action_requested.connect(self._open_related_area)" in page
+    assert "escape_requested.connect(self._clear_related_area_preview)" in page
+    assert 'action_text="Go to ›"' in page
+    assert "set_comparison_geometry(" in page
+    assert "contour_rect.united(area_rect)" in page
+    assert "plan.center_on_focus()" in page
+    assert "QEvent.Type.MouseButtonPress" in page
+    assert "revision=self.rev.revision_number" not in page
+    assert "source=self.rev.source_file_name" not in page
+    assert "BlockGeometryCard" in helpers
+    assert "BlockRelatedEntityList" in helpers
+    assert "BlockAttachmentPreview" in helpers
 
 
 def test_main_window_wires_related_entities_into_existing_navigation():
