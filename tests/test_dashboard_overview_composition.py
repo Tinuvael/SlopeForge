@@ -157,6 +157,7 @@ def test_donut_trends_and_activity_cards_are_compact_without_new_engineering_met
     assert "hasattr(entry, \"changed_at\")" in widgets
     assert "ActivityRow" in repository
     assert "_audit_actor_maps" in repository
+    assert "revision_actor.get(evaluation.logical_id" in repository
     assert '"Block"' in repository
     assert '"Contour blast"' in repository
     assert '"Assessment Area"' in repository
