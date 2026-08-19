@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -93,7 +92,7 @@ class SiteDashboardPage(QWidget):
 
         self.plan_card = DashboardPlanCard(
             self.snapshot,
-            primary_action_label="Import / Update",
+            primary_action_label="Import / Update Project Lines",
         )
         self.plan_card.primary_action_requested.connect(self.import_lines)
         self.plan_card.set_actions_enabled(self._can_edit())
