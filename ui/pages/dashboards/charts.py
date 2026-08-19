@@ -147,7 +147,7 @@ class CompactChart(QWidget):
 
 
 class IndexTrendChart(QWidget):
-    """All-time daily mean of one stored completed assessment index."""
+    """All-time date-series view of one stored completed assessment index."""
 
     def __init__(self, label: str, attribute: str, parent=None):
         super().__init__(parent)
@@ -275,7 +275,6 @@ class AssessmentTrendCard(DashboardCard):
     def __init__(self, parent=None):
         super().__init__("DAI / FCI over time", parent)
         self.setMinimumHeight(150)
-        self.set_subtitle(tr("Daily average · all completed assessments"))
         charts = QHBoxLayout()
         charts.setContentsMargins(0, 0, 0, 0)
         charts.setSpacing(8)
