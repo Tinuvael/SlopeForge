@@ -20,8 +20,8 @@ class CompactChart(QWidget):
             if value is not None and int(value) > 0
         }
         self.kind = kind
-        self.setMinimumHeight(205 if kind == "donut" else 92)
-        self.setMaximumHeight(285 if kind == "donut" else 150)
+        self.setMinimumHeight(150 if kind == "donut" else 92)
+        self.setMaximumHeight(190 if kind == "donut" else 150)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_data(self, data):
@@ -82,14 +82,14 @@ class CompactChart(QWidget):
             )
 
     def _paint_donut(self, painter):
-        size = max(132, min(self.height() - 16, self.width() * 0.40))
+        size = max(108, min(self.height() - 12, self.width() * 0.32))
         ring = QRectF(8, (self.height() - size) / 2, size, size)
         total = sum(self.data.values())
-        width = max(20, int(size * 0.18))
+        width = max(18, int(size * 0.18))
         arc_rect = ring.adjusted(width / 2, width / 2, -width / 2, -width / 2)
 
         shadow = QPen(QColor("#d8dee7"))
-        shadow.setWidth(width + 5)
+        shadow.setWidth(width + 4)
         shadow.setCapStyle(Qt.PenCapStyle.FlatCap)
         painter.setPen(shadow)
         painter.drawArc(arc_rect, 0, 360 * 16)
@@ -113,34 +113,29 @@ class CompactChart(QWidget):
 
         center_font = QFont(painter.font())
         center_font.setBold(True)
-        center_font.setPointSize(max(14, min(21, int(size * 0.095))))
+        center_font.setPointSize(max(13, min(18, int(size * 0.10))))
         painter.setFont(center_font)
         painter.setPen(QColor("#0f172a"))
         painter.drawText(ring, Qt.AlignmentFlag.AlignCenter, str(total))
 
-        legend_x = ring.right() + 18
-        legend_width = max(20, self.width() - int(legend_x) - 6)
-        row_height = max(23, min(30, self.height() // max(1, len(self.data))))
-        top = max(2, (self.height() - row_height * len(self.data)) // 2)
+        legend_x = ring.right() + 16
+        legend_width = max(40, self.width() - int(legend_x) - 8)
+        row_height = max(30, (self.height() - 8) // max(1, len(self.data)))
+        top = max(4, (self.height() - row_height * len(self.data)) // 2)
         legend_font = QFont(painter.font())
-        legend_font.setPointSize(max(8, center_font.pointSize() - 7))
+        legend_font.setPointSize(8)
         legend_font.setBold(False)
         painter.setFont(legend_font)
-        metrics = QFontMetrics(legend_font)
         for index, (key, value) in enumerate(self.data.items()):
             presentation = quadrant_presentation(key)
             y = top + index * row_height
             painter.setPen(QPen(QColor("#d4dae3"), 1))
             painter.setBrush(QColor(presentation.color))
-            painter.drawRoundedRect(QRectF(legend_x, y + 7, 11, 11), 2, 2)
+            painter.drawRoundedRect(QRectF(legend_x, y + 8, 10, 10), 2, 2)
             painter.setPen(QColor("#334155"))
             label = f"{presentation.label}  {value}"
             painter.drawText(
-                QRectF(legend_x + 17, y, legend_width - 17, row_height),
-                Qt.AlignmentFlag.AlignVCenter,
-                metrics.elidedText(
-                    label,
-                    Qt.TextElideMode.ElideRight,
-                    max(20, legend_width - 17),
-                ),
+                QRectF(legend_x + 16, y + 1, legend_width - 16, row_height - 2),
+                Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
+                label,
             )
