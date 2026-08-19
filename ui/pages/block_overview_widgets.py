@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from app.localization import tr
 from ui.pages.entity_overview_widgets import (
@@ -16,7 +16,11 @@ from ui.pages.entity_overview_widgets import (
 class BlockRelatedEntityList(RelatedEntityList):
     """Stable Block relationship card with an internally scrollable viewport."""
 
-    LIST_HEIGHT = 88
+    # Roughly two linked-area rows are visible before the list starts scrolling.
+    # The outer CardFrame remains content-driven, so this also raises the left
+    # overview stack (and therefore the adjacent Plan card) by one row.
+    LIST_HEIGHT = 136
+    ROW_RIGHT_INSET = 10
     STATE_COLORS = {
         "completed": ("#edf8f0", "#58a66a"),
         "assessed": ("#edf8f0", "#58a66a"),
@@ -34,9 +38,7 @@ class BlockRelatedEntityList(RelatedEntityList):
         self.list.setFixedHeight(self.LIST_HEIGHT)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.list.setStyleSheet(
-            "QListWidget{background:transparent;border:0;padding-right:5px;}"
-        )
+        self.list.setStyleSheet("QListWidget{background:transparent;border:0;}")
         self.empty_label = QLabel()
         self.empty_label.setObjectName("MutedText")
         self.empty_label.setFixedHeight(self.LIST_HEIGHT)
@@ -68,22 +70,45 @@ class BlockRelatedEntityList(RelatedEntityList):
             holder = self.list.itemWidget(item)
             if holder is None:
                 continue
+
+            # QListWidget stretches itemWidget to the full item rect. Painting the
+            # card border on that widget puts the right border exactly on the
+            # viewport clip edge. Wrap it and inset the actual card by 10 px so the
+            # complete border is always visible without any resize-time width math.
+            self.list.removeItemWidget(item)
             holder.setObjectName("BlockRelatedEntityItem")
             holder.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
                 QSizePolicy.Policy.Fixed,
             )
-            layout = holder.layout()
-            if layout is not None:
-                layout.setContentsMargins(9, 7, 12, 7)
+            holder_layout = holder.layout()
+            if holder_layout is not None:
+                holder_layout.setContentsMargins(9, 7, 12, 7)
+
+            wrapper = QWidget()
+            wrapper.setObjectName("BlockRelatedEntityWrapper")
+            wrapper.setCursor(Qt.CursorShape.PointingHandCursor)
+            wrapper_layout = QHBoxLayout(wrapper)
+            wrapper_layout.setContentsMargins(0, 0, self.ROW_RIGHT_INSET, 0)
+            wrapper_layout.setSpacing(0)
+            holder.setParent(wrapper)
+            wrapper_layout.addWidget(holder)
+
             item.setSizeHint(QSize(0, holder.sizeHint().height()))
+            self.list.setItemWidget(item, wrapper)
         self._sync_row_styles()
         self.updateGeometry()
+
+    def _row_card(self, item):
+        wrapper = self.list.itemWidget(item)
+        if wrapper is None:
+            return None
+        return wrapper.findChild(QWidget, "BlockRelatedEntityItem")
 
     def _sync_row_styles(self):
         for index in range(self.list.count()):
             item = self.list.item(index)
-            holder = self.list.itemWidget(item)
+            holder = self._row_card(item)
             if holder is None:
                 continue
             state = str(item.data(Qt.ItemDataRole.UserRole + 1) or "unknown")
