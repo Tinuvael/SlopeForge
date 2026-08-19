@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QFileInfo, QRectF, QSize, Qt, Signal, QTimer
+from PySide6.QtCore import QFileInfo, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -262,17 +262,29 @@ class EngineeringSummaryCard(CardFrame):
 
 
 class SquareGeometryCard(CardFrame):
-    """Large near-square overview geometry with one consistent header toolbar."""
+    """Large overview geometry with an optional near-square sizing contract."""
 
     action_requested = Signal()
 
-    def __init__(self, title="Plan / geometry", *, action_label="Reimport geometry", parent=None):
+    def __init__(
+        self,
+        title="Plan / geometry",
+        *,
+        action_label="Reimport geometry",
+        enforce_square=True,
+        parent=None,
+    ):
         super().__init__()
         self.setParent(parent)
+        self._enforce_square = bool(enforce_square)
         self.setMinimumWidth(470)
         self.setMaximumWidth(620)
-        self.setMinimumHeight(500)
-        self.setMaximumHeight(640)
+        if self._enforce_square:
+            self.setMinimumHeight(500)
+            self.setMaximumHeight(640)
+        else:
+            self.setMinimumHeight(390)
+            self.setMaximumHeight(500)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
         header = QHBoxLayout()
@@ -305,13 +317,13 @@ class SquareGeometryCard(CardFrame):
         self.layout.addWidget(self.plan, 1)
 
     def hasHeightForWidth(self):
-        return True
+        return self._enforce_square
 
     def heightForWidth(self, width):
-        return width
+        return width if self._enforce_square else -1
 
     def sizeHint(self):
-        return QSize(540, 540)
+        return QSize(540, 540 if self._enforce_square else 440)
 
     def set_geometry(
         self,
@@ -328,6 +340,7 @@ class SquareGeometryCard(CardFrame):
         if source:
             parts.append(str(source))
         self.subtitle.setText(" · ".join(parts))
+        self.subtitle.setVisible(bool(parts))
         self.plan.set_geometry(
             geometry, project_lines, "", focus_geometry=focus_geometry
         )
@@ -357,14 +370,22 @@ class RelatedEntityList(CardFrame):
         super().__init__(title)
         self.list = QListWidget()
         self.list.setSpacing(4)
-        self.list.setMinimumHeight(145)
+        self.list.setMinimumHeight(110)
         self.list.setMaximumHeight(225)
+        self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.list.setStyleSheet("QListWidget{background:transparent;border:0;}")
         self.list.itemClicked.connect(self._emit_item)
         self.layout.addWidget(self.list)
 
     def set_rows(self, rows, *, empty_text="No linked entities"):
         self.list.clear()
+        if rows:
+            self.list.setMinimumHeight(110)
+            self.list.setMaximumHeight(225)
+        else:
+            self.list.setMinimumHeight(38)
+            self.list.setMaximumHeight(38)
         for row in rows:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, row.entity_id)
@@ -510,16 +531,14 @@ class AssessmentMatrixPreview(QWidget):
 
 
 class QuickAttachmentPreview(CardFrame):
-    """Sidebar attachment preview with direct Add and Open-page actions."""
+    """Stable sidebar attachment preview; resize only changes row visibility."""
 
     add_requested = Signal()
     open_page_requested = Signal()
     BASE_VISIBLE_ITEMS = 4
-    EXPANDED_HEIGHT = 820
     PHOTO_COLUMNS = 2
-    PHOTO_TILE_HEIGHT_RATIO = 88 / 120
-    PHOTO_TILE_MIN_WIDTH = 82
-    PHOTO_TILE_MAX_WIDTH = 132
+    PHOTO_TILE_WIDTH = 106
+    PHOTO_TILE_HEIGHT = 78
 
     def __init__(self, title: str, kind: str, *, max_items: int = BASE_VISIBLE_ITEMS):
         super().__init__()
@@ -528,9 +547,9 @@ class QuickAttachmentPreview(CardFrame):
         self._items = []
         self._max_items = max(self.BASE_VISIBLE_ITEMS, int(max_items))
         self._empty_text = ""
+        self._visible_item_limit = self._max_items
         self._file_icons = QFileIconProvider() if kind == "document" else None
-        self._rebuild_pending = False
-        self._last_render_signature = None
+        self._item_rows = []
         header = QHBoxLayout()
         heading = QLabel(tr(title))
         heading.setObjectName("CardTitle")
@@ -553,71 +572,7 @@ class QuickAttachmentPreview(CardFrame):
         self._empty_text = empty_text
         self.add_button.setEnabled(bool(can_add))
         self.open_button.setEnabled(True)
-        self._last_render_signature = None
-        self._rebuild_content()
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        self._schedule_rebuild()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._schedule_rebuild()
-
-    def _schedule_rebuild(self):
-        if self._rebuild_pending:
-            return
-        self._rebuild_pending = True
-        QTimer.singleShot(0, self._run_scheduled_rebuild)
-
-    def _run_scheduled_rebuild(self):
-        self._rebuild_pending = False
-        self._rebuild_content()
-
-    def _visible_item_limit(self) -> int:
-        count = min(len(self._items), self._max_items)
-        if count <= self.BASE_VISIBLE_ITEMS:
-            return count
-        window_height = self.window().height() if self.window() is not None else self.height()
-        if window_height >= self.EXPANDED_HEIGHT:
-            return count
-        if self.kind == "photo":
-            return min(count, self.BASE_VISIBLE_ITEMS)
-        extra_count = self._max_items - self.BASE_VISIBLE_ITEMS
-        shortage = max(1, self.EXPANDED_HEIGHT - window_height)
-        hidden_extra = min(extra_count, (shortage + 69) // 70)
-        return min(count, max(self.BASE_VISIBLE_ITEMS, self._max_items - hidden_extra))
-
-    def _photo_tile_size(self) -> tuple[int, int]:
-        margins = self.layout.contentsMargins()
-        content_width = max(1, self.width() - margins.left() - margins.right())
-        spacing = 6
-        tile_width = (content_width - spacing) // self.PHOTO_COLUMNS
-        tile_width = max(self.PHOTO_TILE_MIN_WIDTH, min(self.PHOTO_TILE_MAX_WIDTH, tile_width))
-        tile_height = max(60, round(tile_width * self.PHOTO_TILE_HEIGHT_RATIO))
-        return tile_width, tile_height
-
-    def _rebuild_content(self):
-        limit = self._visible_item_limit()
-        tile_size = self._photo_tile_size() if self.kind == "photo" else None
-        signature = (
-            self.kind,
-            limit,
-            tile_size,
-            tuple(
-                (getattr(item, "id", None), getattr(item, "original_filename", None))
-                for item in self._items[:limit]
-            ),
-        )
-        if signature == self._last_render_signature:
-            return
-        self._last_render_signature = signature
-        while self.content.count():
-            item = self.content.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-            elif item.layout():
-                self._clear_layout(item.layout())
+        self._clear_content()
         if not self._items:
             label = QLabel(tr(self._empty_text))
             label.setObjectName("MutedText")
@@ -625,11 +580,33 @@ class QuickAttachmentPreview(CardFrame):
             self.updateGeometry()
             return
         if self.kind == "photo":
-            self._build_photos(limit, *tile_size)
+            self._build_photos()
         else:
-            self._build_documents(limit)
-        self.layout.invalidate()
+            self._build_documents()
+        self.set_visible_item_limit(self._visible_item_limit)
         self.updateGeometry()
+
+    def set_visible_item_limit(self, limit: int) -> None:
+        self._visible_item_limit = max(0, min(int(limit), self._max_items))
+        if not self._item_rows:
+            return
+        if self.kind == "photo":
+            visible_rows = (self._visible_item_limit + self.PHOTO_COLUMNS - 1) // self.PHOTO_COLUMNS
+            for index, row in enumerate(self._item_rows):
+                row.setVisible(index < visible_rows)
+        else:
+            for index, row in enumerate(self._item_rows):
+                row.setVisible(index < self._visible_item_limit)
+        self.updateGeometry()
+
+    def _clear_content(self):
+        self._item_rows = []
+        while self.content.count():
+            item = self.content.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
 
     @staticmethod
     def _clear_layout(layout):
@@ -640,33 +617,39 @@ class QuickAttachmentPreview(CardFrame):
             elif item.layout():
                 QuickAttachmentPreview._clear_layout(item.layout())
 
-    def _build_photos(self, limit: int, tile_width: int, tile_height: int):
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(6)
-        grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        for index, attachment in enumerate(self._items[:limit]):
-            button = QToolButton()
-            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-            button.setText("")
-            button.setToolTip(attachment.title or attachment.original_filename)
-            button.setFixedSize(tile_width, tile_height)
-            button.setIconSize(QSize(tile_width, tile_height))
-            button.setStyleSheet(
-                "QToolButton{padding:0;margin:0;border:1px solid #dfe3ea;border-radius:6px;background:#f3f4f6;}"
-                "QToolButton:hover{border:1px solid #8fb4dc;}"
-                "QToolButton:pressed{border:1px solid #1261a0;}"
-            )
-            pixmap = self._photo_pixmap(attachment, tile_width, tile_height)
-            if not pixmap.isNull():
-                button.setIcon(QIcon(pixmap))
-            button.clicked.connect(
-                lambda _checked=False, i=index: self._open_photo(i)
-            )
-            grid.addWidget(button, index // self.PHOTO_COLUMNS, index % self.PHOTO_COLUMNS)
-        holder = QWidget()
-        holder.setLayout(grid)
-        self.content.addWidget(holder)
+    def _build_photos(self):
+        visible = self._items[:self._max_items]
+        for row_start in range(0, len(visible), self.PHOTO_COLUMNS):
+            holder = QWidget()
+            row_layout = QHBoxLayout(holder)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(6)
+            row_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            for index in range(row_start, min(row_start + self.PHOTO_COLUMNS, len(visible))):
+                attachment = visible[index]
+                button = QToolButton()
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+                button.setText("")
+                button.setToolTip(attachment.title or attachment.original_filename)
+                button.setFixedSize(self.PHOTO_TILE_WIDTH, self.PHOTO_TILE_HEIGHT)
+                button.setIconSize(QSize(self.PHOTO_TILE_WIDTH, self.PHOTO_TILE_HEIGHT))
+                button.setStyleSheet(
+                    "QToolButton{padding:0;margin:0;border:1px solid #dfe3ea;border-radius:6px;background:#f3f4f6;}"
+                    "QToolButton:hover{border:1px solid #8fb4dc;}"
+                    "QToolButton:pressed{border:1px solid #1261a0;}"
+                )
+                pixmap = self._photo_pixmap(
+                    attachment, self.PHOTO_TILE_WIDTH, self.PHOTO_TILE_HEIGHT
+                )
+                if not pixmap.isNull():
+                    button.setIcon(QIcon(pixmap))
+                button.clicked.connect(
+                    lambda _checked=False, i=index: self._open_photo(i)
+                )
+                row_layout.addWidget(button)
+            row_layout.addStretch()
+            self._item_rows.append(holder)
+            self.content.addWidget(holder)
 
     def _photo_pixmap(self, attachment, width: int, height: int) -> QPixmap:
         if self._service is None:
@@ -702,8 +685,8 @@ class QuickAttachmentPreview(CardFrame):
             return
         PhotoViewer(self._service, self._items, index, self).exec()
 
-    def _build_documents(self, limit: int):
-        for attachment in self._items[:limit]:
+    def _build_documents(self):
+        for attachment in self._items[:self._max_items]:
             row = QToolButton()
             row.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             row.setText(attachment.title or attachment.original_filename)
@@ -716,6 +699,7 @@ class QuickAttachmentPreview(CardFrame):
             row.clicked.connect(
                 lambda _checked=False, a=attachment: self._open_document(a)
             )
+            self._item_rows.append(row)
             self.content.addWidget(row)
 
     def _open_document(self, attachment):
