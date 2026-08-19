@@ -130,7 +130,7 @@ class AssessmentStateSummaryCard(CardFrame):
                 QSizePolicy.Policy.Expanding if is_face_condition else QSizePolicy.Policy.Fixed,
             )
             layout = QVBoxLayout(section)
-            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setContentsMargins(0, 14 if is_face_condition else 0, 0, 0)
             layout.setSpacing(2)
             layout.setAlignment(Qt.AlignmentFlag.AlignTop)
             heading = QLabel(tr(title))
