@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from app.context import AppContext
@@ -125,6 +125,7 @@ class BlockPage(QWidget):
         self._overview_photo_count = 0
         self._overview_document_count = 0
         self._overview_history_entries = []
+        self._related_area_preview_id = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -146,17 +147,21 @@ class BlockPage(QWidget):
         overview_stack = QVBoxLayout()
         overview_stack.setSpacing(8)
         self.general_info = OverviewKeyValueCard("General information")
+        self.related_areas = RelatedEntityList("Related assessment areas")
+        self.related_areas.entity_activated.connect(self._preview_related_area)
+        self.related_areas.entity_action_requested.connect(self._open_related_area)
         self.notes = InlineAutosaveNotes("Notes")
         self.notes.save_requested.connect(self._autosave_comment)
-        self.related_areas = RelatedEntityList("Related assessment areas")
-        self.related_areas.entity_activated.connect(self._open_related_area)
         overview_stack.addWidget(self.general_info)
-        overview_stack.addWidget(self.notes)
         overview_stack.addWidget(self.related_areas, 1)
+        overview_stack.addWidget(self.notes)
         self.geometry_card = SquareGeometryCard(
-            "Plan / geometry", action_label="Reimport geometry"
+            "Plan / geometry", action_label="Reimport"
         )
         self.geometry_card.action_requested.connect(self._reimport_current_geometry)
+        self.geometry_card.plan.view.escape_requested.connect(self._clear_related_area_preview)
+        self._geometry_viewport = self.geometry_card.plan.view.viewport()
+        self._geometry_viewport.installEventFilter(self)
         top.addLayout(overview_stack, 1)
         top.addWidget(self.geometry_card, 0)
         overview_layout.addLayout(top)
@@ -209,8 +214,8 @@ class BlockPage(QWidget):
 
         right = QVBoxLayout()
         self.summary = OverviewKeyValueCard("Summary")
-        self.photos = QuickAttachmentPreview("Photos", "photo")
-        self.documents = QuickAttachmentPreview("Documents", "document")
+        self.photos = QuickAttachmentPreview("Photos", "photo", max_items=6)
+        self.documents = QuickAttachmentPreview("Documents", "document", max_items=7)
         self.photos.add_requested.connect(lambda: self.photo_manager.add())
         self.documents.add_requested.connect(lambda: self.document_manager.add())
         self.photos.open_page_requested.connect(lambda: self._open_attachments("photo"))
@@ -256,6 +261,16 @@ class BlockPage(QWidget):
     def _sync_engineering_actions_visibility(self, *_args):
         self.engineering_actions_widget.setVisible(self.tabs.currentIndex() in (1, 2, 3))
 
+    def eventFilter(self, watched, event):
+        if (
+            watched is getattr(self, "_geometry_viewport", None)
+            and self._related_area_preview_id is not None
+            and event.type() == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
+            self._clear_related_area_preview()
+        return super().eventFilter(watched, event)
+
     def _open_engineering_section(self, key):
         target = {
             "geomechanics": self.geomechanics_tab,
@@ -268,6 +283,69 @@ class BlockPage(QWidget):
     def _open_related_area(self, area_id):
         if self.current_block is not None:
             self.related_assessment_requested.emit(area_id, self.current_block.domain_id)
+
+    def _preview_related_area(self, area_id):
+        if self.current_block is None or self.entity_controller is None:
+            return
+        event = self.entity_controller.production_event(self.current_block.id)
+        geometry = event.active_geometry_revision() if event is not None else None
+        area = next(
+            (item for item in self.entity_controller.state.assessment_areas if item.id == area_id),
+            None,
+        )
+        area_revision = area.active_geometry_revision() if area is not None else None
+        if geometry is None or area_revision is None:
+            return
+        area_geometry = area_revision.final_geometry_frozen
+        if area_geometry is None:
+            return
+        dataset = self.entity_controller.state.active_dataset()
+        lines = dataset.lines if dataset else []
+        plan = self.geometry_card.plan
+        plan.set_comparison_geometry(
+            geometry.plan_geometry,
+            area_geometry,
+            lines,
+            focus_geometry=geometry.plan_geometry,
+            recenter=False,
+        )
+        plan._toggle_lines(self.geometry_card.lines.isChecked())
+        block_rect = plan._geometry_path(geometry.plan_geometry).boundingRect()
+        area_rect = plan._geometry_path(area_geometry).boundingRect()
+        combined = block_rect.united(area_rect)
+        if not combined.isNull():
+            margin = max(max(combined.width(), combined.height()) * 0.12, 1.0)
+            plan.view.fit_to_rect(
+                combined.adjusted(-margin, -margin, margin, margin)
+            )
+        self._related_area_preview_id = area_id
+
+    def _clear_related_area_preview(self):
+        if self._related_area_preview_id is None:
+            return
+        self._related_area_preview_id = None
+        self.related_areas.list.clearSelection()
+        if self.current_block is None or self.entity_controller is None:
+            return
+        event = self.entity_controller.production_event(self.current_block.id)
+        geometry = event.active_geometry_revision() if event is not None else None
+        if geometry is None:
+            return
+        dataset = self.entity_controller.state.active_dataset()
+        lines = dataset.lines if dataset else []
+        plan = self.geometry_card.plan
+        transform = plan.view.transform()
+        center = plan.view.mapToScene(plan.view.viewport().rect().center())
+        self.geometry_card.set_geometry(
+            geometry.plan_geometry,
+            lines,
+            revision=geometry.revision_number,
+            source=geometry.source_file_name,
+            focus_geometry=geometry.plan_geometry,
+        )
+        plan._toggle_lines(self.geometry_card.lines.isChecked())
+        plan.view.setTransform(transform)
+        plan.view.centerOn(center)
 
     def set_filters(self, filters: dict) -> None:
         self.filters = filters
@@ -328,6 +406,7 @@ class BlockPage(QWidget):
             self.notes.editor.setFocus()
 
     def _render_current_block(self) -> None:
+        self._related_area_preview_id = None
         block = self.current_block
         history_entries = self.history_repo.for_blast_event(block.id) if block else []
         self._overview_history_entries = history_entries
@@ -411,6 +490,7 @@ class BlockPage(QWidget):
                 f"{area.id} · {interval}",
                 status,
                 getattr(progress, "value", progress),
+                action_text="Go to ›",
             ))
         self.related_areas.set_rows(rows, empty_text="No linked assessment areas")
 
