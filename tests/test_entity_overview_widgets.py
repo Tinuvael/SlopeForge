@@ -197,3 +197,14 @@ def test_main_window_wires_related_entities_into_existing_navigation():
     assert "page.related_blast_event_requested.connect(self._open_related_blast)" in text
     assert 'if event_type=="production"' in text
     assert "open_contour_from_tree(event_id" in text
+
+
+def test_block_and_contour_note_persistence_are_focused_versioned_writes():
+    block_service = Path("infrastructure/services/production_blast_service.py").read_text(encoding="utf-8")
+    contour_service = Path("infrastructure/services/contour_blast_service.py").read_text(encoding="utf-8")
+    controller = Path("ui/pages/entity_page_controller.py").read_text(encoding="utf-8")
+    assert "guard_domain_versions" in block_service
+    assert "Changed field: Comment" in block_service
+    assert "guard_domain_versions" in contour_service
+    assert "Changed field: Comment" in contour_service
+    assert "self.editing.expected_version = new_version" in controller
