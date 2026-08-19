@@ -157,7 +157,7 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Explosive": "ВВ",
     "No blast-design data yet": "Данных проекта БВР пока нет",
     "No execution data yet": "Фактических данных пока нет",
-    "No geomechanics data yet": "Геомеханических данных пока нет",
+    "No geomechanics data yet": "Данных геомеханики пока нет",
     "Open section": "Открыть раздел",
     # Compact Project/Domain dashboards (#69).
     "Project overview": "Обзор проекта",
@@ -201,6 +201,7 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Updated": "Обновлено",
     "Assessment completed": "Оценка завершена",
     "Assessment draft saved": "Черновик оценки сохранён",
+    "Imported": "Импортировано",
     "Clear": "Очистить",
 }
 
