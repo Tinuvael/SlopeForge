@@ -2,7 +2,17 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPen
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QKeyEvent,
+    QKeySequence,
+    QMouseEvent,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -306,6 +316,9 @@ class DashboardPlanCard(DashboardCard):
         self.lines.toggled.connect(self.plan.set_project_lines_visible)
         self.center_button.clicked.connect(self.plan.fit_assessments)
         self.plan.filter_cleared.connect(self.filter_cleared)
+        self.clear_filter_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        self.clear_filter_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self.clear_filter_shortcut.activated.connect(self.plan.clear_filter)
 
     def add_header_action(self, text: str) -> OverviewLinkButton:
         button = OverviewLinkButton(text)
