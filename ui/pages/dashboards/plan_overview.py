@@ -5,11 +5,13 @@ from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
+    QFrame,
     QGraphicsPathItem,
     QGraphicsScene,
     QGraphicsView,
     QLabel,
     QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -33,12 +35,10 @@ class DashboardPlanOverviewWidget(QWidget):
         self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.view.setFrameShape(QGraphicsView.Shape.NoFrame)
+        self.view.setFrameShape(QFrame.Shape.NoFrame)
         self.view.setStyleSheet("QGraphicsView{border:0;background:#fbfcfd;}")
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.view.setMinimumHeight(260)
-
-        from PySide6.QtWidgets import QVBoxLayout
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -108,13 +108,11 @@ class DashboardPlanOverviewWidget(QWidget):
 
         for geometry in getattr(self.snapshot, "assessment_geometries", ()):
             presentation = assessment_result_presentation(geometry.quadrant)
-            base = QColor(presentation.color)
-            border = QColor(base)
-            border = border.darker(125)
-            fill = QColor(base)
-            fill.setAlpha(42 if geometry.quadrant else 24)
+            border = QColor(presentation.color)
+            fill = QColor(presentation.color)
+            fill.setAlpha(44 if geometry.quadrant else 24)
             item = QGraphicsPathItem(self._path(geometry.points, close=True))
-            item.setPen(QPen(border, 2.6))
+            item.setPen(QPen(border, 2.8))
             item.setBrush(QBrush(fill))
             item.setZValue(20)
             item.setToolTip(self._assessment_tooltip(geometry, presentation.label))
