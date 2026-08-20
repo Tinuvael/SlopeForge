@@ -332,7 +332,7 @@
         </message>
         <message>
             <source>Custom category</source>
-            <translation>Пользовательская категория</translation>
+            <translation>Своя категория</translation>
         </message>
         <message>
             <source>Cut / opening holes</source>
@@ -492,7 +492,7 @@
         </message>
         <message>
             <source>File details</source>
-            <translation>Сведения о файле</translation>
+            <translation>Данные файла</translation>
         </message>
         <message>
             <source>File is missing</source>
@@ -600,7 +600,7 @@
         </message>
         <message>
             <source>Import / Update Project Lines</source>
-            <translation>Импортировать / обновить проектные линии</translation>
+            <translation>Импорт / обновить проектные линии</translation>
         </message>
         <message>
             <source>Import Project Lines (optional)</source>
@@ -1444,7 +1444,7 @@
         </message>
         <message>
             <source>Created</source>
-            <translation>Создан</translation>
+            <translation>Создано</translation>
         </message>
         <message>
             <source>Created by</source>
@@ -1468,7 +1468,7 @@
         </message>
         <message>
             <source>Cleanup warning</source>
-            <translation>Предупреждение об очистке</translation>
+            <translation>Предупреждение очистки</translation>
         </message>
         <message>
             <source>Edit error</source>
@@ -1476,7 +1476,7 @@
         </message>
         <message>
             <source>The attachment was deleted, but a temporary file could not be removed.</source>
-            <translation>Вложение удалено, но временный файл не удалось удалить.</translation>
+            <translation>Вложение удалено, но временный файл удалить не удалось.</translation>
         </message>
         <message>
             <source>Design</source>
@@ -1624,7 +1624,7 @@
         </message>
         <message>
             <source>Imported</source>
-            <translation>Импортирован</translation>
+            <translation>Импортировано</translation>
         </message>
         <message>
             <source>Include</source>
@@ -1844,7 +1844,7 @@
         </message>
         <message>
             <source>Recent activity</source>
-            <translation>Последняя активность</translation>
+            <translation>Последние изменения</translation>
         </message>
         <message>
             <source>Recent changes</source>
@@ -1956,7 +1956,7 @@
         </message>
         <message>
             <source>SlopeForge may not be able to preview this file. Add it anyway?</source>
-            <translation>SlopeForge может не суметь показать этот файл. Всё равно добавить?</translation>
+            <translation>SlopeForge может не поддерживать предпросмотр этого файла. Всё равно добавить?</translation>
         </message>
         <message>
             <source>Source</source>
@@ -2048,7 +2048,7 @@
         </message>
         <message>
             <source>Updated</source>
-            <translation>Обновлён</translation>
+            <translation>Обновлено</translation>
         </message>
         <message>
             <source>Updated by</source>
@@ -2344,7 +2344,7 @@
         </message>
         <message>
             <source>Rejected</source>
-            <translation>Отклонён</translation>
+            <translation>Брак</translation>
         </message>
         <message>
             <source>Rejected holes</source>
@@ -2784,7 +2784,7 @@
         </message>
         <message>
             <source>The file will be removed from the database and disk.</source>
-            <translation>Файл будет удалён из базы данных и с диска.</translation>
+            <translation>Файл будет удалён из базы данных и диска.</translation>
         </message>
         <message>
             <source>Actual drilling length</source>
@@ -3037,7 +3037,7 @@ Continue?</source><translation>Новый горизонт отличается 
         </message>
         <message>
             <source>Enabled</source>
-            <translation>Включён</translation>
+            <translation>Включено</translation>
         </message>
         <message>
             <source>Disabled</source>
@@ -3181,5 +3181,877 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>How to edit</source><translation>Как редактировать</translation></message>
         <message><source>Select a polygon or add a new one. Wheel to zoom · drag to pan.</source><translation>Выберите полигон или добавьте новый. Колесо — масштаб · перетаскивание — панорама.</translation></message>
         <message><source>polygon %1</source><translation>полигон %1</translation></message>
-    </context>
+        <message>
+        <source>Browse...</source>
+        <translation>Обзор...</translation>
+    </message>
+    <message>
+        <source>Create Domain</source>
+        <translation>Создать домен</translation>
+    </message>
+    <message>
+        <source>Create Project</source>
+        <translation>Создать проект</translation>
+    </message>
+    <message>
+        <source>Domain name</source>
+        <translation>Название домена</translation>
+    </message>
+    <message>
+        <source>Edit Assessment Area</source>
+        <translation>Изменить участок оценки</translation>
+    </message>
+    <message>
+        <source>Edit Block</source>
+        <translation>Изменить блок</translation>
+    </message>
+    <message>
+        <source>Edit Contour Blast</source>
+        <translation>Изменить контурный взрыв</translation>
+    </message>
+    <message>
+        <source>Horizon, m *</source>
+        <translation>Горизонт, м *</translation>
+    </message>
+    <message>
+        <source>No file selected</source>
+        <translation>Файл не выбран</translation>
+    </message>
+    <message>
+        <source>Project Lines can also be imported later from the Project dashboard.</source>
+        <translation>Линии проекта также можно импортировать позже на странице проекта.</translation>
+    </message>
+    <message>
+        <source>Project Lines file</source>
+        <translation>Файл линий проекта</translation>
+    </message>
+    <message>
+        <source>Save &amp; complete</source>
+        <translation>Сохранить и завершить</translation>
+    </message>
+    <message>
+        <source>Search projects, domains and entities…</source>
+        <translation>Поиск проектов, доменов и объектов…</translation>
+    </message>
+    <message>
+        <source>No users found.</source>
+        <translation>Пользователи не найдены.</translation>
+    </message>
+    <message>
+        <source>Project tree</source>
+        <translation>Дерево проекта</translation>
+    </message>
+    <message>
+        <source>Collapse domains</source>
+        <translation>Свернуть домены</translation>
+    </message>
+    <message>
+        <source>Hide navigation</source>
+        <translation>Скрыть навигацию</translation>
+    </message>
+    <message>
+        <source>Show navigation</source>
+        <translation>Показать навигацию</translation>
+    </message>
+    <message>
+        <source>Analysis</source>
+        <translation>Анализ</translation>
+    </message>
+    <message>
+        <source>Analysis section is under development.</source>
+        <translation>Раздел анализа находится в разработке.</translation>
+    </message>
+    <message>
+        <source>Actual</source>
+        <translation>Факт</translation>
+    </message>
+    <message>
+        <source>Add documents</source>
+        <translation>Добавить документы</translation>
+    </message>
+    <message>
+        <source>document</source>
+        <translation>документ</translation>
+    </message>
+    <message>
+        <source>documents</source>
+        <translation>документов</translation>
+    </message>
+    <message>
+        <source>selected</source>
+        <translation>выбрано</translation>
+    </message>
+    <message>
+        <source>Titles are filled automatically from file names. Review categories and dates before importing.</source>
+        <translation>Названия заполняются автоматически по именам файлов. Проверьте категории и даты перед импортом.</translation>
+    </message>
+    <message>
+        <source>Apply to all:</source>
+        <translation>Применить ко всем:</translation>
+    </message>
+    <message>
+        <source>Apply category</source>
+        <translation>Применить категорию</translation>
+    </message>
+    <message>
+        <source>Apply date</source>
+        <translation>Применить дату</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>Файл</translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation>Документ</translation>
+    </message>
+    <message>
+        <source>Photo details</source>
+        <translation>Данные фото</translation>
+    </message>
+    <message>
+        <source>Filled automatically from the file name.</source>
+        <translation>Заполняется автоматически по имени файла.</translation>
+    </message>
+    <message>
+        <source>Preview is not available</source>
+        <translation>Предпросмотр недоступен</translation>
+    </message>
+    <message>
+        <source>Date &amp; time</source>
+        <translation>Дата и время</translation>
+    </message>
+    <message>
+        <source>Change</source>
+        <translation>Изменение</translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <translation>Подробности</translation>
+    </message>
+    <message>
+        <source>No history yet</source>
+        <translation>Истории пока нет</translation>
+    </message>
+    <message>
+        <source>Open revision</source>
+        <translation>Открыть ревизию</translation>
+    </message>
+    <message>
+        <source>Double-click to open this historical revision.</source>
+        <translation>Дважды щёлкните, чтобы открыть эту историческую ревизию.</translation>
+    </message>
+    <message>
+        <source>Assessment geometry</source>
+        <translation>Геометрия участка оценки</translation>
+    </message>
+    <message>
+        <source>Blast geometry</source>
+        <translation>Геометрия взрывного события</translation>
+    </message>
+    <message>
+        <source>Historical revision is read-only.</source>
+        <translation>Историческая ревизия доступна только для просмотра.</translation>
+    </message>
+    <message>
+        <source>Geometry &amp; face condition</source>
+        <translation>Геометрия и состояние борта</translation>
+    </message>
+    <message>
+        <source>Project / Domain</source>
+        <translation>Проект / Домен</translation>
+    </message>
+    <message>
+        <source>Geometry rev.</source>
+        <translation>Ревизия геометрии</translation>
+    </message>
+    <message>
+        <source>Rev.</source>
+        <translation>Рев.</translation>
+    </message>
+    <message>
+        <source>Open ›</source>
+        <translation>Открыть ›</translation>
+    </message>
+    <message>
+        <source>History ›</source>
+        <translation>История ›</translation>
+    </message>
+    <message>
+        <source>Plan / geometry</source>
+        <translation>План / геометрия</translation>
+    </message>
+    <message>
+        <source>Engineering summary</source>
+        <translation>Инженерная сводка</translation>
+    </message>
+    <message>
+        <source>Engineering notes</source>
+        <translation>Инженерные примечания</translation>
+    </message>
+    <message>
+        <source>No notes</source>
+        <translation>Нет примечаний</translation>
+    </message>
+    <message>
+        <source>No data yet</source>
+        <translation>Данных пока нет</translation>
+    </message>
+    <message>
+        <source>Very unstable</source>
+        <translation>Весьма неустойчиво</translation>
+    </message>
+    <message>
+        <source>Unstable</source>
+        <translation>Неустойчиво</translation>
+    </message>
+    <message>
+        <source>Moderately stable</source>
+        <translation>Средней устойчивости</translation>
+    </message>
+    <message>
+        <source>Stable</source>
+        <translation>Устойчиво</translation>
+    </message>
+    <message>
+        <source>Not calculated</source>
+        <translation>Не рассчитано</translation>
+    </message>
+    <message>
+        <source>Stability</source>
+        <translation>Устойчивость</translation>
+    </message>
+    <message>
+        <source>Pattern</source>
+        <translation>Сетка</translation>
+    </message>
+    <message>
+        <source>Blast date</source>
+        <translation>Дата взрыва</translation>
+    </message>
+    <message>
+        <source>Block area</source>
+        <translation>Площадь блока</translation>
+    </message>
+    <message>
+        <source>Bench height</source>
+        <translation>Высота уступа</translation>
+    </message>
+    <message>
+        <source>Source geometry</source>
+        <translation>Исходная геометрия</translation>
+    </message>
+    <message>
+        <source>Azimuth</source>
+        <translation>Азимут</translation>
+    </message>
+    <message>
+        <source>Inclination</source>
+        <translation>Наклон</translation>
+    </message>
+    <message>
+        <source>Spacing</source>
+        <translation>Шаг</translation>
+    </message>
+    <message>
+        <source>Assessment area geometry</source>
+        <translation>Геометрия участка оценки</translation>
+    </message>
+    <message>
+        <source>Assessment summary</source>
+        <translation>Сводка оценки</translation>
+    </message>
+    <message>
+        <source>Geometry source</source>
+        <translation>Источник геометрии</translation>
+    </message>
+    <message>
+        <source>Revision reason</source>
+        <translation>Причина ревизии</translation>
+    </message>
+    <message>
+        <source>Free boundary</source>
+        <translation>Свободная граница</translation>
+    </message>
+    <message>
+        <source>Evaluation</source>
+        <translation>Ревизия оценки</translation>
+    </message>
+    <message>
+        <source>No recommendations</source>
+        <translation>Нет рекомендаций</translation>
+    </message>
+    <message>
+        <source>No assessment result yet</source>
+        <translation>Результата оценки пока нет</translation>
+    </message>
+    <message>
+        <source>Last updated</source>
+        <translation>Последнее обновление</translation>
+    </message>
+    <message>
+        <source>Geometry file</source>
+        <translation>Файл геометрии</translation>
+    </message>
+    <message>
+        <source>Related assessment areas</source>
+        <translation>Связанные участки оценки</translation>
+    </message>
+    <message>
+        <source>No linked assessment areas</source>
+        <translation>Нет связанных участков оценки</translation>
+    </message>
+    <message>
+        <source>Related blast events</source>
+        <translation>Связанные взрывные события</translation>
+    </message>
+    <message>
+        <source>No linked blast events</source>
+        <translation>Нет связанных взрывных событий</translation>
+    </message>
+    <message>
+        <source>Assessment result</source>
+        <translation>Результат оценки</translation>
+    </message>
+    <message>
+        <source>Comments / recommendations</source>
+        <translation>Комментарии / рекомендации</translation>
+    </message>
+    <message>
+        <source>Wet</source>
+        <translation>Обводнённые</translation>
+    </message>
+    <message>
+        <source>Redrilled</source>
+        <translation>Перебуренные</translation>
+    </message>
+    <message>
+        <source>Uncharged</source>
+        <translation>Не заряженные</translation>
+    </message>
+    <message>
+        <source>No linked entities</source>
+        <translation>Нет связанных объектов</translation>
+    </message>
+    <message>
+        <source>Angle deviation</source>
+        <translation>Отклонение угла</translation>
+    </message>
+    <message>
+        <source>Berm deviation</source>
+        <translation>Отклонение бермы</translation>
+    </message>
+    <message>
+        <source>Toe deviation</source>
+        <translation>Отклонение подошвы</translation>
+    </message>
+    <message>
+        <source>No geometry assessment data yet</source>
+        <translation>Данных оценки геометрии пока нет</translation>
+    </message>
+    <message>
+        <source>Contour hole traces</source>
+        <translation>Следы контурных скважин</translation>
+    </message>
+    <message>
+        <source>Crest loss</source>
+        <translation>Потеря бровки</translation>
+    </message>
+    <message>
+        <source>Blast damage</source>
+        <translation>Взрывные повреждения</translation>
+    </message>
+    <message>
+        <source>No face-condition data yet</source>
+        <translation>Данных о состоянии борта пока нет</translation>
+    </message>
+    <message>
+        <source>Explosive</source>
+        <translation>ВВ</translation>
+    </message>
+    <message>
+        <source>No blast-design data yet</source>
+        <translation>Данных проекта БВР пока нет</translation>
+    </message>
+    <message>
+        <source>No execution data yet</source>
+        <translation>Фактических данных пока нет</translation>
+    </message>
+    <message>
+        <source>No geomechanics data yet</source>
+        <translation>Данных геомеханики пока нет</translation>
+    </message>
+    <message>
+        <source>Open section</source>
+        <translation>Открыть раздел</translation>
+    </message>
+    <message>
+        <source>Project overview</source>
+        <translation>Обзор проекта</translation>
+    </message>
+    <message>
+        <source>Plan / assessment areas</source>
+        <translation>План / участки оценки</translation>
+    </message>
+    <message>
+        <source>Import Project Lines</source>
+        <translation>Импортировать проектные линии</translation>
+    </message>
+    <message>
+        <source>Update Project Lines</source>
+        <translation>Обновить проектные линии</translation>
+    </message>
+    <message>
+        <source>No Project Lines</source>
+        <translation>Проектные линии не загружены</translation>
+    </message>
+    <message>
+        <source>Import lines</source>
+        <translation>Импортировать линии</translation>
+    </message>
+    <message>
+        <source>Update lines</source>
+        <translation>Обновить линии</translation>
+    </message>
+    <message>
+        <source>Import</source>
+        <translation>Импортировать</translation>
+    </message>
+    <message>
+        <source>Attention required</source>
+        <translation>Требуют внимания</translation>
+    </message>
+    <message>
+        <source>No areas require attention</source>
+        <translation>Нет участков, требующих внимания</translation>
+    </message>
+    <message>
+        <source>Assessment progress</source>
+        <translation>Прогресс оценки</translation>
+    </message>
+    <message>
+        <source>Completed: %1  ·  Draft: %2  ·  Not evaluated: %3</source>
+        <translation>Завершено: %1  ·  Черновики: %2  ·  Не оценено: %3</translation>
+    </message>
+    <message>
+        <source>No Domains yet</source>
+        <translation>Доменов пока нет</translation>
+    </message>
+    <message>
+        <source>Blast events: %1 • Production: %2 • Contour: %3</source>
+        <translation>Взрывные события: %1 • Производственные: %2 • Контурные: %3</translation>
+    </message>
+    <message>
+        <source>Production: %1  ·  Contour: %2</source>
+        <translation>Производственные: %1  ·  Контурные: %2</translation>
+    </message>
+    <message>
+        <source>Elevation intervals</source>
+        <translation>Интервалы высот</translation>
+    </message>
+    <message>
+        <source>Assessment areas: %1 • Evaluated: %2</source>
+        <translation>Участки оценки: %1 • Оценено: %2</translation>
+    </message>
+    <message>
+        <source>Latest assessments</source>
+        <translation>Последние оценки</translation>
+    </message>
+    <message>
+        <source>No completed assessments yet</source>
+        <translation>Завершённых оценок пока нет</translation>
+    </message>
+    <message>
+        <source>Blast activity</source>
+        <translation>Взрывная активность</translation>
+    </message>
+    <message>
+        <source>No dated Blast Events yet</source>
+        <translation>Взрывных событий с датой пока нет</translation>
+    </message>
+    <message>
+        <source>Latest blast</source>
+        <translation>Последний взрыв</translation>
+    </message>
+    <message>
+        <source>No Domain geometry defined</source>
+        <translation>Геометрия домена не задана</translation>
+    </message>
+    <message>
+        <source>No Domain geometry</source>
+        <translation>Геометрия домена не задана</translation>
+    </message>
+    <message>
+        <source>No Assessment Areas yet</source>
+        <translation>Участков оценки пока нет</translation>
+    </message>
+    <message>
+        <source>No completed assessment</source>
+        <translation>Нет завершённой оценки</translation>
+    </message>
+    <message>
+        <source>DAI / FCI over time</source>
+        <translation>DAI / FCI во времени</translation>
+    </message>
+    <message>
+        <source>Daily average · all completed assessments</source>
+        <translation>Среднее за день · все завершённые оценки</translation>
+    </message>
+    <message>
+        <source>No completed data</source>
+        <translation>Нет завершённых данных</translation>
+    </message>
+    <message>
+        <source>Assessment completed</source>
+        <translation>Оценка завершена</translation>
+    </message>
+    <message>
+        <source>Assessment draft saved</source>
+        <translation>Черновик оценки сохранён</translation>
+    </message>
+    <message>
+        <source>Connection</source>
+        <translation>Подключение</translation>
+    </message>
+    <message>
+        <source>Connection settings</source>
+        <translation>Настройки подключения</translation>
+    </message>
+    <message>
+        <source>Connection configuration error</source>
+        <translation>Ошибка настройки подключения</translation>
+    </message>
+    <message>
+        <source>Enter the connection settings again.</source>
+        <translation>Введите настройки подключения заново.</translation>
+    </message>
+    <message>
+        <source>PostgreSQL server</source>
+        <translation>Сервер PostgreSQL</translation>
+    </message>
+    <message>
+        <source>Server / Host</source>
+        <translation>Сервер / Хост</translation>
+    </message>
+    <message>
+        <source>Port</source>
+        <translation>Порт</translation>
+    </message>
+    <message>
+        <source>Database</source>
+        <translation>База данных</translation>
+    </message>
+    <message>
+        <source>File storage</source>
+        <translation>Хранилище файлов</translation>
+    </message>
+    <message>
+        <source>Use a folder that all SlopeForge users can access.</source>
+        <translation>Используйте папку, доступную всем пользователям SlopeForge.</translation>
+    </message>
+    <message>
+        <source>Browse…</source>
+        <translation>Обзор…</translation>
+    </message>
+    <message>
+        <source>Select file storage folder</source>
+        <translation>Выберите папку хранилища файлов</translation>
+    </message>
+    <message>
+        <source>Testing PostgreSQL and file storage…</source>
+        <translation>Проверка PostgreSQL и хранилища файлов…</translation>
+    </message>
+    <message>
+        <source>Connection test failed</source>
+        <translation>Проверка подключения не выполнена</translation>
+    </message>
+    <message>
+        <source>Connection and file storage are available.</source>
+        <translation>Подключение и хранилище файлов доступны.</translation>
+    </message>
+    <message>
+        <source>SlopeForge connection setup</source>
+        <translation>Настройка подключения SlopeForge</translation>
+    </message>
+    <message>
+        <source>Connect SlopeForge</source>
+        <translation>Подключение SlopeForge</translation>
+    </message>
+    <message>
+        <source>Configure the PostgreSQL server and shared file storage before signing in.</source>
+        <translation>Настройте сервер PostgreSQL и общее хранилище файлов перед входом.</translation>
+    </message>
+    <message>
+        <source>Test connection</source>
+        <translation>Проверить подключение</translation>
+    </message>
+    <message>
+        <source>Save and continue</source>
+        <translation>Сохранить и продолжить</translation>
+    </message>
+    <message>
+        <source>Edit the PostgreSQL server and shared file storage used on the next SlopeForge start.</source>
+        <translation>Измените сервер PostgreSQL и общее хранилище файлов для следующего запуска SlopeForge.</translation>
+    </message>
+    <message>
+        <source>DATABASE_URL and STORAGE_ROOT currently override saved connection settings.</source>
+        <translation>DATABASE_URL и STORAGE_ROOT сейчас переопределяют сохранённые настройки подключения.</translation>
+    </message>
+    <message>
+        <source>Connection settings saved</source>
+        <translation>Настройки подключения сохранены</translation>
+    </message>
+    <message>
+        <source>Restart SlopeForge to use the new connection and file storage settings.</source>
+        <translation>Перезапустите SlopeForge, чтобы использовать новые настройки подключения и хранилища файлов.</translation>
+    </message>
+    <message>
+        <source>An active Project Lines dataset is required.</source>
+        <translation>Требуется активный набор проектных линий.</translation>
+    </message>
+    <message>
+        <source>Assessment date is required.</source>
+        <translation>Укажите дату оценки.</translation>
+    </message>
+    <message>
+        <source>Boundary</source>
+        <translation>Граница</translation>
+    </message>
+    <message>
+        <source>Edit Assessment Area boundary</source>
+        <translation>Изменить границу участка оценки</translation>
+    </message>
+    <message>
+        <source>Getting started</source>
+        <translation>Начало работы</translation>
+    </message>
+    <message>
+        <source>Review</source>
+        <translation>Проверка</translation>
+    </message>
+    <message>
+        <source>Saving…</source>
+        <translation>Сохранение…</translation>
+    </message>
+    <message>
+        <source>The Assessment Area was saved, but linked-event suggestions could not be refreshed.</source>
+        <translation>Участок оценки сохранён, но не удалось обновить предлагаемые связанные события.</translation>
+    </message>
+    <message>
+        <source>After blast</source>
+        <translation>После взрыва</translation>
+    </message>
+    <message>
+        <source>As-built survey</source>
+        <translation>Исполнительная съёмка</translation>
+    </message>
+    <message>
+        <source>Assessment footprint</source>
+        <translation>Контур участка оценки</translation>
+    </message>
+    <message>
+        <source>Assessment form</source>
+        <translation>Форма оценки</translation>
+    </message>
+    <message>
+        <source>Before blast</source>
+        <translation>До взрыва</translation>
+    </message>
+    <message>
+        <source>Berm</source>
+        <translation>Берма</translation>
+    </message>
+    <message>
+        <source>Boundary valid</source>
+        <translation>Граница корректна</translation>
+    </message>
+    <message>
+        <source>Charging report</source>
+        <translation>Отчёт о заряжании</translation>
+    </message>
+    <message>
+        <source>Click near a Project Line to snap.</source>
+        <translation>Щёлкните рядом с проектной линией для привязки.</translation>
+    </message>
+    <message>
+        <source>Close the boundary when finished.</source>
+        <translation>Замкните границу после завершения.</translation>
+    </message>
+    <message>
+        <source>Connector</source>
+        <translation>Соединитель</translation>
+    </message>
+    <message>
+        <source>Connectors</source>
+        <translation>Соединители</translation>
+    </message>
+    <message>
+        <source>Context</source>
+        <translation>Контекст</translation>
+    </message>
+    <message>
+        <source>Continue to Boundary.</source>
+        <translation>Перейдите к шагу «Граница».</translation>
+    </message>
+    <message>
+        <source>Contour drillhole traces</source>
+        <translation>Следы контурных скважин</translation>
+    </message>
+    <message>
+        <source>Cracks</source>
+        <translation>Трещины</translation>
+    </message>
+    <message>
+        <source>Crest</source>
+        <translation>Бровка</translation>
+    </message>
+    <message>
+        <source>Define Assessment boundary</source>
+        <translation>Задание границы участка оценки</translation>
+    </message>
+    <message>
+        <source>Draft</source>
+        <translation>Черновик</translation>
+    </message>
+    <message>
+        <source>Drilling report</source>
+        <translation>Отчёт о бурении</translation>
+    </message>
+    <message>
+        <source>Elevation summary derived</source>
+        <translation>Интервал высот определён</translation>
+    </message>
+    <message>
+        <source>Enter Area details.</source>
+        <translation>Введите сведения об участке.</translation>
+    </message>
+    <message>
+        <source>Face</source>
+        <translation>Откос</translation>
+    </message>
+    <message>
+        <source>Final wall</source>
+        <translation>Финальный борт</translation>
+    </message>
+    <message>
+        <source>Follow the line to trace the boundary.</source>
+        <translation>Следуйте вдоль линии, чтобы построить границу.</translation>
+    </message>
+    <message>
+        <source>General view</source>
+        <translation>Общий вид</translation>
+    </message>
+    <message>
+        <source>Geomechanical materials</source>
+        <translation>Геомеханические материалы</translation>
+    </message>
+    <message>
+        <source>In preparation</source>
+        <translation>В подготовке</translation>
+    </message>
+    <message>
+        <source>Initiation scheme</source>
+        <translation>Схема инициирования</translation>
+    </message>
+    <message>
+        <source>Initiation system installation</source>
+        <translation>Монтаж системы инициирования</translation>
+    </message>
+    <message>
+        <source>Inspection record</source>
+        <translation>Акт осмотра</translation>
+    </message>
+    <message>
+        <source>Linked-event preview completed</source>
+        <translation>Предпросмотр связанных событий выполнен</translation>
+    </message>
+    <message>
+        <source>Linked-event preview unavailable</source>
+        <translation>Предпросмотр связанных событий недоступен</translation>
+    </message>
+    <message>
+        <source>Loose blocks / rockfall</source>
+        <translation>Свободные блоки / вывал</translation>
+    </message>
+    <message>
+        <source>Measurement report</source>
+        <translation>Отчёт об измерениях</translation>
+    </message>
+    <message>
+        <source>Measurements</source>
+        <translation>Измерения</translation>
+    </message>
+    <message>
+        <source>Move away to create a connector.</source>
+        <translation>Отведите курсор от линии, чтобы создать соединитель.</translation>
+    </message>
+    <message>
+        <source>Muckpile</source>
+        <translation>Развал горной массы</translation>
+    </message>
+    <message>
+        <source>Other</source>
+        <translation>Прочее</translation>
+    </message>
+    <message>
+        <source>Potential events</source>
+        <translation>Возможные события</translation>
+    </message>
+    <message>
+        <source>Project plan</source>
+        <translation>План проекта</translation>
+    </message>
+    <message>
+        <source>Snap point</source>
+        <translation>Точка привязки</translation>
+    </message>
+    <message>
+        <source>Survey</source>
+        <translation>Маркшейдерская съёмка</translation>
+    </message>
+    <message>
+        <source>Total</source>
+        <translation>Всего</translation>
+    </message>
+    <message>
+        <source>Traced Project Line</source>
+        <translation>Трассированная проектная линия</translation>
+    </message>
+    <message>
+        <source>Traced spans</source>
+        <translation>Трассированные участки</translation>
+    </message>
+    <message>
+        <source>Verify Domain and active Project Lines.</source>
+        <translation>Проверьте домен и активные проектные линии.</translation>
+    </message>
+    <message>
+        <source>Wall condition report</source>
+        <translation>Отчёт о состоянии борта</translation>
+    </message>
+    <message>
+        <source>Water</source>
+        <translation>Вода</translation>
+    </message>
+    <message>
+        <source>Assessment completed and saved.</source>
+        <translation>Оценка завершена и сохранена.</translation>
+    </message>
+    <message>
+        <source>Automatic detection failed: %1</source>
+        <translation>Не удалось автоматически определить горизонт: %1</translation>
+    </message>
+    <message>
+        <source>Could not save the new boundaries.</source>
+        <translation>Не удалось сохранить новые границы.</translation>
+    </message>
+    <message>
+        <source>Could not start boundary editing.</source>
+        <translation>Не удалось начать редактирование границы.</translation>
+    </message>
+    <message>
+        <source>Draft saved.</source>
+        <translation>Черновик сохранён.</translation>
+    </message>
+</context>
 </TS>

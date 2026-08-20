@@ -198,7 +198,9 @@ class BlockRecentActivityCard(RecentActivityCard):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.rows.setSpacing(4)
+        self.rows.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def set_entries(self, entries, limit=4):
         while self.rows.count():

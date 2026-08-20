@@ -98,7 +98,7 @@ class AttachmentMetadataDialog(QDialog):
         self.file_date.setDate(QDate(value.year, value.month, value.day))
         self.category = QComboBox()
         for code, label in ATTACHMENT_CATEGORIES[(owner_type, kind)]:
-            self.category.addItem(label, code)
+            self.category.addItem(tr(label), code)
         if attachment:
             self.category.setCurrentIndex(max(0, self.category.findData(attachment.subtype)))
         self.custom = QLineEdit(attachment.custom_subtype if attachment else "")
@@ -201,7 +201,7 @@ class DocumentBatchDialog(QDialog):
     def _category_combo(self):
         combo = QComboBox()
         for code, label in ATTACHMENT_CATEGORIES[(self.owner_type, "document")]:
-            combo.addItem(label, code)
+            combo.addItem(tr(label), code)
         return combo
 
     def _apply_category(self):
@@ -679,7 +679,7 @@ class EntityAttachmentManagerWidget(QWidget):
         labels = dict(ATTACHMENT_CATEGORIES.get((self.owner_type, self.kind), []))
         if item.subtype == "other" and item.custom_subtype:
             return item.custom_subtype
-        return labels.get(item.subtype, item.subtype or "—")
+        return tr(labels.get(item.subtype, item.subtype or "—"))
 
     def _show_photo(self, attachment_id):
         items = [a for a in self._items() if not self.service.is_missing(a)]

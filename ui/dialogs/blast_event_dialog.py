@@ -34,7 +34,8 @@ class BlastEventDialog(QDialog):
         self.name = QLineEdit()
         self.name.textEdited.connect(self._name_edited)
         self.kind = QComboBox()
-        self.kind.addItems(["production", "contour"])
+        self.kind.addItem(tr("Production"), "production")
+        self.kind.addItem(tr("Contour blast"), "contour")
         self.has_date = QCheckBox(tr("Set planned date"))
         self.date = QDateEdit(QDate.currentDate())
         self.date.setCalendarPopup(True)
@@ -81,7 +82,7 @@ class BlastEventDialog(QDialog):
         )
         self.buttons = actions
         layout.addWidget(actions)
-        self.kind.currentTextChanged.connect(self._event_type_changed)
+        self.kind.currentIndexChanged.connect(self._event_type_changed)
         self.name.setFocus()
 
     def _choose_csv(self):
@@ -109,10 +110,12 @@ class BlastEventDialog(QDialog):
         if not path:
             self.auto_status.setText(tr("Select a geometry file first")); return False
         try:
-            preview = self.service.inspect_event_geometry(self.kind.currentText(), path)
+            preview = self.service.inspect_event_geometry(self.kind.currentData(), path)
         except BlastEventValidationError as exc:
             self.preview = None
-            self.auto_status.setText(f"Automatic detection failed: {domain_message(str(exc))}")
+            self.auto_status.setText(
+                tr("Automatic detection failed: %1").replace("%1", domain_message(str(exc)))
+            )
             QMessageBox.warning(self, tr("Automatic horizon detection"), domain_message(str(exc)))
             return False
         self.preview = preview
@@ -149,6 +152,6 @@ class BlastEventDialog(QDialog):
         self.accept()
 
     def values(self):
-        return {"name": self.name.text(), "event_type": self.kind.currentText(),
+        return {"name": self.name.text(), "event_type": self.kind.currentData(),
                 "event_date": self.date.date().toPython() if self.has_date.isChecked() else None, "elevation": self.elevation.value(),
                 "csv_path": self.csv.text()}

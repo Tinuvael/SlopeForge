@@ -470,7 +470,8 @@ class AssessmentAreaEvaluationDialog(QDialog):
             QMessageBox.critical(self, tr("Assessment not saved"), f"Could not save the assessment. Changes remain in the form.\n\n{domain_message(str(exc))}")
             return False
         self._dirty = False; self._allow_close = True; self._update_title()
-        QMessageBox.information(self, tr("Assessment saved"), "Draft saved." if status == "draft" else "Assessment completed and saved.")
+        message = tr("Draft saved.") if status == "draft" else tr("Assessment completed and saved.")
+        QMessageBox.information(self, tr("Assessment saved"), message)
         super().accept(); return True
 
     def _update_title(self): self.setWindowTitle(self._base_title() + (" *" if self._dirty else ""))
