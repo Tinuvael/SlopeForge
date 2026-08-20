@@ -180,6 +180,21 @@ def test_representative_active_screen_labels_are_translated():
     assert catalogue["Project tree"] == "Дерево проекта"
 
 
+def test_issue_136_russian_engineering_terminology():
+    catalogue = russian_catalog()
+    assert catalogue["Contour RMS deviation, m"] == "RMS отклонения контура, м"
+    assert catalogue["Spacing, m"] == "Шаг, м"
+    assert catalogue["Mean toe deviation, m"] == "Среднее отклонение забоя скважины, м"
+    assert catalogue["Max toe deviation, m"] == "Максимальное отклонение забоя скважины, м"
+    assert catalogue["Mean backbreak, m"] == "Средний закол за контуром, м"
+    assert catalogue["Maximum backbreak, m"] == "Максимальный закол за контуром, м"
+    assert catalogue["Standard deviation"] == "Стандартное отклонение"
+    for source in ("RMS dependencies are unavailable or incompatible.",
+                   "Unexpected RMS calculation error.", "Invalid RMS input data."):
+        assert "RMS" in catalogue[source]
+        assert "СКО" not in catalogue[source]
+
+
 def test_active_ui_has_no_runtime_russian_fallback_bridge():
     source = (ROOT / "app" / "localization.py").read_text(encoding="utf-8")
     assert "RUSSIAN_RUNTIME_FALLBACKS" not in source

@@ -4407,7 +4407,7 @@ Continue?</source><translation>Новый горизонт отличается 
     </message>
     <message>
         <source>Spacing, m</source>
-        <translation>Расстояние, м</translation>
+        <translation>Шаг, м</translation>
     </message>
     <message>
         <source>Persistence, m</source>
@@ -4423,19 +4423,19 @@ Continue?</source><translation>Новый горизонт отличается 
     </message>
     <message>
         <source>Mean toe deviation, m</source>
-        <translation>Среднее отклонение забоя, м</translation>
+        <translation>Среднее отклонение забоя скважины, м</translation>
     </message>
     <message>
         <source>Max toe deviation, m</source>
-        <translation>Максимальное отклонение забоя, м</translation>
+        <translation>Максимальное отклонение забоя скважины, м</translation>
     </message>
     <message>
         <source>Mean backbreak, m</source>
-        <translation>Средний закол, м</translation>
+        <translation>Средний закол за контуром, м</translation>
     </message>
     <message>
         <source>Maximum backbreak, m</source>
-        <translation>Максимальный закол, м</translation>
+        <translation>Максимальный закол за контуром, м</translation>
     </message>
     <message>
         <source>Mean overbreak, m</source>
@@ -4447,7 +4447,7 @@ Continue?</source><translation>Новый горизонт отличается 
     </message>
     <message>
         <source>Contour RMS deviation, m</source>
-        <translation>СКО отклонения контура, м</translation>
+        <translation>RMS отклонения контура, м</translation>
     </message>
     <message>
         <source>Photogrammetry</source>
@@ -4467,7 +4467,7 @@ Continue?</source><translation>Новый горизонт отличается 
     </message>
     <message>
         <source>RMS dependencies are unavailable or incompatible.</source>
-        <translation>Зависимости для расчёта СКО недоступны или несовместимы.</translation>
+        <translation>Зависимости для расчёта RMS недоступны или несовместимы.</translation>
     </message>
     <message>
         <source>The design surface contains no valid three-point FID triangles.</source>
@@ -4503,11 +4503,11 @@ Continue?</source><translation>Новый горизонт отличается 
     </message>
     <message>
         <source>Unexpected RMS calculation error.</source>
-        <translation>Непредвиденная ошибка расчёта СКО.</translation>
+        <translation>Непредвиденная ошибка расчёта RMS.</translation>
     </message>
     <message>
         <source>Invalid RMS input data.</source>
-        <translation>Некорректные входные данные для расчёта СКО.</translation>
+        <translation>Некорректные входные данные для расчёта RMS.</translation>
     </message>
 </context>
 </TS>

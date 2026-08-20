@@ -572,7 +572,7 @@ class TechnicalCardDialog(QDialog):
             fields=[("Holes, count","hole_count",True),("Diameter, mm","diameter_mm",False),("Average depth, m","average_depth_m",False),("Subdrill, m","subdrill_m",False),("Inclination, °","inclination_deg",False),("Azimuth, °","azimuth_deg",False)]
             if self.blast_event.event_type=="production": fields += [(BURDEN_LABEL,"burden_m",False),(SPACING_LABEL,"spacing_m",False),("Rows","row_count",True),(TOE_LABEL,"toe_standoff_m",False)]
             else: fields += [("Design line / collar offset, m","line_offset_m",False)]
-            state={"builder":None,"depth":group.average_depth_m,"status":None}
+            state={"builder":None,"depth":group.average_depth_m,"status":None,"refresh_derived":lambda:None}
             for row_index,(label,attr,integer) in enumerate(fields,1):
                 field_grid.addWidget(QLabel(tr(label)),row_index,0)
                 widget=_number(getattr(group,attr)); widget.setObjectName(attr); widget.setEnabled(not self.read_only); widget.setMinimumWidth(105); widget.setMaximumWidth(125)
@@ -589,7 +589,7 @@ class TechnicalCardDialog(QDialog):
                     if a=="average_depth_m" and builder and value is not None and not builder.set_hole_depth(value):
                         w.blockSignals(True); w.setValue(st["depth"] if st["depth"] is not None else w.minimum()); w.blockSignals(False); return
                     setattr(g,a,value)
-                    refresh_derived()
+                    st["refresh_derived"]()
                     if a=="average_depth_m": st["depth"]=value
                     if a=="diameter_mm" and builder: builder.set_hole_diameter(value)
                     self._set_comparison_labels(pl,dl,p,value,is_integer,circular=a=="azimuth_deg")
@@ -621,6 +621,7 @@ class TechnicalCardDialog(QDialog):
                 ratios = self.revision.engineering_ratios(g.design_group_id) if g.design_group_id else {}
                 ratios_label.setText(f"{tr('Ratios')}: " + "   ".join(
                     f"{name}: {self._format_comparison_number(value)}" for name, value in ratios.items()))
+            state["refresh_derived"] = refresh_derived
             refresh_derived()
 
             exceptions=QGroupBox(tr("Execution exceptions")); exceptions.setObjectName("actualExceptionArea"); exception_grid=QGridLayout(exceptions); exception_grid.setHorizontalSpacing(10); exception_grid.setVerticalSpacing(4); exception_grid.setColumnStretch(1,1)
@@ -628,8 +629,8 @@ class TechnicalCardDialog(QDialog):
                 spin=_number(getattr(group,attr)); spin.setDecimals(0); spin.setRange(-1,1000000); spin.setSpecialValueText("—"); spin.setMaximumWidth(90); spin.setEnabled(not self.read_only); spin.valueChanged.connect(lambda value,g=group,a=attr,w=spin:(setattr(g,a,None if value==w.minimum() else int(value)),self._refresh_actual_summary()))
                 exception_grid.addWidget(QLabel(tr(label)),index,0); exception_grid.addWidget(spin,index,1,Qt.AlignmentFlag.AlignLeft)
             for index, (label, attr) in enumerate((("Mean collar deviation, m", "mean_collar_deviation_m"), ("Max collar deviation, m", "max_collar_deviation_m"), ("Mean toe deviation, m", "mean_toe_deviation_m"), ("Max toe deviation, m", "max_toe_deviation_m"))):
-                spin = _number(getattr(group, attr)); spin.setMaximumWidth(100); spin.setEnabled(not self.read_only)
-                spin.valueChanged.connect(lambda value,g=group,a=attr,w=spin:(setattr(g,a,None if value==w.minimum() else value),refresh_derived()))
+                spin = _number(getattr(group, attr)); spin.setObjectName(attr); spin.setMaximumWidth(100); spin.setEnabled(not self.read_only)
+                spin.valueChanged.connect(lambda value,g=group,a=attr,w=spin,rd=refresh_derived:(setattr(g,a,None if value==w.minimum() else value),rd()))
                 exception_grid.addWidget(QLabel(tr(label)), index, 2); exception_grid.addWidget(spin, index, 3)
             left=QVBoxLayout(); left.setContentsMargins(0,0,0,0); left.addWidget(drilling); left.addWidget(exceptions); left_host=QWidget(); left_host.setLayout(left); columns.addWidget(left_host,0,0,Qt.AlignmentFlag.AlignTop)
 
@@ -637,7 +638,7 @@ class TechnicalCardDialog(QDialog):
             if group.average_depth_m and group.average_depth_m>0:
                 builder=BoreholeChargeBuilder(group.average_depth_m,group.diameter_mm,self.explosive_products,group.charge_components,self.read_only); builder.setObjectName("actualBoreholeChargeBuilder"); builder.setMinimumHeight(350); builder.setMaximumHeight(500); self._charge_builders.append(builder); state["builder"]=builder; charge_layout.addWidget(builder)
                 comparison=self._make_charge_comparison(); state["status"]=comparison
-                builder.components_changed.connect(lambda values,g=group,d=design,c=comparison:(setattr(g,"charge_components",values),self._refresh_charge_comparison(c,g,d),refresh_derived()))
+                builder.components_changed.connect(lambda values,g=group,d=design,c=comparison,rd=refresh_derived:(setattr(g,"charge_components",values),self._refresh_charge_comparison(c,g,d),rd()))
                 self._refresh_charge_comparison(comparison,group,design); charge_layout.addWidget(comparison["widget"])
             else: charge_layout.addWidget(QLabel(tr("Enter average hole depth to configure the charge construction.")))
             columns.addWidget(charge,0,1); content.addLayout(columns)
