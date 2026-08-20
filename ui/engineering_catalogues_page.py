@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 
 from domain.blasting.charge_design import ChargeForm, ExplosiveClass, ExplosiveProduct, ExplosiveProductKind
 from app.localization import tr
+from ui.widgets.design_system import configure_standard_table, set_button_role
 
 CHARGE_FORM_LABELS={ChargeForm.BULK:"Bulk",ChargeForm.PUMPABLE:"Pumpable",ChargeForm.CARTRIDGED:"Cartridged"}
 EXPLOSIVE_CLASS_LABELS={ExplosiveClass.ANFO:"ANFO / Igdanite",ExplosiveClass.EMULSION:"Emulsion explosive",
@@ -37,6 +38,7 @@ class ExplosiveProductDialog(QDialog):
         color_row = QWidget(); color_layout = QHBoxLayout(color_row); color_layout.setContentsMargins(0, 0, 0, 0)
         self.color_edit = QLineEdit(product.display_color if product else "#000000")
         choose = QPushButton(tr("Choose color"))
+        set_button_role(choose, "secondary")
         choose.clicked.connect(self._choose_color)
         color_layout.addWidget(self.color_edit); color_layout.addWidget(choose)
         self.density = self._number(product.density_kg_m3/1000 if product and product.density_kg_m3 is not None else None)
@@ -53,6 +55,8 @@ class ExplosiveProductDialog(QDialog):
         self.length_label=QLabel(tr("Cartridge length, mm (optional)")); form.addRow(self.length_label,self.length)
         self.pitch_label = QLabel(tr("Default pitch, m (optional)")); form.addRow(self.pitch_label, self.pitch)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save)
+        set_button_role(buttons.button(QDialogButtonBox.StandardButton.Save), "primary")
+        set_button_role(buttons.button(QDialogButtonBox.StandardButton.Cancel), "secondary")
         buttons.rejected.connect(self.reject); buttons.accepted.connect(self._validate_and_accept)
         form.addRow(buttons)
         self.form_combo.currentIndexChanged.connect(self._update_fields)
@@ -123,10 +127,14 @@ class EngineeringCataloguesPage(QWidget):
     def __init__(self, catalogue, *, can_edit: bool, parent=None):
         super().__init__(parent); self.catalogue = catalogue; self.can_edit = can_edit
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"<b>{tr('Explosives / charge materials')}</b>"))
+        title = QLabel(tr("Explosives / charge materials")); title.setObjectName("SectionTitle")
+        layout.addWidget(title)
         self.empty_label = QLabel(tr("No explosive products configured."))
+        self.empty_label.setObjectName("EmptyState")
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.empty_label)
         self.table = QTableWidget(0, len(self.HEADERS))
+        configure_standard_table(self.table)
         self.table.setHorizontalHeaderLabels([tr(header) for header in self.HEADERS])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -134,6 +142,9 @@ class EngineeringCataloguesPage(QWidget):
         layout.addWidget(self.table)
         actions = QHBoxLayout(); self.add_button = QPushButton(tr("Add product"))
         self.edit_button = QPushButton(tr("Edit")); self.toggle_button = QPushButton(tr("Enable / Disable"))
+        set_button_role(self.add_button, "primary")
+        set_button_role(self.edit_button, "secondary")
+        set_button_role(self.toggle_button, "secondary")
         for button in (self.add_button, self.edit_button, self.toggle_button): actions.addWidget(button)
         actions.addStretch(); layout.addLayout(actions)
         self.add_button.clicked.connect(self._add); self.edit_button.clicked.connect(self._edit)
@@ -156,7 +167,9 @@ class EngineeringCataloguesPage(QWidget):
                     item.setBackground(QColor(product.display_color))
                 self.table.setItem(row, column, item)
         self.empty_label.setVisible(not self.products); self.table.setVisible(bool(self.products))
-        self.table.resizeColumnsToContents(); self._selection_changed()
+        self.table.resizeColumnsToContents()
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self._selection_changed()
 
     def _selected(self):
         row = self.table.currentRow()

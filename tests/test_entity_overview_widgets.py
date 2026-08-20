@@ -62,16 +62,18 @@ def test_status_badges_have_distinct_semantic_workflow_colors():
 
     app = widgets.QApplication.instance() or widgets.QApplication([])
     header = EntityHeaderWidget()
-    styles = {}
+    roles = {}
     for state in ("in_preparation", "planned", "blasted", "assessed", "in_progress", "completed"):
         header.set_content(title="X", status_text=state, status_state=state)
-        styles[state] = header.status.styleSheet()
-    assert styles["in_preparation"] != styles["planned"]
-    assert styles["planned"] != styles["blasted"]
-    assert styles["blasted"] != styles["assessed"]
-    assert styles["in_progress"] == styles["planned"]
-    assert styles["completed"] == styles["assessed"]
+        roles[state] = header.status.property("statusRole")
+    assert roles["in_preparation"] == "neutral"
+    assert roles["planned"] == roles["in_progress"] == "info"
+    assert roles["blasted"] == "warning"
+    assert roles["assessed"] == roles["completed"] == "success"
+    assert roles["planned"] != roles["blasted"]
+    assert roles["completed"] != roles["blasted"]
     header.set_content(title="X", status_text="Completed", status_state="completed", archived=True)
+    assert header.archive.property("statusRole") == "archived"
     assert header.archive.isVisible() or not header.isVisible()
     header.close(); app.processEvents()
 

@@ -6,7 +6,6 @@ from app.localization import tr
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -23,17 +22,11 @@ from repositories.production_blast_repository import ProductionBlastRow
 from infrastructure.services.production_blast_service import AUDIT_FIELD_LABELS
 from domain.blasting.workflow import WORKFLOW_LABELS, BlastWorkflowState
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
+from ui.widgets.design_system import CardFrame, set_status_role
 
 ACTION_LABELS = {"create": "Create", "update": "Update", "delete": "Delete", "attach": "Attach", "detach": "Detach"}
-WORKFLOW_BADGE_STYLE = (
-    "background:#fff4d6;color:#8a5a00;border:1px solid #f4c76b;"
-    "border-radius:5px;padding:4px 8px"
-)
-
-
 def apply_workflow_badge_style(label: QLabel) -> None:
-    label.setObjectName("StatusBadge")
-    label.setStyleSheet(WORKFLOW_BADGE_STYLE)
+    set_status_role(label, "warning")
 
 
 def _dash(value) -> str:
@@ -70,19 +63,6 @@ def format_decimal(value) -> str:
     decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
     text = format(decimal_value.normalize(), "f")
     return text.rstrip("0").rstrip(".") if "." in text else text
-
-
-class CardFrame(QFrame):
-    def __init__(self, title: str | None = None):
-        super().__init__()
-        self.setObjectName("CardFrame")
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(14, 12, 14, 12)
-        self.layout.setSpacing(8)
-        if title:
-            label = QLabel(tr(title))
-            label.setObjectName("CardTitle")
-            self.layout.addWidget(label)
 
 
 class EmptySection(QWidget):

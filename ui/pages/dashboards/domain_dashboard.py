@@ -49,7 +49,6 @@ class DomainDashboardPage(QWidget):
     def __init__(self, context, domain_id, name=None):
         super().__init__()
         self.setObjectName("DashboardPage")
-        self.setStyleSheet("QWidget#DashboardPage{background:#f4f6f9;}")
         self.context = context
         self.domain_id = domain_id
         self.repo = DashboardRepository(context.session_factory)

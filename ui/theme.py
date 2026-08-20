@@ -1,0 +1,201 @@
+"""SlopeForge's compact, semantic Qt Widgets presentation theme."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtWidgets import QApplication
+
+
+class Color:
+    APP_BACKGROUND = "#f4f6f9"
+    SURFACE = "#ffffff"
+    SURFACE_SUBTLE = "#f8fafc"
+    BORDER = "#d7dde6"
+    SEPARATOR = "#c5ccd5"
+    TEXT_PRIMARY = "#111827"
+    TEXT_SECONDARY = "#374151"
+    TEXT_MUTED = "#6b7280"
+    ACCENT = "#1261a0"
+    ACCENT_HOVER = "#0b4f86"
+    SELECTED = "#eaf3ff"
+    FOCUS = "#0b63ce"
+    SUCCESS = "#2f6f3e"
+    WARNING = "#8a5a00"
+    ERROR = "#a33a32"
+    DISABLED = "#9ca3af"
+
+
+class Spacing:
+    XS = 4
+    SM = 8
+    MD = 12
+    LG = 16
+    PAGE = 10
+    CARD_HORIZONTAL = 14
+    CARD_VERTICAL = 12
+    RADIUS = 7
+
+
+APPLICATION_STYLESHEET = """
+QMainWindow, QDialog { background: #f4f6f9; color: #111827; }
+QWidget#DashboardPage { background: #f4f6f9; }
+QFrame#CardFrame, QFrame#DashboardCard, QFrame#DashboardMetricCard,
+QFrame#DashboardHeaderCard, QFrame#ConnectionCard, QFrame#EngineeringCard,
+QFrame#CriterionCard, QFrame#ResultCard {
+    background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px;
+}
+QFrame#DashboardSummaryRow, QWidget#ProjectLinesDatasetRow, QWidget#StandardRow {
+    background: #ffffff; border: 1px solid #d7dde6; border-radius: 5px;
+}
+QLabel#EntityTitle, QLabel#BlockTitle { color: #111827; font-size: 22px; font-weight: 700; }
+QLabel#CardTitle, QLabel#EngineeringSectionTitle, QLabel#RelatedEntityTitle,
+QLabel#SectionTitle, QLabel#EngineeringGroupTitle { color: #1f2937; font-weight: 600; }
+QLabel#MutedText, QLabel#EntityContextLine, QLabel#CalculatedCaption { color: #6b7280; }
+QLabel#SummaryValue, QLabel#ActivityTitle { color: #111827; font-weight: 600; }
+QLabel#EngineeringSummaryText { color: #374151; }
+QFrame#OverviewDivider { color: #e5e7eb; background: #e5e7eb; max-height: 1px; border: 0; }
+
+QPushButton { min-height: 26px; padding: 2px 10px; }
+QPushButton[role="primary"] { color: white; background: #1261a0; border: 1px solid #1261a0; border-radius: 5px; font-weight: 600; }
+QPushButton[role="primary"]:hover { background: #0b4f86; }
+QToolButton#TechnicalCardSaveButton { color: white; background: #1261a0; border: 1px solid #1261a0; border-radius: 5px; padding: 3px 31px 3px 10px; font-weight: 600; }
+QToolButton#TechnicalCardSaveButton:hover { background: #0b4f86; }
+QToolButton#TechnicalCardSaveButton:pressed { background: #083f70; }
+QToolButton#TechnicalCardSaveButton:focus { border: 1px solid #083f70; }
+QToolButton#TechnicalCardSaveButton:disabled { background: #b8c1cc; border-color: #b8c1cc; color: #f5f7fa; }
+QPushButton[role="secondary"] { color: #1f2937; background: #ffffff; border: 1px solid #c5ccd5; border-radius: 5px; }
+QPushButton[role="secondary"]:hover { color: #1261a0; border-color: #1261a0; background: #f8fafc; }
+QPushButton[role="link"] { color: #1261a0; background: transparent; border: 0; padding: 2px 4px; font-weight: 600; }
+QPushButton[role="link"]:hover { color: #0b4f86; text-decoration: underline; }
+QPushButton[role="danger"] { color: #a33a32; background: #ffffff; border: 1px solid #d9a6a2; border-radius: 5px; }
+QPushButton:disabled { color: #9ca3af; }
+
+QLineEdit#GlobalSearch {
+    min-height: 28px; background: #ffffff; color: #111827;
+    border: 1px solid #c5ccd5; border-radius: 6px; padding: 2px 10px;
+    selection-background-color: #eaf3ff; selection-color: #111827;
+}
+QLineEdit#GlobalSearch:hover { border-color: #9aa6b5; }
+QLineEdit#GlobalSearch:focus { border: 1px solid #0b63ce; background: #ffffff; }
+
+QTableWidget#StandardTable {
+    background: #ffffff; alternate-background-color: #f8fafc;
+    border: 1px solid #d7dde6; border-radius: 7px; outline: 0;
+    gridline-color: transparent; selection-background-color: #eaf3ff;
+    selection-color: #111827;
+}
+QTableWidget#StandardTable QHeaderView::section {
+    background: #f1f4f8; color: #374151; border: 0;
+    border-right: 1px solid #e1e6ed; border-bottom: 1px solid #cfd6df;
+    padding: 7px 9px; font-weight: 600;
+}
+QTableWidget#StandardTable::item { border-bottom: 1px solid #edf0f4; padding: 5px 8px; }
+QTableWidget#StandardTable::item:hover { background: #f3f7fc; }
+QTableWidget#StandardTable::item:selected { background: #eaf3ff; color: #111827; }
+QLabel#EmptyState { color: #6b7280; background: #f8fafc; border: 1px dashed #c5ccd5; border-radius: 7px; padding: 24px; }
+
+QWidget#EngineeringWorkspace, QWidget#geomechanicsWorkspace { background: #f4f6f9; }
+QWidget#EngineeringWorkspace QGroupBox#drillingGroupCard,
+QWidget#EngineeringWorkspace QGroupBox#actualDrillingGroupCard {
+    background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px;
+    margin-top: 14px; padding: 12px 10px 10px 10px; font-weight: 600;
+}
+QWidget#EngineeringWorkspace QGroupBox#EngineeringCard {
+    background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px;
+    margin-top: 14px; padding: 10px; font-weight: 600;
+}
+QWidget#EngineeringWorkspace QGroupBox#EngineeringCard::title {
+    subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #111827;
+}
+QWidget#EngineeringWorkspace QGroupBox#drillingGroupCard::title,
+QWidget#EngineeringWorkspace QGroupBox#actualDrillingGroupCard::title {
+    subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #111827;
+}
+QWidget#EngineeringWorkspace QGroupBox#drillingDesignArea,
+QWidget#EngineeringWorkspace QGroupBox#chargeDesignArea,
+QWidget#EngineeringWorkspace QGroupBox#actualDrillingArea,
+QWidget#EngineeringWorkspace QGroupBox#actualChargeArea,
+QWidget#EngineeringWorkspace QGroupBox#actualExceptionArea {
+    background: #f8fafc; border: 1px solid #e1e6ed; border-radius: 6px;
+    margin-top: 13px; padding: 9px 8px 7px 8px; font-weight: 600;
+}
+QWidget#EngineeringWorkspace QGroupBox#drillingDesignArea::title,
+QWidget#EngineeringWorkspace QGroupBox#chargeDesignArea::title,
+QWidget#EngineeringWorkspace QGroupBox#actualDrillingArea::title,
+QWidget#EngineeringWorkspace QGroupBox#actualChargeArea::title,
+QWidget#EngineeringWorkspace QGroupBox#actualExceptionArea::title {
+    subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #374151;
+}
+QWidget#EngineeringWorkspace QComboBox, QWidget#geomechanicsWorkspace QComboBox {
+    min-height: 26px; background: #ffffff; color: #111827;
+    border: 1px solid #cfd6df; border-radius: 5px; padding: 1px 26px 1px 7px;
+}
+QWidget#EngineeringWorkspace QComboBox:hover, QWidget#geomechanicsWorkspace QComboBox:hover { border-color: #9aa6b5; }
+QWidget#EngineeringWorkspace QComboBox:focus, QWidget#geomechanicsWorkspace QComboBox:focus { border-color: #0b63ce; }
+QWidget#geomechanicsWorkspace QWidget#rockMassSection,
+QWidget#geomechanicsWorkspace QWidget#jointSetsSection,
+QWidget#geomechanicsWorkspace QWidget#qSystemSection,
+QWidget#geomechanicsWorkspace QWidget#structuralScreeningSection,
+QWidget#geomechanicsWorkspace QWidget#geomechanicsNotes {
+    background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px;
+}
+
+QTabWidget[entityTabs="true"]::pane { border: 0; background: transparent; top: -1px; }
+QTabWidget[entityTabs="true"] QTabBar::tab {
+    color: #6b7280; background: transparent; border: 0; border-bottom: 2px solid transparent;
+    padding: 7px 8px; margin-right: 0;
+}
+QTabWidget[entityTabs="true"] QTabBar::tab:selected { color: #1261a0; border-bottom-color: #1261a0; font-weight: 600; }
+QTabWidget[entityTabs="true"] QTabBar::tab:hover:!selected { color: #374151; background: #f8fafc; }
+QTabWidget[entityTabs="true"] QTabBar::tab:focus { outline: 1px solid #0b63ce; }
+
+QLabel#StatusBadge { border-radius: 5px; padding: 3px 7px; font-weight: 600; }
+QLabel#StatusBadge[statusRole="neutral"] { background: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }
+QLabel#StatusBadge[statusRole="info"] { background: #eaf3ff; color: #155fa0; border: 1px solid #9bc2e8; }
+QLabel#StatusBadge[statusRole="warning"] { background: #fff4d6; color: #8a5a00; border: 1px solid #f4c76b; }
+QLabel#StatusBadge[statusRole="success"] { background: #edf8f0; color: #2f6f3e; border: 1px solid #9bcaa6; }
+QLabel#StatusBadge[statusRole="error"] { background: #fff0f0; color: #a33a32; border: 1px solid #e0aaa5; }
+QLabel#StatusBadge[statusRole="archived"] { background: #eef0f3; color: #4b5563; border: 1px solid #cfd4dc; }
+QLabel#StaleBadge { background: #fff1c2; color: #8a5a00; border: 1px solid #e5b94d; border-radius: 4px; padding: 2px 5px; }
+
+QListWidget#SettingsNavigation { background: #f8fafc; border: 1px solid #d7dde6; border-radius: 6px; padding: 4px; }
+QListWidget#SettingsNavigation::item { min-height: 30px; margin: 2px 0; padding: 2px 8px; border-left: 3px solid transparent; }
+QListWidget#SettingsNavigation::item:hover:!selected { background: #eef1f5; color: #374151; }
+QListWidget#SettingsNavigation::item:selected { color: #1261a0; background: #eaf3ff; border-left-color: #1261a0; font-weight: 600; }
+QListWidget#SettingsNavigation::item:selected:hover { color: #1261a0; background: #eaf3ff; border-left-color: #1261a0; }
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus { border-color: #0b63ce; }
+"""
+
+_ICON_ROOT = Path(__file__).resolve().parent.parent / "app" / "icons" / "ui" / "svg" / "neutral"
+_COMBO_CHEVRON = (_ICON_ROOT / "chevron-down.svg").as_posix()
+_SAVE_CHEVRON = (_ICON_ROOT / "chevron-down-white.svg").as_posix()
+APPLICATION_STYLESHEET += f"""
+QWidget#EngineeringWorkspace QComboBox::drop-down,
+QWidget#geomechanicsWorkspace QComboBox::drop-down {{
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 25px; border: 0; border-left: 1px solid #e1e6ed;
+    background: #f8fafc; border-top-right-radius: 5px; border-bottom-right-radius: 5px;
+}}
+QWidget#EngineeringWorkspace QComboBox::down-arrow,
+QWidget#geomechanicsWorkspace QComboBox::down-arrow {{ image: url("{_COMBO_CHEVRON}"); width: 12px; height: 12px; }}
+QWidget#EngineeringWorkspace QComboBox:disabled,
+QWidget#geomechanicsWorkspace QComboBox:disabled {{ background: #f1f3f5; color: #9ca3af; border-color: #d7dde6; }}
+QWidget#EngineeringWorkspace QComboBox:disabled::drop-down,
+QWidget#geomechanicsWorkspace QComboBox:disabled::drop-down {{ background: #eef0f3; border-left-color: #d7dde6; }}
+QToolButton#TechnicalCardSaveButton::menu-button {{
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 26px; border: 0; border-left: 1px solid #3d7eb3;
+}}
+QToolButton#TechnicalCardSaveButton::menu-arrow {{ image: url("{_SAVE_CHEVRON}"); width: 12px; height: 12px; }}
+"""
+
+# Compatibility value for small widgets that cannot inherit the application
+# stylesheet (for example, independently rendered row delegates).
+STANDARD_ROW_STYLESHEET = (
+    "background:#ffffff;border:1px solid #d7dde6;border-radius:5px;"
+)
+
+
+def apply_theme(app: QApplication) -> None:
+    """Apply the presentation-only theme once, before any application dialogs."""
+    app.setStyleSheet(APPLICATION_STYLESHEET)

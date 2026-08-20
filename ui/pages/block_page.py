@@ -52,6 +52,7 @@ from ui.pages.technical_card_widgets import (
     BlastDesignEditorWidget,
     GeomechanicsEditorWidget,
     TechnicalCardEditorWidget,
+    TechnicalCardSaveButton,
 )
 from ui.presentation_labels import domain_message, format_assessment_elevation_interval
 
@@ -220,14 +221,11 @@ class BlockPage(QWidget):
         engineering_actions = QHBoxLayout(self.engineering_actions_widget)
         engineering_actions.setContentsMargins(0, 0, 0, 0)
         engineering_actions.addStretch()
-        self.save_engineering_draft = QPushButton(tr("Save draft"))
-        self.complete_engineering = QPushButton(tr("Complete"))
-        self.save_engineering_draft.setEnabled(False)
-        self.complete_engineering.setEnabled(False)
-        self.save_engineering_draft.clicked.connect(self._save_technical_card_draft)
-        self.complete_engineering.clicked.connect(self._complete_technical_card)
-        engineering_actions.addWidget(self.save_engineering_draft)
-        engineering_actions.addWidget(self.complete_engineering)
+        self.engineering_save = TechnicalCardSaveButton(
+            self._save_technical_card_draft, self._complete_technical_card
+        )
+        self.engineering_save.setEnabled(False)
+        engineering_actions.addWidget(self.engineering_save)
         left.addWidget(self.engineering_actions_widget)
         self.tabs.currentChanged.connect(self._sync_engineering_actions_visibility)
         body.addLayout(left, 1)
@@ -723,8 +721,7 @@ class BlockPage(QWidget):
                 pass
             old_editor.hide()
             old_editor.deleteLater()
-        self.save_engineering_draft.setEnabled(not editor.editor.read_only)
-        self.complete_engineering.setEnabled(not editor.editor.read_only)
+        self.engineering_save.setEnabled(not editor.editor.read_only)
 
     def _clear_engineering(self):
         self.engineering_summary.set_sections(())
@@ -734,8 +731,7 @@ class BlockPage(QWidget):
         self.geomechanics_tab.set_content(EmptySection())
         self.design_tab.set_content(EmptySection())
         self.execution_tab.set_content(EmptySection())
-        self.save_engineering_draft.setEnabled(False)
-        self.complete_engineering.setEnabled(False)
+        self.engineering_save.setEnabled(False)
         self._dispose_technical_card_editor()
         self.geometry_card.set_action_enabled(False)
 

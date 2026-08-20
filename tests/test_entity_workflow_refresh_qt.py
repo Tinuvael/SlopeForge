@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QApplication, QLabel
 from ui.pages.assessment_area_page import AssessmentAreaPage
 from ui.pages.block_page import BlockPage
 from ui.pages.contour_event_page import ContourEventPage
-from ui.pages.block_card_widgets import apply_workflow_badge_style
+from ui.pages.entity_overview_widgets import apply_status_badge
 
 
 @pytest.fixture(scope="module")
@@ -101,12 +101,10 @@ def test_assessment_complete_refreshes_header_without_navigation(app):
     assert header.text() == "Completed"
 
 
-def test_all_entity_workflow_badges_use_same_yellow_palette(app):
-    badges = [QLabel("Planned"), QLabel("Blasted"), QLabel("Completed")]
-    for badge in badges:
-        apply_workflow_badge_style(badge)
-    assert len({badge.styleSheet() for badge in badges}) == 1
-    style = badges[0].styleSheet()
-    assert "background:#fff4d6" in style
-    assert "color:#8a5a00" in style
-    assert "border:1px solid #f4c76b" in style
+def test_entity_workflow_badges_use_semantic_roles(app):
+    badges = {state: QLabel(state) for state in ("planned", "blasted", "completed")}
+    for state, badge in badges.items():
+        apply_status_badge(badge, state)
+    assert badges["planned"].property("statusRole") == "info"
+    assert badges["blasted"].property("statusRole") == "warning"
+    assert badges["completed"].property("statusRole") == "success"

@@ -40,7 +40,7 @@ from ui.pages.entity_overview_widgets import (
 )
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
-from ui.pages.technical_card_widgets import ActualExecutionEditorWidget, BlastDesignEditorWidget, TechnicalCardEditorWidget
+from ui.pages.technical_card_widgets import ActualExecutionEditorWidget, BlastDesignEditorWidget, TechnicalCardEditorWidget, TechnicalCardSaveButton
 from ui.presentation_labels import domain_message, format_assessment_elevation_interval
 
 
@@ -147,14 +147,9 @@ class ContourEventPage(QWidget):
         actions = QHBoxLayout(self.engineering_actions_widget)
         actions.setContentsMargins(0, 0, 0, 0)
         actions.addStretch()
-        self.draft_button = QPushButton(tr("Save draft"))
-        self.complete_button = QPushButton(tr("Complete"))
-        self.draft_button.setEnabled(not self.read_only)
-        self.complete_button.setEnabled(not self.read_only)
-        self.draft_button.clicked.connect(self.save_draft)
-        self.complete_button.clicked.connect(self.complete)
-        actions.addWidget(self.draft_button)
-        actions.addWidget(self.complete_button)
+        self.engineering_save = TechnicalCardSaveButton(self.save_draft, self.complete)
+        self.engineering_save.setEnabled(not self.read_only)
+        actions.addWidget(self.engineering_save)
         left.addWidget(self.engineering_actions_widget)
         body.addLayout(left, 1)
         self._sidebar(body)

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from app.localization import tr
 
-from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLabel, QHeaderView, QHBoxLayout, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from app.context import AppContext
 from infrastructure.services.session_service import RememberTokenService
 from infrastructure.services.user_admin_service import UserAdminService
 from ui.user_admin_dialogs import PasswordDialog, UserEditDialog
+from ui.widgets.design_system import configure_standard_table, set_button_role
 
 
 class UserAdminPage(QWidget):
@@ -16,6 +18,9 @@ class UserAdminPage(QWidget):
         self.context = context
         self.service = UserAdminService(context.session_factory)
         layout = QVBoxLayout(self)
+        title = QLabel(tr("Users")); title.setObjectName("SectionTitle"); layout.addWidget(title)
+        self.empty = QLabel(tr("No users found.")); self.empty.setObjectName("EmptyState")
+        self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter); layout.addWidget(self.empty)
         buttons = QHBoxLayout()
         self.create = QPushButton(tr("Create user"))
         self.edit = QPushButton(tr("Edit user"))
@@ -24,9 +29,21 @@ class UserAdminPage(QWidget):
         self.revoke = QPushButton(tr("End all saved sessions"))
         for button in (self.create, self.edit, self.password, self.toggle, self.revoke):
             buttons.addWidget(button)
+        set_button_role(self.create, "primary")
+        for button in (self.edit, self.password, self.toggle, self.revoke):
+            set_button_role(button, "secondary")
         buttons.addStretch(); layout.addLayout(buttons)
         self.table = QTableWidget(0, 8)
+        configure_standard_table(self.table)
         self.table.setHorizontalHeaderLabels([tr("Username"), tr("Full name"), tr("Role"), tr("Active"), tr("Created"), tr("Last login"), tr("Created by"), tr("Updated by")])
+        header = self.table.horizontalHeader()
+        for column in (0, 4, 5, 6, 7):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        for column, width in {0: 130, 4: 145, 5: 145, 6: 120, 7: 120}.items():
+            self.table.setColumnWidth(column, width)
         layout.addWidget(self.table)
         self.create.clicked.connect(self.create_user); self.edit.clicked.connect(self.edit_user); self.password.clicked.connect(self.change_password); self.toggle.clicked.connect(self.toggle_active); self.revoke.clicked.connect(self.revoke_sessions)
         enabled = context.current_user.role == "admin"
@@ -44,6 +61,7 @@ class UserAdminPage(QWidget):
             values = [user.username, user.full_name or "", user.role, "Yes" if user.is_active else "No", user.created_at.strftime("%Y-%m-%d %H:%M"), user.last_login_at.strftime("%Y-%m-%d %H:%M") if user.last_login_at else "", user.created_by or "", user.updated_by or ""]
             for col, value in enumerate(values):
                 self.table.setItem(row, col, QTableWidgetItem(value))
+        self.table.setVisible(bool(self.rows)); self.empty.setVisible(not self.rows)
 
     def selected_user(self):
         row = self.table.currentRow()

@@ -8,16 +8,9 @@ from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget, QSizePolicy
 
 from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget
 
-
-ENTITY_TABS_STYLE = """
-QTabWidget::pane {
-    border: 1px solid #dfe3ea;
-    border-radius: 6px;
-}
-QTabBar::tab:selected {
-    color: #0b63ce;
-}
-"""
+# Kept for callers/tests that imported the old page-local style. Presentation is
+# now supplied by the application theme through the ``entityTabs`` property.
+ENTITY_TABS_STYLE = ""
 
 
 class EntityTabWidget(QTabWidget):
@@ -42,6 +35,8 @@ class EntityTabWidget(QTabWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self.setProperty("entityTabs", True)
+        self.setDocumentMode(True)
         self.setMinimumHeight(0)
         QTabWidget.setSizePolicy(
             self,
@@ -79,7 +74,6 @@ class EntityTabWidget(QTabWidget):
 def create_entity_tabs(parent: QWidget | None = None) -> QTabWidget:
     """Create the standard stable entity tab container."""
     tabs = EntityTabWidget(parent)
-    tabs.setStyleSheet(ENTITY_TABS_STYLE)
     return tabs
 
 

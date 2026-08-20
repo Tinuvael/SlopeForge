@@ -123,7 +123,7 @@ def test_representative_active_screen_labels_are_translated():
 def test_internal_group_ids_are_not_rendered_in_technical_card():
     source = (ROOT / "ui" / "editors" / "technical_card_editor.py").read_text(encoding="utf-8")
     assert 'QGroupBox(f"{display_name} — {group.group_type}")' not in source
-    assert 'QGroupBox(display_name)' in source
+    assert 'QLabel(display_name)' in source
 
 
 def test_header_tree_and_block_tabs_use_translated_presentation_labels():
