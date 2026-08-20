@@ -37,6 +37,7 @@ class TechnicalCardEditorWidget(QWidget):
             if self.tabs.tabText(index)==title:
                 page=self.tabs.widget(index); self.tabs.removeTab(index)
                 page.setProperty("blastEventType",self.editor.blast_event.event_type)
+                page.setVisible(True)
                 return page
         return QWidget()
     def save_draft(self): return False if self.editor.read_only else self.editor._save("draft")

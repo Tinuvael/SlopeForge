@@ -70,8 +70,8 @@ def test_geomechanics_workspace_uses_four_quadrants_and_compact_notes_row():
     assert qsystem.y() < screening.y()
     assert notes.y() > joints.y() and notes.y() > screening.y()
 
-    notes_label = notes.findChild(widgets.QLabel, "EngineeringInlineLabel")
-    assert notes_label is not None
+    notes_label = next(label for label in notes.findChildren(widgets.QLabel)
+                       if label.objectName() == "EngineeringSectionTitle" and label.text() == "Notes")
     assert notes_label.parentWidget() is notes
     assert dialog.geo_notes.parentWidget() is notes
 

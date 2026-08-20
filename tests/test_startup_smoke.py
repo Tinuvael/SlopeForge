@@ -28,6 +28,8 @@ class FakeQApplication:
         self.argv = argv
     def exec(self):
         return 0
+    def setStyleSheet(self, stylesheet):
+        self.stylesheet = stylesheet
 
 
 class FakeMessageBox:
@@ -113,6 +115,7 @@ def load_main_with_fakes(monkeypatch):
         "infrastructure.services.auth_service": {"AuthService": FakeAuthService},
         "infrastructure.services.session_service": {"RememberTokenService": FakeRememberTokenService},
         "ui.auth_dialogs": {"FirstAdminDialog": FakeDialog, "LoginDialog": FakeDialog},
+        "ui.connection_dialog": {"ConnectionSetupDialog": FakeDialog},
         "ui.main_window": {"MainWindow": FakeMainWindow},
     }
     from app.context import AppContext
