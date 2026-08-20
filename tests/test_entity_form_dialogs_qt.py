@@ -179,9 +179,10 @@ def test_horizon_chevrons_own_hit_area_and_respect_non_editable_states(qapp):
     spinbox = dialog.elevation
 
     for button in (spinbox.up_button, spinbox.down_button):
-        point_in_spinbox = button.mapTo(spinbox, button.rect().center())
-        assert spinbox.childAt(point_in_spinbox) is button
-        assert isinstance(spinbox.childAt(point_in_spinbox), QToolButton)
+        for point in _button_test_points(button):
+            point_in_spinbox = button.mapTo(spinbox, point)
+            assert spinbox.childAt(point_in_spinbox) is button
+            assert isinstance(spinbox.childAt(point_in_spinbox), QToolButton)
 
     spinbox.setValue(630)
     spinbox.setDisabled(True)
@@ -205,5 +206,7 @@ def test_contour_metadata_horizon_uses_chevron_spinbox(qapp):
     QApplication.processEvents()
 
     assert isinstance(dialog.horizon, ChevronDoubleSpinBox)
+    assert dialog.horizon.objectName() == "horizon"
+    assert dialog.horizon.property("standardChevronSpinBox") is True
     QTest.mouseClick(dialog.horizon.up_button, Qt.MouseButton.LeftButton)
     assert dialog.horizon.value() == 641

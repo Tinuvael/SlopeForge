@@ -28,6 +28,10 @@ class ChevronDoubleSpinBox(QDoubleSpinBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("ChevronDoubleSpinBox")
+        # Entity dialogs may assign a semantic object name (for example,
+        # ``horizon``).  Keep styling attached to the control type even when
+        # that happens instead of relying on this initial object name.
+        self.setProperty("standardChevronSpinBox", True)
         self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
 
         self.up_button = self._step_button("ChevronSpinUpButton", "chevron-up.svg")
