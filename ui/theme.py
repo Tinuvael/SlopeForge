@@ -80,6 +80,15 @@ QPushButton[role="link"]:hover { color: #0b4f86; text-decoration: underline; }
 QPushButton[role="danger"] { color: #a33a32; background: #ffffff; border: 1px solid #d9a6a2; border-radius: 5px; }
 QPushButton:disabled { color: #9ca3af; }
 
+QWidget#DialogActions QPushButton {
+    min-height: 32px; max-height: 32px; padding: 0 12px;
+    border-radius: 5px; text-align: center;
+}
+QWidget#DialogActions QPushButton[role="primary"]:pressed { background: #083f70; border-color: #083f70; }
+QWidget#DialogActions QPushButton[role="primary"]:focus { border: 1px solid #083f70; }
+QWidget#DialogActions QPushButton[role="secondary"]:pressed { background: #eef3f8; border-color: #8d99a8; color: #0b4f86; }
+QWidget#DialogActions QPushButton[role="secondary"]:focus { border: 1px solid #0b63ce; }
+
 QDialog#StandardEntityDialog QLineEdit,
 QDialog#StandardEntityDialog QTextEdit,
 QDialog#StandardEntityDialog QDateEdit,
@@ -88,7 +97,8 @@ QDialog#StandardEntityDialog QComboBox {
     border: 1px solid #cfd6df; border-radius: 5px; padding: 2px 7px;
     selection-background-color: #eaf3ff; selection-color: #111827;
 }
-QDialog#StandardEntityDialog QComboBox { padding-right: 27px; }
+QDialog#StandardEntityDialog QComboBox,
+QDialog#StandardEntityDialog QDateEdit { padding-right: 27px; }
 QDialog#StandardEntityDialog QLineEdit:disabled,
 QDialog#StandardEntityDialog QTextEdit:disabled,
 QDialog#StandardEntityDialog QDateEdit:disabled,
@@ -204,6 +214,18 @@ QDialog#StandardEntityDialog QComboBox::drop-down {{
     background: #f8fafc; border-top-right-radius: 5px; border-bottom-right-radius: 5px;
 }}
 QDialog#StandardEntityDialog QComboBox::down-arrow {{ image: url("{_COMBO_CHEVRON}"); width: 12px; height: 12px; }}
+QDialog#StandardEntityDialog QDateEdit::drop-down {{
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 25px; border: 0; border-left: 1px solid #e1e6ed;
+    background: #f8fafc; border-top-right-radius: 5px; border-bottom-right-radius: 5px;
+}}
+QDialog#StandardEntityDialog QDateEdit::down-arrow {{ image: url("{_COMBO_CHEVRON}"); width: 12px; height: 12px; }}
+QDialog#StandardEntityDialog QComboBox:hover::drop-down,
+QDialog#StandardEntityDialog QDateEdit:hover::drop-down {{ background: #eef3f8; }}
+QDialog#StandardEntityDialog QComboBox:focus::drop-down,
+QDialog#StandardEntityDialog QDateEdit:focus::drop-down {{ border-left-color: #9bc2e8; }}
+QDialog#StandardEntityDialog QComboBox:disabled::drop-down,
+QDialog#StandardEntityDialog QDateEdit:disabled::drop-down {{ background: #eef0f3; border-left-color: #d7dde6; }}
 QWidget#EngineeringWorkspace QComboBox::drop-down,
 QWidget#geomechanicsWorkspace QComboBox::drop-down {{
     subcontrol-origin: padding; subcontrol-position: top right;

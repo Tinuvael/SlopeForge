@@ -78,8 +78,16 @@ def standard_dialog_actions(
     actions.setContentsMargins(0, 0, 0, 0)
     actions.setSpacing(Spacing.SM)
     actions.addStretch(1)
-    cancel = set_button_role(QPushButton(tr("Cancel")), "secondary")
-    primary = set_button_role(QPushButton(tr(primary_text)), "primary")
+    cancel = set_button_role(QPushButton(tr("Cancel"), container), "secondary")
+    primary = set_button_role(QPushButton(tr(primary_text), container), "primary")
+    # Do not leave the native style to derive tiny, text-sized action targets.
+    # Explicit geometry also keeps the painted button and its mouse hit rect equal
+    # on Windows styles.
+    cancel.setMinimumWidth(96)
+    primary.setMinimumWidth(108)
+    cancel.setFixedHeight(32)
+    primary.setFixedHeight(32)
+    cancel.setAutoDefault(False)
     primary.setDefault(True)
     cancel.clicked.connect(dialog.reject)
     primary.clicked.connect(accept or dialog.accept)
