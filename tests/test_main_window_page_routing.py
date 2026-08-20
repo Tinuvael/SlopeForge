@@ -56,7 +56,7 @@ def test_site_dashboard_owns_project_lines_management():
     page=source("ui/pages/dashboards/site_dashboard.py")
     assert "class SiteDashboardPage" in page
     assert 'primary_action_label="Project Lines"' in page
-    assert 'tr("Import Project Lines")' in page and 'tr("Update Project Lines")' in page
+    assert 'tr("Import lines")' in page and 'tr("Update lines")' in page
     assert "ProjectLinesCard" in page
     assert "ProjectLinesRepository" in page
     assert "QTabWidget" not in page and "QScrollArea" not in page
