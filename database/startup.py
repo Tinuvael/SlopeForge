@@ -96,12 +96,13 @@ def _verify_alembic_revision(engine, server: str | None) -> None:
     )
 
 
-def initialize_database_runtime():
+def initialize_database_runtime(settings: Settings | None = None):
+    runtime_settings: Settings | None = settings
     try:
-        settings = Settings.from_env()
-        engine = create_database_engine(settings)
+        runtime_settings = runtime_settings or Settings.from_env()
+        engine = create_database_engine(runtime_settings)
         check_connection(engine)
-        server = safe_database_location(settings.database_url)
+        server = safe_database_location(runtime_settings.database_url)
         _verify_alembic_revision(engine, server)
         configure_mappers()
         existing = set(inspect(engine).get_table_names())
@@ -112,22 +113,14 @@ def initialize_database_runtime():
                 "Required tables were not found in the database: " + ", ".join(missing[:8]) + ("..." if len(missing) > 8 else ""),
                 server,
             )
-        return settings, engine, create_session_factory(engine)
+        return runtime_settings, engine, create_session_factory(engine)
     except ConfigurationError as exc:
         raise StartupError(str(exc), reason="configuration_error",
-                           actions=("Check DATABASE_URL and STORAGE_ROOT in environment variables or .env.",)) from exc
+                           actions=("Configure the PostgreSQL server and file storage in SlopeForge Settings.",)) from exc
     except DatabaseConnectionError as exc:
-        server = None
-        try:
-            server = safe_database_location(Settings.from_env().database_url)
-        except Exception:
-            server = None
+        server = safe_database_location(runtime_settings.database_url) if runtime_settings else None
         raise StartupError(str(exc), server, reason="connection_error") from exc
     except SQLAlchemyError as exc:
-        server = None
-        try:
-            server = safe_database_location(Settings.from_env().database_url)
-        except Exception:
-            server = None
+        server = safe_database_location(runtime_settings.database_url) if runtime_settings else None
         raise StartupError("Could not connect to the database or verify tables.", server,
                            reason="database_error") from exc
