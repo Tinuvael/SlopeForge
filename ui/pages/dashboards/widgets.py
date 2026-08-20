@@ -45,10 +45,7 @@ DASHBOARD_ROW_STYLE = (
     "QFrame#DashboardSummaryRow,QWidget#ProjectLinesDatasetRow{"
     "background:#ffffff;border:1px solid #d7dde6;border-radius:5px;}"
 )
-DASHBOARD_ROW_SELECTED_STYLE = (
-    "QFrame#DashboardSummaryRow{background:#f5f9ff;border:1px solid #8fb4dc;"
-    "border-radius:5px;}"
-)
+DASHBOARD_SELECTION_MARKER_COLOR = "#7a1f8f"
 
 QuadrantPresentation = AssessmentResultPresentation
 
@@ -226,6 +223,7 @@ class CompactSummaryList(DashboardCard):
         self.fill_available = bool(fill_available)
         self._selected_key: str | None = None
         self._row_widgets: dict[str, SummaryRowWidget] = {}
+        self._selection_markers: dict[str, QFrame] = {}
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(4)
@@ -244,11 +242,16 @@ class CompactSummaryList(DashboardCard):
             self.layout.addStretch(1)
         self.set_rows([])
 
+    @staticmethod
+    def _set_selection_marker(marker: QFrame, selected: bool) -> None:
+        color = DASHBOARD_SELECTION_MARKER_COLOR if selected else "transparent"
+        marker.setStyleSheet(
+            f"background:{color};border:0;border-radius:2px;"
+        )
+
     def _apply_row_selection(self) -> None:
-        for key, holder in self._row_widgets.items():
-            holder.setStyleSheet(
-                DASHBOARD_ROW_SELECTED_STYLE if key == self._selected_key else DASHBOARD_ROW_STYLE
-            )
+        for key, marker in self._selection_markers.items():
+            self._set_selection_marker(marker, key == self._selected_key)
 
     def _activate_row(self, key: str) -> None:
         self._selected_key = None if self._selected_key == key else key
@@ -264,6 +267,7 @@ class CompactSummaryList(DashboardCard):
         self.list.clear()
         self._selected_key = None
         self._row_widgets = {}
+        self._selection_markers = {}
         rows = list(rows)
         if self.fill_available:
             self.list.setMinimumHeight(self.ROW_HEIGHT + 4)
@@ -292,11 +296,28 @@ class CompactSummaryList(DashboardCard):
             holder.clicked.connect(lambda current_key=key: self._activate_row(current_key))
             self._row_widgets[key] = holder
             layout = QHBoxLayout(holder)
-            layout.setContentsMargins(7, 4, 8, 4)
-            layout.setSpacing(7)
+            layout.setContentsMargins(5, 4, 8, 4)
+            layout.setSpacing(4)
+
+            selection_marker = QFrame()
+            selection_marker.setObjectName("DashboardSelectionMarker")
+            selection_marker.setFixedWidth(3)
+            selection_marker.setSizePolicy(
+                QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
+            )
+            selection_marker.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+            )
+            self._set_selection_marker(selection_marker, False)
+            self._selection_markers[key] = selection_marker
+            layout.addWidget(selection_marker)
+
             if row.accent:
                 accent = QFrame()
                 accent.setFixedWidth(4)
+                accent.setSizePolicy(
+                    QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
+                )
                 accent.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
                 accent.setStyleSheet(
                     f"background:{row.accent};border:0;border-radius:2px;"
