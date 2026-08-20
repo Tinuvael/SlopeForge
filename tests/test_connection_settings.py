@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.engine import make_url
 
+import app.connection_settings as connection_settings_module
 from app.connection_settings import (
     ConnectionProfile,
     ConnectionSettingsError,
@@ -13,6 +14,12 @@ from app.connection_settings import (
     resolve_runtime_settings,
     validate_storage_root,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolate_local_env(monkeypatch):
+    """Keep unit tests independent from a developer's repository-local .env file."""
+    monkeypatch.setattr(connection_settings_module, "load_local_env", lambda: None)
 
 
 def profile(storage_root: Path) -> ConnectionProfile:
