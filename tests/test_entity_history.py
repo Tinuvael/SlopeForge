@@ -169,6 +169,14 @@ def test_history_text_localizes_known_actions_without_changing_canonical_entries
     assert canonical.details == "Technical Card R2"
 
 
+def test_recent_activity_cards_use_shared_history_presentation_helper():
+    shared = Path("ui/pages/entity_overview_widgets.py").read_text(encoding="utf-8")
+    block = Path("ui/pages/block_overview_widgets.py").read_text(encoding="utf-8")
+    for source in (shared, block):
+        assert "history_text(entry.title)" in source
+        assert "tr(entry.title)" not in source
+
+
 def test_history_revision_action_only_enables_for_revision_backed_rows():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.entity_history_widget import EntityHistoryWidget

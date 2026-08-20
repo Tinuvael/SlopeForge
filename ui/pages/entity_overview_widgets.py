@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from app.icons.ui.ui_icons import ui_icon
 from app.localization import tr
 from ui.dialogs.entity_attachment_dialog import PhotoViewer
+from ui.presentation_labels import history_text
 from ui.widgets.design_system import CardFrame, set_button_role, set_status_role
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 
@@ -444,7 +445,7 @@ class RecentActivityCard(CardFrame):
             layout = QVBoxLayout(box)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(1)
-            title = QLabel(f"●  {tr(entry.title)}")
+            title = QLabel(f"●  {history_text(entry.title)}")
             title.setObjectName("ActivityTitle")
             stamp = entry.timestamp.strftime("%d.%m.%Y %H:%M") if entry.timestamp else "—"
             actor = entry.actor or "—"
