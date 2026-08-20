@@ -4,8 +4,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QFrame, QHeaderView, QLabel, QPushButton, QTableWidget,
-    QVBoxLayout,
+    QAbstractItemView, QDialog, QFormLayout, QFrame, QHeaderView, QHBoxLayout,
+    QLabel, QPushButton, QTableWidget, QVBoxLayout, QWidget,
 )
 
 from app.localization import tr
@@ -43,6 +43,49 @@ def set_status_role(label: QLabel, role: str) -> QLabel:
     label.style().unpolish(label)
     label.style().polish(label)
     return label
+
+
+def configure_standard_dialog(dialog: QDialog, *, minimum_width: int = 520) -> QVBoxLayout:
+    """Apply the compact entity-dialog shell without owning dialog behavior."""
+    dialog.setObjectName("StandardEntityDialog")
+    dialog.setMinimumWidth(minimum_width)
+    root = QVBoxLayout(dialog)
+    root.setContentsMargins(Spacing.LG, Spacing.LG, Spacing.LG, Spacing.MD)
+    root.setSpacing(Spacing.MD)
+    return root
+
+
+def create_form_section(title: str, parent=None) -> tuple[QFrame, QFormLayout]:
+    """Create a standard white card and its aligned two-column form."""
+    card = CardFrame(title, parent)
+    form = QFormLayout()
+    form.setContentsMargins(0, 0, 0, 0)
+    form.setHorizontalSpacing(Spacing.MD)
+    form.setVerticalSpacing(Spacing.SM)
+    form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    card.layout.addLayout(form)
+    return card, form
+
+
+def standard_dialog_actions(
+    dialog: QDialog, primary_text: str, *, accept=None,
+) -> tuple[QWidget, QPushButton, QPushButton]:
+    """Return a right-aligned Cancel + single-primary action row."""
+    container = QWidget(dialog)
+    container.setObjectName("DialogActions")
+    actions = QHBoxLayout(container)
+    actions.setContentsMargins(0, 0, 0, 0)
+    actions.setSpacing(Spacing.SM)
+    actions.addStretch(1)
+    cancel = set_button_role(QPushButton(tr("Cancel")), "secondary")
+    primary = set_button_role(QPushButton(tr(primary_text)), "primary")
+    primary.setDefault(True)
+    cancel.clicked.connect(dialog.reject)
+    primary.clicked.connect(accept or dialog.accept)
+    actions.addWidget(cancel)
+    actions.addWidget(primary)
+    return container, cancel, primary
 
 
 def configure_standard_table(table: QTableWidget) -> QTableWidget:

@@ -3,15 +3,17 @@ from pathlib import Path
 
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox,
-    QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-    QPushButton, QVBoxLayout,
+    QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox,
+    QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
 )
 
 from app.localization import tr
 from application.services.blast_events import BlastEventService, BlastEventValidationError
 from application.state.assessment_domain_state import AssessmentDomainState
 from ui.presentation_labels import domain_message
+from ui.widgets.design_system import (
+    configure_standard_dialog, create_form_section, set_button_role, standard_dialog_actions,
+)
 
 
 class BlastEventDialog(QDialog):
@@ -26,34 +28,60 @@ class BlastEventDialog(QDialog):
         self.elevation_is_manual = False
         self.preview = None
         self.setWindowTitle(tr("Create Blast Event"))
-        layout = QVBoxLayout(self)
-        form = QFormLayout()
-        self.name = QLineEdit(); self.name.textEdited.connect(self._name_edited)
-        self.kind = QComboBox(); self.kind.addItems(["production", "contour"])
+        layout = configure_standard_dialog(self, minimum_width=580)
+        general, form = create_form_section("General", self)
+        self.name = QLineEdit()
+        self.name.textEdited.connect(self._name_edited)
+        self.kind = QComboBox()
+        self.kind.addItems(["production", "contour"])
         self.has_date = QCheckBox(tr("Set planned date"))
-        self.date = QDateEdit(QDate.currentDate()); self.date.setCalendarPopup(True); self.date.setEnabled(False)
+        self.date = QDateEdit(QDate.currentDate())
+        self.date.setCalendarPopup(True)
+        self.date.setEnabled(False)
         self.has_date.toggled.connect(self.date.setEnabled)
-        self.elevation = QDoubleSpinBox(); self.elevation.setRange(-10000, 10000)
-        self.elevation.setDecimals(0); self.elevation.setSingleStep(1)
-        self.elevation.valueChanged.connect(self._elevation_changed)
+        form.addRow(tr("Title *"), self.name)
+        form.addRow(tr("Type *"), self.kind)
+        date_row = QHBoxLayout()
+        date_row.setContentsMargins(0, 0, 0, 0)
+        date_row.addWidget(self.has_date)
+        date_row.addWidget(self.date, 1)
+        form.addRow(tr("Planned blast date"), date_row)
+        layout.addWidget(general)
+
+        geometry, geometry_form = create_form_section("Geometry", self)
         self.csv = QLineEdit()
-        browse = QPushButton(tr("Select geometry file")); browse.clicked.connect(self._choose_csv)
-        file_row = QHBoxLayout(); file_row.addWidget(self.csv); file_row.addWidget(browse)
-        auto = QPushButton(tr("Detect automatically")); auto.clicked.connect(self._auto_detect)
-        elevation_row = QHBoxLayout(); elevation_row.addWidget(self.elevation); elevation_row.addWidget(auto)
+        self.csv.setPlaceholderText(tr("No file selected"))
+        self.browse_button = set_button_role(QPushButton(tr("Browse...")), "secondary")
+        self.browse_button.clicked.connect(self._choose_csv)
+        file_row = QHBoxLayout()
+        file_row.setContentsMargins(0, 0, 0, 0)
+        file_row.addWidget(self.csv, 1)
+        file_row.addWidget(self.browse_button)
+        self.elevation = QDoubleSpinBox()
+        self.elevation.setRange(-10000, 10000)
+        self.elevation.setDecimals(0)
+        self.elevation.setSingleStep(1)
+        self.elevation.valueChanged.connect(self._elevation_changed)
+        self.detect_button = set_button_role(QPushButton(tr("Detect automatically")), "secondary")
+        self.detect_button.clicked.connect(self._auto_detect)
+        elevation_row = QHBoxLayout()
+        elevation_row.setContentsMargins(0, 0, 0, 0)
+        elevation_row.addWidget(self.elevation, 1)
+        elevation_row.addWidget(self.detect_button)
+        geometry_form.addRow(tr("Geometry file *"), file_row)
+        geometry_form.addRow(tr("Horizon, m *"), elevation_row)
         self.auto_status = QLabel(tr("Select a geometry file to detect the horizon automatically"))
+        self.auto_status.setObjectName("FormHelperText")
         self.auto_status.setWordWrap(True)
-        form.addRow(tr("Title *"), self.name); form.addRow(tr("Type *"), self.kind)
-        date_row = QHBoxLayout(); date_row.addWidget(self.has_date); date_row.addWidget(self.date)
-        form.addRow(tr("Planned blast date"), date_row); form.addRow(tr("Horizon *"), elevation_row)
-        form.addRow(tr("Geometry file *"), file_row); form.addRow("", self.auto_status)
-        layout.addLayout(form)
-        self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        self.buttons.button(QDialogButtonBox.StandardButton.Save).setText(tr("Save"))
-        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr("Cancel"))
-        self.buttons.accepted.connect(self._validate_and_accept); self.buttons.rejected.connect(self.reject)
-        layout.addWidget(self.buttons)
+        geometry.layout.addWidget(self.auto_status)
+        layout.addWidget(geometry)
+        actions, self.cancel_button, self.create_button = standard_dialog_actions(
+            self, "Create", accept=self._validate_and_accept,
+        )
+        self.buttons = actions
+        layout.addWidget(actions)
         self.kind.currentTextChanged.connect(self._event_type_changed)
+        self.name.setFocus()
 
     def _choose_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, tr("Select geometry file"), "", tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))

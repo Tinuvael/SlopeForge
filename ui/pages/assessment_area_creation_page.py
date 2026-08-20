@@ -10,6 +10,8 @@ from ui.editors.assessment_geometry_editor import AssessmentGeometryEditorWidget
 from ui.pages.entity_page_controller import EntityPageController
 from ui.presentation_labels import domain_message, format_assessment_elevation_interval
 from ui.widgets.assessment_wizard_stepper import AssessmentWizardStepper
+from ui.widgets.design_system import set_button_role
+from ui.theme import Spacing
 
 
 class AssessmentAreaCreationPage(QWidget):
@@ -41,9 +43,12 @@ class AssessmentAreaCreationPage(QWidget):
             self.editor.inspect_area(edit_area_id)
 
         self.setObjectName("assessmentWorkflowPage")
-        root = QVBoxLayout(self); root.setContentsMargins(14, 12, 14, 12); root.setSpacing(9)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(Spacing.CARD_HORIZONTAL, Spacing.CARD_VERTICAL,
+                                Spacing.CARD_HORIZONTAL, Spacing.CARD_VERTICAL)
+        root.setSpacing(Spacing.SM)
         title = QLabel("Edit Assessment Area boundary" if edit_area_id else "Create Assessment Area")
-        title.setObjectName("assessmentPageTitle"); root.addWidget(title)
+        title.setObjectName("EntityTitle"); root.addWidget(title)
         self.stepper = AssessmentWizardStepper(); root.addWidget(self.stepper)
 
         workspace = QHBoxLayout(); workspace.setSpacing(10)
@@ -87,39 +92,22 @@ class AssessmentAreaCreationPage(QWidget):
         footer_layout = QHBoxLayout(self.footer); footer_layout.setContentsMargins(10, 7, 10, 7)
         self.cancel = QPushButton(tr("Cancel")); self.cancel.clicked.connect(self._close_page)
         self.cancel.setObjectName("assessmentQuietAction")
+        set_button_role(self.cancel, "secondary")
         self.footer_status = QLabel(); footer_layout.addWidget(self.cancel); footer_layout.addWidget(self.footer_status)
         footer_layout.addStretch(1)
         self.back = QPushButton(tr("Back")); self.back.clicked.connect(self._back)
         self.back.setObjectName("assessmentSecondaryAction")
+        set_button_role(self.back, "secondary")
         self.next = QPushButton(tr("Next")); self.next.clicked.connect(self._next)
         self.next.setObjectName("assessmentPrimaryAction")
+        set_button_role(self.next, "primary")
         self.confirm = QPushButton(tr("Save revision") if edit_area_id else tr("Save Assessment")); self.confirm.clicked.connect(self._confirm)
         self.confirm.setObjectName("assessmentPrimaryAction")
+        set_button_role(self.confirm, "primary")
         for action in (self.cancel, self.back, self.next, self.confirm): action.setMinimumHeight(32)
         footer_layout.addWidget(self.back); footer_layout.addWidget(self.next); footer_layout.addWidget(self.confirm)
         root.addWidget(self.footer)
 
-        self.setStyleSheet("""
-            #assessmentWorkflowPage { background: #F5F7F9; }
-            #assessmentPageTitle { color:#23313F; font-size:17px; font-weight:700; }
-            QFrame#assessmentInfoCard, QFrame#assessmentPlanCard, QFrame#assessmentContextCard,
-            QFrame#assessmentFooter { background:#FFFFFF; border:1px solid #D9E0E7; border-radius:6px; }
-            QLabel#assessmentCardTitle { color:#23313F; font-size:13px; font-weight:700; }
-            QLabel#assessmentSectionTitle { color:#687481; font-size:10px; font-weight:700; }
-            QLabel#assessmentFieldLabel { color:#687481; }
-            QLabel#assessmentFieldValue { color:#23313F; }
-            QLabel#assessmentPlanStatus { color:#687481; }
-            QLabel#assessmentValidation { color:#B0443E; }
-            QPushButton#assessmentPrimaryAction { background:#1769AA; color:#FFFFFF; border:1px solid #1769AA;
-                border-radius:4px; padding:4px 14px; font-weight:600; }
-            QPushButton#assessmentPrimaryAction:hover { background:#135D97; }
-            QPushButton#assessmentPrimaryAction:disabled { background:#A8BDD0; border-color:#A8BDD0; }
-            QPushButton#assessmentSecondaryAction { background:#FFFFFF; color:#314252; border:1px solid #B8C4CE;
-                border-radius:4px; padding:4px 13px; }
-            QPushButton#assessmentQuietAction { background:transparent; color:#687481; border:1px solid transparent;
-                border-radius:4px; padding:4px 10px; }
-            QPushButton#assessmentQuietAction:hover { background:#EEF2F5; }
-        """)
         self.editor.workflow_state_changed.connect(self._sync_ui)
         # Compatibility for legitimate lower-level confirm_boundaries() callers.
         self.editor.area_created.connect(self.area_created)

@@ -1,52 +1,27 @@
+from PySide6.QtWidgets import QDialog, QLineEdit, QTextEdit
 
 from app.localization import tr
-from PySide6.QtWidgets import (
-    QDialog,
-    QLabel,
-    QLineEdit,
-    QTextEdit,
-    QPushButton,
-    QHBoxLayout,
-    QVBoxLayout,
-)
+from ui.widgets.design_system import configure_standard_dialog, create_form_section, standard_dialog_actions
 
 
 class AddDialog(QDialog):
+    """Active compact Domain creator; public field contract is retained."""
 
-    def __init__(self, item_type: str):
-        super().__init__()
-
+    def __init__(self, item_type: str, parent=None):
+        super().__init__(parent)
         self.item_type = item_type
-
-        self.setWindowTitle(f"Create {item_type}")
-        self.setFixedSize(420, 230)
-
-        layout = QVBoxLayout(self)
-
-        layout.addWidget(QLabel(tr("Name")))
-
+        title = tr("Create Domain") if item_type.lower() == "domain" else tr(f"Create {item_type}")
+        self.setWindowTitle(title)
+        root = configure_standard_dialog(self, minimum_width=520)
+        general, form = create_form_section("General", self)
         self.name = QLineEdit()
-        self.name.setPlaceholderText(f"{item_type} name...")
-        layout.addWidget(self.name)
-
-        layout.addWidget(QLabel(tr("Description")))
-
+        self.name.setPlaceholderText(tr("Domain name") if item_type.lower() == "domain" else tr(f"{item_type} name"))
         self.description = QTextEdit()
-        self.description.setMaximumHeight(80)
-        layout.addWidget(self.description)
-
-        buttons = QHBoxLayout()
-
-        buttons.addStretch()
-
-        cancel = QPushButton(tr("Cancel"))
-        create = QPushButton(tr("Create"))
-
-        cancel.clicked.connect(self.reject)
-        create.clicked.connect(self.accept)
-
-        buttons.addWidget(cancel)
-        buttons.addWidget(create)
-
-        layout.addStretch()
-        layout.addLayout(buttons)
+        self.description.setMaximumHeight(82)
+        self.description.setTabChangesFocus(True)
+        form.addRow(tr("Name"), self.name)
+        form.addRow(tr("Description"), self.description)
+        root.addWidget(general)
+        actions, self.cancel_button, self.create_button = standard_dialog_actions(self, "Create")
+        root.addWidget(actions)
+        self.name.setFocus()

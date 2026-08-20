@@ -39,11 +39,19 @@ class Spacing:
 APPLICATION_STYLESHEET = """
 QMainWindow, QDialog { background: #f4f6f9; color: #111827; }
 QWidget#DashboardPage { background: #f4f6f9; }
+QWidget#assessmentWorkflowPage { background: #f4f6f9; }
 QFrame#CardFrame, QFrame#DashboardCard, QFrame#DashboardMetricCard,
 QFrame#DashboardHeaderCard, QFrame#ConnectionCard, QFrame#EngineeringCard,
 QFrame#CriterionCard, QFrame#ResultCard {
     background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px;
 }
+QFrame#assessmentInfoCard, QFrame#assessmentPlanCard, QFrame#assessmentContextCard,
+QFrame#assessmentFooter { background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px; }
+QLabel#assessmentCardTitle { color: #1f2937; font-weight: 600; }
+QLabel#assessmentSectionTitle { color: #6b7280; font-weight: 600; }
+QLabel#assessmentFieldLabel, QLabel#assessmentPlanStatus { color: #6b7280; }
+QLabel#assessmentFieldValue { color: #111827; }
+QLabel#assessmentValidation { color: #a33a32; }
 QFrame#DashboardSummaryRow, QWidget#ProjectLinesDatasetRow, QWidget#StandardRow {
     background: #ffffff; border: 1px solid #d7dde6; border-radius: 5px;
 }
@@ -51,6 +59,8 @@ QLabel#EntityTitle, QLabel#BlockTitle { color: #111827; font-size: 22px; font-we
 QLabel#CardTitle, QLabel#EngineeringSectionTitle, QLabel#RelatedEntityTitle,
 QLabel#SectionTitle, QLabel#EngineeringGroupTitle { color: #1f2937; font-weight: 600; }
 QLabel#MutedText, QLabel#EntityContextLine, QLabel#CalculatedCaption { color: #6b7280; }
+QLabel#FormHelperText { color: #6b7280; }
+QLabel#FormValidationText { color: #a33a32; }
 QLabel#SummaryValue, QLabel#ActivityTitle { color: #111827; font-weight: 600; }
 QLabel#EngineeringSummaryText { color: #374151; }
 QFrame#OverviewDivider { color: #e5e7eb; background: #e5e7eb; max-height: 1px; border: 0; }
@@ -69,6 +79,24 @@ QPushButton[role="link"] { color: #1261a0; background: transparent; border: 0; p
 QPushButton[role="link"]:hover { color: #0b4f86; text-decoration: underline; }
 QPushButton[role="danger"] { color: #a33a32; background: #ffffff; border: 1px solid #d9a6a2; border-radius: 5px; }
 QPushButton:disabled { color: #9ca3af; }
+
+QDialog#StandardEntityDialog QLineEdit,
+QDialog#StandardEntityDialog QTextEdit,
+QDialog#StandardEntityDialog QDateEdit,
+QDialog#StandardEntityDialog QComboBox {
+    min-height: 26px; background: #ffffff; color: #111827;
+    border: 1px solid #cfd6df; border-radius: 5px; padding: 2px 7px;
+    selection-background-color: #eaf3ff; selection-color: #111827;
+}
+QDialog#StandardEntityDialog QComboBox { padding-right: 27px; }
+QDialog#StandardEntityDialog QLineEdit:disabled,
+QDialog#StandardEntityDialog QTextEdit:disabled,
+QDialog#StandardEntityDialog QDateEdit:disabled,
+QDialog#StandardEntityDialog QComboBox:disabled { background: #f1f3f5; color: #9ca3af; }
+QDialog#StandardEntityDialog QDoubleSpinBox {
+    min-height: 26px; background: #ffffff; color: #111827;
+    border: 1px solid #cfd6df; border-radius: 5px;
+}
 
 QLineEdit#GlobalSearch {
     min-height: 28px; background: #ffffff; color: #111827;
@@ -170,6 +198,12 @@ _ICON_ROOT = Path(__file__).resolve().parent.parent / "app" / "icons" / "ui" / "
 _COMBO_CHEVRON = (_ICON_ROOT / "chevron-down.svg").as_posix()
 _SAVE_CHEVRON = (_ICON_ROOT / "chevron-down-white.svg").as_posix()
 APPLICATION_STYLESHEET += f"""
+QDialog#StandardEntityDialog QComboBox::drop-down {{
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 25px; border: 0; border-left: 1px solid #e1e6ed;
+    background: #f8fafc; border-top-right-radius: 5px; border-bottom-right-radius: 5px;
+}}
+QDialog#StandardEntityDialog QComboBox::down-arrow {{ image: url("{_COMBO_CHEVRON}"); width: 12px; height: 12px; }}
 QWidget#EngineeringWorkspace QComboBox::drop-down,
 QWidget#geomechanicsWorkspace QComboBox::drop-down {{
     subcontrol-origin: padding; subcontrol-position: top right;
