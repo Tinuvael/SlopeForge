@@ -147,22 +147,26 @@ class ConnectionSettingsStore:
             ) from exc
 
 
-def environment_profile() -> ConnectionProfile | None:
+def environment_settings() -> Settings | None:
     load_local_env()
     database_url = os.getenv("DATABASE_URL", "").strip()
     storage_root = os.getenv("STORAGE_ROOT", "").strip()
     if not database_url or not storage_root:
         return None
-    settings = Settings.from_values(database_url, storage_root)
-    return ConnectionProfile.from_settings(settings)
+    return Settings.from_values(database_url, storage_root)
+
+
+def environment_profile() -> ConnectionProfile | None:
+    settings = environment_settings()
+    return ConnectionProfile.from_settings(settings) if settings is not None else None
 
 
 def resolve_runtime_settings(
     store: ConnectionSettingsStore | None = None,
 ) -> tuple[Settings, str]:
-    env_profile = environment_profile()
-    if env_profile is not None:
-        return env_profile.to_settings(), "environment"
+    env_settings = environment_settings()
+    if env_settings is not None:
+        return env_settings, "environment"
     saved = (store or ConnectionSettingsStore()).load()
     if saved is not None:
         return saved.to_settings(), "saved"
