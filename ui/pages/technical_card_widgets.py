@@ -10,7 +10,9 @@ class TechnicalCardSaveButton(QToolButton):
     def __init__(self, save_draft, save_completed, parent=None):
         super().__init__(parent)
         self.setText(tr("Save"))
+        self.setObjectName("TechnicalCardSaveButton")
         self.setProperty("role", "primary")
+        self.setMinimumSize(124, 32)
         self.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         menu = QMenu(self)
         self.save_complete_action = menu.addAction(tr("Save & complete"))

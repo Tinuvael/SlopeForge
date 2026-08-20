@@ -1,6 +1,8 @@
 """SlopeForge's compact, semantic Qt Widgets presentation theme."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtWidgets import QApplication
 
 
@@ -56,8 +58,11 @@ QFrame#OverviewDivider { color: #e5e7eb; background: #e5e7eb; max-height: 1px; b
 QPushButton { min-height: 26px; padding: 2px 10px; }
 QPushButton[role="primary"] { color: white; background: #1261a0; border: 1px solid #1261a0; border-radius: 5px; font-weight: 600; }
 QPushButton[role="primary"]:hover { background: #0b4f86; }
-QToolButton[role="primary"] { color: white; background: #1261a0; border: 1px solid #1261a0; border-radius: 5px; padding: 3px 9px; font-weight: 600; }
-QToolButton[role="primary"]:hover { background: #0b4f86; }
+QToolButton#TechnicalCardSaveButton { color: white; background: #1261a0; border: 1px solid #1261a0; border-radius: 5px; padding: 3px 31px 3px 10px; font-weight: 600; }
+QToolButton#TechnicalCardSaveButton:hover { background: #0b4f86; }
+QToolButton#TechnicalCardSaveButton:pressed { background: #083f70; }
+QToolButton#TechnicalCardSaveButton:focus { border: 1px solid #083f70; }
+QToolButton#TechnicalCardSaveButton:disabled { background: #b8c1cc; border-color: #b8c1cc; color: #f5f7fa; }
 QPushButton[role="secondary"] { color: #1f2937; background: #ffffff; border: 1px solid #c5ccd5; border-radius: 5px; }
 QPushButton[role="secondary"]:hover { color: #1261a0; border-color: #1261a0; background: #f8fafc; }
 QPushButton[role="link"] { color: #1261a0; background: transparent; border: 0; padding: 2px 4px; font-weight: 600; }
@@ -154,10 +159,34 @@ QLabel#StatusBadge[statusRole="archived"] { background: #eef0f3; color: #4b5563;
 QLabel#StaleBadge { background: #fff1c2; color: #8a5a00; border: 1px solid #e5b94d; border-radius: 4px; padding: 2px 5px; }
 
 QListWidget#SettingsNavigation { background: #f8fafc; border: 1px solid #d7dde6; border-radius: 6px; padding: 4px; }
-QListWidget#SettingsNavigation::item { min-height: 28px; padding: 3px 8px; border-left: 3px solid transparent; }
-QListWidget#SettingsNavigation::item:selected { color: #1261a0; background: #eaf3ff; border-left-color: #1261a0; }
-QListWidget#SettingsNavigation::item:hover:!selected { background: #ffffff; }
+QListWidget#SettingsNavigation::item { min-height: 30px; margin: 2px 0; padding: 2px 8px; border-left: 3px solid transparent; }
+QListWidget#SettingsNavigation::item:hover:!selected { background: #eef1f5; color: #374151; }
+QListWidget#SettingsNavigation::item:selected { color: #1261a0; background: #eaf3ff; border-left-color: #1261a0; font-weight: 600; }
+QListWidget#SettingsNavigation::item:selected:hover { color: #1261a0; background: #eaf3ff; border-left-color: #1261a0; }
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus { border-color: #0b63ce; }
+"""
+
+_ICON_ROOT = Path(__file__).resolve().parent.parent / "app" / "icons" / "ui" / "svg" / "neutral"
+_COMBO_CHEVRON = (_ICON_ROOT / "chevron-down.svg").as_posix()
+_SAVE_CHEVRON = (_ICON_ROOT / "chevron-down-white.svg").as_posix()
+APPLICATION_STYLESHEET += f"""
+QWidget#EngineeringWorkspace QComboBox::drop-down,
+QWidget#geomechanicsWorkspace QComboBox::drop-down {{
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 25px; border: 0; border-left: 1px solid #e1e6ed;
+    background: #f8fafc; border-top-right-radius: 5px; border-bottom-right-radius: 5px;
+}}
+QWidget#EngineeringWorkspace QComboBox::down-arrow,
+QWidget#geomechanicsWorkspace QComboBox::down-arrow {{ image: url("{_COMBO_CHEVRON}"); width: 12px; height: 12px; }}
+QWidget#EngineeringWorkspace QComboBox:disabled,
+QWidget#geomechanicsWorkspace QComboBox:disabled {{ background: #f1f3f5; color: #9ca3af; border-color: #d7dde6; }}
+QWidget#EngineeringWorkspace QComboBox:disabled::drop-down,
+QWidget#geomechanicsWorkspace QComboBox:disabled::drop-down {{ background: #eef0f3; border-left-color: #d7dde6; }}
+QToolButton#TechnicalCardSaveButton::menu-button {{
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 26px; border: 0; border-left: 1px solid #3d7eb3;
+}}
+QToolButton#TechnicalCardSaveButton::menu-arrow {{ image: url("{_SAVE_CHEVRON}"); width: 12px; height: 12px; }}
 """
 
 # Compatibility value for small widgets that cannot inherit the application

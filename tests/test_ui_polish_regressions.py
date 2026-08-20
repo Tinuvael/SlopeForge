@@ -17,10 +17,22 @@ def test_users_table_uses_stable_header_policy_without_refresh_resizing():
     assert "resizeColumnsToContents" not in refresh
 
 
-def test_engineering_combo_style_preserves_native_dropdown_subcontrol():
+def test_engineering_combo_style_defines_chevron_without_touching_spinboxes():
     theme = source("ui/theme.py")
     assert "QWidget#EngineeringWorkspace QComboBox" in theme
-    assert "QComboBox::drop-down" not in theme
+    assert "QComboBox::drop-down" in theme
+    assert "QComboBox::down-arrow" in theme
+    assert "chevron-down.svg" in theme
+    for selector in ("QSpinBox::up-button", "QSpinBox::down-button",
+                     "QDoubleSpinBox::up-button", "QDoubleSpinBox::down-button"):
+        assert selector not in theme
+
+
+def test_settings_navigation_prioritizes_selected_over_hover():
+    theme = source("ui/theme.py")
+    assert "QListWidget#SettingsNavigation::item:selected:hover" in theme
+    hover = theme.split("QListWidget#SettingsNavigation::item:hover:!selected", 1)[1].split("}", 1)[0]
+    assert "background: #ffffff" not in hover
 
 
 def test_entity_tabs_keep_sizing_contract_with_compact_padding():

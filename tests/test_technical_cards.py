@@ -263,6 +263,7 @@ def test_technical_card_save_split_button_routes_existing_save_actions():
     calls = []
     button = TechnicalCardSaveButton(lambda: calls.append("draft"), lambda: calls.append("completed"))
     assert button.text() == "Save"
+    assert button.minimumWidth() >= 120 and button.minimumHeight() >= 32
     assert [action.text() for action in button.menu().actions()] == ["Save & complete"]
     button.click(); button.save_complete_action.trigger()
     assert calls == ["draft", "completed"]
@@ -283,8 +284,33 @@ def test_drilling_group_uses_explicit_enabled_checkbox():
     assert checkbox.isChecked() == group.included
     checkbox.setChecked(not group.included)
     assert group.included == checkbox.isChecked()
+    content = dialog.findChild(widgets.QWidget, "drillingGroupContent")
+    assert not content.isEnabled() and checkbox.isEnabled()
+    checkbox.setChecked(True)
+    assert content.isEnabled()
     read_only = TechnicalCardDialog(blast, card, draft, lambda *_: None, read_only=True)
     assert not read_only.findChild(widgets.QCheckBox, "drillingGroupEnabled").isEnabled()
+    dialog.close(); read_only.close(); app.processEvents()
+
+
+def test_actual_group_uses_enabled_checkbox_and_content_host():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast)
+    draft.actual_execution.copy_from_design(draft.drilling_groups, draft.id or None, "replace")
+    group = draft.actual_execution.actual_drilling_groups[0]
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None)
+    checkbox = dialog.findChild(widgets.QCheckBox, "actualDrillingGroupEnabled")
+    content = dialog.findChild(widgets.QWidget, "actualDrillingGroupContent")
+    assert checkbox is not None and content is not None
+    checkbox.setChecked(False)
+    assert group.included is False and not content.isEnabled() and checkbox.isEnabled()
+    checkbox.setChecked(True)
+    assert group.included is True and content.isEnabled()
+    assert not dialog.findChild(widgets.QGroupBox, "actualDrillingGroupCard").isCheckable()
+    read_only = TechnicalCardDialog(blast, card, draft, lambda *_: None, read_only=True)
+    assert not read_only.findChild(widgets.QCheckBox, "actualDrillingGroupEnabled").isEnabled()
     dialog.close(); read_only.close(); app.processEvents()
 
 

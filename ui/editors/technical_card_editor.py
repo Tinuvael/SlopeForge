@@ -347,7 +347,11 @@ class TechnicalCardDialog(QDialog):
             enabled_checkbox.setChecked(group.included); enabled_checkbox.setEnabled(not self.read_only)
             group_header.addWidget(group_title); group_header.addStretch(); group_header.addWidget(enabled_checkbox)
             outer.addLayout(group_header)
-            identity = QFormLayout(); outer.addLayout(identity)
+            content_host = QWidget(); content_host.setObjectName("drillingGroupContent")
+            content = QVBoxLayout(content_host); content.setContentsMargins(0, 0, 0, 0); content.setSpacing(8)
+            content_host.setEnabled(group.included)
+            outer.addWidget(content_host)
+            identity = QFormLayout(); content.addLayout(identity)
             name = QLineEdit(display_name); name.setEnabled(not self.read_only); identity.addRow(tr("Title"), name); name.textChanged.connect(lambda value, g=group: setattr(g, "name", value))
             columns=QGridLayout(); columns.setColumnStretch(0,0); columns.setColumnStretch(1,1); box.setProperty("engineeringComposition","left-right")
             pattern = QGroupBox(tr("Drilling design")); pattern.setObjectName("drillingDesignArea"); form = QFormLayout(pattern)
@@ -369,8 +373,8 @@ class TechnicalCardDialog(QDialog):
             set_button_role(delete, "danger")
             charge_layout.addLayout(preset_row)
             builder_host=QWidget(); builder_layout=QVBoxLayout(builder_host); builder_layout.setContentsMargins(0,0,0,0); charge_layout.addWidget(builder_host,1)
-            columns.addWidget(charge,0,1); outer.addLayout(columns)
-            summary=QLabel(); summary.setObjectName("drillingChargeSummary"); summary.setWordWrap(True); outer.addWidget(summary)
+            columns.addWidget(charge,0,1); content.addLayout(columns)
+            summary=QLabel(); summary.setObjectName("drillingChargeSummary"); summary.setWordWrap(True); content.addWidget(summary)
             state={"builder":None,"last_depth":group.average_depth_m}
             self._refresh_preset_combo(combo)
             def refresh(g=group,label=summary):
@@ -404,7 +408,7 @@ class TechnicalCardDialog(QDialog):
             widgets["average_depth_m"].valueChanged.disconnect(); widgets["average_depth_m"].valueChanged.connect(depth_changed)
             widgets["diameter_mm"].valueChanged.connect(lambda value,w=widgets["diameter_mm"]: state["builder"] and state["builder"].set_hole_diameter(None if value==w.minimum() else value))
             for attr in ("hole_count","diameter_mm","subdrill_m"): widgets[attr].valueChanged.connect(refresh)
-            enabled_checkbox.toggled.connect(lambda checked,g=group:(setattr(g,"included",checked),refresh()))
+            enabled_checkbox.toggled.connect(lambda checked,g=group,host=content_host:(setattr(g,"included",checked),host.setEnabled(checked),refresh()))
             load.clicked.connect(lambda _=False,c=combo,g=group:self._load_preset(c,g,state,refresh))
             save.clicked.connect(lambda _=False,c=combo,g=group:self._save_preset(c,g))
             update.clicked.connect(lambda _=False,c=combo,g=group:self._update_preset(c,g))
@@ -413,7 +417,7 @@ class TechnicalCardDialog(QDialog):
             duplicate.setEnabled(not self.read_only); remove.setEnabled(not self.read_only)
             set_button_role(duplicate, "secondary"); set_button_role(remove, "danger")
             duplicate.clicked.connect(lambda _=False, g=group: self._duplicate(g)); remove.clicked.connect(lambda _=False, g=group: self._remove(g))
-            actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions); self.group_cards_layout.addWidget(box)
+            actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); content.addLayout(actions); self.group_cards_layout.addWidget(box)
 
     def _add_number(self, form, label, model, attr, suffix="", integer=False,compact=False):
         widget = _number(getattr(model, attr), suffix); widget.setObjectName(attr)
@@ -541,8 +545,15 @@ class TechnicalCardDialog(QDialog):
         designs={g.id:g for g in self.revision.drilling_groups}
         for group in self.revision.actual_execution.actual_drilling_groups:
             design=designs.get(group.design_group_id); display_name=technical_group_label(group.group_type,group.name)
-            box=QGroupBox(display_name); box.setObjectName("actualDrillingGroupCard"); box.setCheckable(True); box.setChecked(group.included); box.setEnabled(True)
-            outer=QVBoxLayout(box); identity=QFormLayout(); name=QLineEdit(display_name); name.setEnabled(not self.read_only); name.textChanged.connect(lambda value,g=group:setattr(g,"name",value)); identity.addRow(tr("Title"),name); outer.addLayout(identity)
+            box=QGroupBox(); box.setObjectName("actualDrillingGroupCard")
+            outer=QVBoxLayout(box)
+            group_header=QHBoxLayout(); group_title=QLabel(display_name); group_title.setObjectName("EngineeringGroupTitle")
+            enabled_checkbox=QCheckBox(tr("Enabled")); enabled_checkbox.setObjectName("actualDrillingGroupEnabled")
+            enabled_checkbox.setChecked(group.included); enabled_checkbox.setEnabled(not self.read_only)
+            group_header.addWidget(group_title); group_header.addStretch(); group_header.addWidget(enabled_checkbox); outer.addLayout(group_header)
+            content_host=QWidget(); content_host.setObjectName("actualDrillingGroupContent"); content_host.setEnabled(group.included)
+            content=QVBoxLayout(content_host); content.setContentsMargins(0,0,0,0); content.setSpacing(8); outer.addWidget(content_host)
+            identity=QFormLayout(); name=QLineEdit(display_name); name.setEnabled(not self.read_only); name.textChanged.connect(lambda value,g=group:setattr(g,"name",value)); identity.addRow(tr("Title"),name); content.addLayout(identity)
             columns=QGridLayout(); columns.setColumnStretch(0,0); columns.setColumnStretch(1,1); box.setProperty("engineeringComposition","left-right")
 
             drilling=QGroupBox(tr("Drilling / execution")); drilling.setObjectName("actualDrillingArea")
@@ -594,9 +605,9 @@ class TechnicalCardDialog(QDialog):
                 builder.components_changed.connect(lambda values,g=group,d=design,c=comparison:(setattr(g,"charge_components",values),self._refresh_charge_comparison(c,g,d)))
                 self._refresh_charge_comparison(comparison,group,design); charge_layout.addWidget(comparison["widget"])
             else: charge_layout.addWidget(QLabel(tr("Enter average hole depth to configure the charge construction.")))
-            columns.addWidget(charge,0,1); outer.addLayout(columns)
-            actions=QHBoxLayout(); duplicate=QPushButton(tr("Duplicate")); remove=QPushButton(tr("Delete")); set_button_role(duplicate, "secondary"); set_button_role(remove, "danger"); duplicate.setEnabled(not self.read_only); remove.setEnabled(not self.read_only); duplicate.clicked.connect(lambda _=False,g=group:self._duplicate_actual(g)); remove.clicked.connect(lambda _=False,g=group:self._remove_actual(g)); actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions)
-            box.toggled.connect(lambda checked,g=group:(setattr(g,"included",checked),self._refresh_actual_summary())); box.setCheckable(not self.read_only); self.actual_cards_layout.addWidget(box)
+            columns.addWidget(charge,0,1); content.addLayout(columns)
+            actions=QHBoxLayout(); duplicate=QPushButton(tr("Duplicate")); remove=QPushButton(tr("Delete")); set_button_role(duplicate, "secondary"); set_button_role(remove, "danger"); duplicate.setEnabled(not self.read_only); remove.setEnabled(not self.read_only); duplicate.clicked.connect(lambda _=False,g=group:self._duplicate_actual(g)); remove.clicked.connect(lambda _=False,g=group:self._remove_actual(g)); actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); content.addLayout(actions)
+            enabled_checkbox.toggled.connect(lambda checked,g=group,host=content_host:(setattr(g,"included",checked),host.setEnabled(checked),self._refresh_actual_summary())); self.actual_cards_layout.addWidget(box)
 
     @staticmethod
     def _format_comparison_number(value, integer=False, decimals=3, signed=False):
