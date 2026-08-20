@@ -28,6 +28,7 @@ class SettingsDialog(QDialog):
 
         layout = QHBoxLayout(self)
         self.menu = QListWidget()
+        self.menu.setObjectName("SettingsNavigation")
         self.menu.setFixedWidth(190)
         self.pages = QStackedWidget()
         self._add_page(tr("General"), self.general_page())

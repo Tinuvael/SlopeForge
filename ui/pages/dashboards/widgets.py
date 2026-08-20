@@ -25,26 +25,10 @@ from ui.assessment_result_presentation import (
     AssessmentResultPresentation,
     assessment_result_presentation,
 )
-from ui.pages.block_card_widgets import CardFrame
+from ui.widgets.design_system import CardFrame
+from ui.theme import STANDARD_ROW_STYLESHEET as DASHBOARD_ROW_STYLE
 from ui.pages.entity_overview_widgets import OverviewLinkButton
 
-
-DASHBOARD_CARD_STYLE = (
-    "QFrame#DashboardCard{background:#ffffff;border:1px solid #d7dde6;"
-    "border-radius:7px;}"
-)
-DASHBOARD_METRIC_STYLE = (
-    "QFrame#DashboardMetricCard{background:#ffffff;border:1px solid #d7dde6;"
-    "border-radius:7px;}"
-)
-DASHBOARD_HEADER_STYLE = (
-    "QFrame#DashboardHeaderCard{background:#ffffff;border:1px solid #d7dde6;"
-    "border-radius:7px;}"
-)
-DASHBOARD_ROW_STYLE = (
-    "QFrame#DashboardSummaryRow,QWidget#ProjectLinesDatasetRow{"
-    "background:#ffffff;border:1px solid #d7dde6;border-radius:5px;}"
-)
 
 QuadrantPresentation = AssessmentResultPresentation
 
@@ -73,7 +57,6 @@ class DashboardEntityHeader(CardFrame):
         if parent is not None:
             self.setParent(parent)
         self.setObjectName("DashboardHeaderCard")
-        self.setStyleSheet(DASHBOARD_HEADER_STYLE)
         self.setMinimumHeight(58)
         self.setMaximumHeight(72)
         self.layout.setContentsMargins(12, 8, 12, 8)
@@ -101,7 +84,6 @@ class MetricCard(CardFrame):
     def __init__(self, title, value, detail="", icon="analytics"):
         super().__init__()
         self.setObjectName("DashboardMetricCard")
-        self.setStyleSheet(DASHBOARD_METRIC_STYLE)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setMinimumHeight(74)
         self.setMaximumHeight(84)
@@ -150,7 +132,6 @@ class DashboardCard(CardFrame):
         if parent is not None:
             self.setParent(parent)
         self.setObjectName("DashboardCard")
-        self.setStyleSheet(DASHBOARD_CARD_STYLE)
         self.layout.setContentsMargins(12, 10, 12, 10)
         self.layout.setSpacing(7)
         self.header = QHBoxLayout()
@@ -297,7 +278,6 @@ class CompactSummaryList(DashboardCard):
             holder.setFixedHeight(self.ROW_HEIGHT - 2)
             holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             holder.setCursor(Qt.CursorShape.PointingHandCursor)
-            holder.setStyleSheet(DASHBOARD_ROW_STYLE)
             holder.clicked.connect(lambda current_key=key: self._activate_row(current_key))
             self._row_widgets[key] = holder
             layout = QHBoxLayout(holder)
@@ -461,7 +441,6 @@ class ProjectLinesCard(DashboardCard):
             holder.setObjectName("ProjectLinesDatasetRow")
             holder.setFixedHeight(self.ROW_HEIGHT - 2)
             holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            holder.setStyleSheet(DASHBOARD_ROW_STYLE)
             layout = QHBoxLayout(holder)
             layout.setContentsMargins(8, 4, 9, 4)
             layout.setSpacing(8)

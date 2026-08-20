@@ -24,20 +24,11 @@ from PySide6.QtWidgets import (
 from app.icons.ui.ui_icons import ui_icon
 from app.localization import tr
 from ui.dialogs.entity_attachment_dialog import PhotoViewer
-from ui.pages.block_card_widgets import CardFrame
+from ui.widgets.design_system import CardFrame, set_button_role, set_status_role
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 
 
-WORKFLOW_BADGE_STYLES = {
-    "in_preparation": ("#f3f4f6", "#4b5563", "#d1d5db"),
-    "planned": ("#eaf3ff", "#155fa0", "#9bc2e8"),
-    "blasted": ("#fff4d6", "#8a5a00", "#f4c76b"),
-    "assessed": ("#edf8f0", "#2f6f3e", "#9bcaa6"),
-    "in_progress": ("#eaf3ff", "#155fa0", "#9bc2e8"),
-    "completed": ("#edf8f0", "#2f6f3e", "#9bcaa6"),
-    "draft": ("#f3f4f6", "#4b5563", "#d1d5db"),
-    "unknown": ("#f3f4f6", "#4b5563", "#d1d5db"),
-}
+WORKFLOW_BADGE_ROLES = {"planned": "info", "in_progress": "info", "blasted": "warning", "assessed": "success", "completed": "success"}
 
 
 def _state_key(state) -> str:
@@ -46,21 +37,11 @@ def _state_key(state) -> str:
 
 
 def apply_status_badge(label: QLabel, state) -> None:
-    background, foreground, border = WORKFLOW_BADGE_STYLES.get(
-        _state_key(state), WORKFLOW_BADGE_STYLES["unknown"]
-    )
-    label.setObjectName("StatusBadge")
-    label.setStyleSheet(
-        f"background:{background};color:{foreground};border:1px solid {border};"
-        "border-radius:5px;padding:4px 8px;font-weight:600;"
-    )
+    set_status_role(label, WORKFLOW_BADGE_ROLES.get(_state_key(state), "neutral"))
 
 
 def apply_archive_badge(label: QLabel) -> None:
-    label.setStyleSheet(
-        "background:#eef0f3;color:#4b5563;border:1px solid #cfd4dc;"
-        "border-radius:5px;padding:4px 8px;font-weight:600;"
-    )
+    set_status_role(label, "archived")
 
 
 class EntityHeaderWidget(CardFrame):
@@ -115,15 +96,9 @@ class OverviewLinkButton(QPushButton):
 
     def __init__(self, text="Open", parent=None):
         super().__init__(tr(text), parent)
-        self.setProperty("role", "link")
+        set_button_role(self, "link")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFlat(True)
-        self.setStyleSheet(
-            "QPushButton{border:0;background:transparent;color:#1261a0;padding:2px 4px;font-weight:600;}"
-            "QPushButton:hover{color:#0b4f86;text-decoration:underline;}"
-            "QPushButton:pressed{color:#083b65;}"
-            "QPushButton:disabled{color:#9ca3af;text-decoration:none;}"
-        )
 
 
 class OverviewKeyValueCard(CardFrame):

@@ -23,6 +23,7 @@ from infrastructure.services.session_service import RememberTokenService
 from ui.auth_dialogs import FirstAdminDialog, LoginDialog
 from ui.connection_dialog import ConnectionSetupDialog
 from ui.main_window import MainWindow
+from ui.theme import apply_theme
 
 LOG_PATH = Path("slopeforge.log").resolve()
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO)
@@ -44,6 +45,7 @@ def main():
     startup_stage = "application bootstrap"
     set_windows_app_user_model_id()
     app = QApplication(sys.argv)
+    apply_theme(app)
     install_selected_translator(app)
     apply_application_icon(app)
 

@@ -5,6 +5,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMenu, QPushButton, QWidget
 from ui.settings_dialog import SettingsDialog
 from app.icons.ui.ui_icons import ui_icon
+from ui.widgets.design_system import set_button_role
 class SearchLineEdit(QLineEdit):
     """Header-only search behavior; Escape remains untouched elsewhere."""
     def keyPressEvent(self, event):
@@ -28,9 +29,11 @@ class Header(QWidget):
         self.add_button.setToolTip(tr("Create a project, domain, blast event, or assessment area"))
         self.add_project_action.triggered.connect(self.add_project_requested); self.add_domain_action.triggered.connect(self.add_domain_requested); self.add_blast_event_action.triggered.connect(self.add_blast_event_requested); self.add_assessment_area_action.triggered.connect(self.add_assessment_area_requested)
         self.add_button.setMenu(self.add_menu); self.archive_button=QPushButton(tr("Archive")); self.archive_button.setEnabled(False); self.archive_button.clicked.connect(self.archive_requested)
+        set_button_role(self.add_button, "primary"); set_button_role(self.archive_button, "secondary")
         self.archive_button.setIcon(ui_icon("archive")); self.search=SearchLineEdit(); self.search.setClearButtonEnabled(True); self.search.setPlaceholderText(tr("Search...")); self.search.setMaximumWidth(350)
         self.analysis_button=QPushButton(tr("Analysis")); self.analysis_button.setIcon(ui_icon("analytics")); self.analysis_button.clicked.connect(self.analysis_requested)
         self.report_button=QPushButton(tr("Report")); self.report_button.setIcon(ui_icon("report","blue")); self.report_button.setEnabled(False); self.report_button.clicked.connect(self.report_requested); self.settings=QPushButton(tr("Settings")); self.settings.setIcon(ui_icon("settings")); self.settings.clicked.connect(self.open_settings)
+        for button in (self.analysis_button, self.report_button, self.settings): set_button_role(button, "secondary")
         self.search_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
         self.search_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.search_shortcut.activated.connect(self.focus_search)

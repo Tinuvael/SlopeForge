@@ -222,6 +222,8 @@ class BlockPage(QWidget):
         engineering_actions.addStretch()
         self.save_engineering_draft = QPushButton(tr("Save draft"))
         self.complete_engineering = QPushButton(tr("Complete"))
+        self.save_engineering_draft.setProperty("role", "secondary")
+        self.complete_engineering.setProperty("role", "primary")
         self.save_engineering_draft.setEnabled(False)
         self.complete_engineering.setEnabled(False)
         self.save_engineering_draft.clicked.connect(self._save_technical_card_draft)

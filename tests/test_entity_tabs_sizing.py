@@ -11,6 +11,8 @@ def test_entity_tabs_expand_viewport_without_propagating_tall_page_hint():
     layout = widgets.QVBoxLayout(host)
 
     tabs = create_entity_tabs()
+    assert tabs.property("entityTabs") is True
+    assert tabs.documentMode() is True
     # Operational pages still contain this legacy call. The shared widget must
     # correct it before presentation rather than changing policy per tab.
     tabs.setSizePolicy(widgets.QSizePolicy.Policy.Expanding, widgets.QSizePolicy.Policy.Ignored)

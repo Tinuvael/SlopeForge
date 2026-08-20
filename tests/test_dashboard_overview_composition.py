@@ -132,14 +132,16 @@ def test_dashboard_internal_lists_have_consistent_bordered_rows_and_actions():
     assert "def clear_selection" in widgets
     assert "ProjectLinesDatasetRow" in widgets
     assert "DASHBOARD_ROW_STYLE" in widgets
-    assert 'background:#ffffff;border:1px solid #d7dde6;border-radius:5px' in widgets
-    assert "holder.setStyleSheet(DASHBOARD_ROW_STYLE)" in widgets
+    assert "STANDARD_ROW_STYLESHEET as DASHBOARD_ROW_STYLE" in widgets
+    theme = source("ui/theme.py")
+    assert 'background:#ffffff;border:1px solid #d7dde6;border-radius:5px' in theme
+    assert 'holder.setObjectName("DashboardSummaryRow")' in widgets
     assert 'self.setObjectName("DashboardCard")' in widgets
     assert 'self.setObjectName("DashboardMetricCard")' in widgets
     assert 'self.setObjectName("DashboardHeaderCard")' in widgets
-    assert "QFrame#DashboardCard" in widgets
-    assert "QFrame#DashboardMetricCard" in widgets
-    assert "QFrame#DashboardHeaderCard" in widgets
+    assert "QFrame#DashboardCard" in theme
+    assert "QFrame#DashboardMetricCard" in theme
+    assert "QFrame#DashboardHeaderCard" in theme
     assert "ScrollBarAsNeeded" in widgets
     assert "ScrollBarAlwaysOff" in widgets
     assert "self.list.setMaximumHeight(16777215)" in widgets
