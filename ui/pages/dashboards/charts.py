@@ -131,16 +131,24 @@ class CompactChart(QWidget):
         painter.setFont(legend_font)
         text_flags = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         text_flags |= int(Qt.TextFlag.TextWordWrap)
+        marker_size = 14
+        marker_gap = 8
         for index, (key, value) in enumerate(self.data.items()):
             presentation = quadrant_presentation(key)
             y = top + index * row_height
+            marker_y = y + (row_height - marker_size) / 2
             painter.setPen(QPen(QColor("#d4dae3"), 1))
             painter.setBrush(QColor(presentation.color))
-            painter.drawRoundedRect(QRectF(legend_x, y + 8, 10, 10), 2, 2)
+            painter.drawRoundedRect(
+                QRectF(legend_x, marker_y, marker_size, marker_size),
+                2,
+                2,
+            )
             painter.setPen(QColor("#334155"))
             label = f"{presentation.label}  {value}"
+            text_x = legend_x + marker_size + marker_gap
             painter.drawText(
-                QRectF(legend_x + 16, y + 1, legend_width - 16, row_height - 2),
+                QRectF(text_x, y, legend_width - marker_size - marker_gap, row_height),
                 text_flags,
                 label,
             )

@@ -11,6 +11,7 @@ from app.qt import apply_window_icon
 from app.resources import resource_path
 from app.context import AppContext
 from infrastructure.services.session_service import RememberTokenService
+from ui.connection_dialog import ConnectionSettingsPage
 from ui.user_admin_page import UserAdminPage
 from ui.engineering_catalogues_page import EngineeringCataloguesPage
 from app.use_case_factory import create_explosive_catalogue
@@ -30,6 +31,7 @@ class SettingsDialog(QDialog):
         self.menu.setFixedWidth(190)
         self.pages = QStackedWidget()
         self._add_page(tr("General"), self.general_page())
+        self._add_page(tr("Connection"), ConnectionSettingsPage())
         if context:
             self.catalogues_page = EngineeringCataloguesPage(
                 create_explosive_catalogue(context), can_edit=context.current_user.can_edit)

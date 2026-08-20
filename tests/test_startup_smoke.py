@@ -95,6 +95,7 @@ def load_main_with_fakes(monkeypatch):
     monkeypatch.setitem(sys.modules, "PySide6", types.ModuleType("PySide6"))
     monkeypatch.setitem(sys.modules, "PySide6.QtWidgets", qt)
 
+    runtime_settings = FakeSettings(Path("/tmp/startup-storage"))
     fake_modules = {
         "app.localization": {"tr": lambda value: value,
                              "install_selected_translator": lambda app: None},
@@ -103,7 +104,11 @@ def load_main_with_fakes(monkeypatch):
         "app.splash": {"SlopeForgeSplash": FakeSplash},
         "database.startup": {
             "StartupError": RuntimeError,
-            "initialize_database_runtime": lambda: (FakeSettings(Path("/tmp/startup-storage")), object(), lambda: None),
+            "initialize_database_runtime": lambda _settings=None: (
+                runtime_settings,
+                object(),
+                lambda: None,
+            ),
         },
         "infrastructure.services.auth_service": {"AuthService": FakeAuthService},
         "infrastructure.services.session_service": {"RememberTokenService": FakeRememberTokenService},
@@ -119,9 +124,15 @@ def load_main_with_fakes(monkeypatch):
         monkeypatch.setitem(sys.modules, name, module)
 
     FakeMainWindow.constructed_contexts = []
+    FakeMessageBox.critical_calls = []
     spec = importlib.util.spec_from_file_location("tested_main_startup", Path("main.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+
+    # Startup smoke tests exercise the main() control flow, not the machine's
+    # real .env or persisted connection profile. Keep this deterministic on
+    # developer workstations with either source configured.
+    module.resolve_runtime_settings = lambda _store: (runtime_settings, "test")
     return module
 
 
@@ -192,7 +203,7 @@ def test_main_uses_postgresql_dialog_for_startup_error(monkeypatch):
 
     FakeMessageBox.critical_calls = []
     module.StartupError = SpecializedStartupError
-    module.initialize_database_runtime = lambda: (_ for _ in ()).throw(
+    module.initialize_database_runtime = lambda _settings=None: (_ for _ in ()).throw(
         SpecializedStartupError("Cannot connect to PostgreSQL. Check DATABASE_URL.",
                                 "db.example:5432/slopeforge_test"))
 

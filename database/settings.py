@@ -18,25 +18,32 @@ class Settings:
     storage_root: Path
 
     @classmethod
-    def from_env(cls) -> "Settings":
-        load_local_env()
-        database_url = os.getenv("DATABASE_URL", "").strip()
-        storage_root = os.getenv("STORAGE_ROOT", "").strip()
+    def from_values(cls, database_url: str, storage_root: str | Path) -> "Settings":
+        database_url = str(database_url or "").strip()
+        storage_text = str(storage_root or "").strip()
         missing = []
         if not database_url:
             missing.append("DATABASE_URL")
-        if not storage_root:
+        if not storage_text:
             missing.append("STORAGE_ROOT")
         if missing:
             raise ConfigurationError(
-                "Missing required environment variable(s): " + ", ".join(missing)
+                "Missing required setting(s): " + ", ".join(missing)
             )
         if not database_url.startswith("postgresql+psycopg://"):
             raise ConfigurationError(
                 "DATABASE_URL must use PostgreSQL with psycopg 3, for example: "
                 "postgresql+psycopg://user:password@host:5432/slopeforge"
             )
-        return cls(database_url=database_url, storage_root=Path(storage_root).expanduser())
+        return cls(database_url=database_url, storage_root=Path(storage_text).expanduser())
+
+    @classmethod
+    def from_env(cls) -> "Settings":
+        load_local_env()
+        return cls.from_values(
+            os.getenv("DATABASE_URL", ""),
+            os.getenv("STORAGE_ROOT", ""),
+        )
 
 
 def safe_database_location(database_url: str) -> str:

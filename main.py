@@ -1,4 +1,3 @@
-
 from app.localization import tr
 import logging
 import sys
@@ -6,15 +5,23 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from app.connection_settings import (
+    ConnectionSettingsError,
+    ConnectionSettingsStore,
+    MissingConnectionConfiguration,
+    resolve_runtime_settings,
+)
 from app.platform import set_windows_app_user_model_id
 from app.qt import apply_application_icon
 from app.localization import install_selected_translator, tr
 from app.splash import SlopeForgeSplash
 from app.context import AppContext
+from database.settings import ConfigurationError
 from database.startup import StartupError, initialize_database_runtime
 from infrastructure.services.auth_service import AuthService
 from infrastructure.services.session_service import RememberTokenService
 from ui.auth_dialogs import FirstAdminDialog, LoginDialog
+from ui.connection_dialog import ConnectionSetupDialog
 from ui.main_window import MainWindow
 
 LOG_PATH = Path("slopeforge.log").resolve()
@@ -26,12 +33,40 @@ def show_startup_error(error: StartupError) -> None:
     QMessageBox.critical(None, tr("PostgreSQL unavailable"), error.presentation())
 
 
+def _connection_setup(store: ConnectionSettingsStore):
+    dialog = ConnectionSetupDialog(store)
+    if dialog.exec() != dialog.DialogCode.Accepted:
+        return None
+    return dialog.runtime_settings
+
+
 def main():
     startup_stage = "application bootstrap"
     set_windows_app_user_model_id()
     app = QApplication(sys.argv)
     install_selected_translator(app)
     apply_application_icon(app)
+
+    connection_store = ConnectionSettingsStore()
+    try:
+        runtime_settings, _source = resolve_runtime_settings(connection_store)
+    except MissingConnectionConfiguration:
+        runtime_settings = _connection_setup(connection_store)
+        if runtime_settings is None:
+            return 0
+    except ConnectionSettingsError as exc:
+        QMessageBox.warning(
+            None,
+            tr("Connection settings"),
+            f"{exc}\n\n{tr('Enter the connection settings again.')}",
+        )
+        runtime_settings = _connection_setup(connection_store)
+        if runtime_settings is None:
+            return 0
+    except ConfigurationError as exc:
+        QMessageBox.critical(None, tr("Connection configuration error"), str(exc))
+        return 1
+
     splash = SlopeForgeSplash()
     splash.show()
     splash.show_status(tr("Loading application…"))
@@ -39,7 +74,7 @@ def main():
         startup_stage = "database initialization"
         logger.info("Startup stage: %s", startup_stage)
         splash.show_status(tr("Connecting to database…"))
-        settings, _engine, session_factory = initialize_database_runtime()
+        settings, _engine, session_factory = initialize_database_runtime(runtime_settings)
         startup_stage = "authentication initialization"
         logger.info("Startup stage: %s", startup_stage)
         splash.show_status(tr("Checking database schema…"))
