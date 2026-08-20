@@ -1,8 +1,13 @@
 """Compact identity/location editors; engineering facts live elsewhere."""
-from PySide6.QtWidgets import QComboBox, QDialog, QDoubleSpinBox, QLineEdit
+from PySide6.QtWidgets import QComboBox, QDialog, QLineEdit
 
 from app.localization import tr
-from ui.widgets.design_system import configure_standard_dialog, create_form_section, standard_dialog_actions
+from ui.widgets.design_system import (
+    ChevronDoubleSpinBox,
+    configure_standard_dialog,
+    create_form_section,
+    standard_dialog_actions,
+)
 
 
 class EntityMetadataDialog(QDialog):
@@ -26,7 +31,7 @@ class EntityMetadataDialog(QDialog):
         form.addRow(tr("Domain"), self.domain)
         self.horizon = None
         if horizon is not None:
-            self.horizon = QDoubleSpinBox()
+            self.horizon = ChevronDoubleSpinBox()
             self.horizon.setObjectName("horizon")
             self.horizon.setDecimals(3)
             self.horizon.setRange(-100000, 100000)

@@ -107,6 +107,28 @@ QDialog#StandardEntityDialog QDoubleSpinBox {
     min-height: 26px; background: #ffffff; color: #111827;
     border: 1px solid #cfd6df; border-radius: 5px;
 }
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox:disabled {
+    background: #f1f3f5; color: #9ca3af;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton {
+    background: #f8fafc; border: 0; border-left: 1px solid #e1e6ed;
+    border-radius: 0; padding: 0; margin: 0;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton#ChevronSpinUpButton {
+    border-top-right-radius: 5px; border-bottom: 1px solid #e1e6ed;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton#ChevronSpinDownButton {
+    border-bottom-right-radius: 5px;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton:hover {
+    background: #eef3f8;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton:pressed {
+    background: #dfe8f2;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton:disabled {
+    background: #eef0f3; border-color: #d7dde6;
+}
 
 QLineEdit#GlobalSearch {
     min-height: 28px; background: #ffffff; color: #111827;

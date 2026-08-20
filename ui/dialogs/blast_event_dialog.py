@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox,
+    QCheckBox, QComboBox, QDateEdit, QDialog,
     QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
 )
 
@@ -12,7 +12,8 @@ from application.services.blast_events import BlastEventService, BlastEventValid
 from application.state.assessment_domain_state import AssessmentDomainState
 from ui.presentation_labels import domain_message
 from ui.widgets.design_system import (
-    configure_standard_dialog, create_form_section, set_button_role, standard_dialog_actions,
+    ChevronDoubleSpinBox, configure_standard_dialog, create_form_section,
+    set_button_role, standard_dialog_actions,
 )
 
 
@@ -57,7 +58,7 @@ class BlastEventDialog(QDialog):
         file_row.setContentsMargins(0, 0, 0, 0)
         file_row.addWidget(self.csv, 1)
         file_row.addWidget(self.browse_button)
-        self.elevation = QDoubleSpinBox()
+        self.elevation = ChevronDoubleSpinBox()
         self.elevation.setRange(-10000, 10000)
         self.elevation.setDecimals(0)
         self.elevation.setSingleStep(1)

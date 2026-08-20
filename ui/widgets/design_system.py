@@ -1,15 +1,87 @@
 """Small reusable presentation primitives; application behavior stays elsewhere."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from pathlib import Path
+
+from PySide6.QtCore import QEvent, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QDialog, QFormLayout, QFrame, QHeaderView, QHBoxLayout,
-    QLabel, QPushButton, QTableWidget, QVBoxLayout, QWidget,
+    QAbstractItemView, QAbstractSpinBox, QDialog, QDoubleSpinBox, QFormLayout,
+    QFrame, QHeaderView, QHBoxLayout, QLabel, QPushButton, QTableWidget,
+    QToolButton, QVBoxLayout, QWidget,
 )
 
 from app.localization import tr
 from ui.theme import Spacing
+
+
+_NEUTRAL_ICON_ROOT = (
+    Path(__file__).resolve().parents[2] / "app" / "icons" / "ui" / "svg" / "neutral"
+)
+
+
+class ChevronDoubleSpinBox(QDoubleSpinBox):
+    """Entity-form number field with real, platform-independent step buttons."""
+
+    _BUTTON_STRIP_WIDTH = 26
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ChevronDoubleSpinBox")
+        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+
+        self.up_button = self._step_button("ChevronSpinUpButton", "chevron-up.svg")
+        self.down_button = self._step_button("ChevronSpinDownButton", "chevron-down.svg")
+        self.up_button.clicked.connect(self.stepUp)
+        self.down_button.clicked.connect(self.stepDown)
+
+        # The buttons overlay the spinbox body, so explicitly keep entered text
+        # and the cursor out of their dedicated strip.
+        self.lineEdit().setTextMargins(7, 0, self._BUTTON_STRIP_WIDTH + 6, 0)
+        self._sync_step_buttons()
+
+    def _step_button(self, name: str, icon_name: str) -> QToolButton:
+        button = QToolButton(self)
+        button.setObjectName(name)
+        button.setIcon(QIcon(str(_NEUTRAL_ICON_ROOT / icon_name)))
+        button.setIconSize(QSize(12, 12))
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setAutoRepeat(True)
+        return button
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        strip_x = self.width() - self._BUTTON_STRIP_WIDTH - 1
+        available_height = max(0, self.height() - 2)
+        upper_height = (available_height + 1) // 2
+        self.up_button.setGeometry(
+            QRect(strip_x, 1, self._BUTTON_STRIP_WIDTH, upper_height)
+        )
+        self.down_button.setGeometry(
+            QRect(
+                strip_x,
+                1 + upper_height,
+                self._BUTTON_STRIP_WIDTH,
+                available_height - upper_height,
+            )
+        )
+        # Keep the real controls above the internal editor on every platform.
+        self.up_button.raise_()
+        self.down_button.raise_()
+
+    def setReadOnly(self, read_only: bool):
+        super().setReadOnly(read_only)
+        self._sync_step_buttons()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.EnabledChange:
+            self._sync_step_buttons()
+
+    def _sync_step_buttons(self):
+        can_step = self.isEnabled() and not self.isReadOnly()
+        self.up_button.setEnabled(can_step)
+        self.down_button.setEnabled(can_step)
 
 
 class CardFrame(QFrame):

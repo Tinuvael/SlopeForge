@@ -5,7 +5,7 @@ import pytest
 pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QToolButton
 
 from repositories.domain_repository import SelectableDomain
 from ui.add_dialog import AddDialog
@@ -13,6 +13,7 @@ from ui.dialogs.blast_event_dialog import BlastEventDialog
 from ui.dialogs.entity_metadata_dialogs import ContourMetadataDialog
 from ui.dialogs.rename_entity_dialog import RenameEntityDialog
 from ui.project_dialog import ProjectDialog
+from ui.widgets.design_system import ChevronDoubleSpinBox
 
 
 @pytest.fixture(scope="module")
@@ -135,3 +136,74 @@ def test_escape_rejects_without_accepting(qapp):
     QApplication.processEvents()
     QTest.keyClick(dialog, Qt.Key.Key_Escape)
     assert dialog.result() == QDialog.DialogCode.Rejected
+
+
+def _button_test_points(button):
+    rect = button.rect()
+    return (
+        QPoint(2, 2),
+        rect.center(),
+        QPoint(rect.right() - 2, rect.bottom() - 2),
+    )
+
+
+def test_blast_event_horizon_chevrons_step_across_visible_button_area(qapp):
+    dialog = BlastEventDialog(
+        service=SimpleNamespace(inspect_event_geometry=lambda *_args: None)
+    )
+    dialog.show()
+    QApplication.processEvents()
+
+    assert isinstance(dialog.elevation, ChevronDoubleSpinBox)
+    for point in _button_test_points(dialog.elevation.up_button):
+        dialog.elevation.setValue(630)
+        QTest.mouseClick(
+            dialog.elevation.up_button, Qt.MouseButton.LeftButton, pos=point
+        )
+        assert dialog.elevation.value() == 631
+
+    for point in _button_test_points(dialog.elevation.down_button):
+        dialog.elevation.setValue(631)
+        QTest.mouseClick(
+            dialog.elevation.down_button, Qt.MouseButton.LeftButton, pos=point
+        )
+        assert dialog.elevation.value() == 630
+
+
+def test_horizon_chevrons_own_hit_area_and_respect_non_editable_states(qapp):
+    dialog = BlastEventDialog(
+        service=SimpleNamespace(inspect_event_geometry=lambda *_args: None)
+    )
+    dialog.show()
+    QApplication.processEvents()
+    spinbox = dialog.elevation
+
+    for button in (spinbox.up_button, spinbox.down_button):
+        point_in_spinbox = button.mapTo(spinbox, button.rect().center())
+        assert spinbox.childAt(point_in_spinbox) is button
+        assert isinstance(spinbox.childAt(point_in_spinbox), QToolButton)
+
+    spinbox.setValue(630)
+    spinbox.setDisabled(True)
+    QTest.mouseClick(spinbox.up_button, Qt.MouseButton.LeftButton)
+    assert spinbox.value() == 630
+    assert not spinbox.up_button.isEnabled()
+    assert not spinbox.down_button.isEnabled()
+
+    spinbox.setEnabled(True)
+    spinbox.setReadOnly(True)
+    QTest.mouseClick(spinbox.up_button, Qt.MouseButton.LeftButton)
+    assert spinbox.value() == 630
+    assert not spinbox.up_button.isEnabled()
+    assert not spinbox.down_button.isEnabled()
+
+
+def test_contour_metadata_horizon_uses_chevron_spinbox(qapp):
+    domains = [SelectableDomain(1, "North", 7, 3)]
+    dialog = ContourMetadataDialog(domains, 1, "C-1", 640)
+    dialog.show()
+    QApplication.processEvents()
+
+    assert isinstance(dialog.horizon, ChevronDoubleSpinBox)
+    QTest.mouseClick(dialog.horizon.up_button, Qt.MouseButton.LeftButton)
+    assert dialog.horizon.value() == 641
