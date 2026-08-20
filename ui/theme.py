@@ -52,6 +52,29 @@ QLabel#assessmentSectionTitle { color: #6b7280; font-weight: 600; }
 QLabel#assessmentFieldLabel, QLabel#assessmentPlanStatus { color: #6b7280; }
 QLabel#assessmentFieldValue { color: #111827; }
 QLabel#assessmentValidation { color: #a33a32; }
+QLabel#assessmentStepCircle {
+    min-width: 20px; max-width: 20px; min-height: 20px; max-height: 20px;
+    border-radius: 10px; font-weight: 600;
+}
+QLabel#assessmentStepCircle[stepState="active"], QLabel#assessmentStepCircle[stepState="complete"] {
+    background: #1261a0; color: #ffffff;
+}
+QLabel#assessmentStepCircle[stepState="future"] { background: #e5e9ef; color: #6b7280; }
+QLabel#assessmentStepLabel[stepState="active"] { color: #111827; font-weight: 600; }
+QLabel#assessmentStepLabel[stepState="complete"] { color: #1261a0; font-weight: 600; }
+QLabel#assessmentStepLabel[stepState="future"] { color: #6b7280; }
+QFrame#assessmentStepConnector { background: #d7dde6; border: 0; }
+QFrame#assessmentStepConnector[complete="true"] { background: #1261a0; }
+QFrame#GeometryLegendSwatch[legendRole="traced"] { background: #2563eb; border-radius: 1px; }
+QFrame#GeometryLegendSwatch[legendRole="connector"] { background: #d97706; border-radius: 1px; }
+QFrame#GeometryLegendSwatch[legendRole="marker"] { background: #ffffff; border: 2px solid #1261a0; border-radius: 4px; }
+QWidget#assessmentLinkEventRow { background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
+QFrame#PlanCard, QFrame#InspectorCard, QFrame#DialogFooter {
+    background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px;
+}
+QDialog#DomainGeometryEditor { background: #f4f6f9; }
+QLabel#InspectorValue { color: #111827; font-weight: 600; }
+QLabel#DialogStatus { color: #6b7280; }
 QFrame#DashboardSummaryRow, QWidget#ProjectLinesDatasetRow, QWidget#StandardRow {
     background: #ffffff; border: 1px solid #d7dde6; border-radius: 5px;
 }

@@ -66,7 +66,8 @@ def build_page(monkeypatch, state, app, *, preview_count=0):
 
 def test_real_workspace_is_visible_and_has_one_navigation_path(monkeypatch, state, app):
     page = build_page(monkeypatch, state, app)
-    assert len(page.stepper.step_nodes) == 4
+    assert len(page.stepper.step_nodes) == 3
+    assert page.stepper.labels == ("Details", "Boundary", "Review")
     assert all(circle.isVisible() and label.isVisible()
                for circle, label in page.stepper.step_nodes)
     assert page.info_card.isVisible() and page.plan_card.isVisible() and page.context_card.isVisible()
@@ -122,6 +123,7 @@ def test_footer_hierarchy_and_ui_only_elevation_rounding(monkeypatch, state, app
     assert page.cancel.objectName() == "assessmentQuietAction"
     assert all(button.minimumHeight() == 32
                for button in (page.next, page.confirm, page.back, page.cancel))
+    assert page.confirm.text() == "Create Assessment Area"
     page.close()
 
 

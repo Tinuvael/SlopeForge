@@ -61,6 +61,7 @@ def test_domain_dialog_retains_name_description_and_actions(qapp):
     dialog.name.setText("North")
     dialog.description.setPlainText("North wall")
     assert dialog.name.text() == "North" and dialog.description.toPlainText() == "North wall"
+    assert dialog.description.maximumHeight() == 82
     assert_standard_actions(dialog, dialog.create_button)
     dialog.cancel_button.click()
     assert dialog.result() == QDialog.DialogCode.Rejected
