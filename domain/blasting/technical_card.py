@@ -109,8 +109,8 @@ class JointSetOrientation:
             raise ValueError("Joint-set dip direction must be at least 0 and less than 360 degrees")
         for name in ("spacing_m", "persistence_m"):
             value = getattr(self, name)
-            if value is not None and (not isfinite(value) or value < 0):
-                raise ValueError(f"Joint-set {name} must be finite and non-negative")
+            if value is not None and (not isfinite(value) or value <= 0):
+                raise ValueError(f"Joint-set {name} must be finite and positive")
 
 
 @dataclass
@@ -139,8 +139,8 @@ class GeomechanicalParameters:
                 raise ValueError(f"{name} must be finite")
         if self.ucs_mpa is not None and self.ucs_mpa < 0:
             raise ValueError("UCS must be non-negative")
-        if self.rock_density_t_m3 is not None and self.rock_density_t_m3 < 0:
-            raise ValueError("Rock density must be non-negative")
+        if self.rock_density_t_m3 is not None and self.rock_density_t_m3 <= 0:
+            raise ValueError("Rock density must be positive")
         if self.rqd_percent is not None and not 0 <= self.rqd_percent <= 100:
             raise ValueError("RQD must be between 0 and 100 percent")
         if self.gsi is not None and not 1 <= self.gsi <= 100:
@@ -267,6 +267,13 @@ class ActualDrillingGroup:
     mean_toe_deviation_m: float | None = None; max_toe_deviation_m: float | None = None
     deviations_text: str = ""; notes: str = ""
     charge_components: list[ChargeComponent] = field(default_factory=list)
+
+    def __post_init__(self):
+        for name in ("mean_collar_deviation_m", "max_collar_deviation_m",
+                     "mean_toe_deviation_m", "max_toe_deviation_m"):
+            value = getattr(self, name)
+            if value is not None and (not isfinite(value) or value < 0):
+                raise ValueError(f"{name} must be finite and non-negative")
 
     def effective_drilling_length(self):
         if not self.included: return 0.0
@@ -526,6 +533,10 @@ class BlastEventTechnicalCard:
 
     def save_revision(self, draft: BlastEventTechnicalCardRevision, *, status="draft", change_reason=""):
         saved = deepcopy(draft); number = len(self.revisions) + 1
+        if saved.geomechanical_parameters:
+            saved.geomechanical_parameters.__post_init__()
+            for joint_set in saved.geomechanical_parameters.joint_sets: joint_set.__post_init__()
+        for actual_group in saved.actual_execution.actual_drilling_groups: actual_group.__post_init__()
         saved.id = f"{self.id}-R{number:03d}"; saved.technical_card_id = self.id
         saved.revision_number = number; saved.created_at = utc_now(); saved.status = status; saved.change_reason = change_reason
         if status == "completed" and saved.validate_completion(): raise ValueError("; ".join(saved.validate_completion()))

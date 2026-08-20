@@ -1,11 +1,12 @@
 from copy import deepcopy
 import json
+from math import sqrt
+from statistics import pstdev
 
-import numpy as np
 import pytest
 
 from domain.assessment.evaluation import MeasuredWallGeometry, calculate_revision
-from domain.blasting.technical_card import GeomechanicalParameters, JointSetOrientation, new_technical_card
+from domain.blasting.technical_card import ActualDrillingGroup, GeomechanicalParameters, JointSetOrientation, new_technical_card
 from infrastructure.geometry_import.wall_rms import WallSurveyValidationError, calculate_wall_rms_from_csv, load_design_surface
 from tests.test_technical_cards import event
 from tests.test_wall_assessment import complete_revision
@@ -61,9 +62,50 @@ def test_synthetic_surface_rms_and_invalid_csv(tmp_path):
     survey.write_text("X,Y,Z\n1,1,1\n2,2,2\n3,3,3\n")
     assert load_design_surface(design).faces.shape == (1, 3)
     result = calculate_wall_rms_from_csv(design, survey)
-    assert result.rms_m == pytest.approx(np.sqrt(14 / 3))
-    assert result.mean_m == 2 and result.std_m == pytest.approx(np.std([1, 2, 3]))
+    assert result.rms_m == pytest.approx(sqrt(14 / 3))
+    assert result.mean_m == 2 and result.std_m == pytest.approx(pstdev([1, 2, 3]))
     assert (result.min_m, result.max_m, result.point_count) == (1, 3, 3)
     design.write_text("X,Y,Z\n0,0,0\n")
     with pytest.raises(WallSurveyValidationError, match="missing columns"):
         calculate_wall_rms_from_csv(design, survey)
+
+
+def test_interleaved_fids_build_their_own_triangles_and_skip_invalid_groups(tmp_path):
+    design = tmp_path / "interleaved.csv"
+    design.write_text(
+        "PID,X,Y,Z,FID\n"
+        "1,0,0,0,20\n2,10,0,0,10\n3,0,10,0,20\n"
+        "4,11,0,0,10\n5,0,0,1,99\n6,0,0,2,20\n7,10,1,0,10\n"
+    )
+    mesh = load_design_surface(design)
+    triangles = mesh.vertices[mesh.faces]
+    assert mesh.faces.shape == (2, 3)
+    assert {frozenset(map(tuple, triangle)) for triangle in triangles} == {
+        frozenset({(0.0, 0.0, 0.0), (0.0, 10.0, 0.0), (0.0, 0.0, 2.0)}),
+        frozenset({(10.0, 0.0, 0.0), (11.0, 0.0, 0.0), (10.0, 1.0, 0.0)}),
+    }
+
+
+@pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan")])
+def test_positive_geomechanics_measurements_are_validated(value):
+    with pytest.raises(ValueError):
+        GeomechanicalParameters(rock_density_t_m3=value)
+    with pytest.raises(ValueError):
+        JointSetOrientation(45, 90, spacing_m=value)
+    with pytest.raises(ValueError):
+        JointSetOrientation(45, 90, persistence_m=value)
+
+
+@pytest.mark.parametrize("value", [-1, float("inf"), float("nan")])
+def test_non_negative_measured_values_are_validated(value):
+    with pytest.raises(ValueError):
+        ActualDrillingGroup(mean_toe_deviation_m=value)
+    with pytest.raises(ValueError):
+        MeasuredWallGeometry(contour_rms_deviation_m=value)
+
+
+def test_measurement_method_uses_only_canonical_codes():
+    assert MeasuredWallGeometry(measurement_method=None).measurement_method is None
+    assert MeasuredWallGeometry(measurement_method="laser_scan").measurement_method == "laser_scan"
+    with pytest.raises(ValueError, match="Unsupported measurement method"):
+        MeasuredWallGeometry(measurement_method="Лазерное сканирование")

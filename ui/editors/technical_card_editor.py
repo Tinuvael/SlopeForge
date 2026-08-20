@@ -226,7 +226,7 @@ class TechnicalCardDialog(QDialog):
         self.geo_notes = QTextEdit(geo.notes); self.geo_notes.setFixedHeight(58); notes.addWidget(self.geo_notes)
         layout.addWidget(notes_panel, 2, 0, 1, 2, Qt.AlignmentFlag.AlignTop)
 
-        for widget in (self.lithology, self.ucs, self.ff, self.gsi, self.rqd, self.jn, self.jr, self.ja, self.jw): widget.setEnabled(not self.read_only)
+        for widget in (self.lithology, self.density, self.ucs, self.ff, self.gsi, self.rqd, self.jn, self.jr, self.ja, self.jw): widget.setEnabled(not self.read_only)
         self.geo_notes.setReadOnly(self.read_only)
         for row in self.joint_set_rows:
             for widget in row: widget.setEnabled(not self.read_only)

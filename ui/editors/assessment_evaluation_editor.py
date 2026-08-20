@@ -4,6 +4,7 @@ from __future__ import annotations
 from app.localization import tr
 
 from copy import deepcopy
+from pathlib import Path
 from PySide6.QtCore import QDate, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
@@ -447,7 +448,8 @@ class AssessmentAreaEvaluationDialog(QDialog):
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result:
             self.measured_wall_controls["contour_rms_deviation_m"].set_nullable_value(dialog.result.rms_m)
             measured = self.draft.measured_wall_geometry
-            measured.design_surface_source = dialog.design.text().split("/")[-1]; measured.survey_source = dialog.survey.text().split("/")[-1]
+            measured.design_surface_source = Path(dialog.design.text()).name
+            measured.survey_source = Path(dialog.survey.text()).name
             measured.survey_point_count = dialog.result.point_count; measured.calculation_method = dialog.result.method
 
     def refresh(self, mark_dirty=True):
