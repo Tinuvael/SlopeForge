@@ -144,6 +144,43 @@ def test_shared_history_widget_has_documents_style_four_column_contract():
     widget.close(); app.processEvents()
 
 
+def test_history_text_localizes_known_actions_without_changing_canonical_entries(monkeypatch):
+    from ui import presentation_labels
+
+    translations = {
+        "Technical Card completed": "Техническая карточка завершена",
+        "Created production Block": "Создан производственный блок",
+        "Created contour Blast Event": "Создан контурный взрыв",
+        "Added %1 photos": "Добавлено фото: %1",
+        'Added document "%1"': 'Добавлен документ «%1»',
+        "Technical Card R%1": "Техническая карточка R%1",
+        "Geometry R%1": "Геометрия R%1",
+    }
+    monkeypatch.setattr(presentation_labels, "tr", lambda source: translations.get(source, source))
+    assert presentation_labels.history_text("Technical Card completed") == translations["Technical Card completed"]
+    assert presentation_labels.history_text("Created production Block") == translations["Created production Block"]
+    assert presentation_labels.history_text("Created contour Blast Event") == translations["Created contour Blast Event"]
+    assert presentation_labels.history_text("Added 3 photos") == "Добавлено фото: 3"
+    assert presentation_labels.history_text('Added document "passport.pdf"') == 'Добавлен документ «passport.pdf»'
+    assert presentation_labels.history_text("Technical Card R2 · Geometry R1") == "Техническая карточка R2 · Геометрия R1"
+    assert presentation_labels.history_text("user-entered note") == "user-entered note"
+
+    canonical = EntityHistoryEntry(
+        datetime(2026, 8, 18, tzinfo=timezone.utc), "Engineer",
+        "Technical Card completed", "Technical Card R2",
+    )
+    assert canonical.title == "Technical Card completed"
+    assert canonical.details == "Technical Card R2"
+
+
+def test_recent_activity_cards_use_shared_history_presentation_helper():
+    shared = Path("ui/pages/entity_overview_widgets.py").read_text(encoding="utf-8")
+    block = Path("ui/pages/block_overview_widgets.py").read_text(encoding="utf-8")
+    for source in (shared, block):
+        assert "history_text(entry.title)" in source
+        assert "tr(entry.title)" not in source
+
+
 def test_history_revision_action_only_enables_for_revision_backed_rows():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.entity_history_widget import EntityHistoryWidget

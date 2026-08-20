@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 
 from app.icons.ui.ui_icons import ui_icon
 from app.localization import tr
+from ui.presentation_labels import history_text
 from ui.widgets.design_system import configure_standard_table, set_button_role
 
 
@@ -75,7 +76,10 @@ class EntityHistoryWidget(QWidget):
         for row, entry in enumerate(self._entries):
             self.table.setRowHeight(row, 46)
             when = entry.timestamp.astimezone().strftime("%d.%m.%Y %H:%M") if entry.timestamp.tzinfo else entry.timestamp.strftime("%d.%m.%Y %H:%M")
-            values = (when, entry.actor or "—", entry.title, entry.details or "")
+            values = (
+                when, entry.actor or "—", history_text(entry.title),
+                history_text(entry.details),
+            )
             openable = entry.source_type in OPENABLE_SOURCE_TYPES and bool(entry.source_id)
             tooltip = tr("Double-click to open this historical revision.") if openable else ""
             for column, value in enumerate(values):

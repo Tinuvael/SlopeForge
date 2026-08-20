@@ -169,6 +169,54 @@ def result_label(value: str | None) -> str:
     return tr(RESULT_LABELS.get(value or "", value or ""))
 
 
+HISTORY_ACTION_SOURCES = {
+    "Created", "Deleted", "Updated", "Attachment added", "Attachment removed",
+    "Created production Block", "Created contour Blast Event",
+    "Block created", "Contour Blast created", "Geometry imported", "Geometry reimported",
+    "Blast design created", "Blast design updated", "Geomechanics created",
+    "Geomechanics updated", "Execution fact created", "Execution fact updated",
+    "Execution fact initialized from design", "Technical Card completed",
+    "Assessment Area created", "Assessment Area archived", "Assessment Area restored",
+    "Assessment Area name changed", "Contour Blast archived", "Contour Blast restored",
+    "Contour Blast name changed", "Boundaries created", "Boundaries revised",
+    "Assessment completed", "Assessment draft saved", "Horizon changed", "Domain changed",
+    "Blast event confirmed", "Blast event excluded", "Blast event link restored",
+    "Changed field: Comment", "Archived production Block", "Restored production Block",
+}
+
+
+def history_text(value: str | None) -> str:
+    """Translate known persisted history prose only when it is presented."""
+    text = value or ""
+    if text in HISTORY_ACTION_SOURCES:
+        return tr(text)
+    patterns = (
+        (r'Added (\d+) photos', "Added %1 photos"),
+        (r'Added (\d+) documents', "Added %1 documents"),
+        (r'Added photo "(.*)"', 'Added photo "%1"'),
+        (r'Added document "(.*)"', 'Added document "%1"'),
+        (r'Photo metadata updated "(.*)"', 'Photo metadata updated "%1"'),
+        (r'Document metadata updated "(.*)"', 'Document metadata updated "%1"'),
+        (r'Deleted photo "(.*)"', 'Deleted photo "%1"'),
+        (r'Deleted document "(.*)"', 'Deleted document "%1"'),
+        (r'Changed field: (.*)', "Changed field: %1"),
+        (r'Manual blast event linked · (.*)', "Manual blast event linked · %1"),
+        (r'Technical Card R(\d+)', "Technical Card R%1"),
+        (r'Geometry R(\d+)', "Geometry R%1"),
+        (r'Evaluation R(\d+)', "Evaluation R%1"),
+    )
+    for pattern, source in patterns:
+        match = re.fullmatch(pattern, text)
+        if match:
+            translated = tr(source)
+            for index, group in enumerate(match.groups(), 1):
+                translated = translated.replace(f"%{index}", group)
+            return translated
+    if " · " in text:
+        return " · ".join(history_text(part) for part in text.split(" · "))
+    return text
+
+
 def format_assessment_elevation_interval(minimum: float | None,
                                          maximum: float | None) -> str:
     """Format an Assessment interval without changing its stored precision."""

@@ -70,7 +70,13 @@ def test_domain_dialog_retains_name_description_and_actions(qapp):
 def test_blast_event_dialog_contract_and_date_state(qapp):
     service = SimpleNamespace(inspect_event_geometry=lambda *_args: None)
     dialog = BlastEventDialog(service=service)
-    assert dialog.kind.itemText(0) == "production" and dialog.kind.itemText(1) == "contour"
+    assert [dialog.kind.itemText(index) for index in range(2)] == [
+        "Production", "Contour blast",
+    ]
+    assert [dialog.kind.itemData(index) for index in range(2)] == [
+        "production", "contour",
+    ]
+    assert dialog.kind.currentData() == "production"
     assert not dialog.date.isEnabled()
     dialog.has_date.setChecked(True)
     assert dialog.date.isEnabled()

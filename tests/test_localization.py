@@ -5,7 +5,7 @@ import pytest
 
 import app.localization as localization
 from app.localization import LANGUAGE_KEY, TsTranslator, install_selected_translator, normalize_language, save_language, selected_language, tr
-from ui.presentation_labels import criterion_label, domain_message, matrix_label, option_label, result_label, technical_group_label, technical_text
+from ui.presentation_labels import criterion_label, domain_message, history_text, matrix_label, option_label, result_label, technical_group_label, technical_text
 
 
 @pytest.fixture(scope="module")
@@ -54,6 +54,8 @@ def test_russian_catalog_presentation_and_validation(qapp, tmp_path):
     assert result_label("Хорошие результаты") == "Хорошие результаты"
     assert technical_text("Скважины") == "Скважины"
     assert domain_message("Не заполнено: Дата оценки, Инспектор") == "Не заполнены обязательные поля: Дата оценки, Инспектор"
+    assert history_text("Created production Block") == "Создан производственный блок"
+    assert history_text("Created contour Blast Event") == "Создан контурный взрыв"
     assert "main_pattern" == "main_pattern"
 
 

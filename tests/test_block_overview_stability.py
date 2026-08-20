@@ -96,6 +96,7 @@ def test_block_notes_card_fixes_only_editor_viewport():
 
 def test_block_recent_activity_always_reserves_four_equal_single_line_slots():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    core = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     from ui.pages.block_overview_widgets import BlockRecentActivityCard
 
     app = widgets.QApplication.instance() or widgets.QApplication([])
@@ -105,6 +106,8 @@ def test_block_recent_activity_always_reserves_four_equal_single_line_slots():
         for i in range(2)
     ]
     card.set_entries(entries)
+    assert card.layout.alignment() & core.Qt.AlignmentFlag.AlignTop
+    assert card.rows.alignment() & core.Qt.AlignmentFlag.AlignTop
     assert card.rows.count() == 4
     assert [card.rows.itemAt(i).widget().height() for i in range(4)] == [card.SLOT_HEIGHT] * 4
     first = card.rows.itemAt(0).widget()

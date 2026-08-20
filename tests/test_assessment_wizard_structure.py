@@ -1,3 +1,4 @@
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -131,3 +132,10 @@ def test_only_small_architecture_guards_remain_source_based():
     page = Path("ui/pages/assessment_area_creation_page.py").read_text(encoding="utf-8")
     assert "QStackedWidget" not in page
     assert page.count("AssessmentGeometryEditorWidget(") == 1
+
+
+def test_assessment_creation_translation_helpers_remain_static():
+    from ui.pages.assessment_area_creation_page import AssessmentAreaCreationPage
+
+    assert isinstance(inspect.getattr_static(AssessmentAreaCreationPage, "_section"), staticmethod)
+    assert isinstance(inspect.getattr_static(AssessmentAreaCreationPage, "_add_row"), staticmethod)

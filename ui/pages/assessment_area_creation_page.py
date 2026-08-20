@@ -47,7 +47,7 @@ class AssessmentAreaCreationPage(QWidget):
         root.setContentsMargins(Spacing.CARD_HORIZONTAL, Spacing.CARD_VERTICAL,
                                 Spacing.CARD_HORIZONTAL, Spacing.CARD_VERTICAL)
         root.setSpacing(Spacing.SM)
-        title = QLabel("Edit Assessment Area boundary" if edit_area_id else "Create Assessment Area")
+        title = QLabel(tr("Edit Assessment Area boundary") if edit_area_id else tr("Create Assessment Area"))
         title.setObjectName("EntityTitle"); root.addWidget(title)
         context = QLabel(tr("Domain: %1").replace("%1", domain_name or "—"))
         context.setObjectName("MutedText"); root.addWidget(context)
@@ -163,7 +163,7 @@ class AssessmentAreaCreationPage(QWidget):
 
     @staticmethod
     def _section(text):
-        label = QLabel(text); label.setObjectName("assessmentSectionTitle"); return label
+        label = QLabel(tr(text)); label.setObjectName("assessmentSectionTitle"); return label
 
     @staticmethod
     def _value(text="—"):
@@ -171,7 +171,7 @@ class AssessmentAreaCreationPage(QWidget):
 
     @staticmethod
     def _add_row(grid, row, text, widget):
-        label = QLabel(text); label.setObjectName("assessmentFieldLabel")
+        label = QLabel(tr(text)); label.setObjectName("assessmentFieldLabel")
         grid.addWidget(label, row, 0); grid.addWidget(widget, row, 1)
 
     def _refresh_context(self):
@@ -185,17 +185,18 @@ class AssessmentAreaCreationPage(QWidget):
             self.editor.start_edit(self.edit_area_id) if self.edit_area_id else self.editor.start_new_area()
         except Exception as exc:
             QMessageBox.critical(self, tr("Assessment Area"),
-                                 f"Could not start boundary editing.\n\n{domain_message(str(exc))}")
+                                 tr("Could not start boundary editing.") +
+                                 f"\n\n{domain_message(str(exc))}")
         self._sync_ui()
 
     def _validate_general(self):
         self._refresh_context()
         if not self.area_name.text().strip():
-            self.general_message.setText("Name is required."); return False
+            self.general_message.setText(tr("Name is required.")); return False
         if not self.assessment_date.date().isValid():
-            self.general_message.setText("Assessment date is required."); return False
+            self.general_message.setText(tr("Assessment date is required.")); return False
         if self.controller.state.active_dataset() is None:
-            self.general_message.setText("An active Project Lines dataset is required."); return False
+            self.general_message.setText(tr("An active Project Lines dataset is required.")); return False
         self.general_message.clear(); return True
 
     def _next(self):
@@ -241,12 +242,12 @@ class AssessmentAreaCreationPage(QWidget):
             item = self.context_body.takeAt(0)
             if item.widget(): item.widget().deleteLater()
         if self.current_step == self.GENERAL:
-            self.context_title.setText("Getting started")
+            self.context_title.setText(tr("Getting started"))
             lines = ("Enter Area details.", "Verify Domain and active Project Lines.",
                      "Continue to Boundary.")
             for text in lines: self._context_label(text)
         elif self.current_step == self.BOUNDARY:
-            self.context_title.setText("Boundary")
+            self.context_title.setText(tr("Boundary"))
             for text in ("Click near a Project Line to snap.", "Follow the line to trace the boundary.",
                          "Move away to create a connector.", "Close the boundary when finished."):
                 self._context_label(text)
@@ -254,7 +255,7 @@ class AssessmentAreaCreationPage(QWidget):
                                ("connector", "Connector"), ("marker", "Snap point")):
                 self._legend_row(role, text)
         elif self.current_step == self.REVIEW:
-            self.context_title.setText("Review")
+            self.context_title.setText(tr("Review"))
             if self._link_preview_error:
                 self._context_label("Linked-event preview unavailable")
             else:
@@ -287,7 +288,7 @@ class AssessmentAreaCreationPage(QWidget):
         for item in items:
             row = QWidget(); row.setObjectName("assessmentLinkEventRow")
             layout = QGridLayout(row); layout.setContentsMargins(2, 3, 2, 3)
-            kind = "Production" if item.event_type == "production" else "Contour blast"
+            kind = tr("Production") if item.event_type == "production" else tr("Contour blast")
             type_label = QLabel(kind); type_label.setObjectName("assessmentFieldLabel")
             name_label = QLabel(item.name); name_label.setObjectName("assessmentFieldValue")
             name_label.setWordWrap(True)
@@ -300,19 +301,21 @@ class AssessmentAreaCreationPage(QWidget):
         self.context_body.addWidget(self.link_events_scroll, 1)
 
     def _context_label(self, text):
-        label = QLabel(text); label.setWordWrap(True); self.context_body.addWidget(label)
+        prefix = "✓  " if text.startswith("✓  ") else ""
+        source = text.removeprefix("✓  ")
+        label = QLabel(prefix + tr(source)); label.setWordWrap(True); self.context_body.addWidget(label)
 
     def _legend_row(self, role, text):
         row = QWidget(); layout = QHBoxLayout(row); layout.setContentsMargins(0, 1, 0, 1)
         swatch = QFrame(); swatch.setObjectName("GeometryLegendSwatch")
         swatch.setProperty("legendRole", role); swatch.setFixedSize(18 if role != "marker" else 8,
                                                                     3 if role != "marker" else 8)
-        layout.addWidget(swatch); layout.addWidget(QLabel(text)); layout.addStretch(1)
+        layout.addWidget(swatch); layout.addWidget(QLabel(tr(text))); layout.addStretch(1)
         self.context_body.addWidget(row)
 
     def _context_row(self, name, value):
         row = QWidget(); layout = QHBoxLayout(row); layout.setContentsMargins(0, 0, 0, 0)
-        label = QLabel(str(name)); label.setObjectName("assessmentFieldLabel")
+        label = QLabel(tr(str(name))); label.setObjectName("assessmentFieldLabel")
         result = QLabel(str(value)); result.setObjectName("assessmentFieldValue")
         layout.addWidget(label); layout.addStretch(1); layout.addWidget(result)
         self.context_body.addWidget(row)
@@ -321,7 +324,7 @@ class AssessmentAreaCreationPage(QWidget):
         if self._saving or self.current_step != self.REVIEW: return
         boundary = self.editor.closed_boundary()
         if boundary is None: return
-        self._saving = True; self.stepper.set_step(self.SAVE); self.footer_status.setText("Saving…"); self._sync_ui()
+        self._saving = True; self.stepper.set_step(self.SAVE); self.footer_status.setText(tr("Saving…")); self._sync_ui()
         try:
             result = self.controller.save_assessment_area_geometry(
                 assessment_area_id=self.edit_area_id, name=self.area_name.text().strip(),
@@ -329,12 +332,13 @@ class AssessmentAreaCreationPage(QWidget):
         except Exception as exc:
             self._saving = False; self.footer_status.clear(); self.stepper.set_step(self.REVIEW); self._sync_ui()
             QMessageBox.critical(self, tr("Assessment Area"),
-                                 f"Could not save the new boundaries.\n\n{domain_message(str(exc))}")
+                                 tr("Could not save the new boundaries.") +
+                                 f"\n\n{domain_message(str(exc))}")
             return
         self._saving = False
         if result.link_refresh_warning:
             QMessageBox.warning(self, tr("Assessment Area saved"),
-                                "The Assessment Area was saved, but linked-event suggestions could not be refreshed.\n\n"
+                                tr("The Assessment Area was saved, but linked-event suggestions could not be refreshed.") + "\n\n"
                                 + domain_message(result.link_refresh_warning))
         self.area_created.emit(result.area_id)
 
@@ -343,8 +347,8 @@ class AssessmentAreaCreationPage(QWidget):
     def _sync_ui(self, *_args):
         state = self.editor.workflow_state; boundary_step = self.current_step == self.BOUNDARY
         can_edit = not self.editor.read_only and not self._saving
-        self.plan_title.setText(("Project plan", "Define Assessment boundary",
-                                 "Assessment footprint", "Assessment footprint")[self.current_step])
+        self.plan_title.setText(tr(("Project plan", "Define Assessment boundary",
+                                    "Assessment footprint", "Assessment footprint")[self.current_step]))
         self.start.setEnabled(can_edit and boundary_step and state == "IDLE")
         self.back_vertex.setEnabled(can_edit and boundary_step and state in {"DRAWING", "CLOSED"})
         self.finish.setEnabled(can_edit and boundary_step and state == "DRAWING")
@@ -363,9 +367,9 @@ class AssessmentAreaCreationPage(QWidget):
         self.confirm.setVisible(self.current_step == self.REVIEW)
         self.confirm.setEnabled(can_edit and self.current_step == self.REVIEW)
         self.cancel.setEnabled(not self._saving)
-        self.step_status.setText({"DRAWING":"Click to draw · Wheel to zoom · Middle drag to pan",
-                                  "CLOSED":"Boundary closed and valid.",
-                                  "IDLE":"Inspect the plan, then use Draw boundary."}.get(state, state))
+        self.step_status.setText(tr({"DRAWING":"Click to draw · Wheel to zoom · Middle drag to pan",
+                                     "CLOSED":"Boundary closed and valid.",
+                                     "IDLE":"Inspect the plan, then use Draw boundary."}.get(state, state)))
         self._update_geometry_summary()
 
     def has_active_workflow(self): return self.editor.has_active_workflow()

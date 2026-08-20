@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.localization import tr
+from ui.presentation_labels import history_text
 from ui.pages.entity_overview_widgets import (
     InlineAutosaveNotes,
     OverviewLinkButton,
@@ -198,7 +199,9 @@ class BlockRecentActivityCard(RecentActivityCard):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.rows.setSpacing(4)
+        self.rows.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def set_entries(self, entries, limit=4):
         while self.rows.count():
@@ -215,7 +218,7 @@ class BlockRecentActivityCard(RecentActivityCard):
             layout.setSpacing(8)
             if index < len(visible):
                 entry = visible[index]
-                title = QLabel(f"●  {tr(entry.title)}")
+                title = QLabel(f"●  {history_text(entry.title)}")
                 title.setObjectName("ActivityTitle")
                 title.setMinimumWidth(0)
                 title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
