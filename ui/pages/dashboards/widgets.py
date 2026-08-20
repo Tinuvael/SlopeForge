@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QMouseEvent, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -45,7 +45,6 @@ DASHBOARD_ROW_STYLE = (
     "QFrame#DashboardSummaryRow,QWidget#ProjectLinesDatasetRow{"
     "background:#ffffff;border:1px solid #d7dde6;border-radius:5px;}"
 )
-DASHBOARD_SELECTION_MARKER_COLOR = "#7a1f8f"
 
 QuadrantPresentation = AssessmentResultPresentation
 
@@ -207,6 +206,8 @@ class CompactSummaryList(DashboardCard):
     activated = Signal(str)
     go_to_requested = Signal(str)
     ROW_HEIGHT = 46
+    SELECTION_MARKER_WIDTH = 2
+    SELECTION_MARKER_HEIGHT = 26
 
     def __init__(
         self,
@@ -223,16 +224,17 @@ class CompactSummaryList(DashboardCard):
         self.fill_available = bool(fill_available)
         self._selected_key: str | None = None
         self._row_widgets: dict[str, SummaryRowWidget] = {}
-        self._selection_markers: dict[str, QFrame] = {}
+        self._selection_markers: dict[str, QLabel] = {}
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(4)
         self.list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setStyleSheet(
             "QListWidget{background:transparent;border:0;}"
-            "QListWidget::item{background:transparent;border:0;}"
+            "QListWidget::item{background:transparent;border:0;outline:0;}"
         )
         if self.fill_available:
             self.list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -243,10 +245,13 @@ class CompactSummaryList(DashboardCard):
         self.set_rows([])
 
     @staticmethod
-    def _set_selection_marker(marker: QFrame, selected: bool) -> None:
-        color = DASHBOARD_SELECTION_MARKER_COLOR if selected else "transparent"
+    def _set_selection_marker(marker: QLabel, selected: bool) -> None:
+        if selected:
+            color = marker.palette().color(QPalette.ColorRole.Highlight).name()
+        else:
+            color = "#ffffff"
         marker.setStyleSheet(
-            f"background:{color};border:0;border-radius:2px;"
+            f"background-color:{color};border:none;border-radius:1px;"
         )
 
     def _apply_row_selection(self) -> None:
@@ -296,21 +301,20 @@ class CompactSummaryList(DashboardCard):
             holder.clicked.connect(lambda current_key=key: self._activate_row(current_key))
             self._row_widgets[key] = holder
             layout = QHBoxLayout(holder)
-            layout.setContentsMargins(5, 4, 8, 4)
+            layout.setContentsMargins(6, 4, 8, 4)
             layout.setSpacing(4)
 
-            selection_marker = QFrame()
+            selection_marker = QLabel()
             selection_marker.setObjectName("DashboardSelectionMarker")
-            selection_marker.setFixedWidth(3)
-            selection_marker.setSizePolicy(
-                QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
+            selection_marker.setFixedSize(
+                self.SELECTION_MARKER_WIDTH, self.SELECTION_MARKER_HEIGHT
             )
             selection_marker.setAttribute(
                 Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
             )
             self._set_selection_marker(selection_marker, False)
             self._selection_markers[key] = selection_marker
-            layout.addWidget(selection_marker)
+            layout.addWidget(selection_marker, 0, Qt.AlignmentFlag.AlignVCenter)
 
             if row.accent:
                 accent = QFrame()
