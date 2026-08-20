@@ -28,30 +28,30 @@ class ConnectionProfile:
     database: str = "slopeforge"
     username: str = ""
     password: str = ""
-    storage_root: Path = Path()
+    storage_root: str | Path = ""
 
     def normalized(self) -> "ConnectionProfile":
+        storage_text = str(self.storage_root).strip()
         return ConnectionProfile(
             host=self.host.strip(),
             port=int(self.port),
             database=self.database.strip(),
             username=self.username.strip(),
             password=self.password,
-            storage_root=Path(self.storage_root).expanduser(),
+            storage_root=Path(storage_text).expanduser() if storage_text else "",
         )
 
     def validate_required(self) -> None:
-        profile = self.normalized()
         missing = []
-        if not profile.host:
+        if not self.host.strip():
             missing.append("Server / Host")
-        if not profile.database:
+        if not self.database.strip():
             missing.append("Database")
-        if not profile.username:
+        if not self.username.strip():
             missing.append("User")
-        if not str(profile.storage_root):
+        if not str(self.storage_root).strip():
             missing.append("File storage path")
-        if not 1 <= profile.port <= 65535:
+        if not 1 <= int(self.port) <= 65535:
             raise ConnectionSettingsError("Port must be between 1 and 65535.")
         if missing:
             raise ConnectionSettingsError("Required fields: " + ", ".join(missing))
@@ -110,7 +110,7 @@ class ConnectionSettingsStore:
                 database=section.get("database", "slopeforge"),
                 username=section.get("username", ""),
                 password=section.get("password", ""),
-                storage_root=Path(section.get("storage_root", "")),
+                storage_root=section.get("storage_root", ""),
             )
             profile.validate_required()
             return profile.normalized()
@@ -120,8 +120,8 @@ class ConnectionSettingsStore:
             ) from exc
 
     def save(self, profile: ConnectionProfile) -> None:
-        profile = profile.normalized()
         profile.validate_required()
+        profile = profile.normalized()
         parser = configparser.ConfigParser(interpolation=None)
         parser["connection"] = {
             "host": profile.host,
@@ -178,7 +178,10 @@ def effective_profile(
 
 
 def validate_storage_root(path: str | Path) -> Path:
-    root = Path(path).expanduser()
+    text = str(path).strip()
+    if not text:
+        raise ConnectionSettingsError("File storage path is required.")
+    root = Path(text).expanduser()
     if not root.exists():
         raise ConnectionSettingsError("The file storage folder does not exist.")
     if not root.is_dir():
