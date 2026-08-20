@@ -179,6 +179,7 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "No Domains yet": "Доменов пока нет",
     "Blast events: %1 • Production: %2 • Contour: %3": "Взрывные события: %1 • Производственные: %2 • Контурные: %3",
     "Production: %1 • Contour: %2": "Производственные: %1 • Контурные: %2",
+    "Production: %1  ·  Contour: %2": "Производственные: %1  ·  Контурные: %2",
     "Elevation intervals": "Интервалы высот",
     "Assessment areas: %1 • Evaluated: %2": "Участки оценки: %1 • Оценено: %2",
     "Latest assessments": "Последние оценки",
