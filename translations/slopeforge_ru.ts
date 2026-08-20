@@ -3167,5 +3167,19 @@ Continue?</source><translation>Новый горизонт отличается 
         <message><source>Execution exceptions</source><translation>Отклонения при выполнении</translation></message>
         <message><source>Mass / hole</source><translation>Масса / скважину</translation></message>
         <message><source>Total mass</source><translation>Общая масса</translation></message>
+        <message><source>Area details</source><translation>Данные участка</translation></message>
+        <message><source>Click the plan to add vertices.</source><translation>Щёлкайте по плану, чтобы добавить вершины.</translation></message>
+        <message><source>Create Assessment Area</source><translation>Создать участок оценки</translation></message>
+        <message><source>Create a working domain for blast events and assessment areas.</source><translation>Создайте рабочий домен для взрывов и участков оценки.</translation></message>
+        <message><source>Delete polygon</source><translation>Удалить полигон</translation></message>
+        <message><source>Domain geometry can be imported or drawn from the Domain dashboard after creation.</source><translation>После создания геометрию домена можно импортировать или нарисовать на панели домена.</translation></message>
+        <message><source>Domain: %1</source><translation>Домен: %1</translation></message>
+        <message><source>Draw or edit one or more polygons for this Domain.</source><translation>Нарисуйте или отредактируйте один или несколько полигонов этого домена.</translation></message>
+        <message><source>Drawing</source><translation>Рисование</translation></message>
+        <message><source>Explore</source><translation>Просмотр</translation></message>
+        <message><source>Finish boundary</source><translation>Завершить границу</translation></message>
+        <message><source>How to edit</source><translation>Как редактировать</translation></message>
+        <message><source>Select a polygon or add a new one. Wheel to zoom · drag to pan.</source><translation>Выберите полигон или добавьте новый. Колесо — масштаб · перетаскивание — панорама.</translation></message>
+        <message><source>polygon %1</source><translation>полигон %1</translation></message>
     </context>
 </TS>

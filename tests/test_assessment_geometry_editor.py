@@ -59,7 +59,7 @@ def test_creation_page_does_not_auto_start_drawing():
     constructor = source[source.index("    def __init__"):source.index("    def _start_drawing")]
     assert "self._start_drawing()" not in constructor
     assert '"Click near a Project Line to snap."' in source
-    assert '"Close boundary when finished."' in source
+    assert '"Close the boundary when finished."' in source
 
 
 def test_trace_preview_commit_jump_and_new_active_source(state, app):

@@ -61,8 +61,11 @@ def test_adding_and_undoing_vertices_preserves_viewport(app):
 
 def test_add_polygon_uses_drawing_cursor_and_disables_hand_drag(app):
     dialog=DomainGeometryEditorDialog((polygon(0),))
+    dialog.show(); app.processEvents()
+    assert dialog.add_button.isVisible() and not dialog.finish_button.isVisible()
     assert dialog.view.dragMode()==QGraphicsView.DragMode.ScrollHandDrag
     dialog.start_polygon()
+    assert not dialog.add_button.isVisible() and dialog.finish_button.isVisible()
     assert dialog.drawing
     assert dialog.view.dragMode()==QGraphicsView.DragMode.NoDrag
     assert dialog.view.viewport().cursor().shape()==Qt.CursorShape.CrossCursor

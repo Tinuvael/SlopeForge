@@ -49,6 +49,8 @@ class AssessmentAreaCreationPage(QWidget):
         root.setSpacing(Spacing.SM)
         title = QLabel("Edit Assessment Area boundary" if edit_area_id else "Create Assessment Area")
         title.setObjectName("EntityTitle"); root.addWidget(title)
+        context = QLabel(tr("Domain: %1").replace("%1", domain_name or "—"))
+        context.setObjectName("MutedText"); root.addWidget(context)
         self.stepper = AssessmentWizardStepper(); root.addWidget(self.stepper)
 
         workspace = QHBoxLayout(); workspace.setSpacing(10)
@@ -60,8 +62,9 @@ class AssessmentAreaCreationPage(QWidget):
         self.plan_card = self._card("assessmentPlanCard")
         self.plan_card.setMinimumWidth(390)
         plan_layout = self.plan_card.layout()
+        header = QHBoxLayout(); header.setSpacing(Spacing.SM)
         self.plan_title = QLabel(); self.plan_title.setObjectName("assessmentCardTitle")
-        plan_layout.addWidget(self.plan_title)
+        header.addWidget(self.plan_title); header.addStretch(1)
         toolbar = QHBoxLayout(); toolbar.setSpacing(6)
         self.lines = QCheckBox(tr("Project Lines")); self.lines.setChecked(True)
         self.lines.toggled.connect(self.editor.set_project_lines_visible)
@@ -69,11 +72,14 @@ class AssessmentAreaCreationPage(QWidget):
         self.start = QPushButton(tr("Edit boundary") if edit_area_id else tr("Draw boundary"))
         self.start.clicked.connect(self._start_drawing)
         self.back_vertex = QPushButton(tr("Undo")); self.back_vertex.clicked.connect(self.editor.undo_vertex)
-        self.finish = QPushButton(tr("Close boundary")); self.finish.clicked.connect(self.editor.finish_polygon)
+        self.finish = QPushButton(tr("Finish boundary")); self.finish.clicked.connect(self.editor.finish_polygon)
         self.cancel_drawing = QPushButton(tr("Cancel drawing")); self.cancel_drawing.clicked.connect(self.editor.cancel_workflow)
+        set_button_role(self.fit, "link"); set_button_role(self.start, "secondary")
+        set_button_role(self.back_vertex, "link"); set_button_role(self.finish, "primary")
+        set_button_role(self.cancel_drawing, "link")
         for control in (self.lines, self.fit, self.start, self.back_vertex, self.finish, self.cancel_drawing):
             toolbar.addWidget(control)
-        toolbar.addStretch(1); plan_layout.addLayout(toolbar)
+        header.addLayout(toolbar); plan_layout.addLayout(header)
         self.step_status = QLabel(); self.step_status.setObjectName("assessmentPlanStatus")
         plan_layout.addWidget(self.step_status); plan_layout.addWidget(self.editor, 1)
         workspace.addWidget(self.plan_card, 1)
@@ -101,7 +107,7 @@ class AssessmentAreaCreationPage(QWidget):
         self.next = QPushButton(tr("Next")); self.next.clicked.connect(self._next)
         self.next.setObjectName("assessmentPrimaryAction")
         set_button_role(self.next, "primary")
-        self.confirm = QPushButton(tr("Save revision") if edit_area_id else tr("Save Assessment")); self.confirm.clicked.connect(self._confirm)
+        self.confirm = QPushButton(tr("Save revision") if edit_area_id else tr("Create Assessment Area")); self.confirm.clicked.connect(self._confirm)
         self.confirm.setObjectName("assessmentPrimaryAction")
         set_button_role(self.confirm, "primary")
         for action in (self.cancel, self.back, self.next, self.confirm): action.setMinimumHeight(32)
@@ -125,7 +131,7 @@ class AssessmentAreaCreationPage(QWidget):
         return card
 
     def _build_info_card(self, layout):
-        heading = QLabel(tr("ASSESSMENT AREA")); heading.setObjectName("assessmentCardTitle"); layout.addWidget(heading)
+        heading = QLabel(tr("Area details")); heading.setObjectName("assessmentCardTitle"); layout.addWidget(heading)
         self.area_name = QLineEdit(); self.area_name.setPlaceholderText(tr("Area name"))
         self.assessment_date = QDateEdit(QDate.currentDate()); self.assessment_date.setCalendarPopup(True)
         self.general_message = QLabel(); self.general_message.setObjectName("assessmentValidation"); self.general_message.setWordWrap(True)
@@ -133,21 +139,21 @@ class AssessmentAreaCreationPage(QWidget):
         self._add_row(grid, 0, "Name", self.area_name)
         self._add_row(grid, 1, "Assessment date", self.assessment_date)
         layout.addLayout(grid); layout.addWidget(self.general_message)
-        layout.addWidget(self._section("CONTEXT"))
+        layout.addWidget(self._section("Context"))
         context = QGridLayout(); context.setHorizontalSpacing(8); context.setVerticalSpacing(7)
         self.domain_value = self._value(); self.dataset_value = self._value(); self.source_value = self._value()
         self._add_row(context, 0, "Domain", self.domain_value)
         self._add_row(context, 1, "Project Lines", self.dataset_value)
         self._add_row(context, 2, "Source", self.source_value)
         layout.addLayout(context)
-        layout.addWidget(self._section("GEOMETRY"))
+        layout.addWidget(self._section("Geometry"))
         geometry = QGridLayout(); geometry.setHorizontalSpacing(8); geometry.setVerticalSpacing(7)
         self.elevation_value = self._value(); self.spans_value = self._value(); self.connectors_value = self._value()
         self._add_row(geometry, 0, "Elevation interval", self.elevation_value)
         self._add_row(geometry, 1, "Traced spans", self.spans_value)
         self._add_row(geometry, 2, "Connectors", self.connectors_value)
         layout.addLayout(geometry)
-        layout.addWidget(self._section("LINKS"))
+        layout.addWidget(self._section("Links"))
         links = QGridLayout(); links.setHorizontalSpacing(8); links.setVerticalSpacing(7)
         self.links_total_value = self._value(); self.production_value = self._value(); self.contour_value = self._value()
         self._add_row(links, 0, "Potential events", self.links_total_value)
@@ -236,20 +242,19 @@ class AssessmentAreaCreationPage(QWidget):
             if item.widget(): item.widget().deleteLater()
         if self.current_step == self.GENERAL:
             self.context_title.setText("Getting started")
-            lines = ("1. Enter an Area name and assessment date.",
-                     "2. Check the Domain and active Project Lines.", "3. Continue to Boundary.")
+            lines = ("Enter Area details.", "Verify Domain and active Project Lines.",
+                     "Continue to Boundary.")
             for text in lines: self._context_label(text)
         elif self.current_step == self.BOUNDARY:
             self.context_title.setText("Boundary")
-            for text in ("Click near a Project Line to snap.", "Follow the source line to trace it.",
-                         "Move away to create a straight connector.", "Click another Project Line to switch source.",
-                         "Close boundary when finished."):
+            for text in ("Click near a Project Line to snap.", "Follow the line to trace the boundary.",
+                         "Move away to create a connector.", "Close the boundary when finished."):
                 self._context_label(text)
-            self._context_label("●  Blue — traced Project Line")
-            self._context_label("●  Orange — straight connector")
-            self._context_label("○  Marker — snap point")
+            for role, text in (("traced", "Traced Project Line"),
+                               ("connector", "Connector"), ("marker", "Snap point")):
+                self._legend_row(role, text)
         elif self.current_step == self.REVIEW:
-            self.context_title.setText("Review & linked events")
+            self.context_title.setText("Review")
             if self._link_preview_error:
                 self._context_label("Linked-event preview unavailable")
             else:
@@ -297,6 +302,14 @@ class AssessmentAreaCreationPage(QWidget):
     def _context_label(self, text):
         label = QLabel(text); label.setWordWrap(True); self.context_body.addWidget(label)
 
+    def _legend_row(self, role, text):
+        row = QWidget(); layout = QHBoxLayout(row); layout.setContentsMargins(0, 1, 0, 1)
+        swatch = QFrame(); swatch.setObjectName("GeometryLegendSwatch")
+        swatch.setProperty("legendRole", role); swatch.setFixedSize(18 if role != "marker" else 8,
+                                                                    3 if role != "marker" else 8)
+        layout.addWidget(swatch); layout.addWidget(QLabel(text)); layout.addStretch(1)
+        self.context_body.addWidget(row)
+
     def _context_row(self, name, value):
         row = QWidget(); layout = QHBoxLayout(row); layout.setContentsMargins(0, 0, 0, 0)
         label = QLabel(str(name)); label.setObjectName("assessmentFieldLabel")
@@ -336,6 +349,11 @@ class AssessmentAreaCreationPage(QWidget):
         self.back_vertex.setEnabled(can_edit and boundary_step and state in {"DRAWING", "CLOSED"})
         self.finish.setEnabled(can_edit and boundary_step and state == "DRAWING")
         self.cancel_drawing.setEnabled(can_edit and boundary_step and state != "IDLE")
+        drawing = boundary_step and state != "IDLE"
+        self.start.setVisible(boundary_step and not drawing)
+        self.back_vertex.setVisible(drawing)
+        self.finish.setVisible(drawing)
+        self.cancel_drawing.setVisible(drawing)
         self.editor.plan_view.set_polygon_drawing_mode(boundary_step and state == "DRAWING")
         self.back.setVisible(self.current_step != self.GENERAL)
         self.back.setEnabled(not self._saving and not (self.edit_area_id and self.current_step == self.BOUNDARY))
