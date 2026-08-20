@@ -21,6 +21,18 @@ _translator: QTranslator | None = None
 # Small compatibility bridge for strings introduced after the current TS catalogue
 # was frozen. Issue #64 will fold these back into the normal catalogue pass.
 RUSSIAN_RUNTIME_FALLBACKS = {
+    "Browse...": "Обзор...",
+    "Create Domain": "Создать домен",
+    "Create Project": "Создать проект",
+    "Domain name": "Название домена",
+    "Edit Assessment Area": "Изменить участок оценки",
+    "Edit Block": "Изменить блок",
+    "Edit Contour Blast": "Изменить контурный взрыв",
+    "Horizon, m *": "Горизонт, м *",
+    "No file selected": "Файл не выбран",
+    "Project Lines can also be imported later from the Project dashboard.":
+        "Линии проекта также можно импортировать позже на странице проекта.",
+    "Project Lines file": "Файл линий проекта",
     "Save & complete": "Сохранить и завершить",
     "Enabled": "Включено",
     "Search projects, domains and entities…": "Поиск проектов, доменов и объектов…",

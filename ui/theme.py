@@ -39,11 +39,19 @@ class Spacing:
 APPLICATION_STYLESHEET = """
 QMainWindow, QDialog { background: #f4f6f9; color: #111827; }
 QWidget#DashboardPage { background: #f4f6f9; }
+QWidget#assessmentWorkflowPage { background: #f4f6f9; }
 QFrame#CardFrame, QFrame#DashboardCard, QFrame#DashboardMetricCard,
 QFrame#DashboardHeaderCard, QFrame#ConnectionCard, QFrame#EngineeringCard,
 QFrame#CriterionCard, QFrame#ResultCard {
     background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px;
 }
+QFrame#assessmentInfoCard, QFrame#assessmentPlanCard, QFrame#assessmentContextCard,
+QFrame#assessmentFooter { background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px; }
+QLabel#assessmentCardTitle { color: #1f2937; font-weight: 600; }
+QLabel#assessmentSectionTitle { color: #6b7280; font-weight: 600; }
+QLabel#assessmentFieldLabel, QLabel#assessmentPlanStatus { color: #6b7280; }
+QLabel#assessmentFieldValue { color: #111827; }
+QLabel#assessmentValidation { color: #a33a32; }
 QFrame#DashboardSummaryRow, QWidget#ProjectLinesDatasetRow, QWidget#StandardRow {
     background: #ffffff; border: 1px solid #d7dde6; border-radius: 5px;
 }
@@ -51,6 +59,8 @@ QLabel#EntityTitle, QLabel#BlockTitle { color: #111827; font-size: 22px; font-we
 QLabel#CardTitle, QLabel#EngineeringSectionTitle, QLabel#RelatedEntityTitle,
 QLabel#SectionTitle, QLabel#EngineeringGroupTitle { color: #1f2937; font-weight: 600; }
 QLabel#MutedText, QLabel#EntityContextLine, QLabel#CalculatedCaption { color: #6b7280; }
+QLabel#FormHelperText { color: #6b7280; }
+QLabel#FormValidationText { color: #a33a32; }
 QLabel#SummaryValue, QLabel#ActivityTitle { color: #111827; font-weight: 600; }
 QLabel#EngineeringSummaryText { color: #374151; }
 QFrame#OverviewDivider { color: #e5e7eb; background: #e5e7eb; max-height: 1px; border: 0; }
@@ -69,6 +79,56 @@ QPushButton[role="link"] { color: #1261a0; background: transparent; border: 0; p
 QPushButton[role="link"]:hover { color: #0b4f86; text-decoration: underline; }
 QPushButton[role="danger"] { color: #a33a32; background: #ffffff; border: 1px solid #d9a6a2; border-radius: 5px; }
 QPushButton:disabled { color: #9ca3af; }
+
+QWidget#DialogActions QPushButton {
+    min-height: 32px; max-height: 32px; padding: 0 12px;
+    border-radius: 5px; text-align: center;
+}
+QWidget#DialogActions QPushButton[role="primary"]:pressed { background: #083f70; border-color: #083f70; }
+QWidget#DialogActions QPushButton[role="primary"]:focus { border: 1px solid #083f70; }
+QWidget#DialogActions QPushButton[role="secondary"]:pressed { background: #eef3f8; border-color: #8d99a8; color: #0b4f86; }
+QWidget#DialogActions QPushButton[role="secondary"]:focus { border: 1px solid #0b63ce; }
+
+QDialog#StandardEntityDialog QLineEdit,
+QDialog#StandardEntityDialog QTextEdit,
+QDialog#StandardEntityDialog QDateEdit,
+QDialog#StandardEntityDialog QComboBox {
+    min-height: 26px; background: #ffffff; color: #111827;
+    border: 1px solid #cfd6df; border-radius: 5px; padding: 2px 7px;
+    selection-background-color: #eaf3ff; selection-color: #111827;
+}
+QDialog#StandardEntityDialog QComboBox,
+QDialog#StandardEntityDialog QDateEdit { padding-right: 27px; }
+QDialog#StandardEntityDialog QLineEdit:disabled,
+QDialog#StandardEntityDialog QTextEdit:disabled,
+QDialog#StandardEntityDialog QDateEdit:disabled,
+QDialog#StandardEntityDialog QComboBox:disabled { background: #f1f3f5; color: #9ca3af; }
+QDialog#StandardEntityDialog QDoubleSpinBox {
+    min-height: 26px; background: #ffffff; color: #111827;
+    border: 1px solid #cfd6df; border-radius: 5px;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox:disabled {
+    background: #f1f3f5; color: #9ca3af;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton {
+    background: #f8fafc; border: 0; border-left: 1px solid #e1e6ed;
+    border-radius: 0; padding: 0; margin: 0;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton#ChevronSpinUpButton {
+    border-top-right-radius: 5px; border-bottom: 1px solid #e1e6ed;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton#ChevronSpinDownButton {
+    border-bottom-right-radius: 5px;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton:hover {
+    background: #eef3f8;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton:pressed {
+    background: #dfe8f2;
+}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton:disabled {
+    background: #eef0f3; border-color: #d7dde6;
+}
 
 QLineEdit#GlobalSearch {
     min-height: 28px; background: #ffffff; color: #111827;
@@ -170,6 +230,24 @@ _ICON_ROOT = Path(__file__).resolve().parent.parent / "app" / "icons" / "ui" / "
 _COMBO_CHEVRON = (_ICON_ROOT / "chevron-down.svg").as_posix()
 _SAVE_CHEVRON = (_ICON_ROOT / "chevron-down-white.svg").as_posix()
 APPLICATION_STYLESHEET += f"""
+QDialog#StandardEntityDialog QComboBox::drop-down {{
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 25px; border: 0; border-left: 1px solid #e1e6ed;
+    background: #f8fafc; border-top-right-radius: 5px; border-bottom-right-radius: 5px;
+}}
+QDialog#StandardEntityDialog QComboBox::down-arrow {{ image: url("{_COMBO_CHEVRON}"); width: 12px; height: 12px; }}
+QDialog#StandardEntityDialog QDateEdit::drop-down {{
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 25px; border: 0; border-left: 1px solid #e1e6ed;
+    background: #f8fafc; border-top-right-radius: 5px; border-bottom-right-radius: 5px;
+}}
+QDialog#StandardEntityDialog QDateEdit::down-arrow {{ image: url("{_COMBO_CHEVRON}"); width: 12px; height: 12px; }}
+QDialog#StandardEntityDialog QComboBox:hover::drop-down,
+QDialog#StandardEntityDialog QDateEdit:hover::drop-down {{ background: #eef3f8; }}
+QDialog#StandardEntityDialog QComboBox:focus::drop-down,
+QDialog#StandardEntityDialog QDateEdit:focus::drop-down {{ border-left-color: #9bc2e8; }}
+QDialog#StandardEntityDialog QComboBox:disabled::drop-down,
+QDialog#StandardEntityDialog QDateEdit:disabled::drop-down {{ background: #eef0f3; border-left-color: #d7dde6; }}
 QWidget#EngineeringWorkspace QComboBox::drop-down,
 QWidget#geomechanicsWorkspace QComboBox::drop-down {{
     subcontrol-origin: padding; subcontrol-position: top right;
