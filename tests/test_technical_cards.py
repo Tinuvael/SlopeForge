@@ -236,6 +236,12 @@ def test_real_embedded_production_editor_controls_and_ucs_persistence():
     embedded = TechnicalCardEditorWidget(blast, card, draft,
         lambda saved_card, revision, status, _date: saved_card.save_revision(revision, status=status),
         domain_name="North")
+    assert embedded.isHidden()
+    assert embedded.maximumWidth() == 0 and embedded.maximumHeight() == 0
+    extracted = embedded.take_tab("Drilling and charging")
+    host = widgets.QWidget(); layout = widgets.QVBoxLayout(host); layout.addWidget(extracted)
+    host.show(); app.processEvents()
+    assert extracted.isVisibleTo(host)
     assert embedded.editor.lithology.isVisibleTo(embedded.editor) is False  # dialog is intentionally not shown
     assert embedded.editor.ucs is not None
     assert embedded.editor.group_cards_layout.count() >= 1
@@ -247,7 +253,39 @@ def test_real_embedded_production_editor_controls_and_ucs_persistence():
     restored = AssessmentDomainState.from_dict(json.loads(json.dumps(state.to_dict())))
     geo = restored.technical_cards[0].active_revision().geomechanical_parameters
     assert (geo.ucs_mpa, geo.ff, geo.rqd_percent, geo.jn, geo.jr, geo.ja) == (123, 8, 72, 6, 3, 2)
-    embedded.deleteLater(); app.processEvents()
+    host.close(); embedded.deleteLater(); app.processEvents()
+
+
+def test_technical_card_save_split_button_routes_existing_save_actions():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.technical_card_widgets import TechnicalCardSaveButton
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    calls = []
+    button = TechnicalCardSaveButton(lambda: calls.append("draft"), lambda: calls.append("completed"))
+    assert button.text() == "Save"
+    assert [action.text() for action in button.menu().actions()] == ["Save & complete"]
+    button.click(); button.save_complete_action.trigger()
+    assert calls == ["draft", "completed"]
+    button.setEnabled(False)
+    assert not button.isEnabled()
+    button.close(); app.processEvents()
+
+
+def test_drilling_group_uses_explicit_enabled_checkbox():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast)
+    group = draft.drilling_groups[0]
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None)
+    checkbox = dialog.findChild(widgets.QCheckBox, "drillingGroupEnabled")
+    assert checkbox is not None and checkbox.text() == "Enabled"
+    assert checkbox.isChecked() == group.included
+    checkbox.setChecked(not group.included)
+    assert group.included == checkbox.isChecked()
+    read_only = TechnicalCardDialog(blast, card, draft, lambda *_: None, read_only=True)
+    assert not read_only.findChild(widgets.QCheckBox, "drillingGroupEnabled").isEnabled()
+    dialog.close(); read_only.close(); app.processEvents()
 
 
 def test_real_geomechanics_ui_is_compact_and_domain_is_read_only():

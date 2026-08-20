@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.localization import tr
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QHBoxLayout, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QHeaderView, QHBoxLayout, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from app.context import AppContext
 from infrastructure.services.session_service import RememberTokenService
@@ -36,6 +36,14 @@ class UserAdminPage(QWidget):
         self.table = QTableWidget(0, 8)
         configure_standard_table(self.table)
         self.table.setHorizontalHeaderLabels([tr("Username"), tr("Full name"), tr("Role"), tr("Active"), tr("Created"), tr("Last login"), tr("Created by"), tr("Updated by")])
+        header = self.table.horizontalHeader()
+        for column in (0, 4, 5, 6, 7):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        for column, width in {0: 130, 4: 145, 5: 145, 6: 120, 7: 120}.items():
+            self.table.setColumnWidth(column, width)
         layout.addWidget(self.table)
         self.create.clicked.connect(self.create_user); self.edit.clicked.connect(self.edit_user); self.password.clicked.connect(self.change_password); self.toggle.clicked.connect(self.toggle_active); self.revoke.clicked.connect(self.revoke_sessions)
         enabled = context.current_user.role == "admin"
@@ -54,7 +62,6 @@ class UserAdminPage(QWidget):
             for col, value in enumerate(values):
                 self.table.setItem(row, col, QTableWidgetItem(value))
         self.table.setVisible(bool(self.rows)); self.empty.setVisible(not self.rows)
-        self.table.resizeColumnsToContents(); self.table.horizontalHeader().setStretchLastSection(True)
 
     def selected_user(self):
         row = self.table.currentRow()

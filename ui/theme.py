@@ -47,7 +47,7 @@ QFrame#DashboardSummaryRow, QWidget#ProjectLinesDatasetRow, QWidget#StandardRow 
 }
 QLabel#EntityTitle, QLabel#BlockTitle { color: #111827; font-size: 22px; font-weight: 700; }
 QLabel#CardTitle, QLabel#EngineeringSectionTitle, QLabel#RelatedEntityTitle,
-QLabel#SectionTitle { color: #1f2937; font-weight: 600; }
+QLabel#SectionTitle, QLabel#EngineeringGroupTitle { color: #1f2937; font-weight: 600; }
 QLabel#MutedText, QLabel#EntityContextLine, QLabel#CalculatedCaption { color: #6b7280; }
 QLabel#SummaryValue, QLabel#ActivityTitle { color: #111827; font-weight: 600; }
 QLabel#EngineeringSummaryText { color: #374151; }
@@ -56,6 +56,8 @@ QFrame#OverviewDivider { color: #e5e7eb; background: #e5e7eb; max-height: 1px; b
 QPushButton { min-height: 26px; padding: 2px 10px; }
 QPushButton[role="primary"] { color: white; background: #1261a0; border: 1px solid #1261a0; border-radius: 5px; font-weight: 600; }
 QPushButton[role="primary"]:hover { background: #0b4f86; }
+QToolButton[role="primary"] { color: white; background: #1261a0; border: 1px solid #1261a0; border-radius: 5px; padding: 3px 9px; font-weight: 600; }
+QToolButton[role="primary"]:hover { background: #0b4f86; }
 QPushButton[role="secondary"] { color: #1f2937; background: #ffffff; border: 1px solid #c5ccd5; border-radius: 5px; }
 QPushButton[role="secondary"]:hover { color: #1261a0; border-color: #1261a0; background: #f8fafc; }
 QPushButton[role="link"] { color: #1261a0; background: transparent; border: 0; padding: 2px 4px; font-weight: 600; }
@@ -125,9 +127,6 @@ QWidget#EngineeringWorkspace QComboBox, QWidget#geomechanicsWorkspace QComboBox 
 }
 QWidget#EngineeringWorkspace QComboBox:hover, QWidget#geomechanicsWorkspace QComboBox:hover { border-color: #9aa6b5; }
 QWidget#EngineeringWorkspace QComboBox:focus, QWidget#geomechanicsWorkspace QComboBox:focus { border-color: #0b63ce; }
-QWidget#EngineeringWorkspace QComboBox::drop-down, QWidget#geomechanicsWorkspace QComboBox::drop-down {
-    width: 22px; border: 0; border-left: 1px solid #e1e6ed;
-}
 QWidget#geomechanicsWorkspace QWidget#rockMassSection,
 QWidget#geomechanicsWorkspace QWidget#jointSetsSection,
 QWidget#geomechanicsWorkspace QWidget#qSystemSection,
@@ -139,7 +138,7 @@ QWidget#geomechanicsWorkspace QWidget#geomechanicsNotes {
 QTabWidget[entityTabs="true"]::pane { border: 0; background: transparent; top: -1px; }
 QTabWidget[entityTabs="true"] QTabBar::tab {
     color: #6b7280; background: transparent; border: 0; border-bottom: 2px solid transparent;
-    padding: 7px 12px; margin-right: 2px;
+    padding: 7px 8px; margin-right: 0;
 }
 QTabWidget[entityTabs="true"] QTabBar::tab:selected { color: #1261a0; border-bottom-color: #1261a0; font-weight: 600; }
 QTabWidget[entityTabs="true"] QTabBar::tab:hover:!selected { color: #374151; background: #f8fafc; }
