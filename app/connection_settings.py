@@ -21,6 +21,10 @@ class ConnectionSettingsError(RuntimeError):
     pass
 
 
+class MissingConnectionConfiguration(ConfigurationError):
+    pass
+
+
 @dataclass(frozen=True)
 class ConnectionProfile:
     host: str = "localhost"
@@ -162,7 +166,7 @@ def resolve_runtime_settings(
     saved = (store or ConnectionSettingsStore()).load()
     if saved is not None:
         return saved.to_settings(), "saved"
-    raise ConfigurationError(
+    raise MissingConnectionConfiguration(
         "No PostgreSQL and file-storage configuration has been saved yet."
     )
 
