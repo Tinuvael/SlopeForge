@@ -2,7 +2,23 @@
 from PySide6.QtWidgets import QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from app.localization import tr
-from infrastructure.geometry_import.wall_rms import calculate_wall_rms_from_csv
+from infrastructure.geometry_import.wall_rms import WallSurveyValidationError, calculate_wall_rms_from_csv
+
+
+def wall_rms_error_text(error: Exception) -> str:
+    if not isinstance(error, WallSurveyValidationError):
+        return tr("Unexpected RMS calculation error.")
+    return {
+        "dependencies": tr("RMS dependencies are unavailable or incompatible."),
+        "no_triangles": tr("The design surface contains no valid three-point FID triangles."),
+        "no_points": tr("The actual survey contains no points."),
+        "invalid_points": tr("The actual survey must contain finite XYZ points."),
+        "calculation": tr("Point-to-surface distance calculation failed."),
+        "read_csv": tr("The selected CSV file could not be read."),
+        "missing_columns": tr("The CSV file is missing required columns: %1").replace("%1", error.detail),
+        "non_numeric": tr("The CSV file contains non-numeric coordinate values."),
+        "non_finite": tr("The CSV file contains non-finite coordinate values."),
+    }.get(error.code, tr("Invalid RMS input data."))
 
 
 class WallRmsDialog(QDialog):
@@ -26,7 +42,7 @@ class WallRmsDialog(QDialog):
         try:
             self.result = calculate_wall_rms_from_csv(self.design.text(), self.survey.text())
         except Exception as exc:
-            QMessageBox.warning(self, tr("Calculation failed"), str(exc)); return
+            QMessageBox.warning(self, tr("Calculation failed"), wall_rms_error_text(exc)); return
         r = self.result
         self.statistics.setText(f"{tr('Point count')}: {r.point_count}   RMS: {r.rms_m:.3f} m\n{tr('Mean distance')}: {r.mean_m:.3f} m   {tr('Standard deviation')}: {r.std_m:.3f} m\n{tr('Maximum distance')}: {r.max_m:.3f} m   {tr('Minimum distance')}: {r.min_m:.3f} m")
         self.use.setEnabled(True)

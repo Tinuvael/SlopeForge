@@ -306,6 +306,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         for code, label in (("survey", "Survey"), ("photogrammetry", "Photogrammetry"), ("laser_scan", "Laser scan"), ("manual_measurement", "Manual measurement"), ("visual_estimate", "Visual estimate")):
             self.measurement_method.addItem(tr(label), code)
         self.measurement_method.setEnabled(not self.read_only); measured_form.addRow(tr("Measurement method"), self.measurement_method)
+        self.measurement_method.currentIndexChanged.connect(self._changed)
         calculate = QPushButton(tr("Calculate from survey…")); calculate.setEnabled(not self.read_only); calculate.clicked.connect(self._calculate_wall_rms); measured_form.addRow(calculate)
         layout.addWidget(measured)
         layout.addStretch()

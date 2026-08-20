@@ -90,6 +90,12 @@ def test_important_indirect_presentation_sources_are_in_catalogue():
         "Inspect the plan, then use Draw boundary.",
         "Planned", "In preparation", "Blasted", "Assessed", "Completed", "Draft",
         "Archived", "Active", "Inactive", "Enabled", "Disabled",
+        "Density", "Spacing, m", "Persistence, m",
+        "Mean collar deviation, m", "Max collar deviation, m",
+        "Mean toe deviation, m", "Max toe deviation, m",
+        "Mean backbreak, m", "Maximum backbreak, m", "Mean overbreak, m",
+        "Mean underbreak, m", "Contour RMS deviation, m", "Measurement method",
+        "Survey", "Photogrammetry", "Laser scan", "Manual measurement", "Visual estimate",
     }
     # Category labels are stable presentation text paired with canonical userData.
     from domain.attachments.policy import ATTACHMENT_CATEGORIES

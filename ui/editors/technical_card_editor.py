@@ -378,19 +378,6 @@ class TechnicalCardDialog(QDialog):
             charge_layout.addLayout(preset_row)
             builder_host=QWidget(); builder_layout=QVBoxLayout(builder_host); builder_layout.setContentsMargins(0,0,0,0); charge_layout.addWidget(builder_host,1)
             columns.addWidget(charge,0,1); content.addLayout(columns)
-            comparison_rows = self.revision.compact_design_actual(group.design_group_id) if group.design_group_id else []
-            comparable = [row for row in comparison_rows if row["design"] is not None or row["actual"] is not None]
-            if comparable:
-                summary = QTableWidget(len(comparable), 4); summary.setObjectName("designActualSummary")
-                summary.setHorizontalHeaderLabels([tr("Parameter"), tr("Design"), tr("Actual"), tr("Δ")])
-                summary.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); summary.setMaximumHeight(210)
-                for row_index, row in enumerate(comparable):
-                    for column, value in enumerate((tr(row["parameter"]), row["design"], row["actual"], row["delta"])):
-                        summary.setItem(row_index, column, QTableWidgetItem(value if isinstance(value, str) else self._format_comparison_number(value, signed=column == 3)))
-                configure_standard_table(summary, stretch_column=0); content.addWidget(summary)
-                ratios = self.revision.engineering_ratios(group.design_group_id)
-                ratio_text = "   ".join(f"{name}: {self._format_comparison_number(value)}" for name, value in ratios.items())
-                ratio_label = QLabel(f"{tr('Ratios')}: {ratio_text}"); ratio_label.setObjectName("engineeringRatios"); content.addWidget(ratio_label)
             summary=QLabel(); summary.setObjectName("drillingChargeSummary"); summary.setWordWrap(True); content.addWidget(summary)
             state={"builder":None,"last_depth":group.average_depth_m}
             self._refresh_preset_combo(combo)
@@ -594,7 +581,7 @@ class TechnicalCardDialog(QDialog):
                 planned=getattr(design,attr) if design else None
                 plan_label=QLabel(); plan_label.setObjectName(f"actualPlan_{attr}"); plan_label.setMinimumWidth(58); plan_label.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter); plan_label.setStyleSheet("color: #6b7280;")
                 delta_label=QLabel(); delta_label.setObjectName(f"actualDelta_{attr}"); delta_label.setMinimumWidth(48); delta_label.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
-                self._set_comparison_labels(plan_label,delta_label,planned,getattr(group,attr),integer)
+                self._set_comparison_labels(plan_label,delta_label,planned,getattr(group,attr),integer,circular=attr=="azimuth_deg")
                 field_grid.addWidget(plan_label,row_index,2); field_grid.addWidget(delta_label,row_index,3)
                 def changed(value,g=group,a=attr,w=widget,p=planned,pl=plan_label,dl=delta_label,is_integer=integer,linked=design,st=state):
                     value=None if value==w.minimum() else (int(value) if is_integer else value)
@@ -602,12 +589,39 @@ class TechnicalCardDialog(QDialog):
                     if a=="average_depth_m" and builder and value is not None and not builder.set_hole_depth(value):
                         w.blockSignals(True); w.setValue(st["depth"] if st["depth"] is not None else w.minimum()); w.blockSignals(False); return
                     setattr(g,a,value)
+                    refresh_derived()
                     if a=="average_depth_m": st["depth"]=value
                     if a=="diameter_mm" and builder: builder.set_hole_diameter(value)
-                    self._set_comparison_labels(pl,dl,p,value,is_integer)
+                    self._set_comparison_labels(pl,dl,p,value,is_integer,circular=a=="azimuth_deg")
                     if st["status"] is not None: self._refresh_charge_comparison(st["status"],g,linked)
                     else: self._refresh_actual_summary()
                 widget.valueChanged.connect(changed)
+
+            derived_rows = {}
+            for label, attr in (("Stemming, m", "stemming"),):
+                row_index = field_grid.rowCount(); field_grid.addWidget(QLabel(tr(label)), row_index, 0)
+                values = {}
+                for column, name in ((1, "actual"), (2, "plan"), (3, "delta")):
+                    value = QLabel("—"); value.setObjectName(f"actualDerived_{attr}_{name}")
+                    value.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+                    field_grid.addWidget(value, row_index, column); values[name] = value
+                derived_rows[attr] = values
+            ratio_label = QLabel(); ratio_label.setObjectName("engineeringRatios"); ratio_label.setWordWrap(True)
+            field_grid.addWidget(ratio_label, field_grid.rowCount(), 0, 1, 4)
+
+            def refresh_derived(g=group, d=design, rows=derived_rows, ratios_label=ratio_label):
+                stemming_plan = d.stemming_total_m() if d else None
+                stemming_actual = g.stemming_total_m()
+                for key, plan, actual in (("stemming", stemming_plan, stemming_actual),):
+                    rows[key]["plan"].setText(self._format_comparison_number(plan))
+                    rows[key]["actual"].setText(self._format_comparison_number(actual))
+                    _plan, delta, changed = self._comparison_display(plan, actual)
+                    rows[key]["delta"].setText(delta)
+                    rows[key]["delta"].setStyleSheet("color: #0b63ce; font-weight: 600;" if changed else "color: #9ca3af;")
+                ratios = self.revision.engineering_ratios(g.design_group_id) if g.design_group_id else {}
+                ratios_label.setText(f"{tr('Ratios')}: " + "   ".join(
+                    f"{name}: {self._format_comparison_number(value)}" for name, value in ratios.items()))
+            refresh_derived()
 
             exceptions=QGroupBox(tr("Execution exceptions")); exceptions.setObjectName("actualExceptionArea"); exception_grid=QGridLayout(exceptions); exception_grid.setHorizontalSpacing(10); exception_grid.setVerticalSpacing(4); exception_grid.setColumnStretch(1,1)
             for index,(label,attr) in enumerate((("Rejected","rejected_hole_count"),("Redrilled","redrilled_hole_count"),("Wet","wet_hole_count"),("Uncharged","uncharged_hole_count"))):
@@ -615,7 +629,7 @@ class TechnicalCardDialog(QDialog):
                 exception_grid.addWidget(QLabel(tr(label)),index,0); exception_grid.addWidget(spin,index,1,Qt.AlignmentFlag.AlignLeft)
             for index, (label, attr) in enumerate((("Mean collar deviation, m", "mean_collar_deviation_m"), ("Max collar deviation, m", "max_collar_deviation_m"), ("Mean toe deviation, m", "mean_toe_deviation_m"), ("Max toe deviation, m", "max_toe_deviation_m"))):
                 spin = _number(getattr(group, attr)); spin.setMaximumWidth(100); spin.setEnabled(not self.read_only)
-                spin.valueChanged.connect(lambda value,g=group,a=attr,w=spin:setattr(g,a,None if value==w.minimum() else value))
+                spin.valueChanged.connect(lambda value,g=group,a=attr,w=spin:(setattr(g,a,None if value==w.minimum() else value),refresh_derived()))
                 exception_grid.addWidget(QLabel(tr(label)), index, 2); exception_grid.addWidget(spin, index, 3)
             left=QVBoxLayout(); left.setContentsMargins(0,0,0,0); left.addWidget(drilling); left.addWidget(exceptions); left_host=QWidget(); left_host.setLayout(left); columns.addWidget(left_host,0,0,Qt.AlignmentFlag.AlignTop)
 
@@ -623,7 +637,7 @@ class TechnicalCardDialog(QDialog):
             if group.average_depth_m and group.average_depth_m>0:
                 builder=BoreholeChargeBuilder(group.average_depth_m,group.diameter_mm,self.explosive_products,group.charge_components,self.read_only); builder.setObjectName("actualBoreholeChargeBuilder"); builder.setMinimumHeight(350); builder.setMaximumHeight(500); self._charge_builders.append(builder); state["builder"]=builder; charge_layout.addWidget(builder)
                 comparison=self._make_charge_comparison(); state["status"]=comparison
-                builder.components_changed.connect(lambda values,g=group,d=design,c=comparison:(setattr(g,"charge_components",values),self._refresh_charge_comparison(c,g,d)))
+                builder.components_changed.connect(lambda values,g=group,d=design,c=comparison:(setattr(g,"charge_components",values),self._refresh_charge_comparison(c,g,d),refresh_derived()))
                 self._refresh_charge_comparison(comparison,group,design); charge_layout.addWidget(comparison["widget"])
             else: charge_layout.addWidget(QLabel(tr("Enter average hole depth to configure the charge construction.")))
             columns.addWidget(charge,0,1); content.addLayout(columns)
@@ -641,16 +655,16 @@ class TechnicalCardDialog(QDialog):
         return text
 
     @classmethod
-    def _comparison_display(cls, plan, actual, integer=False):
+    def _comparison_display(cls, plan, actual, integer=False, circular=False):
         plan_text=cls._format_comparison_number(plan,integer)
         if plan is None or actual is None: return plan_text,"—",False
-        delta=actual-plan
+        delta=((actual-plan+180)%360)-180 if circular else actual-plan
         if abs(delta)<1e-9: return plan_text,"—",False
         return plan_text,cls._format_comparison_number(delta,integer,signed=True),True
 
     @classmethod
-    def _set_comparison_labels(cls, plan_label, delta_label, plan, actual, integer=False):
-        plan_text,delta_text,changed=cls._comparison_display(plan,actual,integer)
+    def _set_comparison_labels(cls, plan_label, delta_label, plan, actual, integer=False, circular=False):
+        plan_text,delta_text,changed=cls._comparison_display(plan,actual,integer,circular)
         plan_label.setText(plan_text); delta_label.setText(delta_text)
         delta_label.setStyleSheet("color: #0b63ce; font-weight: 600;" if changed else "color: #9ca3af;")
 

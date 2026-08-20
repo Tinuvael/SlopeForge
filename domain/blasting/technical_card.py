@@ -289,6 +289,10 @@ class ActualDrillingGroup:
         try: return sum(component_explosive_mass_kg(item, self.diameter_mm) for item in self.charge_components)
         except ValueError: return None
 
+    def stemming_total_m(self) -> float:
+        """Current factual stemming derived only from factual charge components."""
+        return sum(item.length_m for item in self.charge_components if item.kind is ChargeComponentKind.STEMMING)
+
     def charge_matches(self, design: BlastDrillingGroup | None) -> bool:
         return design is not None and charge_engineering_content(self.charge_components) == charge_engineering_content(design.charge_components)
 
@@ -488,7 +492,14 @@ class BlastEventTechnicalCardRevision:
                 planned = design.explosive_mass_per_hole_kg()
             else:
                 planned = getattr(design, attr)
-            factual = getattr(actual, attr) if actual is not None else None
+            if actual is None:
+                factual = None
+            elif attr == "stemming_length_m":
+                factual = actual.stemming_total_m()
+            elif attr == "charge_mass_per_hole_kg":
+                factual = actual.explosive_mass_per_hole_kg()
+            else:
+                factual = getattr(actual, attr)
             delta = None
             if planned is not None and factual is not None:
                 raw = factual - planned

@@ -4401,5 +4401,113 @@ Continue?</source><translation>Новый горизонт отличается 
         <source>Δ</source>
         <translation>Δ</translation>
     </message>
+    <message>
+        <source>Density</source>
+        <translation>Плотность</translation>
+    </message>
+    <message>
+        <source>Spacing, m</source>
+        <translation>Расстояние, м</translation>
+    </message>
+    <message>
+        <source>Persistence, m</source>
+        <translation>Протяжённость, м</translation>
+    </message>
+    <message>
+        <source>Mean collar deviation, m</source>
+        <translation>Среднее отклонение устья, м</translation>
+    </message>
+    <message>
+        <source>Max collar deviation, m</source>
+        <translation>Максимальное отклонение устья, м</translation>
+    </message>
+    <message>
+        <source>Mean toe deviation, m</source>
+        <translation>Среднее отклонение забоя, м</translation>
+    </message>
+    <message>
+        <source>Max toe deviation, m</source>
+        <translation>Максимальное отклонение забоя, м</translation>
+    </message>
+    <message>
+        <source>Mean backbreak, m</source>
+        <translation>Средний закол, м</translation>
+    </message>
+    <message>
+        <source>Maximum backbreak, m</source>
+        <translation>Максимальный закол, м</translation>
+    </message>
+    <message>
+        <source>Mean overbreak, m</source>
+        <translation>Средний перебор, м</translation>
+    </message>
+    <message>
+        <source>Mean underbreak, m</source>
+        <translation>Средний недобор, м</translation>
+    </message>
+    <message>
+        <source>Contour RMS deviation, m</source>
+        <translation>СКО отклонения контура, м</translation>
+    </message>
+    <message>
+        <source>Photogrammetry</source>
+        <translation>Фотограмметрия</translation>
+    </message>
+    <message>
+        <source>Laser scan</source>
+        <translation>Лазерное сканирование</translation>
+    </message>
+    <message>
+        <source>Manual measurement</source>
+        <translation>Ручное измерение</translation>
+    </message>
+    <message>
+        <source>Visual estimate</source>
+        <translation>Визуальная оценка</translation>
+    </message>
+    <message>
+        <source>RMS dependencies are unavailable or incompatible.</source>
+        <translation>Зависимости для расчёта СКО недоступны или несовместимы.</translation>
+    </message>
+    <message>
+        <source>The design surface contains no valid three-point FID triangles.</source>
+        <translation>Проектная поверхность не содержит корректных треугольников FID из трёх точек.</translation>
+    </message>
+    <message>
+        <source>The actual survey contains no points.</source>
+        <translation>Фактическая съёмка не содержит точек.</translation>
+    </message>
+    <message>
+        <source>The actual survey must contain finite XYZ points.</source>
+        <translation>Фактическая съёмка должна содержать конечные координаты XYZ.</translation>
+    </message>
+    <message>
+        <source>Point-to-surface distance calculation failed.</source>
+        <translation>Не удалось рассчитать расстояния от точек до поверхности.</translation>
+    </message>
+    <message>
+        <source>The selected CSV file could not be read.</source>
+        <translation>Не удалось прочитать выбранный CSV-файл.</translation>
+    </message>
+    <message>
+        <source>The CSV file is missing required columns: %1</source>
+        <translation>В CSV-файле отсутствуют обязательные столбцы: %1</translation>
+    </message>
+    <message>
+        <source>The CSV file contains non-numeric coordinate values.</source>
+        <translation>CSV-файл содержит нечисловые значения координат.</translation>
+    </message>
+    <message>
+        <source>The CSV file contains non-finite coordinate values.</source>
+        <translation>CSV-файл содержит неконечные значения координат.</translation>
+    </message>
+    <message>
+        <source>Unexpected RMS calculation error.</source>
+        <translation>Непредвиденная ошибка расчёта СКО.</translation>
+    </message>
+    <message>
+        <source>Invalid RMS input data.</source>
+        <translation>Некорректные входные данные для расчёта СКО.</translation>
+    </message>
 </context>
 </TS>

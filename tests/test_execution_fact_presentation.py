@@ -71,3 +71,31 @@ def test_charge_comparison_uses_compact_one_decimal_values_and_quiet_zero_delta(
     assert row["plan"].text() == "42"
     assert row["actual"].text() == "42"
     assert row["delta"].text() == "—"
+
+
+def test_existing_execution_grid_uses_circular_azimuth_delta_and_contains_ratios():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast)
+    design = draft.drilling_groups[0]; design.azimuth_deg = 359; design.burden_m = 4; design.spacing_m = 5
+    draft.actual_execution.copy_from_design(draft.drilling_groups, None, "replace")
+    actual = draft.actual_execution.actual_drilling_groups[0]; actual.azimuth_deg = 1
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None)
+    group = dialog.actual_cards_layout.itemAt(0).widget()
+    assert group.findChild(widgets.QLabel, "actualDelta_azimuth_deg").text() == "+2"
+    actual_azimuth = group.findChild(widgets.QDoubleSpinBox, "azimuth_deg")
+    actual_azimuth.setValue(359); design.azimuth_deg = 1
+    plan = group.findChild(widgets.QLabel, "actualPlan_azimuth_deg")
+    delta = group.findChild(widgets.QLabel, "actualDelta_azimuth_deg")
+    TechnicalCardDialog._set_comparison_labels(plan, delta, 1, 359, circular=True)
+    assert delta.text() == "-2"
+    assert group.findChild(widgets.QLabel, "engineeringRatios") is not None
+
+
+def test_design_group_renderer_does_not_duplicate_design_actual_table():
+    source = __import__("pathlib").Path("ui/editors/technical_card_editor.py").read_text()
+    design_renderer = source.split("def _render_groups(self):", 1)[1].split("def _add_number", 1)[0]
+    assert "design_group_id" not in design_renderer
+    assert "designActualSummary" not in design_renderer

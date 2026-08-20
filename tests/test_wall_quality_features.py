@@ -66,8 +66,18 @@ def test_synthetic_surface_rms_and_invalid_csv(tmp_path):
     assert result.mean_m == 2 and result.std_m == pytest.approx(pstdev([1, 2, 3]))
     assert (result.min_m, result.max_m, result.point_count) == (1, 3, 3)
     design.write_text("X,Y,Z\n0,0,0\n")
-    with pytest.raises(WallSurveyValidationError, match="missing columns"):
+    with pytest.raises(WallSurveyValidationError) as error:
         calculate_wall_rms_from_csv(design, survey)
+    assert error.value.code == "missing_columns"
+
+
+def test_actual_charge_derivatives_use_factual_components():
+    from domain.blasting.charge_design import ChargeComponent, ChargeComponentKind
+
+    actual = ActualDrillingGroup(stemming_length_m=99, charge_mass_per_hole_kg=999)
+    actual.charge_components = [ChargeComponent(id="stemming", kind=ChargeComponentKind.STEMMING, start_depth_m=0, end_depth_m=2)]
+    assert actual.stemming_total_m() == 2
+    assert actual.explosive_mass_per_hole_kg() == 0
 
 
 def test_interleaved_fids_build_their_own_triangles_and_skip_invalid_groups(tmp_path):
@@ -109,3 +119,8 @@ def test_measurement_method_uses_only_canonical_codes():
     assert MeasuredWallGeometry(measurement_method="laser_scan").measurement_method == "laser_scan"
     with pytest.raises(ValueError, match="Unsupported measurement method"):
         MeasuredWallGeometry(measurement_method="Лазерное сканирование")
+
+
+def test_measurement_method_combo_is_connected_to_dirty_path():
+    source = __import__("pathlib").Path("ui/editors/assessment_evaluation_editor.py").read_text()
+    assert "self.measurement_method.currentIndexChanged.connect(self._changed)" in source
