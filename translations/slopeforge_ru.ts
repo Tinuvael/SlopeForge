@@ -4301,5 +4301,25 @@ Continue?</source><translation>Новый горизонт отличается 
         <source>Blast event link restored</source>
         <translation>Связь с взрывным событием восстановлена</translation>
     </message>
+    <message>
+        <source>Created production Block</source>
+        <translation>Создан производственный блок</translation>
+    </message>
+    <message>
+        <source>Created contour Blast Event</source>
+        <translation>Создан контурный взрыв</translation>
+    </message>
+    <message>
+        <source>Click to draw · Wheel to zoom · Middle drag to pan</source>
+        <translation>Щёлкните для построения · Колесо — масштаб · Средняя кнопка — панорамирование</translation>
+    </message>
+    <message>
+        <source>Boundary closed and valid.</source>
+        <translation>Граница замкнута и корректна.</translation>
+    </message>
+    <message>
+        <source>Inspect the plan, then use Draw boundary.</source>
+        <translation>Проверьте план, затем нажмите «Построить границу».</translation>
+    </message>
 </context>
 </TS>

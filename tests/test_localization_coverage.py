@@ -85,6 +85,9 @@ def test_important_indirect_presentation_sources_are_in_catalogue():
         "Snap point", "Linked-event preview unavailable", "Boundary valid",
         "Elevation summary derived", "Linked-event preview completed", "Total",
         "Project plan", "Define Assessment boundary", "Assessment footprint",
+        "Click to draw · Wheel to zoom · Middle drag to pan",
+        "Boundary closed and valid.",
+        "Inspect the plan, then use Draw boundary.",
         "Planned", "In preparation", "Blasted", "Assessed", "Completed", "Draft",
         "Archived", "Active", "Inactive", "Enabled", "Disabled",
     }

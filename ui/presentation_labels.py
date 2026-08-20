@@ -171,6 +171,7 @@ def result_label(value: str | None) -> str:
 
 HISTORY_ACTION_SOURCES = {
     "Created", "Deleted", "Updated", "Attachment added", "Attachment removed",
+    "Created production Block", "Created contour Blast Event",
     "Block created", "Contour Blast created", "Geometry imported", "Geometry reimported",
     "Blast design created", "Blast design updated", "Geomechanics created",
     "Geomechanics updated", "Execution fact created", "Execution fact updated",

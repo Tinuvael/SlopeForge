@@ -149,6 +149,8 @@ def test_history_text_localizes_known_actions_without_changing_canonical_entries
 
     translations = {
         "Technical Card completed": "Техническая карточка завершена",
+        "Created production Block": "Создан производственный блок",
+        "Created contour Blast Event": "Создан контурный взрыв",
         "Added %1 photos": "Добавлено фото: %1",
         'Added document "%1"': 'Добавлен документ «%1»',
         "Technical Card R%1": "Техническая карточка R%1",
@@ -156,6 +158,8 @@ def test_history_text_localizes_known_actions_without_changing_canonical_entries
     }
     monkeypatch.setattr(presentation_labels, "tr", lambda source: translations.get(source, source))
     assert presentation_labels.history_text("Technical Card completed") == translations["Technical Card completed"]
+    assert presentation_labels.history_text("Created production Block") == translations["Created production Block"]
+    assert presentation_labels.history_text("Created contour Blast Event") == translations["Created contour Blast Event"]
     assert presentation_labels.history_text("Added 3 photos") == "Добавлено фото: 3"
     assert presentation_labels.history_text('Added document "passport.pdf"') == 'Добавлен документ «passport.pdf»'
     assert presentation_labels.history_text("Technical Card R2 · Geometry R1") == "Техническая карточка R2 · Геометрия R1"
