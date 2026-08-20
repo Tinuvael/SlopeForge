@@ -29,6 +29,16 @@ The MVP does not provide PDF reports, GIS, AI recommendations, TARP, or automati
 
 SlopeForge uses PostgreSQL as its only application database, with SQLAlchemy 2.x, psycopg 3, Alembic, environment variables, and Argon2 password hashing. The desktop package does not bundle a SQLite database. See [docs/database_setup.md](docs/database_setup.md).
 
+### Connection configuration
+
+On a normal first launch without a complete `DATABASE_URL` / `STORAGE_ROOT` environment configuration, SlopeForge opens a connection setup dialog before the login dialog. The user configures PostgreSQL host, port, database, user/password, and the shared attachment-storage folder, then tests and saves the configuration.
+
+The same values can be edited later from `Settings > Connection`. Saved changes take effect after restarting SlopeForge so the running application never switches databases or storage roots halfway through a session.
+
+On Windows the saved profile is stored in `%APPDATA%\SlopeForge\connection.ini`. `DATABASE_URL` and `STORAGE_ROOT` remain supported for development/administration and, when both are present, override the saved profile.
+
+MVP limitation: the saved PostgreSQL password is currently stored in the per-user connection INI file rather than Windows Credential Manager. Do not share that file. Moving the secret to Windows-native credential storage can be done as a focused security hardening follow-up without changing the connection UI contract.
+
 ## Development
 
 Repository-wide agent/development rules are in [AGENTS.md](AGENTS.md). Current architecture documentation is indexed in [docs/README.md](docs/README.md).
