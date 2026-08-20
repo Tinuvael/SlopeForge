@@ -161,6 +161,7 @@ class AssessmentAreaCreationPage(QWidget):
         self._add_row(links, 2, "Contour blast", self.contour_value)
         layout.addLayout(links); layout.addStretch(1)
 
+    @staticmethod
     def _section(text):
         label = QLabel(tr(text)); label.setObjectName("assessmentSectionTitle"); return label
 
@@ -168,6 +169,7 @@ class AssessmentAreaCreationPage(QWidget):
     def _value(text="—"):
         label = QLabel(text); label.setObjectName("assessmentFieldValue"); label.setWordWrap(True); return label
 
+    @staticmethod
     def _add_row(grid, row, text, widget):
         label = QLabel(tr(text)); label.setObjectName("assessmentFieldLabel")
         grid.addWidget(label, row, 0); grid.addWidget(widget, row, 1)

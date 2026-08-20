@@ -144,6 +144,31 @@ def test_shared_history_widget_has_documents_style_four_column_contract():
     widget.close(); app.processEvents()
 
 
+def test_history_text_localizes_known_actions_without_changing_canonical_entries(monkeypatch):
+    from ui import presentation_labels
+
+    translations = {
+        "Technical Card completed": "Техническая карточка завершена",
+        "Added %1 photos": "Добавлено фото: %1",
+        'Added document "%1"': 'Добавлен документ «%1»',
+        "Technical Card R%1": "Техническая карточка R%1",
+        "Geometry R%1": "Геометрия R%1",
+    }
+    monkeypatch.setattr(presentation_labels, "tr", lambda source: translations.get(source, source))
+    assert presentation_labels.history_text("Technical Card completed") == translations["Technical Card completed"]
+    assert presentation_labels.history_text("Added 3 photos") == "Добавлено фото: 3"
+    assert presentation_labels.history_text('Added document "passport.pdf"') == 'Добавлен документ «passport.pdf»'
+    assert presentation_labels.history_text("Technical Card R2 · Geometry R1") == "Техническая карточка R2 · Геометрия R1"
+    assert presentation_labels.history_text("user-entered note") == "user-entered note"
+
+    canonical = EntityHistoryEntry(
+        datetime(2026, 8, 18, tzinfo=timezone.utc), "Engineer",
+        "Technical Card completed", "Technical Card R2",
+    )
+    assert canonical.title == "Technical Card completed"
+    assert canonical.details == "Technical Card R2"
+
+
 def test_history_revision_action_only_enables_for_revision_backed_rows():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.entity_history_widget import EntityHistoryWidget

@@ -99,7 +99,10 @@ def test_dialog_new_csv_and_event_type_refresh_auto_suggestion(tmp_path):
     dialog.elevation.setValue(628); assert dialog.elevation_is_manual
     dialog.csv.setText(str(tmp_path / "second.csv")); dialog._inspect(force_override=True)
     assert dialog.elevation.value() == 635 and not dialog.elevation_is_manual
-    dialog.kind.setCurrentText("contour")
+    contour_index = dialog.kind.findData("contour")
+    assert contour_index >= 0
+    dialog.kind.setCurrentIndex(contour_index)
+    assert dialog.kind.currentData() == "contour"
     assert dialog.elevation.value() == 645 and "212 collars" in dialog.auto_status.text()
     dialog.close(); assert app
 

@@ -4053,5 +4053,253 @@ Continue?</source><translation>Новый горизонт отличается 
         <source>Draft saved.</source>
         <translation>Черновик сохранён.</translation>
     </message>
+    <message>
+        <source>Design line / collar offset, m</source>
+        <translation>Смещение от проектной линии / устья, м</translation>
+    </message>
+    <message>
+        <source>Area, m²</source>
+        <translation>Площадь, м²</translation>
+    </message>
+    <message>
+        <source>Average hole depth, m</source>
+        <translation>Средняя глубина скважины, м</translation>
+    </message>
+    <message>
+        <source>Volume, m³</source>
+        <translation>Объём, м³</translation>
+    </message>
+    <message>
+        <source>Estimated joint friction angle</source>
+        <translation>Расчётный угол трения по трещинам</translation>
+    </message>
+    <message>
+        <source>Indicative cohesion</source>
+        <translation>Ориентировочное сцепление</translation>
+    </message>
+    <message>
+        <source>Polygons</source>
+        <translation>Полигоны</translation>
+    </message>
+    <message>
+        <source>Selected</source>
+        <translation>Выбрано</translation>
+    </message>
+    <message>
+        <source>Mode</source>
+        <translation>Режим</translation>
+    </message>
+    <message>
+        <source>Select a polygon to edit its vertices.</source>
+        <translation>Выберите полигон для редактирования его вершин.</translation>
+    </message>
+    <message>
+        <source>Drag vertex handles to adjust geometry.</source>
+        <translation>Перетаскивайте маркеры вершин для изменения геометрии.</translation>
+    </message>
+    <message>
+        <source>Use Add polygon to create another boundary.</source>
+        <translation>Используйте «Добавить полигон», чтобы создать ещё одну границу.</translation>
+    </message>
+    <message>
+        <source>Undo removes the last vertex.</source>
+        <translation>Отмена удаляет последнюю вершину.</translation>
+    </message>
+    <message>
+        <source>Finish closes and validates the polygon.</source>
+        <translation>Завершение замыкает и проверяет полигон.</translation>
+    </message>
+    <message>
+        <source>Deleted</source>
+        <translation>Удалено</translation>
+    </message>
+    <message>
+        <source>Attachment added</source>
+        <translation>Вложение добавлено</translation>
+    </message>
+    <message>
+        <source>Attachment removed</source>
+        <translation>Вложение удалено</translation>
+    </message>
+    <message>
+        <source>Block created</source>
+        <translation>Блок создан</translation>
+    </message>
+    <message>
+        <source>Contour Blast created</source>
+        <translation>Контурный взрыв создан</translation>
+    </message>
+    <message>
+        <source>Geometry imported</source>
+        <translation>Геометрия импортирована</translation>
+    </message>
+    <message>
+        <source>Geometry reimported</source>
+        <translation>Геометрия импортирована повторно</translation>
+    </message>
+    <message>
+        <source>Blast design created</source>
+        <translation>Проект БВР создан</translation>
+    </message>
+    <message>
+        <source>Blast design updated</source>
+        <translation>Проект БВР обновлён</translation>
+    </message>
+    <message>
+        <source>Geomechanics created</source>
+        <translation>Геомеханика создана</translation>
+    </message>
+    <message>
+        <source>Geomechanics updated</source>
+        <translation>Геомеханика обновлена</translation>
+    </message>
+    <message>
+        <source>Execution fact created</source>
+        <translation>Фактическое выполнение создано</translation>
+    </message>
+    <message>
+        <source>Execution fact updated</source>
+        <translation>Фактическое выполнение обновлено</translation>
+    </message>
+    <message>
+        <source>Execution fact initialized from design</source>
+        <translation>Фактическое выполнение заполнено из проекта</translation>
+    </message>
+    <message>
+        <source>Technical Card completed</source>
+        <translation>Техническая карточка завершена</translation>
+    </message>
+    <message>
+        <source>Assessment Area created</source>
+        <translation>Участок оценки создан</translation>
+    </message>
+    <message>
+        <source>Assessment Area archived</source>
+        <translation>Участок оценки архивирован</translation>
+    </message>
+    <message>
+        <source>Assessment Area restored</source>
+        <translation>Участок оценки восстановлен</translation>
+    </message>
+    <message>
+        <source>Assessment Area name changed</source>
+        <translation>Название участка оценки изменено</translation>
+    </message>
+    <message>
+        <source>Contour Blast archived</source>
+        <translation>Контурный взрыв архивирован</translation>
+    </message>
+    <message>
+        <source>Contour Blast restored</source>
+        <translation>Контурный взрыв восстановлен</translation>
+    </message>
+    <message>
+        <source>Contour Blast name changed</source>
+        <translation>Название контурного взрыва изменено</translation>
+    </message>
+    <message>
+        <source>Boundaries created</source>
+        <translation>Границы созданы</translation>
+    </message>
+    <message>
+        <source>Boundaries revised</source>
+        <translation>Границы изменены</translation>
+    </message>
+    <message>
+        <source>Horizon changed</source>
+        <translation>Горизонт изменён</translation>
+    </message>
+    <message>
+        <source>Domain changed</source>
+        <translation>Домен изменён</translation>
+    </message>
+    <message>
+        <source>Changed field: Comment</source>
+        <translation>Изменено поле: Комментарий</translation>
+    </message>
+    <message>
+        <source>Archived production Block</source>
+        <translation>Производственный блок архивирован</translation>
+    </message>
+    <message>
+        <source>Restored production Block</source>
+        <translation>Производственный блок восстановлен</translation>
+    </message>
+    <message>
+        <source>Added %1 photos</source>
+        <translation>Добавлено фото: %1</translation>
+    </message>
+    <message>
+        <source>Added %1 documents</source>
+        <translation>Добавлено документов: %1</translation>
+    </message>
+    <message>
+        <source>Added photo "%1"</source>
+        <translation>Добавлено фото «%1»</translation>
+    </message>
+    <message>
+        <source>Added document "%1"</source>
+        <translation>Добавлен документ «%1»</translation>
+    </message>
+    <message>
+        <source>Photo metadata updated "%1"</source>
+        <translation>Метаданные фото «%1» обновлены</translation>
+    </message>
+    <message>
+        <source>Document metadata updated "%1"</source>
+        <translation>Метаданные документа «%1» обновлены</translation>
+    </message>
+    <message>
+        <source>Deleted photo "%1"</source>
+        <translation>Удалено фото «%1»</translation>
+    </message>
+    <message>
+        <source>Deleted document "%1"</source>
+        <translation>Удалён документ «%1»</translation>
+    </message>
+    <message>
+        <source>Changed field: %1</source>
+        <translation>Изменено поле: %1</translation>
+    </message>
+    <message>
+        <source>Manual blast event linked · %1</source>
+        <translation>Взрывное событие связано вручную · %1</translation>
+    </message>
+    <message>
+        <source>Technical Card R%1%2</source>
+        <translation>Техническая карточка R%1%2</translation>
+    </message>
+    <message>
+        <source>Geometry R%1%2</source>
+        <translation>Геометрия R%1%2</translation>
+    </message>
+    <message>
+        <source>Evaluation R%1%2</source>
+        <translation>Оценка R%1%2</translation>
+    </message>
+    <message>
+        <source>Technical Card R%1</source>
+        <translation>Техническая карточка R%1</translation>
+    </message>
+    <message>
+        <source>Geometry R%1</source>
+        <translation>Геометрия R%1</translation>
+    </message>
+    <message>
+        <source>Evaluation R%1</source>
+        <translation>Оценка R%1</translation>
+    </message>
+    <message>
+        <source>Blast event confirmed</source>
+        <translation>Взрывное событие подтверждено</translation>
+    </message>
+    <message>
+        <source>Blast event excluded</source>
+        <translation>Взрывное событие исключено</translation>
+    </message>
+    <message>
+        <source>Blast event link restored</source>
+        <translation>Связь с взрывным событием восстановлена</translation>
+    </message>
 </context>
 </TS>

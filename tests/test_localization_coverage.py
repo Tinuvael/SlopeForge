@@ -96,6 +96,37 @@ def test_important_indirect_presentation_sources_are_in_catalogue():
     assert sorted(source for source in required if not catalogue.get(source)) == []
 
 
+def test_technical_card_and_domain_geometry_indirect_sources_are_in_catalogue():
+    required = {
+        "Design line / collar offset, m", "Area, m²", "Average hole depth, m",
+        "Volume, m³", "Estimated joint friction angle", "Indicative cohesion",
+        "Polygons", "Selected", "Mode",
+        "Select a polygon to edit its vertices.",
+        "Drag vertex handles to adjust geometry.",
+        "Use Add polygon to create another boundary.",
+        "Click the plan to add vertices.", "Undo removes the last vertex.",
+        "Finish closes and validates the polygon.",
+    }
+    catalogue = russian_catalog()
+    assert sorted(source for source in required if not catalogue.get(source)) == []
+
+
+def test_history_presentation_sources_are_in_catalogue():
+    from ui.presentation_labels import HISTORY_ACTION_SOURCES
+
+    templates = {
+        "Added %1 photos", "Added %1 documents", 'Added photo "%1"',
+        'Added document "%1"', 'Photo metadata updated "%1"',
+        'Document metadata updated "%1"', 'Deleted photo "%1"',
+        'Deleted document "%1"', "Changed field: %1",
+        "Manual blast event linked · %1", "Technical Card R%1",
+        "Geometry R%1", "Evaluation R%1",
+    }
+    catalogue = russian_catalog()
+    assert sorted(source for source in HISTORY_ACTION_SOURCES | templates
+                  if not catalogue.get(source)) == []
+
+
 def test_obvious_widget_literals_do_not_bypass_translation():
     raw = []
     for path in ACTIVE:
