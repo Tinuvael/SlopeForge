@@ -64,7 +64,7 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Copy error": "Ошибка копирования",
     "Edit error": "Ошибка изменения",
     "Delete error": "Ошибка удаления",
-    "The file will be removed from the database and disk.": "Файл будет удалён из базы данных и с диска.",
+    "The file will be removed from the database and disk.": "Файл будет удалён из базы данных и диска.",
     "Cleanup warning": "Предупреждение очистки",
     "The attachment was deleted, but a temporary file could not be removed.": "Вложение удалено, но временный файл удалить не удалось.",
     "Photos and documents": "Фото и документы",
@@ -157,13 +157,56 @@ RUSSIAN_RUNTIME_FALLBACKS = {
     "Explosive": "ВВ",
     "No blast-design data yet": "Данных проекта БВР пока нет",
     "No execution data yet": "Фактических данных пока нет",
-    "No geomechanics data yet": "Геомеханических данных пока нет",
+    "No geomechanics data yet": "Данных геомеханики пока нет",
     "Open section": "Открыть раздел",
+    # Compact Project/Domain dashboards (#69).
+    "Project overview": "Обзор проекта",
+    "Domain overview": "Обзор домена",
+    "Plan / assessment areas": "План / участки оценки",
+    "Import / Update Project Lines": "Импорт / обновить проектные линии",
+    "Import Project Lines": "Импортировать проектные линии",
+    "Update Project Lines": "Обновить проектные линии",
+    "No Project Lines": "Проектные линии не загружены",
+    "Import lines": "Импортировать линии",
+    "Update lines": "Обновить линии",
+    "Import": "Импортировать",
+    "Assessment result distribution": "Распределение результатов оценки",
+    "Attention required": "Требуют внимания",
+    "No areas require attention": "Нет участков, требующих внимания",
+    "Assessment progress": "Прогресс оценки",
+    "Completed: %1  ·  Draft: %2  ·  Not evaluated: %3": "Завершено: %1  ·  Черновики: %2  ·  Не оценено: %3",
+    "Domain summary": "Сводка по доменам",
+    "No Domains yet": "Доменов пока нет",
+    "Blast events: %1 • Production: %2 • Contour: %3": "Взрывные события: %1 • Производственные: %2 • Контурные: %3",
+    "Production: %1 • Contour: %2": "Производственные: %1 • Контурные: %2",
+    "Production: %1  ·  Contour: %2": "Производственные: %1  ·  Контурные: %2",
+    "Elevation intervals": "Интервалы высот",
+    "Assessment areas: %1 • Evaluated: %2": "Участки оценки: %1 • Оценено: %2",
+    "Latest assessments": "Последние оценки",
+    "No completed assessments yet": "Завершённых оценок пока нет",
+    "Blast activity": "Взрывная активность",
+    "No dated Blast Events yet": "Взрывных событий с датой пока нет",
+    "Latest blast": "Последний взрыв",
+    "No Domain geometry defined": "Геометрия домена не задана",
+    "No Domain geometry": "Геометрия домена не задана",
+    "No Assessment Areas yet": "Участков оценки пока нет",
+    "No completed assessment": "Нет завершённой оценки",
+    "Geometry achieved, condition insufficient": "Геометрия достигнута, состояние борта недостаточно",
+    "Good results": "Хорошие результаты",
+    "Unacceptable results": "Неприемлемые результаты",
+    "Condition good, geometry unacceptable": "Состояние борта хорошее, геометрия неприемлема",
+    "DAI / FCI over time": "DAI / FCI во времени",
+    "Daily average · all completed assessments": "Среднее за день · все завершённые оценки",
+    "No completed data": "Нет завершённых данных",
+    "Assessment Area": "Участок оценки",
+    "Created": "Создано",
+    "Updated": "Обновлено",
+    "Assessment completed": "Оценка завершена",
+    "Assessment draft saved": "Черновик оценки сохранён",
+    "Imported": "Импортировано",
+    "Clear": "Очистить",
 }
 
-# Qt asks the installed translator for platform-theme captions in contexts such
-# as QPlatformTheme.  Returning an empty string there produces blank standard
-# buttons on some Windows/PySide builds, instead of falling back to English.
 _STANDARD_BUTTON_SOURCES = {
     "OK": "OK", "Save": "Save", "Cancel": "Cancel", "Yes": "Yes",
     "No": "No", "Close": "Close", "Discard": "Discard", "Restore": "Restore",
@@ -171,14 +214,11 @@ _STANDARD_BUTTON_SOURCES = {
 
 
 class TsTranslator(QTranslator):
-    """Small Qt translator backed directly by a standard Linguist TS file."""
-
     def __init__(self, parent: QCoreApplication | None = None):
         super().__init__(parent)
         self._messages: dict[tuple[str, str], str] = {}
 
     def load(self, filename: str | Path, *args, **kwargs) -> bool:  # noqa: ARG002
-        """Parse a TS catalogue, returning ``False`` for missing/malformed XML."""
         self._messages.clear()
         try:
             root = ET.parse(filename).getroot()
@@ -210,14 +250,12 @@ class TsTranslator(QTranslator):
         disambiguation: str | None = None,
         n: int = -1,
     ) -> str:
-        """Return an empty string for Qt's normal English-source fallback."""
         del disambiguation, n
         translated = self._messages.get((context, source_text), "")
         if translated:
             return translated
         if context == "SlopeForge" and source_text in RUSSIAN_RUNTIME_FALLBACKS:
             return RUSSIAN_RUNTIME_FALLBACKS[source_text]
-        # Platform captions may contain mnemonic markers or an ellipsis.
         normalized = source_text.replace("&", "").removesuffix("...")
         canonical = _STANDARD_BUTTON_SOURCES.get(normalized)
         if canonical:
@@ -247,7 +285,6 @@ def save_language(code: str, store: QSettings | None = None) -> str:
 
 
 def install_selected_translator(app: QCoreApplication, store: QSettings | None = None) -> str:
-    """Install Russian before any widgets are built; safely retain English on failure."""
     global _translator
     if _translator is not None:
         app.removeTranslator(_translator)
@@ -268,6 +305,5 @@ def install_selected_translator(app: QCoreApplication, store: QSettings | None =
 
 
 def tr(source: str, disambiguation: str | None = None, n: int = -1) -> str:
-    """Translate canonical English presentation text in one stable context."""
     translated = QCoreApplication.translate("SlopeForge", source, disambiguation, n)
     return translated or source

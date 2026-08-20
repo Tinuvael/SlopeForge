@@ -97,8 +97,12 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self,tr("Could not open project dashboard"),domain_message(str(exc))); return False
         page.domain_requested.connect(lambda domain_id:self._open_domain_dashboard(domain_id,site_id,site_name))
+        page.assessment_area_requested.connect(lambda area_id,domain_id:self._open_project_dashboard_area(area_id,domain_id,site_id))
         page.project_renamed.connect(self._project_renamed)
         self._activate_page(page); self._set_context(site_id,site_name); return True
+    def _open_project_dashboard_area(self,area_id,domain_id,site_id):
+        domain=self.navigation_queries.get_domain_context(domain_id)
+        return self.open_area_from_tree(area_id,domain_id,site_id,domain.domain_name)
     def _open_domain_dashboard(self,domain_id,site_id,site_name):
         domain=self.navigation_queries.get_domain_context(domain_id); self.select_domain(domain_id,domain.domain_name,site_id,domain.site_name)
     def select_domain(self,domain_id,domain_name,site_id,site_name):

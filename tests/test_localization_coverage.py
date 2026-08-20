@@ -50,6 +50,37 @@ def test_every_literal_tr_call_has_finished_russian_translation():
     assert missing == []
 
 
+def test_runtime_dashboard_card_labels_have_russian_fallbacks():
+    # DashboardCard and OverviewLinkButton receive some labels dynamically, so
+    # those values do not appear as literal tr("...") calls in the AST scan.
+    required = {
+        "Plan / assessment areas",
+        "Import / Update Project Lines",
+        "Assessment result distribution",
+        "Domain summary",
+        "Elevation intervals",
+        "No completed assessment",
+        "Geometry achieved, condition insufficient",
+        "Good results",
+        "Unacceptable results",
+        "Condition good, geometry unacceptable",
+        "No Project Lines",
+        "Import lines",
+        "Update lines",
+        "Import",
+        "No Domain geometry",
+        "DAI / FCI over time",
+        "Daily average · all completed assessments",
+        "No completed data",
+        "Assessment Area",
+        "Created",
+        "Updated",
+        "Assessment completed",
+        "Assessment draft saved",
+    }
+    assert required <= RUSSIAN_RUNTIME_FALLBACKS.keys()
+
+
 def test_obvious_widget_literals_do_not_bypass_translation():
     raw = []
     for path in ACTIVE:
@@ -83,6 +114,7 @@ def test_representative_active_screen_labels_are_translated():
         "Add assessment area": "Добавить участок оценки",
         "Assessment areas": "Участки оценки", "Horizon": "Горизонт",
         "Interval": "Интервал", "Block": "Блок",
+        "Contour blast": "Контурный взрыв",
     }
     assert {source: catalogue[source] for source in expected} == expected
     assert RUSSIAN_RUNTIME_FALLBACKS["Project tree"] == "Дерево проекта"

@@ -21,6 +21,7 @@ def test_app_metadata_is_present_and_version_is_semver() -> None:
     assert config.APP_NAME
     assert config.APP_VERSION
     assert config.APP_AUTHOR
+    assert config.APP_COPYRIGHT
     assert re.fullmatch(r"\d+\.\d+\.\d+", config.APP_VERSION)
 
 
@@ -44,9 +45,19 @@ def test_splash_and_about_can_be_created_offscreen(qt_app) -> None:
 
     apply_application_icon(qt_app)
     splash = SlopeForgeSplash()
-    splash.show_status("Тест")
+    splash.show_status("Initialization should stay hidden")
     about = AboutDialog()
     assert splash.pixmap().isNull() is False
+    assert splash.message() == ""
     assert config.APP_NAME in about.windowTitle()
     splash.close()
     about.close()
+
+
+def test_splash_has_no_opaque_footer_or_startup_status_text():
+    source = Path("app/splash.py").read_text(encoding="utf-8")
+    assert "painter.fillRect" not in source
+    assert "self.showMessage" not in source
+    assert "APP_COPYRIGHT" in source
+    assert 'f"version {APP_VERSION}"' in source
+    assert "minimum_ms: int = 2000" in source

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-
 import logging
 
-from PySide6.QtCore import QElapsedTimer, QThread, Qt
+from PySide6.QtCore import QElapsedTimer, QRect, QThread, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QSplashScreen
 
-from .config import APP_AUTHOR, APP_NAME, APP_SPLASH_PATH, APP_VERSION
+from .config import APP_COPYRIGHT, APP_NAME, APP_SPLASH_PATH, APP_VERSION
 from .qt import apply_window_icon
 from .resources import resource_path
 
@@ -17,43 +16,76 @@ logger = logging.getLogger(__name__)
 class SlopeForgeSplash(QSplashScreen):
     def __init__(self) -> None:
         pixmap = self._load_pixmap()
-        super().__init__(pixmap, Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
+        super().__init__(
+            pixmap,
+            Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint,
+        )
         apply_window_icon(self)
-        self._status = ""
         self._timer = QElapsedTimer()
         self._timer.start()
-        self.setFont(QFont("Segoe UI", 10))
 
     def _load_pixmap(self) -> QPixmap:
         splash_path = resource_path(APP_SPLASH_PATH)
         if splash_path is not None:
             pixmap = QPixmap(str(splash_path))
             if not pixmap.isNull():
-                return pixmap.scaled(512, 512, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                return pixmap.scaled(
+                    512,
+                    512,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
             logger.warning("Splash image could not be loaded: %s", splash_path)
         fallback = QPixmap(512, 512)
         fallback.fill(QColor("white"))
         return fallback
 
-    def show_status(self, message: str) -> None:
-        self._status = message
-        self.showMessage(message, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom, QColor("white"))
+    def show_status(self, _message: str) -> None:
+        """Keep startup responsive without drawing initialization messages."""
         QApplication.processEvents()
 
-    def drawContents(self, painter: QPainter) -> None:  # noqa: N802 - Qt override
-        super().drawContents(painter)
-        rect = self.rect()
-        painter.fillRect(0, rect.height() - 96, rect.width(), 96, QColor(0, 0, 0, 185))
+    @staticmethod
+    def _draw_overlay_text(
+        painter: QPainter,
+        rect: QRect,
+        text: str,
+        *,
+        alignment: Qt.AlignmentFlag,
+        font: QFont,
+    ) -> None:
+        painter.setFont(font)
+        shadow = rect.translated(1, 1)
+        painter.setPen(QColor(0, 0, 0, 190))
+        painter.drawText(shadow, alignment, text)
         painter.setPen(QColor("white"))
-        title_font = QFont("Segoe UI", 18, QFont.Weight.Bold)
-        painter.setFont(title_font)
-        painter.drawText(14, rect.height() - 68, APP_NAME)
-        painter.setFont(QFont("Segoe UI", 10))
-        painter.drawText(14, rect.height() - 43, f"version {APP_VERSION}")
-        painter.drawText(14, rect.height() - 20, APP_AUTHOR)
-        if self._status:
-            painter.setPen(QColor("#d8eefc"))
-            painter.drawText(rect.width() - 250, rect.height() - 20, 236, 18, Qt.AlignmentFlag.AlignRight, self._status)
+        painter.drawText(rect, alignment, text)
+
+    def drawContents(self, painter: QPainter) -> None:  # noqa: N802 - Qt override
+        """Draw only compact corner metadata over the original splash artwork."""
+        rect = self.rect()
+        margin = 10
+
+        self._draw_overlay_text(
+            painter,
+            QRect(margin, rect.height() - 28, 150, 18),
+            f"version {APP_VERSION}",
+            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            font=QFont("Segoe UI", 8),
+        )
+        self._draw_overlay_text(
+            painter,
+            QRect(rect.width() - 250, rect.height() - 44, 240, 18),
+            APP_NAME,
+            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            font=QFont("Segoe UI", 9, QFont.Weight.Bold),
+        )
+        self._draw_overlay_text(
+            painter,
+            QRect(rect.width() - 330, rect.height() - 25, 320, 16),
+            APP_COPYRIGHT,
+            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            font=QFont("Segoe UI", 8),
+        )
 
     def close_with_fade(self, minimum_ms: int = 2000, fade_ms: int = 350) -> None:
         while self._timer.elapsed() < minimum_ms:

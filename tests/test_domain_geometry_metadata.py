@@ -38,16 +38,18 @@ def test_project_lines_are_project_owned_and_independent_of_domains():
     snapshot=SiteDashboardSnapshot(1,[],dataset,[dataset],project_lines=lines)
     assert snapshot.domains==[] and snapshot.project_lines==(MapGeometry("L1",((0.0,0.0),(2.0,3.0))),)
     source=Path("ui/pages/dashboards/site_dashboard.py").read_text()
-    assert "project_lines=self.snapshot.project_lines" in source
+    assert "self.plan_card = DashboardPlanCard(" in source
+    assert "self.plan_card.set_snapshot(self.snapshot)" in source
     assert "domains[0].project_lines" not in source
 
 
 def test_domain_dashboard_permissions_and_import_filter_are_explicit():
     source=Path("ui/pages/dashboards/domain_dashboard.py").read_text()
-    assert 'tr("Import geometry")' in source and 'tr("Draw geometry")' in source
+    assert 'primary_action_label="Import"' in source and 'secondary_action_label="Draw geometry"' in source
     assert 'tr("Edit boundaries")' in source and 'tr("Clear geometry")' in source
-    assert 'can_edit=getattr(getattr(self.context,"current_user",None),"can_edit",False)' in source
-    assert 'bool(current) and can_edit' in source
+    assert "def _can_edit(self) -> bool:" in source
+    assert "self.plan_card.set_actions_enabled(editable)" in source
+    assert 'tr("Edit boundaries") if current else tr("Draw geometry")' in source
     assert "*.csv *.dxf" in source
     assert "if dialog.exec():" in source and "replace_drawn" in source
 
