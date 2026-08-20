@@ -6,6 +6,7 @@ from datetime import date, datetime
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -43,6 +44,10 @@ DASHBOARD_HEADER_STYLE = (
 DASHBOARD_ROW_STYLE = (
     "QFrame#DashboardSummaryRow,QWidget#ProjectLinesDatasetRow{"
     "background:#ffffff;border:1px solid #d7dde6;border-radius:5px;}"
+)
+DASHBOARD_ROW_SELECTED_STYLE = (
+    "QFrame#DashboardSummaryRow{background:#f5f9ff;border:1px solid #8fb4dc;"
+    "border-radius:5px;}"
 )
 
 QuadrantPresentation = AssessmentResultPresentation
@@ -219,15 +224,17 @@ class CompactSummaryList(DashboardCard):
         self.visible_rows = max(1, int(visible_rows))
         self.show_go_to = bool(show_go_to)
         self.fill_available = bool(fill_available)
+        self._selected_key: str | None = None
+        self._row_widgets: dict[str, SummaryRowWidget] = {}
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(4)
+        self.list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setStyleSheet(
             "QListWidget{background:transparent;border:0;}"
             "QListWidget::item{background:transparent;border:0;}"
-            "QListWidget::item:selected{background:transparent;}"
         )
         if self.fill_available:
             self.list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -237,12 +244,26 @@ class CompactSummaryList(DashboardCard):
             self.layout.addStretch(1)
         self.set_rows([])
 
+    def _apply_row_selection(self) -> None:
+        for key, holder in self._row_widgets.items():
+            holder.setStyleSheet(
+                DASHBOARD_ROW_SELECTED_STYLE if key == self._selected_key else DASHBOARD_ROW_STYLE
+            )
+
+    def _activate_row(self, key: str) -> None:
+        self._selected_key = None if self._selected_key == key else key
+        self._apply_row_selection()
+        self.activated.emit(key)
+
     def clear_selection(self):
-        self.list.clearSelection()
+        self._selected_key = None
         self.list.setCurrentItem(None)
+        self._apply_row_selection()
 
     def set_rows(self, rows: list[SummaryRow], *, empty_text="No data yet"):
         self.list.clear()
+        self._selected_key = None
+        self._row_widgets = {}
         rows = list(rows)
         if self.fill_available:
             self.list.setMinimumHeight(self.ROW_HEIGHT + 4)
@@ -268,7 +289,8 @@ class CompactSummaryList(DashboardCard):
             holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             holder.setCursor(Qt.CursorShape.PointingHandCursor)
             holder.setStyleSheet(DASHBOARD_ROW_STYLE)
-            holder.clicked.connect(lambda current_key=key: self.activated.emit(current_key))
+            holder.clicked.connect(lambda current_key=key: self._activate_row(current_key))
+            self._row_widgets[key] = holder
             layout = QHBoxLayout(holder)
             layout.setContentsMargins(7, 4, 8, 4)
             layout.setSpacing(7)
