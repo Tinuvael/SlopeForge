@@ -19,6 +19,7 @@ from ui.widgets.borehole_charge_builder import BoreholeChargeBuilder
 from ui.presentation_labels import (
     CONTROLLED_BLASTING_LABELS, domain_message, technical_group_label, technical_text,
 )
+from ui.widgets.design_system import configure_standard_table, set_button_role
 
 BURDEN_LABEL = "Burden / row spacing, m"
 BURDEN_TOOLTIP = "Burden. For row patterns, normally the row spacing or distance from the first row to the free face."
@@ -102,12 +103,14 @@ class TechnicalCardDialog(QDialog):
         self._drilling_tab(drilling_title); self._actual_tab(); self._history_tab()
         buttons = QHBoxLayout(); buttons.addStretch()
         self.draft_button = QPushButton(tr("Save draft")); self.complete_button = QPushButton(tr("Complete")); cancel = QPushButton(tr("Cancel"))
+        set_button_role(self.draft_button, "secondary"); set_button_role(self.complete_button, "primary"); set_button_role(cancel, "secondary")
         self.draft_button.clicked.connect(lambda: self._save("draft")); self.complete_button.clicked.connect(lambda: self._save("completed")); cancel.clicked.connect(self.reject)
         for button in (self.draft_button, self.complete_button): button.setEnabled(not read_only)
         buttons.addWidget(self.draft_button); buttons.addWidget(self.complete_button); buttons.addWidget(cancel); root.addLayout(buttons)
 
     def _scroll_tab(self, title):
-        scroll = QScrollArea(); scroll.setWidgetResizable(True); page = QWidget(); layout = QVBoxLayout(page); layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        page = QWidget(); page.setObjectName("EngineeringWorkspace"); layout = QVBoxLayout(page); layout.setContentsMargins(12, 12, 12, 12); layout.setSpacing(12); layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         scroll.setWidget(page); self.tabs.addTab(scroll, title); return layout
 
     def _common_tab(self):
@@ -136,13 +139,13 @@ class TechnicalCardDialog(QDialog):
 
     def _section_panel(self, title, object_name):
         panel = QWidget(); panel.setObjectName(object_name)
-        panel_layout = QVBoxLayout(panel); panel_layout.setContentsMargins(0, 0, 0, 0); panel_layout.setSpacing(8)
+        panel_layout = QVBoxLayout(panel); panel_layout.setContentsMargins(12, 10, 12, 10); panel_layout.setSpacing(8)
         panel_layout.addWidget(self._section_title(title))
         return panel, panel_layout
 
     def _geomechanics_tab(self):
         page = QWidget(); page.setObjectName("geomechanicsWorkspace")
-        layout = QGridLayout(page); layout.setContentsMargins(18, 14, 18, 12); layout.setHorizontalSpacing(48); layout.setVerticalSpacing(22)
+        layout = QGridLayout(page); layout.setContentsMargins(12, 12, 12, 12); layout.setHorizontalSpacing(12); layout.setVerticalSpacing(12)
         layout.setColumnStretch(0, 2); layout.setColumnStretch(1, 3)
         layout.setRowStretch(0, 0); layout.setRowStretch(1, 0); layout.setRowStretch(2, 0); layout.setRowStretch(3, 1)
         self.tabs.addTab(page, tr("Geomechanics")); geo = self.revision.geomechanical_parameters
@@ -208,7 +211,7 @@ class TechnicalCardDialog(QDialog):
         summaries.addWidget(QLabel(tr("Planar sliding")), 0, 0); summaries.addWidget(QLabel(tr("Wedge sliding")), 0, 1)
         summaries.addWidget(self.planar_status, 1, 0); summaries.addWidget(self.wedge_status, 1, 1)
         summaries.addWidget(self.planar_sets, 2, 0); summaries.addWidget(self.wedge_pairs, 2, 1); screening.addLayout(summaries)
-        details = QPushButton(tr("Details…")); details.setMaximumWidth(100); details.clicked.connect(self._show_screening_details); screening.addWidget(details, 0, Qt.AlignmentFlag.AlignRight)
+        details = QPushButton(tr("Details…")); set_button_role(details, "secondary"); details.setMaximumWidth(100); details.clicked.connect(self._show_screening_details); screening.addWidget(details, 0, Qt.AlignmentFlag.AlignRight)
         limitation = QLabel(tr("Preliminary kinematic screening using representative joint-set orientations. Does not account for orientation scatter, persistence, spacing, water pressure or factor of safety.")); limitation.setWordWrap(True); limitation.setObjectName("MutedText"); screening.addWidget(limitation)
 
         layout.addWidget(rock_panel, 0, 0, Qt.AlignmentFlag.AlignTop)
@@ -234,8 +237,8 @@ class TechnicalCardDialog(QDialog):
             #EngineeringInlineLabel { font-weight: 600; color: #1f2937; }
             #CalculatedCaption, #MutedText { color: #6b7280; font-size: 11px; }
             #CalculatedValue { color: #0b63ce; font-size: 17px; font-weight: 600; }
-            QComboBox, QLineEdit, QTextEdit { min-height: 26px; border: 1px solid #d6dbe3; border-radius: 6px; background: white; padding: 2px 6px; }
-            QComboBox:focus, QLineEdit:focus, QTextEdit:focus { border-color: #0b63ce; }
+            QLineEdit, QTextEdit { min-height: 26px; border: 1px solid #d6dbe3; border-radius: 6px; background: white; padding: 2px 6px; }
+            QLineEdit:focus, QTextEdit:focus { border-color: #0b63ce; }
         """)
         self._refresh_geomechanics()
 
@@ -311,7 +314,7 @@ class TechnicalCardDialog(QDialog):
 
     def _drilling_tab(self, title):
         self.drilling_layout = self._scroll_tab(tr(title))
-        planned = QGroupBox(tr("Blast design")); planned_form = QFormLayout(planned)
+        planned = QGroupBox(tr("Blast design")); planned.setObjectName("EngineeringCard"); planned_form = QFormLayout(planned)
         self.has_planned_date = QCheckBox(tr("Set planned date")); self.planned_date = QDateEdit(); self.planned_date.setCalendarPopup(True)
         if self.blast_event.event_date:
             value = self.blast_event.event_date; self.planned_date.setDate(QDate(value.year, value.month, value.day)); self.has_planned_date.setChecked(True)
@@ -358,6 +361,8 @@ class TechnicalCardDialog(QDialog):
             load=QPushButton(tr("Load")); save=QPushButton(tr("Save as...")); update=QPushButton(tr("Update")); delete=QPushButton(tr("Delete"))
             for button,name_ in ((load,"loadChargePresetButton"),(save,"saveChargePresetButton"),(update,"updateChargePresetButton"),(delete,"deleteChargePresetButton")):
                 button.setObjectName(name_); button.setEnabled(not self.read_only and self.charge_presets is not None); preset_row.addWidget(button)
+            for button in (load, save, update): set_button_role(button, "secondary")
+            set_button_role(delete, "danger")
             charge_layout.addLayout(preset_row)
             builder_host=QWidget(); builder_layout=QVBoxLayout(builder_host); builder_layout.setContentsMargins(0,0,0,0); charge_layout.addWidget(builder_host,1)
             columns.addWidget(charge,0,1); outer.addLayout(columns)
@@ -402,6 +407,7 @@ class TechnicalCardDialog(QDialog):
             delete.clicked.connect(lambda _=False,c=combo:self._delete_preset(c))
             actions = QHBoxLayout(); duplicate = QPushButton(tr("Duplicate")); remove = QPushButton(tr("Delete"))
             duplicate.setEnabled(not self.read_only); remove.setEnabled(not self.read_only)
+            set_button_role(duplicate, "secondary"); set_button_role(remove, "danger")
             duplicate.clicked.connect(lambda _=False, g=group: self._duplicate(g)); remove.clicked.connect(lambda _=False, g=group: self._remove(g))
             actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions); self.group_cards_layout.addWidget(box)
 
@@ -498,13 +504,13 @@ class TechnicalCardDialog(QDialog):
         self.actual_date=QDateEdit(); self.actual_date.setObjectName("actualBlastDate"); self.actual_date.setCalendarPopup(True)
         stored=QDate.fromString(actual.actual_blast_date or "",Qt.DateFormat.ISODate)
         self.actual_date.setDate(stored if stored.isValid() else QDate.currentDate()); self.actual_date.setEnabled(not self.read_only); top.addWidget(self.actual_date)
-        copy_all=QPushButton(tr("Copy design to actual")); copy_all.setObjectName("copyProjectToActualButton"); copy_all.setEnabled(not self.read_only); copy_all.clicked.connect(self._copy_all_actual); top.addWidget(copy_all)
-        self.actual_indicators_button=QPushButton(tr("Actual indicators")); self.actual_indicators_button.setObjectName("actualIndicatorsButton"); self.actual_indicators_button.setCheckable(True); self.actual_indicators_button.toggled.connect(self._toggle_actual_indicators); top.addWidget(self.actual_indicators_button); top.addStretch(); layout.addLayout(top)
+        copy_all=QPushButton(tr("Copy design to actual")); copy_all.setObjectName("copyProjectToActualButton"); set_button_role(copy_all, "secondary"); copy_all.setEnabled(not self.read_only); copy_all.clicked.connect(self._copy_all_actual); top.addWidget(copy_all)
+        self.actual_indicators_button=QPushButton(tr("Actual indicators")); self.actual_indicators_button.setObjectName("actualIndicatorsButton"); set_button_role(self.actual_indicators_button, "secondary"); self.actual_indicators_button.setCheckable(True); self.actual_indicators_button.toggled.connect(self._toggle_actual_indicators); top.addWidget(self.actual_indicators_button); top.addStretch(); layout.addLayout(top)
         self._build_actual_indicators_popup()
         self.completion_status = QComboBox(); planned_status,completed_status="planned","completed"; self.completion_status.addItem(tr("Planned"),planned_status); self.completion_status.addItem(tr("Completed"),completed_status); self.completion_status.setCurrentIndex(max(0,self.completion_status.findData(actual.completion_status))); self.completion_status.hide()
         self.actual_cards=QWidget(); self.actual_cards_layout=QVBoxLayout(self.actual_cards); self.actual_cards_layout.setContentsMargins(0,0,0,0); layout.addWidget(self.actual_cards)
-        controls=QHBoxLayout(); add=QPushButton(tr("+ Add actual group")); add.setEnabled(not self.read_only); add.clicked.connect(self._add_actual_group); controls.addWidget(add); controls.addStretch(); layout.addLayout(controls)
-        notes=QGroupBox(tr("Notes")); notes_layout=QVBoxLayout(notes); self.execution_notes=QTextEdit(actual.execution_notes); self.execution_notes.setObjectName("actualExecutionNotes"); self.execution_notes.setMaximumHeight(76); self.execution_notes.setReadOnly(self.read_only); notes_layout.addWidget(self.execution_notes); layout.addWidget(notes)
+        controls=QHBoxLayout(); add=QPushButton(tr("+ Add actual group")); set_button_role(add, "secondary"); add.setEnabled(not self.read_only); add.clicked.connect(self._add_actual_group); controls.addWidget(add); controls.addStretch(); layout.addLayout(controls)
+        notes=QGroupBox(tr("Notes")); notes.setObjectName("EngineeringCard"); notes_layout=QVBoxLayout(notes); self.execution_notes=QTextEdit(actual.execution_notes); self.execution_notes.setObjectName("actualExecutionNotes"); self.execution_notes.setMaximumHeight(76); self.execution_notes.setReadOnly(self.read_only); notes_layout.addWidget(self.execution_notes); layout.addWidget(notes)
         self._render_actual_groups(); self._refresh_actual_summary()
 
     def _build_actual_indicators_popup(self):
@@ -571,7 +577,7 @@ class TechnicalCardDialog(QDialog):
                     else: self._refresh_actual_summary()
                 widget.valueChanged.connect(changed)
 
-            exceptions=QGroupBox(tr("Execution exceptions")); exception_grid=QGridLayout(exceptions); exception_grid.setHorizontalSpacing(10); exception_grid.setVerticalSpacing(4); exception_grid.setColumnStretch(1,1)
+            exceptions=QGroupBox(tr("Execution exceptions")); exceptions.setObjectName("actualExceptionArea"); exception_grid=QGridLayout(exceptions); exception_grid.setHorizontalSpacing(10); exception_grid.setVerticalSpacing(4); exception_grid.setColumnStretch(1,1)
             for index,(label,attr) in enumerate((("Rejected","rejected_hole_count"),("Redrilled","redrilled_hole_count"),("Wet","wet_hole_count"),("Uncharged","uncharged_hole_count"))):
                 spin=_number(getattr(group,attr)); spin.setDecimals(0); spin.setRange(-1,1000000); spin.setSpecialValueText("—"); spin.setMaximumWidth(90); spin.setEnabled(not self.read_only); spin.valueChanged.connect(lambda value,g=group,a=attr,w=spin:(setattr(g,a,None if value==w.minimum() else int(value)),self._refresh_actual_summary()))
                 exception_grid.addWidget(QLabel(tr(label)),index,0); exception_grid.addWidget(spin,index,1,Qt.AlignmentFlag.AlignLeft)
@@ -585,7 +591,7 @@ class TechnicalCardDialog(QDialog):
                 self._refresh_charge_comparison(comparison,group,design); charge_layout.addWidget(comparison["widget"])
             else: charge_layout.addWidget(QLabel(tr("Enter average hole depth to configure the charge construction.")))
             columns.addWidget(charge,0,1); outer.addLayout(columns)
-            actions=QHBoxLayout(); duplicate=QPushButton(tr("Duplicate")); remove=QPushButton(tr("Delete")); duplicate.setEnabled(not self.read_only); remove.setEnabled(not self.read_only); duplicate.clicked.connect(lambda _=False,g=group:self._duplicate_actual(g)); remove.clicked.connect(lambda _=False,g=group:self._remove_actual(g)); actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions)
+            actions=QHBoxLayout(); duplicate=QPushButton(tr("Duplicate")); remove=QPushButton(tr("Delete")); set_button_role(duplicate, "secondary"); set_button_role(remove, "danger"); duplicate.setEnabled(not self.read_only); remove.setEnabled(not self.read_only); duplicate.clicked.connect(lambda _=False,g=group:self._duplicate_actual(g)); remove.clicked.connect(lambda _=False,g=group:self._remove_actual(g)); actions.addStretch(); actions.addWidget(duplicate); actions.addWidget(remove); outer.addLayout(actions)
             box.toggled.connect(lambda checked,g=group:(setattr(g,"included",checked),self._refresh_actual_summary())); box.setCheckable(not self.read_only); self.actual_cards_layout.addWidget(box)
 
     @staticmethod
@@ -683,7 +689,7 @@ class TechnicalCardDialog(QDialog):
         layout = self._scroll_tab(tr("Revision history")); table = QTableWidget(len(self.card.revisions), 5); table.setHorizontalHeaderLabels(["№", tr("Date"), tr("Status"), tr("Geometry revision"), tr("Reason")])
         for row, revision in enumerate(self.card.revisions):
             for col, value in enumerate((revision.revision_number, revision.created_at.isoformat(sep=" ", timespec="minutes"), revision.status, revision.geometry_revision_id, revision.change_reason)): table.setItem(row,col,QTableWidgetItem(str(value)))
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.horizontalHeader().setStretchLastSection(True); layout.addWidget(table)
+        configure_standard_table(table); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); table.horizontalHeader().setStretchLastSection(True); layout.addWidget(table)
 
     def _save(self, status):
         if self.read_only:

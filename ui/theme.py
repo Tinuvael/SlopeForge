@@ -63,6 +63,79 @@ QPushButton[role="link"]:hover { color: #0b4f86; text-decoration: underline; }
 QPushButton[role="danger"] { color: #a33a32; background: #ffffff; border: 1px solid #d9a6a2; border-radius: 5px; }
 QPushButton:disabled { color: #9ca3af; }
 
+QLineEdit#GlobalSearch {
+    min-height: 28px; background: #ffffff; color: #111827;
+    border: 1px solid #c5ccd5; border-radius: 6px; padding: 2px 10px;
+    selection-background-color: #eaf3ff; selection-color: #111827;
+}
+QLineEdit#GlobalSearch:hover { border-color: #9aa6b5; }
+QLineEdit#GlobalSearch:focus { border: 1px solid #0b63ce; background: #ffffff; }
+
+QTableWidget#StandardTable {
+    background: #ffffff; alternate-background-color: #f8fafc;
+    border: 1px solid #d7dde6; border-radius: 7px; outline: 0;
+    gridline-color: transparent; selection-background-color: #eaf3ff;
+    selection-color: #111827;
+}
+QTableWidget#StandardTable QHeaderView::section {
+    background: #f1f4f8; color: #374151; border: 0;
+    border-right: 1px solid #e1e6ed; border-bottom: 1px solid #cfd6df;
+    padding: 7px 9px; font-weight: 600;
+}
+QTableWidget#StandardTable::item { border-bottom: 1px solid #edf0f4; padding: 5px 8px; }
+QTableWidget#StandardTable::item:hover { background: #f3f7fc; }
+QTableWidget#StandardTable::item:selected { background: #eaf3ff; color: #111827; }
+QLabel#EmptyState { color: #6b7280; background: #f8fafc; border: 1px dashed #c5ccd5; border-radius: 7px; padding: 24px; }
+
+QWidget#EngineeringWorkspace, QWidget#geomechanicsWorkspace { background: #f4f6f9; }
+QWidget#EngineeringWorkspace QGroupBox#drillingGroupCard,
+QWidget#EngineeringWorkspace QGroupBox#actualDrillingGroupCard {
+    background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px;
+    margin-top: 14px; padding: 12px 10px 10px 10px; font-weight: 600;
+}
+QWidget#EngineeringWorkspace QGroupBox#EngineeringCard {
+    background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px;
+    margin-top: 14px; padding: 10px; font-weight: 600;
+}
+QWidget#EngineeringWorkspace QGroupBox#EngineeringCard::title {
+    subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #111827;
+}
+QWidget#EngineeringWorkspace QGroupBox#drillingGroupCard::title,
+QWidget#EngineeringWorkspace QGroupBox#actualDrillingGroupCard::title {
+    subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #111827;
+}
+QWidget#EngineeringWorkspace QGroupBox#drillingDesignArea,
+QWidget#EngineeringWorkspace QGroupBox#chargeDesignArea,
+QWidget#EngineeringWorkspace QGroupBox#actualDrillingArea,
+QWidget#EngineeringWorkspace QGroupBox#actualChargeArea,
+QWidget#EngineeringWorkspace QGroupBox#actualExceptionArea {
+    background: #f8fafc; border: 1px solid #e1e6ed; border-radius: 6px;
+    margin-top: 13px; padding: 9px 8px 7px 8px; font-weight: 600;
+}
+QWidget#EngineeringWorkspace QGroupBox#drillingDesignArea::title,
+QWidget#EngineeringWorkspace QGroupBox#chargeDesignArea::title,
+QWidget#EngineeringWorkspace QGroupBox#actualDrillingArea::title,
+QWidget#EngineeringWorkspace QGroupBox#actualChargeArea::title,
+QWidget#EngineeringWorkspace QGroupBox#actualExceptionArea::title {
+    subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #374151;
+}
+QWidget#EngineeringWorkspace QComboBox, QWidget#geomechanicsWorkspace QComboBox {
+    min-height: 26px; background: #ffffff; color: #111827;
+    border: 1px solid #cfd6df; border-radius: 5px; padding: 1px 26px 1px 7px;
+}
+QWidget#EngineeringWorkspace QComboBox:hover, QWidget#geomechanicsWorkspace QComboBox:hover { border-color: #9aa6b5; }
+QWidget#EngineeringWorkspace QComboBox:focus, QWidget#geomechanicsWorkspace QComboBox:focus { border-color: #0b63ce; }
+QWidget#EngineeringWorkspace QComboBox::drop-down, QWidget#geomechanicsWorkspace QComboBox::drop-down {
+    width: 22px; border: 0; border-left: 1px solid #e1e6ed;
+}
+QWidget#geomechanicsWorkspace QWidget#rockMassSection,
+QWidget#geomechanicsWorkspace QWidget#jointSetsSection,
+QWidget#geomechanicsWorkspace QWidget#qSystemSection,
+QWidget#geomechanicsWorkspace QWidget#structuralScreeningSection,
+QWidget#geomechanicsWorkspace QWidget#geomechanicsNotes {
+    background: #ffffff; border: 1px solid #d7dde6; border-radius: 7px;
+}
+
 QTabWidget[entityTabs="true"]::pane { border: 0; background: transparent; top: -1px; }
 QTabWidget[entityTabs="true"] QTabBar::tab {
     color: #6b7280; background: transparent; border: 0; border-bottom: 2px solid transparent;

@@ -5,7 +5,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMenu, QPushButton, QWidget
 from ui.settings_dialog import SettingsDialog
 from app.icons.ui.ui_icons import ui_icon
-from ui.widgets.design_system import set_button_role
+from ui.widgets.design_system import high_contrast_icon, set_button_role
 class SearchLineEdit(QLineEdit):
     """Header-only search behavior; Escape remains untouched elsewhere."""
     def keyPressEvent(self, event):
@@ -22,15 +22,15 @@ class Header(QWidget):
         super().__init__(); self.context=context; self.setFixedHeight(60); layout=QHBoxLayout(self)
         # Use a normal QPushButton so the navigation control has the same native
         # border/hover/focus treatment as Add and Archive on Windows.
-        self.navigation_button=QPushButton(); self.navigation_button.setObjectName("navigationToggleButton"); self.navigation_button.setFixedSize(36,32); self.navigation_button.clicked.connect(self.navigation_toggle_requested); self.set_navigation_visible(True)
+        self.navigation_button=QPushButton(); self.navigation_button.setObjectName("navigationToggleButton"); self.navigation_button.setFixedSize(36,32); self.navigation_button.clicked.connect(self.navigation_toggle_requested); self.set_navigation_visible(True); self.navigation_button.hide()
         self.add_button=QPushButton(tr("Add")); self.add_menu=QMenu(self)
         self.add_project_action=self.add_menu.addAction(tr("Add project")); self.add_domain_action=self.add_menu.addAction(tr("Add domain")); self.add_blast_event_action=self.add_menu.addAction(tr("Add blast event")); self.add_assessment_area_action=self.add_menu.addAction(tr("Add assessment area"))
-        self.add_button.setIcon(ui_icon("add","blue")); self.add_project_action.setIcon(ui_icon("folder-open")); self.add_domain_action.setIcon(ui_icon("domain")); self.add_blast_event_action.setIcon(ui_icon("blast-blocks")); self.add_assessment_area_action.setIcon(ui_icon("assessment-area"))
+        self.add_button.setIcon(high_contrast_icon(ui_icon("add"))); self.add_project_action.setIcon(ui_icon("folder-open")); self.add_domain_action.setIcon(ui_icon("domain")); self.add_blast_event_action.setIcon(ui_icon("blast-blocks")); self.add_assessment_area_action.setIcon(ui_icon("assessment-area"))
         self.add_button.setToolTip(tr("Create a project, domain, blast event, or assessment area"))
         self.add_project_action.triggered.connect(self.add_project_requested); self.add_domain_action.triggered.connect(self.add_domain_requested); self.add_blast_event_action.triggered.connect(self.add_blast_event_requested); self.add_assessment_area_action.triggered.connect(self.add_assessment_area_requested)
         self.add_button.setMenu(self.add_menu); self.archive_button=QPushButton(tr("Archive")); self.archive_button.setEnabled(False); self.archive_button.clicked.connect(self.archive_requested)
         set_button_role(self.add_button, "primary"); set_button_role(self.archive_button, "secondary")
-        self.archive_button.setIcon(ui_icon("archive")); self.search=SearchLineEdit(); self.search.setClearButtonEnabled(True); self.search.setPlaceholderText(tr("Search...")); self.search.setMaximumWidth(350)
+        self.archive_button.setIcon(ui_icon("archive")); self.search=SearchLineEdit(); self.search.setObjectName("GlobalSearch"); self.search.setClearButtonEnabled(True); self.search.setPlaceholderText(tr("Search projects, domains and entities…")); self.search.setMinimumWidth(240); self.search.setMaximumWidth(380)
         self.analysis_button=QPushButton(tr("Analysis")); self.analysis_button.setIcon(ui_icon("analytics")); self.analysis_button.clicked.connect(self.analysis_requested)
         self.report_button=QPushButton(tr("Report")); self.report_button.setIcon(ui_icon("report","blue")); self.report_button.setEnabled(False); self.report_button.clicked.connect(self.report_requested); self.settings=QPushButton(tr("Settings")); self.settings.setIcon(ui_icon("settings")); self.settings.clicked.connect(self.open_settings)
         for button in (self.analysis_button, self.report_button, self.settings): set_button_role(button, "secondary")

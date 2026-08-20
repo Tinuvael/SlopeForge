@@ -21,6 +21,8 @@ _translator: QTranslator | None = None
 # Small compatibility bridge for strings introduced after the current TS catalogue
 # was frozen. Issue #64 will fold these back into the normal catalogue pass.
 RUSSIAN_RUNTIME_FALLBACKS = {
+    "Search projects, domains and entities…": "Поиск проектов, доменов и объектов…",
+    "No users found.": "Пользователи не найдены.",
     "Project tree": "Дерево проекта",
     "Collapse domains": "Свернуть домены",
     "Hide navigation": "Скрыть навигацию",

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 
 from app.icons.ui.ui_icons import ui_icon
 from app.localization import tr
+from ui.widgets.design_system import configure_standard_table, set_button_role
 
 
 CATEGORY_ICONS = {
@@ -42,18 +43,15 @@ class EntityHistoryWidget(QWidget):
         self.open_revision_button = QPushButton(tr("Open revision"))
         self.open_revision_button.setIcon(ui_icon("folder-open"))
         self.open_revision_button.setEnabled(False)
+        set_button_role(self.open_revision_button, "secondary")
         self.open_revision_button.clicked.connect(self._activate_selected)
         toolbar.addWidget(self.open_revision_button)
         root.addLayout(toolbar)
         self.table = QTableWidget(0, 4)
+        configure_standard_table(self.table)
         self.table.setHorizontalHeaderLabels([
             tr("Date & time"), tr("User"), tr("Change"), tr("Details")
         ])
-        self.table.verticalHeader().setVisible(False)
-        self.table.setShowGrid(False)
-        self.table.setAlternatingRowColors(False)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self._sync_open_button)
         self.table.cellDoubleClicked.connect(lambda _row, _column: self._activate_selected())
@@ -62,16 +60,9 @@ class EntityHistoryWidget(QWidget):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.table.setStyleSheet(
-            "QTableWidget{background:white;border:1px solid #dfe3ea;border-radius:7px;outline:0;}"
-            "QHeaderView::section{background:#f8fafc;border:0;border-bottom:1px solid #dfe3ea;"
-            "padding:8px;font-weight:600;color:#374151;}"
-            "QTableWidget::item{border-bottom:1px solid #edf0f4;padding:8px;}"
-            "QTableWidget::item:selected{background:#eef4fb;color:#111827;}"
-        )
         self.empty = QLabel(tr("No history yet"))
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty.setStyleSheet("color:#6b7280;padding:24px;")
+        self.empty.setObjectName("EmptyState")
         root.addWidget(self.table, 1)
         root.addWidget(self.empty, 1)
         self.set_entries([])

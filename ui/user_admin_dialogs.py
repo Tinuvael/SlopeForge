@@ -5,6 +5,7 @@ from app.localization import tr
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout
 
 from infrastructure.services.user_admin_service import UserAdminError, UserAdminService
+from ui.widgets.design_system import set_button_role
 
 
 class UserEditDialog(QDialog):
@@ -36,6 +37,7 @@ class UserEditDialog(QDialog):
         buttons = QHBoxLayout(); buttons.addStretch()
         save = QPushButton(tr("Save")); save.clicked.connect(self.save)
         cancel = QPushButton(tr("Cancel")); cancel.clicked.connect(self.reject)
+        set_button_role(save, "primary"); set_button_role(cancel, "secondary")
         buttons.addWidget(cancel); buttons.addWidget(save)
         layout.addLayout(buttons)
         self.is_active.setChecked(True)
@@ -68,7 +70,10 @@ class PasswordDialog(QDialog):
         self.must_change = QCheckBox(tr("Require password change on next sign-in"))
         form.addRow(tr("New password"), self.password); form.addRow(tr("Repeat password"), self.repeat); form.addRow("", self.must_change)
         layout.addLayout(form)
-        save = QPushButton(tr("Save")); save.clicked.connect(self.save); layout.addWidget(save)
+        buttons = QHBoxLayout(); buttons.addStretch()
+        cancel = QPushButton(tr("Cancel")); cancel.clicked.connect(self.reject); set_button_role(cancel, "secondary")
+        save = QPushButton(tr("Save")); save.clicked.connect(self.save); set_button_role(save, "primary")
+        buttons.addWidget(cancel); buttons.addWidget(save); layout.addLayout(buttons)
 
     def save(self) -> None:
         try:

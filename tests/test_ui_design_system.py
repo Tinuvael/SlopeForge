@@ -31,3 +31,19 @@ def test_unknown_button_role_is_rejected():
     with pytest.raises(ValueError):
         set_button_role(widgets.QPushButton("Unknown"), "emphasis")
     app.processEvents()
+
+
+def test_standard_table_contract_and_contrast_icon():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtGui import QIcon
+    from ui.widgets.design_system import configure_standard_table, high_contrast_icon
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    table = configure_standard_table(widgets.QTableWidget(1, 1))
+    assert table.objectName() == "StandardTable"
+    assert table.verticalHeader().isHidden()
+    assert table.verticalHeader().defaultSectionSize() == 34
+    assert table.selectionBehavior() == widgets.QAbstractItemView.SelectionBehavior.SelectRows
+    assert isinstance(high_contrast_icon(QIcon()), QIcon)
+    table.close()
+    app.processEvents()
