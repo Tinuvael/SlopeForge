@@ -4321,5 +4321,85 @@ Continue?</source><translation>Новый горизонт отличается 
         <source>Inspect the plan, then use Draw boundary.</source>
         <translation>Проверьте план, затем нажмите «Построить границу».</translation>
     </message>
+    <message>
+        <source>Actual survey</source>
+        <translation>Фактическая съёмка</translation>
+    </message>
+    <message>
+        <source>CSV files (*.csv)</source>
+        <translation>Файлы CSV (*.csv)</translation>
+    </message>
+    <message>
+        <source>Calculate</source>
+        <translation>Рассчитать</translation>
+    </message>
+    <message>
+        <source>Calculate from survey</source>
+        <translation>Расчёт по съёмке</translation>
+    </message>
+    <message>
+        <source>Calculate from survey…</source>
+        <translation>Рассчитать по съёмке…</translation>
+    </message>
+    <message>
+        <source>Calculation failed</source>
+        <translation>Ошибка расчёта</translation>
+    </message>
+    <message>
+        <source>Design surface</source>
+        <translation>Проектная поверхность</translation>
+    </message>
+    <message>
+        <source>Load CSV</source>
+        <translation>Загрузить CSV</translation>
+    </message>
+    <message>
+        <source>Load both CSV files, then calculate.</source>
+        <translation>Загрузите оба CSV-файла, затем выполните расчёт.</translation>
+    </message>
+    <message>
+        <source>Load…</source>
+        <translation>Загрузить…</translation>
+    </message>
+    <message>
+        <source>Maximum distance</source>
+        <translation>Максимальное расстояние</translation>
+    </message>
+    <message>
+        <source>Mean distance</source>
+        <translation>Среднее расстояние</translation>
+    </message>
+    <message>
+        <source>Measured wall geometry</source>
+        <translation>Измеренная геометрия откоса</translation>
+    </message>
+    <message>
+        <source>Minimum distance</source>
+        <translation>Минимальное расстояние</translation>
+    </message>
+    <message>
+        <source>Point count</source>
+        <translation>Количество точек</translation>
+    </message>
+    <message>
+        <source>Standard deviation</source>
+        <translation>Стандартное отклонение</translation>
+    </message>
+    <message>
+        <source>Use result</source>
+        <translation>Использовать результат</translation>
+    </message>
+    <message>
+        <source>Ratios</source>
+        <translation>Отношения</translation>
+    </message>
+    <message>
+        <source>Burden</source>
+        <translation>ЛНС</translation>
+    </message>
+    <message>
+        <source>Δ</source>
+        <translation>Δ</translation>
+    </message>
 </context>
 </TS>

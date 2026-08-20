@@ -296,6 +296,17 @@ class AssessmentAreaEvaluationDialog(QDialog):
             editor.set_primary_input(control); editor.set_help(self._geometry_help(criterion.id))
             editor.changed.connect(self._changed)
             self.geometry_editors[criterion.id] = editor; layout.addWidget(editor)
+        measured = QFrame(); measured.setObjectName("MeasuredWallGeometry"); measured_form = QFormLayout(measured)
+        measured_form.addRow(QLabel(f"<b>{tr('Measured wall geometry')}</b>"))
+        self.measured_wall_controls = {}
+        for label, name in (("Mean backbreak, m", "mean_backbreak_m"), ("Maximum backbreak, m", "maximum_backbreak_m"), ("Mean overbreak, m", "mean_overbreak_m"), ("Mean underbreak, m", "mean_underbreak_m"), ("Contour RMS deviation, m", "contour_rms_deviation_m")):
+            control = self._nullable(); control.setEnabled(not self.read_only); self.measured_wall_controls[name] = control; measured_form.addRow(tr(label), control)
+        self.measurement_method = QComboBox(); self.measurement_method.addItem("—", None)
+        for code, label in (("survey", "Survey"), ("photogrammetry", "Photogrammetry"), ("laser_scan", "Laser scan"), ("manual_measurement", "Manual measurement"), ("visual_estimate", "Visual estimate")):
+            self.measurement_method.addItem(tr(label), code)
+        self.measurement_method.setEnabled(not self.read_only); measured_form.addRow(tr("Measurement method"), self.measurement_method)
+        calculate = QPushButton(tr("Calculate from survey…")); calculate.setEnabled(not self.read_only); calculate.clicked.connect(self._calculate_wall_rms); measured_form.addRow(calculate)
+        layout.addWidget(measured)
         layout.addStretch()
         scroll.setWidget(page); self.tabs.addTab(scroll, tr("Geometry"))
 
@@ -390,6 +401,9 @@ class AssessmentAreaEvaluationDialog(QDialog):
         if deficit is None and d.get("design_berm_width_m") is not None and d.get("actual_berm_width_m") is not None:
             deficit = max(d["design_berm_width_m"] - d["actual_berm_width_m"], 0)
         self.shortfall.set_nullable_value(shortfall); self.deficit.set_nullable_value(deficit); self.toe.set_nullable_value(d.get("toe_offset_from_design_m"))
+        measured = self.draft.measured_wall_geometry
+        for name, control in self.measured_wall_controls.items(): control.set_nullable_value(getattr(measured, name))
+        self.measurement_method.setCurrentIndex(max(0, self.measurement_method.findData(measured.measurement_method)))
         for criterion_id, editor in self.geometry_editors.items(): editor.restore(results.get(criterion_id))
         face = self.draft.face_condition_inputs or {}
         for criterion_id, editor in self.editors.items():
@@ -408,6 +422,8 @@ class AssessmentAreaEvaluationDialog(QDialog):
         revision.assessment_date = self.date.date().toPython(); revision.inspector = self.inspector.text().strip(); revision.comments = self.comments.toPlainText(); revision.recommendations = self.recommendations.toPlainText(); revision.change_reason = self.override_reason.text().strip()
         shortfall, deficit, toe = self.shortfall.nullable_value(), self.deficit.nullable_value(), self.toe.nullable_value()
         revision.design_inputs = {"bench_angle_shortfall_deg": shortfall, "berm_width_deficit_m": deficit, "toe_offset_from_design_m": toe}
+        for name, control in self.measured_wall_controls.items(): setattr(revision.measured_wall_geometry, name, control.nullable_value())
+        revision.measured_wall_geometry.measurement_method = self.measurement_method.currentData()
         values = {"bench_angle": shortfall, "berm_width": deficit, "toe_position": abs(toe) if toe is not None else None}
         results = []
         for criterion in self.template.section(DESIGN).criteria:
@@ -424,6 +440,15 @@ class AssessmentAreaEvaluationDialog(QDialog):
         revision.face_condition_inputs = face_inputs; revision.criterion_results = results
         calculate_revision(revision)
         return revision
+
+    def _calculate_wall_rms(self):
+        from ui.dialogs.wall_rms_dialog import WallRmsDialog
+        dialog = WallRmsDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result:
+            self.measured_wall_controls["contour_rms_deviation_m"].set_nullable_value(dialog.result.rms_m)
+            measured = self.draft.measured_wall_geometry
+            measured.design_surface_source = dialog.design.text().split("/")[-1]; measured.survey_source = dialog.survey.text().split("/")[-1]
+            measured.survey_point_count = dialog.result.point_count; measured.calculation_method = dialog.result.method
 
     def refresh(self, mark_dirty=True):
         if self._initializing: return

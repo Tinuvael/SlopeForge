@@ -156,26 +156,29 @@ class TechnicalCardDialog(QDialog):
         self.domain_value = QLabel(self.domain_name or "—"); self.domain_value.setObjectName("geomechanicsDomainValue")
         identity.addWidget(QLabel(tr("Lithology")), 0, 0); identity.addWidget(QLabel(tr("Domain")), 0, 1)
         identity.addWidget(self.lithology, 1, 0); identity.addWidget(self.domain_value, 1, 1)
+        self.density = _number(geo.rock_density_t_m3); self.density.setObjectName("rockMassDensity")
         self.ucs = _integer_number(geo.ucs_mpa, 0, 1_000_000); self.ucs.setObjectName("rockMassUCS")
         self.ff = _integer_number(geo.ff, 0, 1_000_000); self.ff.setObjectName("rockMassFF")
         self.gsi = _integer_number(geo.gsi, 1, 100); self.gsi.setObjectName("rockMassGSI")
-        for column, (label, widget, unit) in enumerate((("UCS", self.ucs, "MPa"), ("FF", self.ff, ""), ("GSI", self.gsi, ""))):
+        for column, (label, widget, unit) in enumerate((("Density", self.density, "t/m³"), ("UCS", self.ucs, "MPa"), ("FF", self.ff, ""), ("GSI", self.gsi, ""))):
             widget.setFixedWidth(96); identity.addWidget(QLabel(label if label == "FF" else tr(label)), 2, column)
             identity.addWidget(widget, 3, column); identity.addWidget(QLabel(unit), 4, column)
         rock.addLayout(identity)
 
         joint_panel, joint_section = self._section_panel("Joint / discontinuity sets", "jointSetsSection")
         joint_grid = QGridLayout(); joint_grid.setHorizontalSpacing(10); joint_grid.setVerticalSpacing(4)
-        for column, label in enumerate(("Set", "Dip, °", "Dip direction, °")): joint_grid.addWidget(QLabel(tr(label)), 0, column)
+        for column, label in enumerate(("Set", "Dip, °", "Dip direction, °", "Spacing, m", "Persistence, m")): joint_grid.addWidget(QLabel(tr(label)), 0, column)
         self.joint_set_rows = []
         for index in range(5):
             stored = geo.joint_sets[index] if index < len(geo.joint_sets) else None
             dip = _integer_number(stored.dip_deg if stored else None, 0, 90)
             direction = _integer_number(stored.dip_direction_deg if stored else None, 0, 359)
+            spacing = _number(stored.spacing_m if stored else None); persistence = _number(stored.persistence_m if stored else None)
             dip.setObjectName(f"jointSetDip{index + 1}"); direction.setObjectName(f"jointSetDirection{index + 1}")
             dip.setFixedWidth(96); direction.setFixedWidth(110)
-            joint_grid.addWidget(QLabel(f"J{index + 1}"), index + 1, 0); joint_grid.addWidget(dip, index + 1, 1); joint_grid.addWidget(direction, index + 1, 2)
-            self.joint_set_rows.append((dip, direction))
+            for widget in (spacing, persistence): widget.setFixedWidth(96)
+            joint_grid.addWidget(QLabel(f"J{index + 1}"), index + 1, 0); joint_grid.addWidget(dip, index + 1, 1); joint_grid.addWidget(direction, index + 1, 2); joint_grid.addWidget(spacing, index + 1, 3); joint_grid.addWidget(persistence, index + 1, 4)
+            self.joint_set_rows.append((dip, direction, spacing, persistence))
         joint_section.addLayout(joint_grid)
 
         q_panel, q_section = self._section_panel("Q-system / discontinuity strength", "qSystemSection")
@@ -225,7 +228,8 @@ class TechnicalCardDialog(QDialog):
 
         for widget in (self.lithology, self.ucs, self.ff, self.gsi, self.rqd, self.jn, self.jr, self.ja, self.jw): widget.setEnabled(not self.read_only)
         self.geo_notes.setReadOnly(self.read_only)
-        for dip, direction in self.joint_set_rows: dip.setEnabled(not self.read_only); direction.setEnabled(not self.read_only)
+        for row in self.joint_set_rows:
+            for widget in row: widget.setEnabled(not self.read_only)
         self.rqd.valueChanged.connect(self._refresh_geomechanics)
         for combo in (self.jn, self.jr, self.ja): combo.currentIndexChanged.connect(self._refresh_geomechanics)
         for widget in [x for row in self.joint_set_rows for x in row]: widget.valueChanged.connect(self._refresh_geomechanics)
@@ -241,7 +245,7 @@ class TechnicalCardDialog(QDialog):
 
     def _screening_inputs(self):
         joints = []
-        for index, (dip, direction) in enumerate(self.joint_set_rows, 1):
+        for index, (dip, direction, _spacing, _persistence) in enumerate(self.joint_set_rows, 1):
             dip_value, direction_value = self._optional_number(dip), self._optional_number(direction)
             if dip_value is not None and direction_value is not None:
                 joints.append(Orientation(dip_value, direction_value, f"J{index}"))
@@ -295,15 +299,15 @@ class TechnicalCardDialog(QDialog):
 
     def _geomechanics_from_form(self):
         joint_sets = []
-        for index, (dip_widget, direction_widget) in enumerate(self.joint_set_rows, start=1):
+        for index, (dip_widget, direction_widget, spacing_widget, persistence_widget) in enumerate(self.joint_set_rows, start=1):
             dip = self._optional_number(dip_widget); direction = self._optional_number(direction_widget)
             if (dip is None) != (direction is None):
                 raise ValueError(f"Joint set {index} requires both dip and dip direction")
             if dip is None:
                 continue
-            joint_sets.append(JointSetOrientation(dip, direction))
+            joint_sets.append(JointSetOrientation(dip, direction, self._optional_number(spacing_widget), self._optional_number(persistence_widget)))
         return GeomechanicalParameters(
-            lithology=self.lithology.text(), ucs_mpa=self._optional_number(self.ucs),
+            lithology=self.lithology.text(), rock_density_t_m3=self._optional_number(self.density), ucs_mpa=self._optional_number(self.ucs),
             rqd_percent=self._optional_number(self.rqd), gsi=self._optional_number(self.gsi), ff=self._optional_number(self.ff),
             joint_sets=joint_sets, jw=self._optional_rating(self.jw), jn=self._optional_rating(self.jn),
             jr=self._optional_rating(self.jr), ja=self._optional_rating(self.ja), notes=self.geo_notes.toPlainText(),
@@ -374,6 +378,19 @@ class TechnicalCardDialog(QDialog):
             charge_layout.addLayout(preset_row)
             builder_host=QWidget(); builder_layout=QVBoxLayout(builder_host); builder_layout.setContentsMargins(0,0,0,0); charge_layout.addWidget(builder_host,1)
             columns.addWidget(charge,0,1); content.addLayout(columns)
+            comparison_rows = self.revision.compact_design_actual(group.design_group_id) if group.design_group_id else []
+            comparable = [row for row in comparison_rows if row["design"] is not None or row["actual"] is not None]
+            if comparable:
+                summary = QTableWidget(len(comparable), 4); summary.setObjectName("designActualSummary")
+                summary.setHorizontalHeaderLabels([tr("Parameter"), tr("Design"), tr("Actual"), tr("Δ")])
+                summary.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); summary.setMaximumHeight(210)
+                for row_index, row in enumerate(comparable):
+                    for column, value in enumerate((tr(row["parameter"]), row["design"], row["actual"], row["delta"])):
+                        summary.setItem(row_index, column, QTableWidgetItem(value if isinstance(value, str) else self._format_comparison_number(value, signed=column == 3)))
+                configure_standard_table(summary, stretch_column=0); content.addWidget(summary)
+                ratios = self.revision.engineering_ratios(group.design_group_id)
+                ratio_text = "   ".join(f"{name}: {self._format_comparison_number(value)}" for name, value in ratios.items())
+                ratio_label = QLabel(f"{tr('Ratios')}: {ratio_text}"); ratio_label.setObjectName("engineeringRatios"); content.addWidget(ratio_label)
             summary=QLabel(); summary.setObjectName("drillingChargeSummary"); summary.setWordWrap(True); content.addWidget(summary)
             state={"builder":None,"last_depth":group.average_depth_m}
             self._refresh_preset_combo(combo)
@@ -596,6 +613,10 @@ class TechnicalCardDialog(QDialog):
             for index,(label,attr) in enumerate((("Rejected","rejected_hole_count"),("Redrilled","redrilled_hole_count"),("Wet","wet_hole_count"),("Uncharged","uncharged_hole_count"))):
                 spin=_number(getattr(group,attr)); spin.setDecimals(0); spin.setRange(-1,1000000); spin.setSpecialValueText("—"); spin.setMaximumWidth(90); spin.setEnabled(not self.read_only); spin.valueChanged.connect(lambda value,g=group,a=attr,w=spin:(setattr(g,a,None if value==w.minimum() else int(value)),self._refresh_actual_summary()))
                 exception_grid.addWidget(QLabel(tr(label)),index,0); exception_grid.addWidget(spin,index,1,Qt.AlignmentFlag.AlignLeft)
+            for index, (label, attr) in enumerate((("Mean collar deviation, m", "mean_collar_deviation_m"), ("Max collar deviation, m", "max_collar_deviation_m"), ("Mean toe deviation, m", "mean_toe_deviation_m"), ("Max toe deviation, m", "max_toe_deviation_m"))):
+                spin = _number(getattr(group, attr)); spin.setMaximumWidth(100); spin.setEnabled(not self.read_only)
+                spin.valueChanged.connect(lambda value,g=group,a=attr,w=spin:setattr(g,a,None if value==w.minimum() else value))
+                exception_grid.addWidget(QLabel(tr(label)), index, 2); exception_grid.addWidget(spin, index, 3)
             left=QVBoxLayout(); left.setContentsMargins(0,0,0,0); left.addWidget(drilling); left.addWidget(exceptions); left_host=QWidget(); left_host.setLayout(left); columns.addWidget(left_host,0,0,Qt.AlignmentFlag.AlignTop)
 
             charge=QGroupBox(tr("Actual charge construction")); charge.setObjectName("actualChargeArea"); charge_layout=QVBoxLayout(charge)

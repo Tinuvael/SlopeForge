@@ -122,6 +122,19 @@ class LinkedEventSnapshot:
     is_contour: bool
 
 @dataclass
+class MeasuredWallGeometry:
+    mean_backbreak_m: float | None = None
+    maximum_backbreak_m: float | None = None
+    mean_overbreak_m: float | None = None
+    mean_underbreak_m: float | None = None
+    contour_rms_deviation_m: float | None = None
+    measurement_method: str | None = None
+    design_surface_source: str | None = None
+    survey_source: str | None = None
+    survey_point_count: int | None = None
+    calculation_method: str | None = None
+
+@dataclass
 class AssessmentAreaEvaluationRevision:
     id: str; evaluation_id: str; revision_number: int; created_at: datetime
     assessment_date: date|None; inspector: str; status: str
@@ -133,12 +146,13 @@ class AssessmentAreaEvaluationRevision:
     face_condition_points: float|None=None; face_condition_index: float|None=None
     result_quadrant: str|None=None; result_label: str|None=None
     linked_event_snapshots: list[LinkedEventSnapshot]=field(default_factory=list); comments: str=""; recommendations: str=""; change_reason: str=""
+    measured_wall_geometry: MeasuredWallGeometry = field(default_factory=MeasuredWallGeometry)
     def to_dict(self):
         d=asdict(self); d["created_at"]=self.created_at.isoformat(); d["assessment_date"]=self.assessment_date.isoformat() if self.assessment_date else None; return d
     @classmethod
     def from_dict(cls,d):
         d=deepcopy(d); d["created_at"]=datetime.fromisoformat(d["created_at"]); d["assessment_date"]=date.fromisoformat(d["assessment_date"]) if d.get("assessment_date") else None
-        d["criterion_results"]=[AssessmentCriterionResult(**x) for x in d.get("criterion_results",[])]; d["linked_event_snapshots"]=[LinkedEventSnapshot(**x) for x in d.get("linked_event_snapshots",[])]; return cls(**d)
+        d["criterion_results"]=[AssessmentCriterionResult(**x) for x in d.get("criterion_results",[])]; d["linked_event_snapshots"]=[LinkedEventSnapshot(**x) for x in d.get("linked_event_snapshots",[])]; d["measured_wall_geometry"] = MeasuredWallGeometry(**d.get("measured_wall_geometry", {})); return cls(**d)
 
 @dataclass
 class AssessmentAreaEvaluation:
