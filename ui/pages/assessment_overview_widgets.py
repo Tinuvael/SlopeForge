@@ -41,6 +41,12 @@ class AssessmentRelatedEventList(BlockRelatedEntityList):
         self.empty_label.setMaximumHeight(16777215)
         self.empty_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+    def _schedule_row_refit(self) -> None:
+        """Assessment owns an expanding viewport, not Block's bounded two-row fit."""
+
+    def _fit_two_rows(self, *, use_visual_geometry=False) -> None:
+        """Do not let the base class fix this expanding list's height."""
+
     def set_rows(self, rows, *, empty_text="No linked entities"):
         rows = list(rows)
         super().set_rows(rows, empty_text=empty_text)

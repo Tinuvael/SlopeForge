@@ -76,16 +76,12 @@ def downgrade() -> None:
     op.create_foreign_key("sites_mine_id_fkey", "sites", "mines", ["mine_id"], ["id"], ondelete="RESTRICT")
     op.create_index("ix_sites_mine_id", "sites", ["mine_id"])
 
-    status_enum = sa.Enum("planned", "blasted", "assessed", name="blast_block_status")
-    status_enum.create(op.get_bind(), checkfirst=True)
     op.create_table(
         "blast_blocks",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("domain_id", sa.Integer(), sa.ForeignKey("domains.id", ondelete="RESTRICT"), nullable=False),
         sa.Column("block_number", sa.String(length=80), nullable=False),
         sa.Column("horizon_m", sa.Numeric(10, 2), nullable=True),
-        sa.Column("planned_blast_date", sa.Date(), nullable=True),
-        sa.Column("status", status_enum, nullable=False, server_default="planned"),
         sa.Column("comment", sa.Text(), nullable=True),
         sa.Column("is_archived", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
@@ -96,7 +92,6 @@ def downgrade() -> None:
     op.create_index("ix_blast_blocks_domain_id", "blast_blocks", ["domain_id"])
     op.create_index("ix_blast_blocks_domain_block_number", "blast_blocks", ["domain_id", "block_number"])
     op.create_index("ix_blast_blocks_is_archived", "blast_blocks", ["is_archived"])
-    op.create_index("ix_blast_blocks_status", "blast_blocks", ["status"])
     op.create_index("ix_blast_blocks_created_by_user_id", "blast_blocks", ["created_by_user_id"])
     op.add_column("blast_events", sa.Column("blast_block_id", sa.Integer(), nullable=True))
     op.create_foreign_key("blast_events_blast_block_id_fkey", "blast_events", "blast_blocks", ["blast_block_id"], ["id"], ondelete="SET NULL")

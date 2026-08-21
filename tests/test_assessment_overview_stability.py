@@ -3,6 +3,27 @@ from pathlib import Path
 import pytest
 
 
+def test_assessment_related_events_stays_expanding_after_deferred_callbacks():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.assessment_overview_widgets import AssessmentRelatedEventList
+    from ui.pages.entity_overview_widgets import RelatedEntityRow
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    related = AssessmentRelatedEventList("Related blast events")
+    related.set_rows([
+        RelatedEntityRow("BE-1", "Production 1", "Horizon 600 m"),
+        RelatedEntityRow("BE-2", "Contour 2", "Horizon 590 m"),
+    ])
+    related.resize(520, 320); related.show()
+    app.processEvents(); app.processEvents()
+
+    assert related.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Expanding
+    assert related.list.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Expanding
+    assert related.list.minimumHeight() == related.LIST_HEIGHT
+    assert related.list.maximumHeight() > related.LIST_HEIGHT
+    related.close(); app.processEvents()
+
+
 def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     core = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
@@ -36,11 +57,11 @@ def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
     ))
 
     assert geometry.sizeHint().width() == 700
-    assert geometry.minimumWidth() == 610
+    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 610
     assert geometry.maximumWidth() == 800
     assert related.LIST_HEIGHT == 184
     assert related.LIST_HEIGHT > 136
-    assert related.ROW_RIGHT_INSET == 14
+    assert related.ROW_HORIZONTAL_INSET == 8
     assert related.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Expanding
     assert related.list.minimumHeight() == 184
     assert related.list.maximumHeight() > 184

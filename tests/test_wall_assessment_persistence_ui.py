@@ -147,7 +147,10 @@ def test_compact_integer_manual_score_without_reason_prompt(monkeypatch):
     editor=dialog.geometry_editors["bench_angle"]
     def rendered(colour):
         image=editor.manual_score.lineEdit().grab().toImage(); target=QColor(colour)
-        return any(abs(image.pixelColor(x,y).red()-target.red())<=12 and abs(image.pixelColor(x,y).green()-target.green())<=12 and abs(image.pixelColor(x,y).blue()-target.blue())<=12 for x in range(3,max(4,image.width()-3)) for y in range(3,max(4,image.height()-3)))
+        matches=sum(abs(image.pixelColor(x,y).red()-target.red())<=12 and abs(image.pixelColor(x,y).green()-target.green())<=12 and abs(image.pixelColor(x,y).blue()-target.blue())<=12 for x in range(3,max(4,image.width()-3)) for y in range(3,max(4,image.height()-3)))
+        # Subpixel text antialiasing can produce a handful of yellow-ish pixels.
+        # A score state is present only when the background contains the colour.
+        return matches >= max(10, image.width() * image.height() // 20)
     assert editor.manual_score.objectName()=="AutomaticScore" and editor.manual_score.lineEdit().styleSheet()==""
     assert not rendered("#fff4cc") and not rendered("#fff0f0")
     assert not hasattr(editor,"override_panel") and not hasattr(editor,"override_toggle")

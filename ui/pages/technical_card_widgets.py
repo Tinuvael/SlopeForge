@@ -4,13 +4,6 @@ from app.localization import tr
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QSizePolicy,QVBoxLayout,QWidget
 from ui.editors.technical_card_editor import TechnicalCardDialog
-from ui.widgets.design_system import SplitSaveButton
-
-class TechnicalCardSaveButton(SplitSaveButton):
-    """One save action with completion available from its native popup menu."""
-    def __init__(self, save_draft, save_completed, parent=None):
-        super().__init__(save_draft, save_completed, parent=parent)
-        self.setObjectName("TechnicalCardSaveButton")
 
 class TechnicalCardEditorWidget(QWidget):
     """Permanently hidden adapter that lends pages from the proven editor."""
@@ -33,7 +26,6 @@ class TechnicalCardEditorWidget(QWidget):
                 return page
         return QWidget()
     def save_draft(self): return False if self.editor.read_only else self.editor._save("draft")
-    def complete(self): return False if self.editor.read_only else self.editor._save("completed")
 
 class _SectionWidget(QWidget):
     def __init__(self,page,parent=None):

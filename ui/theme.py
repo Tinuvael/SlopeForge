@@ -91,11 +91,6 @@ QFrame#OverviewDivider { color: #e5e7eb; background: #e5e7eb; max-height: 1px; b
 QPushButton { min-height: 26px; padding: 2px 10px; }
 QPushButton[role="primary"] { color: white; background: #1261a0; border: 1px solid #1261a0; border-radius: 5px; font-weight: 600; }
 QPushButton[role="primary"]:hover { background: #0b4f86; }
-QToolButton#TechnicalCardSaveButton { color: white; background: #1261a0; border: 1px solid #1261a0; border-radius: 5px; padding: 3px 31px 3px 10px; font-weight: 600; }
-QToolButton#TechnicalCardSaveButton:hover { background: #0b4f86; }
-QToolButton#TechnicalCardSaveButton:pressed { background: #083f70; }
-QToolButton#TechnicalCardSaveButton:focus { border: 1px solid #083f70; }
-QToolButton#TechnicalCardSaveButton:disabled { background: #b8c1cc; border-color: #b8c1cc; color: #f5f7fa; }
 QPushButton[role="secondary"] { color: #1f2937; background: #ffffff; border: 1px solid #c5ccd5; border-radius: 5px; }
 QPushButton[role="secondary"]:hover { color: #1261a0; border-color: #1261a0; background: #f8fafc; }
 QPushButton[role="link"] { color: #1261a0; background: transparent; border: 0; padding: 2px 4px; font-weight: 600; }
@@ -251,8 +246,28 @@ QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus { border
 
 _ICON_ROOT = Path(__file__).resolve().parent.parent / "app" / "icons" / "ui" / "svg" / "neutral"
 _COMBO_CHEVRON = (_ICON_ROOT / "chevron-down.svg").as_posix()
-_SAVE_CHEVRON = (_ICON_ROOT / "chevron-down-white.svg").as_posix()
+_SPLIT_SAVE_CHEVRON = (_ICON_ROOT / "chevron-down-white.svg").as_posix()
 APPLICATION_STYLESHEET += f"""
+QToolButton#SplitSaveButton {{
+    color: #ffffff; background-color: #1261a0; border: 1px solid #1261a0;
+    border-radius: 5px; padding: 2px 34px 2px 10px; font-weight: 600;
+}}
+QToolButton#SplitSaveButton:hover {{ background-color: #0b4f86; border-color: #0b4f86; }}
+QToolButton#SplitSaveButton:pressed {{ background-color: #083f70; border-color: #083f70; }}
+QToolButton#SplitSaveButton:disabled {{
+    color: #eef3f8; background-color: #9bb7cc; border-color: #9bb7cc;
+}}
+QToolButton#SplitSaveButton::menu-button {{
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 26px; background-color: #1261a0; border: 0; border-left: 1px solid #397caf;
+    border-top-right-radius: 5px; border-bottom-right-radius: 5px;
+}}
+QToolButton#SplitSaveButton::menu-button:hover {{ background-color: #0b4f86; border-left-color: #39739f; }}
+QToolButton#SplitSaveButton::menu-button:pressed {{ background-color: #083f70; border-left-color: #32688d; }}
+QToolButton#SplitSaveButton::menu-button:disabled {{ background-color: #9bb7cc; border-left-color: #b7cbd9; }}
+QToolButton#SplitSaveButton::menu-arrow {{
+    image: url("{_SPLIT_SAVE_CHEVRON}"); width: 12px; height: 12px;
+}}
 QDialog#StandardEntityDialog QComboBox::drop-down {{
     subcontrol-origin: padding; subcontrol-position: top right;
     width: 25px; border: 0; border-left: 1px solid #e1e6ed;
@@ -283,11 +298,6 @@ QWidget#EngineeringWorkspace QComboBox:disabled,
 QWidget#geomechanicsWorkspace QComboBox:disabled {{ background: #f1f3f5; color: #9ca3af; border-color: #d7dde6; }}
 QWidget#EngineeringWorkspace QComboBox:disabled::drop-down,
 QWidget#geomechanicsWorkspace QComboBox:disabled::drop-down {{ background: #eef0f3; border-left-color: #d7dde6; }}
-QToolButton#TechnicalCardSaveButton::menu-button {{
-    subcontrol-origin: padding; subcontrol-position: top right;
-    width: 26px; border: 0; border-left: 1px solid #3d7eb3;
-}}
-QToolButton#TechnicalCardSaveButton::menu-arrow {{ image: url("{_SAVE_CHEVRON}"); width: 12px; height: 12px; }}
 """
 
 # Compatibility value for small widgets that cannot inherit the application

@@ -5,6 +5,17 @@ from types import SimpleNamespace
 import pytest
 
 
+def test_block_general_information_omits_qprime_but_engineering_keeps_it():
+    source = Path("ui/pages/block_page.py").read_text(encoding="utf-8")
+    render = source[source.index("    def _render_engineering"):source.index("    def _clear_engineering")]
+    general_rows = render[render.index("self.general_info.set_rows"):render.index("geo_lines =")]
+    engineering = render[render.index("geo_lines ="):]
+
+    assert '"Q′"' not in general_rows
+    assert 'f"Q′ {_fmt_number(qprime)}"' in engineering
+    assert "self.engineering_summary.set_sections" in engineering
+
+
 def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     core = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
@@ -19,7 +30,7 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     assert geometry.sizeHint().height() == 0
     assert geometry.minimumSizeHint().height() == 0
     assert geometry.sizeHint().width() == 700
-    assert geometry.minimumWidth() == 610
+    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 610
     assert geometry.maximumWidth() == 800
 
     related = BlockRelatedEntityList("Related assessment areas")
@@ -35,17 +46,23 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     item = related.list.item(0)
     wrapper = related.list.itemWidget(item)
     holder = related._row_card(item)
-    target_width = related.list.viewport().width() - related.ROW_RIGHT_INSET
+    target_width = related._row_available_width() - related.ROW_HORIZONTAL_INSET * 2
     assert related.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Fixed
-    assert related.list.minimumHeight() == related.list.maximumHeight() == related.LIST_HEIGHT == 136
-    assert related.sizeHint().height() > related.LIST_HEIGHT
-    assert related.ROW_RIGHT_INSET == 14
-    assert item.sizeHint().width() == target_width
+    assert related.list.minimumHeight() == related.list.maximumHeight()
+    assert related.list.height() > 0
+    assert related.sizeHint().height() > related.list.height()
+    assert related.ROW_HORIZONTAL_INSET == 8
+    assert item.sizeHint().width() == related._row_available_width()
     assert wrapper.objectName() == "BlockRelatedEntityWrapper"
-    assert wrapper.layout().contentsMargins().right() == 0
+    assert wrapper.layout().contentsMargins().left() == related.ROW_HORIZONTAL_INSET
+    assert wrapper.layout().contentsMargins().right() == related.ROW_HORIZONTAL_INSET
     assert holder is not None
     assert holder.width() == target_width
     assert holder.width() < related.list.viewport().width()
+    holder_left = wrapper.x() + holder.x()
+    holder_right_gap = related.list.viewport().width() - (holder_left + holder.width())
+    assert holder_left >= related.ROW_HORIZONTAL_INSET
+    assert holder_right_gap >= related.ROW_HORIZONTAL_INSET
     assert holder.sizePolicy().horizontalPolicy() == widgets.QSizePolicy.Policy.Fixed
     labels = [label.text() for label in holder.findChildren(widgets.QLabel)]
     assert "Area 1" in labels
@@ -61,6 +78,53 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     assert "border:2px solid #2563a6" in holder.styleSheet()
 
     geometry.close()
+    related.close()
+    app.processEvents()
+
+
+def test_block_related_list_fits_two_rows_and_scrolls_when_more_exist():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.block_overview_widgets import BlockRelatedEntityList
+    from ui.pages.entity_overview_widgets import RelatedEntityRow
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    related = BlockRelatedEntityList("Related assessment areas")
+    related.resize(520, 240)
+    rows = [
+        RelatedEntityRow(
+            f"AA-{index}", f"Area {index}", f"AA-{index} · 600–630 m",
+            "Completed", "completed", action_text="Go to ›",
+        )
+        for index in range(1, 4)
+    ]
+
+    related.set_rows(rows[:2])
+    related.show()
+    app.processEvents()
+    second_rect = related.list.visualItemRect(related.list.item(1))
+    assert second_rect.isValid()
+    assert second_rect.bottom() <= (
+        related.list.viewport().rect().bottom() - related.VISIBLE_BOTTOM_MARGIN
+    )
+    first_rect = related.list.visualItemRect(related.list.item(0))
+    assert first_rect.height() < related.LIST_HEIGHT / 2
+    assert related.list.viewport().height() >= first_rect.height() + second_rect.height()
+    two_row_height = related.list.height()
+    assert related.list.horizontalScrollBar().maximum() == 0
+
+    related.set_rows(rows)
+    app.processEvents()
+    assert related.list.height() == two_row_height
+    assert related.list.verticalScrollBar().maximum() > 0
+    assert related.list.horizontalScrollBar().maximum() == 0
+    for index in range(related.list.count()):
+        item = related.list.item(index)
+        holder = related._row_card(item)
+        wrapper = related.list.itemWidget(item)
+        holder_left = wrapper.x() + holder.x()
+        holder_right_gap = related.list.viewport().width() - (holder_left + holder.width())
+        assert holder_left >= related.ROW_HORIZONTAL_INSET
+        assert holder_right_gap >= related.ROW_HORIZONTAL_INSET
     related.close()
     app.processEvents()
 
@@ -187,7 +251,7 @@ def test_block_page_has_no_layout_feedback_loop_or_tab_reinsertion():
     assert "top.addWidget(self.geometry_card, 0)" in text
     assert "PREFERRED_WIDTH = 700" in helpers
     assert "LIST_HEIGHT = 136" in helpers
-    assert "ROW_RIGHT_INSET = 14" in helpers
+    assert "ROW_HORIZONTAL_INSET = 8" in helpers
     assert "viewport().installEventFilter(self)" in helpers
     assert "def _sync_row_widths(self)" in helpers
     assert "BlockNotesCard" in helpers

@@ -42,10 +42,12 @@ def test_entity_tabs_keep_sizing_contract_with_compact_padding():
     assert "return QSize(hint.width(), 0)" in tabs
 
 
-def test_block_and_contour_share_the_split_save_control():
+def test_block_and_contour_use_one_compact_draft_save_button():
     block = source("ui/pages/block_page.py")
     contour = source("ui/pages/contour_event_page.py")
-    assert "TechnicalCardSaveButton(" in block
-    assert "TechnicalCardSaveButton(" in contour
-    assert 'QPushButton(tr("Save draft"))' not in block
-    assert 'QPushButton(tr("Save draft"))' not in contour
+    assert 'QPushButton(tr("Save"))' in block
+    assert 'QPushButton(tr("Save"))' in contour
+    for text in (block, contour):
+        assert "TechnicalCardSaveButton(" not in text
+        assert "Save & complete" not in text
+        assert ".complete()" not in text

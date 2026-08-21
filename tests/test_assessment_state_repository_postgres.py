@@ -23,7 +23,7 @@ if "test" not in DATABASE_NAME.lower():
     pytest.fail("Refusing destructive tests: PostgreSQL database name must contain 'test'", pytrace=False)
 
 from database import assessment_models as orm
-from database.models import BlastBlock, Domain, Mine, Site
+from database.models import Domain, Site
 from repositories.assessment_state_mapper import (
     AssessmentPersistenceCorruptionError, AssessmentSiteNotFoundError,
 )
@@ -64,28 +64,17 @@ def session_factory(tmp_path_factory):
 class AssessmentContext:
     site_id: int
     domain_id: int
-    mine_id: int
 
 
 @pytest.fixture
 def assessment_context(session_factory):
     with session_factory.begin() as session:
-        mine = Mine(name="Assessment repository integration mine")
-        session.add(mine); session.flush()
-        site = Site(mine_id=mine.id, name="Assessment repository integration site")
+        site = Site(name="Assessment repository integration site")
         session.add(site); session.flush()
         domain = Domain(site_id=site.id, name="North")
         session.add(domain); session.flush()
-        context = AssessmentContext(site.id, domain.id, mine.id)
+        context = AssessmentContext(site.id, domain.id)
     yield context
-    with session_factory.begin() as session:
-        session.query(orm.BlastEvent).filter_by(domain_id=context.domain_id).delete()
-        session.query(orm.AssessmentArea).filter_by(domain_id=context.domain_id).delete()
-        session.query(orm.ProjectLinesDataset).filter_by(site_id=context.site_id).delete()
-        session.query(BlastBlock).filter_by(domain_id=context.domain_id).delete()
-        session.query(Domain).filter_by(id=context.domain_id).delete()
-        session.query(Site).filter_by(id=context.site_id).delete()
-        session.query(Mine).filter_by(id=context.mine_id).delete()
 
 
 def persist_project_lines(session_factory, site_id, state):

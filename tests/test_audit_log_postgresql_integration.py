@@ -70,10 +70,12 @@ def test_audit_failure_rolls_back_production_update(factory,context):
     failing=service(factory,FailingAuditLogRepository(factory))
     with pytest.raises(RuntimeError,match="audit failed"):
         failing.update_block(context[3],ProductionBlastInput(context[2],"ROLLBACK","761","x"),
-            user(context),expected_version=2)
+            user(context),expected_version=0)
     with factory() as session:
         row=session.scalar(select(BlastEvent).where(BlastEvent.logical_id==context[3]))
-        assert row.name=="B-001" and float(row.elevation_m)==760.5
+        assert row.name=="B-001" and float(row.elevation_m)==760.0
+        assert row.comment is None
+        assert session.get(Domain, context[2]).version == 0
 
 def test_viewer_cannot_edit(factory,context):
     with pytest.raises(PermissionDenied):

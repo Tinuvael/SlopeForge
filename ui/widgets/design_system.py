@@ -193,6 +193,8 @@ def high_contrast_icon(icon: QIcon, color: str = "#ffffff", size: int = 20) -> Q
     painter.fillRect(result.rect(), QColor(color))
     painter.end()
     return QIcon(result)
+
+
 class SplitSaveButton(QToolButton):
     """Compact primary Save button with one explicit completion menu action."""
 
@@ -204,7 +206,9 @@ class SplitSaveButton(QToolButton):
         self.setMinimumSize(124, 32)
         self.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         menu = QMenu(self)
-        self.save_complete_action = menu.addAction(completion_text or tr("Save & complete"))
+        self.save_complete_action = menu.addAction(
+            completion_text or tr("Save & complete")
+        )
         self.setMenu(menu)
         self.clicked.connect(save_draft)
         self.save_complete_action.triggered.connect(save_completed)

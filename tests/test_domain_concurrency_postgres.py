@@ -18,7 +18,7 @@ if "test" not in (make_url(URL).database or "").lower():
 from application.errors import DomainConcurrencyConflict
 from application.use_cases.create_blast_event import CreateBlastEvent, CreateBlastEventCommand
 from database import assessment_models as orm
-from database.models import AuditLogEntry, BlastBlock, Domain, Mine, Site
+from database.models import AuditLogEntry, Domain, Site
 from domain.blasting.entities import BlastEvent
 from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
 from infrastructure.db.blast_event_creation import SqlAlchemyBlastEventCreationPersistence
@@ -38,17 +38,11 @@ def factory(tmp_path_factory):
 @pytest.fixture
 def domains(factory):
     with factory.begin() as session:
-        mine = Mine(name="phase5c concurrency"); session.add(mine); session.flush()
-        site = Site(mine_id=mine.id, name="phase5c site"); session.add(site); session.flush()
+        site = Site(name="phase5c site"); session.add(site); session.flush()
         first = Domain(site_id=site.id, name="A"); second = Domain(site_id=site.id, name="B")
         session.add_all((first, second)); session.flush()
-        ids = first.id, second.id, site.id, mine.id
+        ids = first.id, second.id, site.id
     yield ids
-    with factory.begin() as session:
-        session.query(AuditLogEntry).delete(); session.query(orm.BlastEvent).delete()
-        session.query(BlastBlock).filter(BlastBlock.domain_id.in_(ids[:2])).delete()
-        session.query(Domain).filter(Domain.id.in_(ids[:2])).delete()
-        session.query(Site).filter_by(id=ids[2]).delete(); session.query(Mine).filter_by(id=ids[3]).delete()
 
 
 def versions(factory, *ids):
@@ -64,12 +58,15 @@ def test_single_and_multi_domain_cas_and_failure_rollback(factory, domains):
     with pytest.raises(RuntimeError):
         with factory.begin() as session:
             guard_domain_versions(session, {a: 1})
-            session.add(BlastBlock(domain_id=a, block_number="ROLLBACK"))
+            session.add(orm.BlastEvent(
+                domain_id=a, logical_id="ROLLBACK", name="Rollback production",
+                event_type="production", event_date=date.today(), elevation_m=100,
+            ))
             session.flush()
             raise RuntimeError("after guard")
     assert versions(factory, a, b) == (1, 0)
     with factory() as session:
-        assert session.scalar(select(func.count()).select_from(BlastBlock)) == 0
+        assert session.scalar(select(func.count()).select_from(orm.BlastEvent)) == 0
     with factory.begin() as session:
         assert guard_domain_versions(session, {b: 0, a: 1}) == {a: 2, b: 1}
     assert versions(factory, a, b) == (2, 1)
@@ -106,18 +103,28 @@ def test_production_event_version_and_children_commit_or_roll_back(factory, doma
     use_case = CreateBlastEvent(SqlAlchemyBlastEventCreationPersistence(factory))
     result = use_case.execute(CreateBlastEventCommand(
         domain_id, "P-1", "production", date.today(), 100, str(csv), None, True))
-    assert result.blast_block_id is not None and versions(factory, domain_id) == (1,)
+    assert result.event_type == "production" and versions(factory, domain_id) == (1,)
     with factory() as session:
-        assert session.scalar(select(func.count()).select_from(BlastBlock)) == 1
+        persisted = session.scalar(select(orm.BlastEvent).where(
+            orm.BlastEvent.logical_id == result.event_id
+        ))
+        assert persisted is not None and persisted.event_type == "production"
         assert session.scalar(select(func.count()).select_from(orm.BlastEvent)) == 1
-        assert session.scalar(select(func.count()).select_from(AuditLogEntry)) == 1
+        audit_rows = list(session.scalars(select(AuditLogEntry).order_by(AuditLogEntry.id)))
+        assert [(row.action, row.field_name, row.description) for row in audit_rows] == [
+            ("create", None, "Block created"),
+            ("update", "geometry_revision", "Geometry imported"),
+        ]
     failing = CreateBlastEvent(SqlAlchemyBlastEventCreationPersistence(
         factory, failure_hook=lambda stage: (_ for _ in ()).throw(RuntimeError(stage))
-        if stage == "after_state_replace" else None))
+        if stage == "after_event_flush" else None))
     with pytest.raises(RuntimeError):
         failing.execute(CreateBlastEventCommand(
             domain_id, "P-2", "production", date.today(), 100, str(csv), None, True))
     assert versions(factory, domain_id) == (1,)
     with factory() as session:
-        assert session.scalar(select(func.count()).select_from(BlastBlock)) == 1
         assert session.scalar(select(func.count()).select_from(orm.BlastEvent)) == 1
+        assert session.scalar(select(func.count()).select_from(
+            orm.BlastEventGeometryRevision
+        )) == 1
+        assert session.scalar(select(func.count()).select_from(AuditLogEntry)) == 2

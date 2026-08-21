@@ -31,10 +31,10 @@ def test_contour_overview_helpers_share_block_dimensions_and_behaviour():
     ))
 
     assert geometry.sizeHint().width() == 700
-    assert geometry.minimumWidth() == 610
+    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 610
     assert geometry.maximumWidth() == 800
     assert related.LIST_HEIGHT == 136
-    assert related.ROW_RIGHT_INSET == 14
+    assert related.ROW_HORIZONTAL_INSET == 8
     assert notes.EDITOR_HEIGHT == 46
     assert activity.SLOT_COUNT == 4
     assert activity.SLOT_HEIGHT == 32
@@ -71,7 +71,7 @@ def test_contour_keeps_hidden_general_widgets_required_by_technical_card_save():
     assert 'take_tab(tr("General"))' not in page
     assert "general_page.deleteLater()" not in page
     assert "self.editor.save_draft()" in page
-    assert "self.editor.complete()" in page
+    assert "self.editor.complete()" not in page
 
 
 def test_nominal_contour_line_length_uses_hole_count_times_spacing():

@@ -266,7 +266,11 @@ def _bare_main_window():
     window.page_stack = QStackedWidget(window)
     window.block_page = QWidget()
     window.page_stack.addWidget(window.block_page)
+    window.analysis_page = QWidget()
+    window.page_stack.addWidget(window.analysis_page)
     window.assessment_page = None
+    window.area_page = None
+    window.contour_page = None
     window._guard_leave = lambda: True
     window.context = SimpleNamespace()
     window.domain_repo = SimpleNamespace(get=lambda _id: SimpleNamespace(site=SimpleNamespace(name="Project")))
@@ -295,7 +299,7 @@ def test_failed_assessment_page_construction_preserves_current_widget(monkeypatc
 
     assert MainWindow.open_area_from_tree(window, "A1", 2, 1, "Domain") is False
     assert window.page_stack.currentWidget() is current
-    assert window.page_stack.count() == 2
+    assert window.page_stack.count() == 3
     window.close()
 
 
@@ -305,11 +309,19 @@ def test_repeated_transient_navigation_keeps_stack_bounded():
 
     _app()
     window = _bare_main_window()
+    maximum_count = window.page_stack.count()
     for kind in ("Site", "Domain", "Area", "Contour") * 10:
         page = QWidget()
         page.setObjectName(kind)
+        if kind == "Area":
+            window.area_page = page
+        elif kind == "Contour":
+            window.contour_page = page
         window._activate_page(page)
-        assert window.page_stack.count() <= 2
+        maximum_count = max(maximum_count, window.page_stack.count())
+        assert window.page_stack.count() <= 3
+    assert maximum_count == 3
+    assert window.area_page is None
     window.close()
 
 

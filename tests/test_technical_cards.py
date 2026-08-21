@@ -230,7 +230,7 @@ def test_real_embedded_production_editor_controls_and_ucs_persistence():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.technical_card_widgets import TechnicalCardEditorWidget
     app = widgets.QApplication.instance() or widgets.QApplication([])
-    blast = event(); blast.blast_block_id = 77
+    blast = event()
     state = AssessmentDomainState(blast_events=[blast]); service = TechnicalCardService(state)
     card, draft = service.edit_or_create(blast)
     embedded = TechnicalCardEditorWidget(blast, card, draft,
@@ -256,37 +256,88 @@ def test_real_embedded_production_editor_controls_and_ucs_persistence():
     host.close(); embedded.deleteLater(); app.processEvents()
 
 
-def test_technical_card_save_split_button_routes_existing_save_actions():
+def test_visible_technical_card_save_is_one_draft_qpushbutton(monkeypatch):
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    from ui.pages.technical_card_widgets import TechnicalCardSaveButton
-    app = widgets.QApplication.instance() or widgets.QApplication([])
-    calls = []
-    button = TechnicalCardSaveButton(lambda: calls.append("draft"), lambda: calls.append("completed"))
-    assert button.text() == "Save"
-    assert button.minimumWidth() >= 120 and button.minimumHeight() >= 32
-    assert [action.text() for action in button.menu().actions()] == ["Save & complete"]
-    button.click(); button.save_complete_action.trigger()
-    assert calls == ["draft", "completed"]
-    button.setEnabled(False)
-    assert not button.isEnabled()
-    button.close(); app.processEvents()
-
-
-def test_main_split_save_keeps_incomplete_production_card_as_draft():
-    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    from ui.pages.technical_card_widgets import TechnicalCardEditorWidget, TechnicalCardSaveButton
+    test = pytest.importorskip("PySide6.QtTest", exc_type=ImportError)
+    core = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    from ui.pages.technical_card_widgets import TechnicalCardEditorWidget
 
     app = widgets.QApplication.instance() or widgets.QApplication([])
-    blast = event(); card, draft = new_technical_card(blast); calls = []
+    blast = event(); card, draft = new_technical_card(blast); statuses = []; warnings = []
     assert draft.validate_completion() == ["Заполните минимальное геомеханическое описание"]
-    embedded = TechnicalCardEditorWidget(
-        blast, card, draft,
-        lambda _card, _revision, status, _date: calls.append(status),
+    def persist(saved_card, revision, status, _date):
+        statuses.append(status)
+        saved_card.save_revision(revision, status=status)
+
+    embedded = TechnicalCardEditorWidget(blast, card, draft, persist)
+    monkeypatch.setattr(
+        "ui.editors.technical_card_editor.QMessageBox.warning",
+        lambda *args: warnings.append(args),
     )
-    save = TechnicalCardSaveButton(embedded.save_draft, embedded.complete)
-    save.click(); app.processEvents()
-    assert calls == ["draft"]
-    save.close(); embedded.deleteLater(); app.processEvents()
+    save = embedded.editor.save_button
+    assert isinstance(save, widgets.QPushButton)
+    assert save.text() == "Save"
+    assert embedded.editor.findChild(widgets.QToolButton, "SplitSaveMenuButton") is None
+    assert all(
+        action.text() != "Save & complete"
+        for menu in embedded.editor.findChildren(widgets.QMenu)
+        for action in menu.actions()
+    )
+    test.QTest.mouseClick(save, core.Qt.MouseButton.LeftButton)
+    app.processEvents()
+    assert statuses == ["draft"]
+    assert warnings == []
+    assert len(card.revisions) == 1
+    assert card.active_revision().status == "draft"
+    embedded.deleteLater(); app.processEvents()
+
+
+def test_draft_design_save_preserves_untouched_incomplete_geomechanics(monkeypatch):
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast); calls = []; warnings = []
+    original_geo = draft.geomechanical_parameters
+    dialog = TechnicalCardDialog(blast, card, draft,
+        lambda _card, revision, status, _date: calls.append((revision, status)))
+    dialog.group_cards.findChild(widgets.QDoubleSpinBox, "spacing_m").setValue(4.5)
+    monkeypatch.setattr("ui.editors.technical_card_editor.QMessageBox.warning", lambda *args: warnings.append(args))
+    assert dialog._save("draft") is True
+    assert calls and calls[0][1] == "draft"
+    assert draft.geomechanical_parameters is original_geo
+    assert warnings == []
+    dialog.deleteLater(); app.processEvents()
+
+
+def test_draft_execution_save_preserves_untouched_incomplete_geomechanics(monkeypatch):
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast); calls = []; warnings = []
+    original_geo = draft.geomechanical_parameters
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_args: calls.append(True))
+    dialog.execution_notes.setPlainText("Execution checked")
+    monkeypatch.setattr("ui.editors.technical_card_editor.QMessageBox.warning", lambda *args: warnings.append(args))
+    assert dialog._save("draft") is True
+    assert calls == [True]
+    assert draft.geomechanical_parameters is original_geo
+    assert warnings == []
+    dialog.deleteLater(); app.processEvents()
+
+
+def test_dirty_invalid_geomechanics_still_blocks_draft_save(monkeypatch):
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast); calls = []; warnings = []
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_args: calls.append(True))
+    dip, direction, _spacing, _persistence = dialog.joint_set_rows[0]
+    dip.setValue(45); direction.setValue(direction.minimum())
+    monkeypatch.setattr("ui.editors.technical_card_editor.QMessageBox.warning", lambda *args: warnings.append(args))
+    assert dialog._geomechanics_dirty is True
+    assert dialog._save("draft") is False
+    assert calls == [] and warnings
+    dialog.close(); app.processEvents()
 
 
 def test_visible_contour_design_edits_canonical_method_and_spacing():
@@ -328,6 +379,32 @@ def test_production_design_keeps_existing_spacing_presentation():
     spacing = dialog.group_cards.findChild(widgets.QDoubleSpinBox, "spacing_m")
     assert spacing is not None
     spacing.setValue(4.5); assert draft.drilling_groups[0].spacing_m == 4.5
+    dialog.close(); app.processEvents()
+
+
+def test_drilling_summary_ignores_qt_numeric_signal_arguments():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast)
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None)
+    group = draft.drilling_groups[0]
+    controls = {
+        name: dialog.group_cards.findChild(widgets.QDoubleSpinBox, name)
+        for name in ("hole_count", "diameter_mm", "average_depth_m", "subdrill_m")
+    }
+    assert all(controls.values())
+    controls["average_depth_m"].setValue(12)
+    controls["hole_count"].setValue(7)
+    controls["diameter_mm"].setValue(102)
+    controls["subdrill_m"].setValue(1.5)
+    app.processEvents()
+
+    summary = dialog.group_cards.findChild(widgets.QLabel, "drillingChargeSummary")
+    assert group.drilling_length() == 84
+    assert "Drilling length: 84.000 m" in summary.text()
+    assert (group.hole_count, group.diameter_mm, group.subdrill_m) == (7, 102, 1.5)
     dialog.close(); app.processEvents()
 
 

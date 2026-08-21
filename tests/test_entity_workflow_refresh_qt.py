@@ -50,7 +50,7 @@ def test_production_save_refreshes_persisted_status_and_can_demote(app):
     assert visible.text() == "Blasted"
 
     page.technical_card_editor = SavedEditor(lambda: persisted.update(status="planned"))
-    BlockPage._complete_technical_card(page)
+    BlockPage._save_technical_card_draft(page)
     assert visible.text() == "Planned"
 
 

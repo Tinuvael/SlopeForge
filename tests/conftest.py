@@ -6,10 +6,12 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import make_url
+from database.env import load_local_env
 
 
 # Older focused PostgreSQL modules used a second environment-variable name.
 # Keep one documented test database sufficient for the complete suite.
+load_local_env(".env.test")
 _test_database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("SLOPEFORGE_TEST_DATABASE_URL")
 if _test_database_url:
     os.environ.setdefault("TEST_DATABASE_URL", _test_database_url)

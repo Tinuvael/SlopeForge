@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QSize, Qt
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -27,7 +27,8 @@ class BlockRelatedEntityList(RelatedEntityList):
     """Stable Block relationship card with an internally scrollable viewport."""
 
     LIST_HEIGHT = 136
-    ROW_RIGHT_INSET = 14
+    ROW_HORIZONTAL_INSET = 8
+    VISIBLE_BOTTOM_MARGIN = 4
     STATE_COLORS = {
         "completed": ("#edf8f0", "#58a66a"),
         "assessed": ("#edf8f0", "#58a66a"),
@@ -42,6 +43,7 @@ class BlockRelatedEntityList(RelatedEntityList):
         super().__init__(title)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.layout.setSpacing(6)
+        self.list.setSpacing(2)
         self.list.setFixedHeight(self.LIST_HEIGHT)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -57,14 +59,36 @@ class BlockRelatedEntityList(RelatedEntityList):
         self.empty_label.hide()
         self.layout.addWidget(self.empty_label)
         self.list.itemSelectionChanged.connect(self._sync_row_styles)
+        self._refit_pending = False
 
     def eventFilter(self, watched, event):
         if watched is self.list.viewport() and event.type() == QEvent.Type.Resize:
             self._sync_row_widths()
+            self._schedule_row_refit()
         return super().eventFilter(watched, event)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._schedule_row_refit()
+
+    def _schedule_row_refit(self) -> None:
+        if self._refit_pending:
+            return
+        self._refit_pending = True
+        QTimer.singleShot(0, self._refit_after_layout)
+
+    def _refit_after_layout(self) -> None:
+        self._refit_pending = False
+        if not self.list.count() or self.list.isHidden():
+            return
+        self._sync_row_widths()
+        self._fit_two_rows(use_visual_geometry=True)
+
+    def _row_available_width(self) -> int:
+        return max(1, self.list.viewport().width() - self.list.spacing() * 2)
+
     def _row_target_width(self) -> int:
-        return max(1, self.list.viewport().width() - self.ROW_RIGHT_INSET)
+        return max(1, self._row_available_width() - self.ROW_HORIZONTAL_INSET * 2)
 
     def _sync_row_widths(self) -> None:
         target = self._row_target_width()
@@ -73,8 +97,36 @@ class BlockRelatedEntityList(RelatedEntityList):
             holder = self._row_card(item)
             if holder is None:
                 continue
+            wrapper = self.list.itemWidget(item)
+            wrapper.setFixedWidth(self._row_available_width())
             holder.setFixedWidth(target)
-            item.setSizeHint(QSize(target, max(1, holder.sizeHint().height())))
+            item.setSizeHint(QSize(self._row_available_width(), max(1, holder.sizeHint().height())))
+
+    def _fit_two_rows(self, *, use_visual_geometry=False) -> None:
+        """Reserve a bounded viewport that never clips either of the first two rows."""
+        if not self.list.count():
+            height = self.LIST_HEIGHT
+        else:
+            row_heights = [
+                self.list.item(index).sizeHint().height()
+                for index in range(min(2, self.list.count()))
+            ]
+            if len(row_heights) == 1:
+                row_heights.append(row_heights[0])
+            height = (
+                sum(row_heights)
+                + self.list.spacing() * 4
+                + self.list.frameWidth() * 2
+                + 2
+            )
+            if use_visual_geometry:
+                second = self.list.item(min(1, self.list.count() - 1))
+                rect = self.list.visualItemRect(second)
+                if rect.isValid():
+                    viewport_chrome = self.list.height() - self.list.viewport().height()
+                    height = max(height, rect.bottom() + 1 + viewport_chrome)
+        self.list.setFixedHeight(height)
+        self.empty_label.setFixedHeight(height)
 
     def set_rows(self, rows, *, empty_text="No linked entities"):
         """Build Block rows directly so QListWidget owns each wrapper only once."""
@@ -101,7 +153,9 @@ class BlockRelatedEntityList(RelatedEntityList):
             wrapper.setObjectName("BlockRelatedEntityWrapper")
             wrapper.setCursor(Qt.CursorShape.PointingHandCursor)
             wrapper_layout = QHBoxLayout(wrapper)
-            wrapper_layout.setContentsMargins(0, 0, 0, 0)
+            wrapper_layout.setContentsMargins(
+                self.ROW_HORIZONTAL_INSET, 0, self.ROW_HORIZONTAL_INSET, 0
+            )
             wrapper_layout.setSpacing(0)
             wrapper_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
@@ -111,8 +165,8 @@ class BlockRelatedEntityList(RelatedEntityList):
             holder.setMinimumWidth(0)
             holder.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             layout = QVBoxLayout(holder)
-            layout.setContentsMargins(9, 7, 12, 7)
-            layout.setSpacing(2)
+            layout.setContentsMargins(9, 2, 12, 2)
+            layout.setSpacing(1)
 
             top = QHBoxLayout()
             title = QLabel(row.title)
@@ -145,11 +199,13 @@ class BlockRelatedEntityList(RelatedEntityList):
 
             target = self._row_target_width()
             holder.setFixedWidth(target)
-            item.setSizeHint(QSize(target, holder.sizeHint().height()))
+            item.setSizeHint(QSize(self._row_available_width(), holder.sizeHint().height()))
             self.list.addItem(item)
             self.list.setItemWidget(item, wrapper)
 
         self._sync_row_widths()
+        self._fit_two_rows()
+        self._schedule_row_refit()
         self._sync_row_styles()
         self.updateGeometry()
 
@@ -310,7 +366,6 @@ class BlockSectionHost(QWidget):
         if old is not None:
             self._layout.removeWidget(old)
             old.hide()
-            old.setParent(None)
             old.deleteLater()
         self._content = widget
         widget.setParent(self)
