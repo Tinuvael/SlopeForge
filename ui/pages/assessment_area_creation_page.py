@@ -36,6 +36,12 @@ class AssessmentAreaCreationPage(QWidget):
             self.controller.state, self.controller.save_assessment_area_geometry, self,
             read_only=not context.current_user.can_edit,
         )
+        area_context = self.controller.project_assessment_boundaries()
+        self.editor.set_existing_area_context(
+            item for item in area_context
+            if not (item.domain_id == self.controller.domain_id
+                    and item.assessment_area_id == edit_area_id)
+        )
         if edit_area_id:
             area = self.controller.area(edit_area_id)
             if area is None:
