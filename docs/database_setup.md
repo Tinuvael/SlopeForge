@@ -77,6 +77,23 @@ python -m alembic upgrade head
 
 The final command reads `DATABASE_URL` from `.env`. Recreate only databases that are disposable, and never use `alembic stamp` for this transition.
 
+### GUI first-run initialization
+
+When the configured PostgreSQL database exists but has no user tables, SlopeForge
+applies the current Alembic baseline automatically. The connection may come from
+environment variables, the connection dialog, or the saved
+`%APPDATA%\SlopeForge\connection.ini`; a temporary `.env` is not required.
+Automatic initialization is refused when an unversioned database already contains
+user tables or reports an obsolete migration revision.
+
+Manual Windows smoke check:
+
+1. Remove `.env` and `%APPDATA%\SlopeForge\connection.ini`.
+2. Drop and recreate `slopeforge` as an empty PostgreSQL database.
+3. Launch SlopeForge and enter the connection and storage paths in the connection dialog.
+4. Confirm that the baseline is applied and the first-administrator dialog appears.
+5. Restart SlopeForge; the saved connection should open normally without showing the connection dialog again.
+
 After this baseline is accepted and databases may contain real data, **never
 rewrite the baseline again**. Every later schema change must use a normal appended
 migration (`0002_...`, `0003_...`, and so on).

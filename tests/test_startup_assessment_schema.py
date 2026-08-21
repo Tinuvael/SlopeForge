@@ -34,10 +34,20 @@ def arrange_startup(monkeypatch, *, revision="0001_mvp_baseline", tables=None):
     monkeypatch.setattr(startup, "check_connection", lambda value: None)
     monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "0001_mvp_baseline")
     monkeypatch.setattr(startup, "_alembic_script", lambda: FakeScript())
-    monkeypatch.setattr(startup, "_database_alembic_heads", lambda value: (() if revision is None else (revision,)))
+    state = {
+        "revision": revision,
+        "tables": startup.Base.metadata.tables if tables is None else tables,
+    }
+    monkeypatch.setattr(
+        startup, "_database_alembic_heads",
+        lambda value: (() if state["revision"] is None else (state["revision"],)),
+    )
+    def upgrade(_settings):
+        state["revision"] = "0001_mvp_baseline"
+        state["tables"] = startup.Base.metadata.tables
+    monkeypatch.setattr(startup, "upgrade_to_head", upgrade)
     monkeypatch.setattr(startup, "configure_mappers", lambda: None)
-    monkeypatch.setattr(startup, "inspect", lambda value: FakeInspector(
-        startup.Base.metadata.tables if tables is None else tables))
+    monkeypatch.setattr(startup, "inspect", lambda value: FakeInspector(state["tables"]))
     return settings, engine
 
 
@@ -81,14 +91,18 @@ def test_real_script_directory_classifies_removed_revision(monkeypatch):
     assert caught.value.reason == "database_revision_obsolete"
 
 
-def test_startup_rejects_missing_alembic_version_with_clear_guidance(monkeypatch):
-    arrange_startup(monkeypatch, revision=None)
+def test_startup_initializes_a_completely_empty_database(monkeypatch):
+    settings, engine = arrange_startup(monkeypatch, revision=None, tables=())
+    assert startup.initialize_database_runtime() == (settings, engine, "sessions")
+
+
+def test_startup_rejects_nonempty_unversioned_database(monkeypatch):
+    arrange_startup(monkeypatch, revision=None, tables=("unmanaged_data",))
     with pytest.raises(startup.StartupError) as caught:
         startup.initialize_database_runtime()
-    message = str(caught.value)
-    assert "Database revision: missing" in message
-    assert "Current application revision: 0001_mvp_baseline" in message
-    assert "python -m database.cli migrate" in caught.value.presentation()
+    assert caught.value.reason == "database_migration_required"
+    assert "not empty" in str(caught.value)
+    assert "database.cli migrate" not in caught.value.presentation()
 
 
 def test_main_passes_runtime_storage_root_to_app_context():
