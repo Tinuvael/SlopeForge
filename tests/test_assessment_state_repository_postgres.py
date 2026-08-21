@@ -28,6 +28,7 @@ from repositories.assessment_state_mapper import (
     AssessmentPersistenceCorruptionError, AssessmentSiteNotFoundError,
 )
 from repositories.assessment_state_repository import AssessmentStateRepository
+from repositories.assessment_area_context_repository import AssessmentAreaContextRepository
 from tests.assessment_graph_seeder import AssessmentGraphSeeder
 from repositories.project_lines_repository import ProjectLinesRepository
 from tests.test_assessment_state_mapper import build_rich_state
@@ -83,6 +84,51 @@ def persist_project_lines(session_factory, site_id, state):
         repository.add_dataset(site_id, dataset)
     active = state.active_dataset()
     repository.set_active(site_id, active.id if active else None)
+
+
+def _connector_boundary(offset: float) -> AssessmentBoundary:
+    points = (
+        SpatialPoint(offset, 0), SpatialPoint(offset + 4, 0),
+        SpatialPoint(offset + 4, 4), SpatialPoint(offset, 0),
+    )
+    return AssessmentBoundary(tuple(
+        StraightConnector(start, end) for start, end in zip(points, points[1:])
+    ))
+
+
+def test_project_area_context_real_postgres_path(session_factory):
+    with session_factory.begin() as session:
+        project_a = Site(name="Assessment context Project A")
+        project_b = Site(name="Assessment context Project B")
+        session.add_all((project_a, project_b)); session.flush()
+        domains = (
+            Domain(site_id=project_a.id, name="Context Domain 1"),
+            Domain(site_id=project_a.id, name="Context Domain 2"),
+            Domain(site_id=project_b.id, name="Context Domain 3"),
+        )
+        session.add_all(domains); session.flush()
+        project_a_id = project_a.id
+        domain_ids = tuple(domain.id for domain in domains)
+
+    expected = []
+    for index, (domain_id, name) in enumerate(zip(domain_ids, ("Area A", "Area B", "Area C"))):
+        state = AssessmentDomainState()
+        area = AssessmentAreaService(state).create_area(
+            name=name, assessment_date=date.today(), boundary=_connector_boundary(index * 10))
+        SqlAlchemyAssessmentWrites(session_factory).persist_assessment_area_geometry(
+            domain_id, 0, area)
+        expected.append(area.id)
+
+    result = AssessmentAreaContextRepository(session_factory).list_current_boundaries(project_a_id)
+
+    assert len(result) == 2
+    assert {(item.domain_id, item.assessment_area_id) for item in result} == set(
+        zip(domain_ids[:2], expected[:2])
+    )
+    assert (domain_ids[2], expected[2]) not in {
+        (item.domain_id, item.assessment_area_id) for item in result
+    }
+    assert all(len(item.ring) == 4 for item in result)
 
 
 def semantic(state):

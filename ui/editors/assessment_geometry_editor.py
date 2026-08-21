@@ -179,7 +179,7 @@ class AssessmentGeometryEditorWidget(QWidget):
         self.scene.clear(); dataset=self.state.active_dataset()
         if dataset and self._show_project_lines:
             for line in dataset.lines: self._draw_points(line.points,QPen(QColor(125,140,150),1),10)
-        context_pen=QPen(QColor(180,180,180,135),1,Qt.PenStyle.SolidLine)
+        context_pen=QPen(QColor(105,110,115,210),1.75,Qt.PenStyle.DashLine)
         context_pen.setCosmetic(True)
         for area in self._existing_area_context:
             self._draw_points(area.ring,context_pen,15,role=ASSESSMENT_CONTEXT_ROLE)

@@ -72,9 +72,9 @@ def test_existing_area_context_is_faint_noninteractive_and_does_not_change_snap(
     assert not item.data(PROJECT_LINE_ROLE)
     assert item.zValue() == 15
     assert item.brush().style() == Qt.BrushStyle.NoBrush
-    assert item.pen().style() == Qt.PenStyle.SolidLine
-    assert item.pen().isCosmetic() and item.pen().widthF() == 1
-    assert item.pen().color() == QColor(180, 180, 180, 135)
+    assert item.pen().style() == Qt.PenStyle.DashLine
+    assert item.pen().isCosmetic() and item.pen().widthF() == 1.75
+    assert item.pen().color() == QColor(105, 110, 115, 210)
     assert not (item.flags() & QGraphicsPathItem.GraphicsItemFlag.ItemIsSelectable)
     assert editor._snap(1, 10.4) == snap_before
 
