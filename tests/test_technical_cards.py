@@ -268,6 +268,8 @@ def test_technical_card_save_split_button_routes_existing_save_actions():
     button.click(); button.save_complete_action.trigger()
     assert calls == ["draft", "completed"]
     button.setEnabled(False)
+    assert not button.isEnabled()
+    button.close(); app.processEvents()
 
 
 def test_main_split_save_keeps_incomplete_production_card_as_draft():
@@ -284,8 +286,7 @@ def test_main_split_save_keeps_incomplete_production_card_as_draft():
     save = TechnicalCardSaveButton(embedded.save_draft, embedded.complete)
     save.click(); app.processEvents()
     assert calls == ["draft"]
-    assert not button.isEnabled()
-    button.close(); app.processEvents()
+    save.close(); embedded.deleteLater(); app.processEvents()
 
 
 def test_drilling_group_uses_explicit_enabled_checkbox():
