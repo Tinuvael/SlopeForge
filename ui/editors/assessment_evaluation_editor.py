@@ -9,7 +9,7 @@ from PySide6.QtCore import QDate, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout,
-    QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
+    QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
     QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QToolButton,
     QVBoxLayout, QWidget,
 )
@@ -298,20 +298,20 @@ class AssessmentAreaEvaluationDialog(QDialog):
             editor.changed.connect(self._changed)
             self.geometry_editors[criterion.id] = editor; layout.addWidget(editor)
         measured = QFrame(); measured.setObjectName("CriterionCard"); measured.setProperty("assessmentSection", "measuredWallGeometry"); self.measured_wall_widget = measured
-        measured_form = QFormLayout(measured); measured_form.setContentsMargins(8, 5, 8, 5); measured_form.setHorizontalSpacing(12); measured_form.setVerticalSpacing(5)
-        measured_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
-        measured_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        measured_title = QLabel(f"<b>{tr('Measured wall geometry')}</b>"); measured_title.setObjectName("EngineeringSectionTitle"); measured_form.addRow(measured_title)
+        measured_form = QGridLayout(measured); measured_form.setContentsMargins(8, 5, 8, 5); measured_form.setHorizontalSpacing(12); measured_form.setVerticalSpacing(5); measured_form.setColumnStretch(0, 1)
+        measured_title = QLabel(f"<b>{tr('Measured wall geometry')}</b>"); measured_title.setObjectName("EngineeringSectionTitle"); measured_form.addWidget(measured_title, 0, 0, 1, 2)
         self.measured_wall_controls = {}
-        for label, name in (("Mean backbreak, m", "mean_backbreak_m"), ("Maximum backbreak, m", "maximum_backbreak_m"), ("Mean overbreak, m", "mean_overbreak_m"), ("Mean underbreak, m", "mean_underbreak_m"), ("Contour RMS deviation, m", "contour_rms_deviation_m")):
-            control = self._nullable(); control.setFixedWidth(120); control.setEnabled(not self.read_only); self.measured_wall_controls[name] = control; measured_form.addRow(tr(label), control)
+        for row, (label, name) in enumerate((("Mean backbreak, m", "mean_backbreak_m"), ("Maximum backbreak, m", "maximum_backbreak_m"), ("Mean overbreak, m", "mean_overbreak_m"), ("Mean underbreak, m", "mean_underbreak_m"), ("Contour RMS deviation, m", "contour_rms_deviation_m")), 1):
+            control = self._nullable(); control.setFixedWidth(120); control.setEnabled(not self.read_only); self.measured_wall_controls[name] = control
+            measured_form.addWidget(QLabel(tr(label)), row, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            measured_form.addWidget(control, row, 1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.measurement_method = QComboBox(); self.measurement_method.addItem("—", None)
         for code, label in (("survey", "Survey"), ("photogrammetry", "Photogrammetry"), ("laser_scan", "Laser scan"), ("manual_measurement", "Manual measurement"), ("visual_estimate", "Visual estimate")):
             self.measurement_method.addItem(tr(label), code)
         self.measurement_method.setMaximumWidth(220)
-        self.measurement_method.setEnabled(not self.read_only); measured_form.addRow(tr("Measurement method"), self.measurement_method)
+        self.measurement_method.setEnabled(not self.read_only); measured_form.addWidget(QLabel(tr("Measurement method")), 6, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter); measured_form.addWidget(self.measurement_method, 6, 1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.measurement_method.currentIndexChanged.connect(self._changed)
-        calculate = QPushButton(tr("Calculate from survey…")); calculate.setMaximumWidth(180); calculate.setEnabled(not self.read_only); calculate.clicked.connect(self._calculate_wall_rms); measured_form.addRow("", calculate)
+        calculate = QPushButton(tr("Calculate from survey…")); calculate.setMaximumWidth(180); calculate.setEnabled(not self.read_only); calculate.clicked.connect(self._calculate_wall_rms); measured_form.addWidget(calculate, 7, 1, Qt.AlignmentFlag.AlignRight)
         layout.addWidget(measured)
         layout.addStretch()
         scroll.setWidget(page); self.tabs.addTab(scroll, tr("Geometry"))

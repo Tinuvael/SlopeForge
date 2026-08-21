@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM","offscreen")
 import pytest
 
 QtWidgets=pytest.importorskip("PySide6.QtWidgets",exc_type=ImportError)
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QApplication,QDialogButtonBox,QMessageBox,QTabWidget
 
 
@@ -97,6 +97,11 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     assert page.evaluation_editor.measurement_method.maximumWidth() == 220
     assert measured.objectName() == "CriterionCard"
     assert measured.layout().verticalSpacing() == 5
+    measured_layout = measured.layout()
+    for control in (*page.evaluation_editor.measured_wall_controls.values(), page.evaluation_editor.measurement_method):
+        row, column, row_span, column_span = measured_layout.getItemPosition(measured_layout.indexOf(control))
+        assert column == 1 and row_span == column_span == 1
+        assert measured_layout.itemAtPosition(row, column).alignment() & Qt.AlignmentFlag.AlignRight
     input_layout = inputs.layout()
     face_index = input_layout.indexOf(page.face_condition_input_card)
     geometry_index = input_layout.indexOf(page.geometry_input_card)
