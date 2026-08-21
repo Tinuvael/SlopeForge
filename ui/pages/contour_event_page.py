@@ -42,7 +42,7 @@ from ui.pages.entity_overview_widgets import (
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.technical_card_widgets import ActualExecutionEditorWidget, BlastDesignEditorWidget, TechnicalCardEditorWidget, TechnicalCardSaveButton
-from ui.presentation_labels import domain_message, format_assessment_elevation_interval
+from ui.presentation_labels import CONTROLLED_BLASTING_LABELS, domain_message, format_assessment_elevation_interval
 
 
 def _show(value, unit="", digits=2):
@@ -82,16 +82,7 @@ def _history_bounds(entries):
 
 
 def _method_label(code):
-    labels = {
-        "buffer_cushion": "Buffer / cushion blasting",
-        "trim": "Trim blasting",
-        "presplit": "Presplit",
-        "midsplit": "Midsplit",
-        "postsplit": "Postsplit",
-        "line_drilling": "Line drilling",
-        "other": "Other",
-    }
-    return tr(labels.get(code, code.replace("_", " ").title())) if code else "—"
+    return tr(CONTROLLED_BLASTING_LABELS.get(code, code.replace("_", " ").title())) if code else "—"
 
 
 def _primary_contour_group(revision):

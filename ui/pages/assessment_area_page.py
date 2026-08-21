@@ -291,7 +291,7 @@ class AssessmentAreaPage(QWidget):
         self.assessment_inputs.setMinimumWidth(500)
         inputs = QVBoxLayout(self.assessment_inputs)
         inputs.setContentsMargins(4, 2, 4, 2)
-        inputs.setSpacing(7)
+        inputs.setSpacing(6)
         if not self.read_only and not self.evaluation_editor.inspector.text().strip():
             self.evaluation_editor.inspector.setText(getattr(self.context.current_user, "display_name", "") or "")
         self.assessment_details_card = QFrame()
@@ -307,7 +307,7 @@ class AssessmentAreaPage(QWidget):
         metadata.addWidget(self.evaluation_editor.inspector, 1)
         details.addLayout(metadata)
         inputs.addWidget(self.assessment_details_card)
-        inputs.addSpacing(14)
+        inputs.addSpacing(10)
         self.face_condition_section_title = QLabel(f"<b>{tr('Face condition')}</b>")
         inputs.addWidget(self.face_condition_section_title)
         self.face_condition_divider = QFrame()
@@ -317,7 +317,7 @@ class AssessmentAreaPage(QWidget):
         inputs.addWidget(self.face_condition_divider)
         for editor in self.evaluation_editor.editors.values():
             inputs.addWidget(editor)
-        inputs.addSpacing(14)
+        inputs.addSpacing(10)
         self.geometry_section_title = QLabel(f"<b>{tr('Geometry')}</b>")
         inputs.addWidget(self.geometry_section_title)
         geometry_line = QFrame(); geometry_line.setFixedHeight(1)

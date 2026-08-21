@@ -128,11 +128,11 @@ class TechnicalCardDialog(QDialog):
             self.bench_height = _number(p.design_bench_height_m, "m"); self.production_explosive_label=QLabel("— kg" if p.total_explosive_mass_kg is None else f"{p.total_explosive_mass_kg:g} kg")
             f.addRow(tr("Design bench height"), self.bench_height); f.addRow(tr("Explosive mass"), self.production_explosive_label); layout.addWidget(calc)
         else:
-            contour = self.revision.contour_parameters; method = QGroupBox(tr("Controlled blasting method")); method.setObjectName("controlledBlastingMethodPanel"); f = QFormLayout(method)
+            contour = self.revision.contour_parameters
             self.method = QComboBox(); self.method.addItem(tr("— select —"), "")
             for key in CONTROLLED_BLASTING_METHODS: self.method.addItem(tr(CONTROLLED_BLASTING_LABELS[key]), key)
             self.method.setCurrentIndex(max(0, self.method.findData(contour.controlled_blasting_method)))
-            self.method.setMaximumWidth(280); self.method.setEnabled(not self.read_only); self.method.currentIndexChanged.connect(self._method_changed); f.addRow(tr("Method"), self.method); self.method_panel = method
+            self.method.setMaximumWidth(280); self.method.setEnabled(not self.read_only); self.method.currentIndexChanged.connect(self._method_changed)
 
     def _section_title(self, text):
         label = QLabel(tr(text)); label.setObjectName("EngineeringSectionTitle")
@@ -330,8 +330,8 @@ class TechnicalCardDialog(QDialog):
         self.design_slope_angle=_integer_number(slope.angle_deg, 0, 90); self.design_slope_angle.setObjectName("designSlopeAngle")
         for spin in (self.design_slope_azimuth,self.design_slope_angle): spin.setMaximumWidth(160); spin.setEnabled(not self.read_only); spin.valueChanged.connect(self._refresh_geomechanics)
         planned_form.addRow(tr("Design slope azimuth, °"),self.design_slope_azimuth); planned_form.addRow(tr("Design slope angle, °"),self.design_slope_angle)
+        if self.blast_event.event_type == "contour": planned_form.addRow(tr("Controlled blasting method"), self.method)
         self.drilling_layout.addWidget(planned)
-        if self.blast_event.event_type == "contour": self.drilling_layout.addWidget(self.method_panel)
         self.group_cards = QWidget(); self.group_cards_layout = QVBoxLayout(self.group_cards)
         self.drilling_layout.addWidget(self.group_cards); self._render_groups()
         self.add_group_combo = QComboBox(); catalogue = PRODUCTION_GROUP_TYPES if self.blast_event.event_type == "production" else CONTOUR_GROUP_TYPES

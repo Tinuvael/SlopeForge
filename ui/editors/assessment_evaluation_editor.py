@@ -297,8 +297,11 @@ class AssessmentAreaEvaluationDialog(QDialog):
             editor.set_primary_input(control); editor.set_help(self._geometry_help(criterion.id))
             editor.changed.connect(self._changed)
             self.geometry_editors[criterion.id] = editor; layout.addWidget(editor)
-        measured = QFrame(); measured.setObjectName("MeasuredWallGeometry"); self.measured_wall_widget = measured; measured_form = QFormLayout(measured)
-        measured_form.addRow(QLabel(f"<b>{tr('Measured wall geometry')}</b>"))
+        measured = QFrame(); measured.setObjectName("CriterionCard"); measured.setProperty("assessmentSection", "measuredWallGeometry"); self.measured_wall_widget = measured
+        measured_form = QFormLayout(measured); measured_form.setContentsMargins(8, 5, 8, 5); measured_form.setHorizontalSpacing(12); measured_form.setVerticalSpacing(5)
+        measured_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+        measured_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        measured_title = QLabel(f"<b>{tr('Measured wall geometry')}</b>"); measured_title.setObjectName("EngineeringSectionTitle"); measured_form.addRow(measured_title)
         self.measured_wall_controls = {}
         for label, name in (("Mean backbreak, m", "mean_backbreak_m"), ("Maximum backbreak, m", "maximum_backbreak_m"), ("Mean overbreak, m", "mean_overbreak_m"), ("Mean underbreak, m", "mean_underbreak_m"), ("Contour RMS deviation, m", "contour_rms_deviation_m")):
             control = self._nullable(); control.setFixedWidth(120); control.setEnabled(not self.read_only); self.measured_wall_controls[name] = control; measured_form.addRow(tr(label), control)
@@ -308,7 +311,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         self.measurement_method.setMaximumWidth(220)
         self.measurement_method.setEnabled(not self.read_only); measured_form.addRow(tr("Measurement method"), self.measurement_method)
         self.measurement_method.currentIndexChanged.connect(self._changed)
-        calculate = QPushButton(tr("Calculate from survey…")); calculate.setEnabled(not self.read_only); calculate.clicked.connect(self._calculate_wall_rms); measured_form.addRow(calculate)
+        calculate = QPushButton(tr("Calculate from survey…")); calculate.setMaximumWidth(180); calculate.setEnabled(not self.read_only); calculate.clicked.connect(self._calculate_wall_rms); measured_form.addRow("", calculate)
         layout.addWidget(measured)
         layout.addStretch()
         scroll.setWidget(page); self.tabs.addTab(scroll, tr("Geometry"))

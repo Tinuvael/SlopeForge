@@ -303,6 +303,9 @@ def test_visible_contour_design_edits_canonical_method_and_spacing():
     method = next(combo for combo in design_page.findChildren(widgets.QComboBox)
                   if combo.findData("presplit") >= 0)
     assert method.isVisibleTo(host)
+    planned = design_page.findChild(widgets.QGroupBox, "EngineeringCard")
+    assert planned is not None and planned.isAncestorOf(method)
+    assert design_page.findChild(widgets.QGroupBox, "controlledBlastingMethodPanel") is None
     method.setCurrentIndex(method.findData("presplit"))
     assert draft.contour_parameters.controlled_blasting_method == "presplit"
     assert draft.validate_completion() == []

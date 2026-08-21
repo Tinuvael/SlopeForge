@@ -94,6 +94,8 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     assert all(control.width() == 120 for control in page.evaluation_editor.measured_wall_controls.values())
     assert page.evaluation_editor.measurement_method.isVisible()
     assert page.evaluation_editor.measurement_method.maximumWidth() == 220
+    assert measured.objectName() == "CriterionCard"
+    assert measured.layout().verticalSpacing() == 5
     input_layout = inputs.layout()
     face_index = input_layout.indexOf(page.face_condition_section_title)
     geometry_index = input_layout.indexOf(page.geometry_section_title)
