@@ -246,7 +246,28 @@ QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus { border
 
 _ICON_ROOT = Path(__file__).resolve().parent.parent / "app" / "icons" / "ui" / "svg" / "neutral"
 _COMBO_CHEVRON = (_ICON_ROOT / "chevron-down.svg").as_posix()
+_SPLIT_SAVE_CHEVRON = (_ICON_ROOT / "chevron-down-white.svg").as_posix()
 APPLICATION_STYLESHEET += f"""
+QToolButton#SplitSaveButton {{
+    color: #ffffff; background: #1261a0; border: 1px solid #1261a0;
+    border-radius: 5px; padding: 2px 34px 2px 10px; font-weight: 600;
+}}
+QToolButton#SplitSaveButton:hover {{ background: #0b4f86; border-color: #0b4f86; }}
+QToolButton#SplitSaveButton:pressed {{ background: #083f70; border-color: #083f70; }}
+QToolButton#SplitSaveButton:disabled {{
+    color: #eef3f8; background: #9bb7cc; border-color: #9bb7cc;
+}}
+QToolButton#SplitSaveButton::menu-button {{
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 26px; background: #1261a0; border: 0; border-left: 1px solid #397caf;
+    border-top-right-radius: 5px; border-bottom-right-radius: 5px;
+}}
+QToolButton#SplitSaveButton:hover::menu-button {{ background: #0b4f86; border-left-color: #39739f; }}
+QToolButton#SplitSaveButton:pressed::menu-button {{ background: #083f70; border-left-color: #32688d; }}
+QToolButton#SplitSaveButton:disabled::menu-button {{ background: #9bb7cc; border-left-color: #b7cbd9; }}
+QToolButton#SplitSaveButton::menu-arrow {{
+    image: url("{_SPLIT_SAVE_CHEVRON}"); width: 12px; height: 12px;
+}}
 QDialog#StandardEntityDialog QComboBox::drop-down {{
     subcontrol-origin: padding; subcontrol-position: top right;
     width: 25px; border: 0; border-left: 1px solid #e1e6ed;
