@@ -85,7 +85,26 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     assert page.evaluation_editor.fci_value.isVisible()
     assert page.evaluation_editor.result_value.isVisible()
     assert page.evaluation_editor.plot.isVisible()
-    assert page.save_evaluation_button.isVisible() and page.complete_evaluation_button.isVisible()
+    assert page.save_evaluation_button.isVisible()
+    assert page.save_evaluation_button.text() == "Save"
+    assert [action.text() for action in page.save_evaluation_button.menu().actions()] == ["Complete assessment"]
+    measured = page.evaluation_editor.measured_wall_widget
+    assert measured.isVisible() and inputs.isAncestorOf(measured)
+    assert all(control.isVisible() for control in page.evaluation_editor.measured_wall_controls.values())
+    assert page.evaluation_editor.measurement_method.isVisible()
+    assert any(button.text() == "Calculate from survey…" for button in measured.findChildren(QtWidgets.QPushButton))
+    page.evaluation_editor.measured_wall_controls["mean_backbreak_m"].set_nullable_value(1.2)
+    page.evaluation_editor.measured_wall_controls["contour_rms_deviation_m"].set_nullable_value(.4)
+    page.evaluation_editor.measurement_method.setCurrentIndex(
+        page.evaluation_editor.measurement_method.findData("survey"))
+    page.evaluation_editor.draft.measured_wall_geometry.design_surface_source = "design.csv"
+    page.evaluation_editor.draft.measured_wall_geometry.survey_source = "survey.csv"
+    page.evaluation_editor.draft.measured_wall_geometry.survey_point_count = 12
+    measured_draft = page.evaluation_editor.collect().measured_wall_geometry
+    assert (measured_draft.mean_backbreak_m, measured_draft.contour_rms_deviation_m) == (1.2, .4)
+    assert (measured_draft.measurement_method, measured_draft.design_surface_source,
+            measured_draft.survey_source, measured_draft.survey_point_count) == (
+                "survey", "design.csv", "survey.csv", 12)
     assert page.evaluation_editor.summary.text() and "DAI: 1.000" in page.evaluation_editor.summary.text()
     assert page.evaluation_editor.comments.isVisible() and page.evaluation_editor.recommendations.isVisible()
     assert page.evaluation_editor.comments.height()<=70 and page.evaluation_editor.recommendations.height()<=70

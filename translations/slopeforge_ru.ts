@@ -4509,5 +4509,33 @@ Continue?</source><translation>Новый горизонт отличается 
         <source>Invalid RMS input data.</source>
         <translation>Некорректные входные данные для расчёта RMS.</translation>
     </message>
+    <message>
+        <source>Confirm</source>
+        <translation>Подтвердить</translation>
+    </message>
+    <message>
+        <source>Exclude</source>
+        <translation>Исключить</translation>
+    </message>
+    <message>
+        <source>Restore suggestion</source>
+        <translation>Вернуть предложение</translation>
+    </message>
+    <message>
+        <source>Add manually</source>
+        <translation>Добавить вручную</translation>
+    </message>
+    <message>
+        <source>Recalculate links</source>
+        <translation>Пересчитать связи</translation>
+    </message>
+    <message>
+        <source>Go to ›</source>
+        <translation>Перейти ›</translation>
+    </message>
+    <message>
+        <source>No confirmed contour event found</source>
+        <translation>Подтверждённое контурное событие не найдено</translation>
+    </message>
 </context>
 </TS>

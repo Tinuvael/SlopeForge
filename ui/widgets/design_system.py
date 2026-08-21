@@ -7,7 +7,7 @@ from PySide6.QtCore import QEvent, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QAbstractSpinBox, QDialog, QDoubleSpinBox, QFormLayout,
-    QFrame, QHeaderView, QHBoxLayout, QLabel, QPushButton, QTableWidget,
+    QFrame, QHeaderView, QHBoxLayout, QLabel, QMenu, QPushButton, QTableWidget,
     QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -193,3 +193,18 @@ def high_contrast_icon(icon: QIcon, color: str = "#ffffff", size: int = 20) -> Q
     painter.fillRect(result.rect(), QColor(color))
     painter.end()
     return QIcon(result)
+class SplitSaveButton(QToolButton):
+    """Compact primary Save button with one explicit completion menu action."""
+
+    def __init__(self, save_draft, save_completed, *, completion_text=None, parent=None):
+        super().__init__(parent)
+        self.setText(tr("Save"))
+        self.setObjectName("SplitSaveButton")
+        self.setProperty("role", "primary")
+        self.setMinimumSize(124, 32)
+        self.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        menu = QMenu(self)
+        self.save_complete_action = menu.addAction(completion_text or tr("Save & complete"))
+        self.setMenu(menu)
+        self.clicked.connect(save_draft)
+        self.save_complete_action.triggered.connect(save_completed)

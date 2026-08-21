@@ -238,7 +238,7 @@ def test_assessment_overview_uses_saved_results_once_and_real_related_events():
     assert '("FCI", fci)' in text
     assert text.count('(\"DAI\", dai)') == 1
     assert text.count('(\"FCI\", fci)') == 1
-    assert 'action_text="Go to ›"' in text
+    assert 'action_text=tr("Go to ›")' in text
     assert "set_comparison_geometry(" in text
     assert "event_rect" in text
 
@@ -279,7 +279,7 @@ def test_block_overview_refinements_keep_preview_and_navigation_distinct():
     assert "entity_activated.connect(self._preview_related_area)" in page
     assert "entity_action_requested.connect(self._open_related_area)" in page
     assert "escape_requested.connect(self._clear_related_area_preview)" in page
-    assert 'action_text="Go to ›"' in page
+    assert 'action_text=tr("Go to ›")' in page
     assert "set_comparison_geometry(" in page
     assert "block_rect.united(area_rect)" in page
     assert "plan.center_on_focus()" in page
@@ -325,7 +325,7 @@ def test_contour_overview_matches_stabilized_block_presentation_contract():
     assert "entity_activated.connect(self._preview_related_area)" in page
     assert "entity_action_requested.connect(self._open_related_area)" in page
     assert "escape_requested.connect(self._clear_related_area_preview)" in page
-    assert 'action_text="Go to ›"' in page
+    assert 'action_text=tr("Go to ›")' in page
     assert "set_comparison_geometry(" in page
     assert "contour_rect.united(area_rect)" in page
     assert "plan.center_on_focus()" in page

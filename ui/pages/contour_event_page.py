@@ -547,7 +547,7 @@ class ContourEventPage(QWidget):
                 f"{area.id} · {format_assessment_elevation_interval(rev.min_elevation, rev.max_elevation)}",
                 tr(ASSESSMENT_PROGRESS_LABELS[progress]),
                 getattr(progress, "value", progress),
-                action_text="Go to ›",
+                action_text=tr("Go to ›"),
             ))
         self.related_areas.set_rows(rows, empty_text="No linked assessment areas")
 

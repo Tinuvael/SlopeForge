@@ -127,7 +127,7 @@ def test_dashboard_internal_lists_have_consistent_bordered_rows_and_actions():
     assert "fill_available: bool = False" in widgets
     assert "go_to_requested = Signal(str)" in widgets
     assert "class SummaryRowWidget" in widgets
-    assert 'OverviewLinkButton("Go to ›")' in widgets
+    assert 'OverviewLinkButton(tr("Go to ›"))' in widgets
     assert "WA_TransparentForMouseEvents" in widgets
     assert "def clear_selection" in widgets
     assert "ProjectLinesDatasetRow" in widgets

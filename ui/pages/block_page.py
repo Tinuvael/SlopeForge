@@ -548,7 +548,7 @@ class BlockPage(QWidget):
                 f"{area.id} · {interval}",
                 status,
                 getattr(progress, "value", progress),
-                action_text="Go to ›",
+                action_text=tr("Go to ›"),
             ))
         self.related_areas.set_rows(rows, empty_text="No linked assessment areas")
 

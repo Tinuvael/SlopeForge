@@ -123,7 +123,7 @@ def test_assessment_overview_page_uses_saved_geometry_and_stored_result_only():
     assert "entity_action_requested.connect(self._open_related_event)" in page
     assert "escape_requested.connect(self._clear_related_event_preview)" in page
     assert "self.controller.links.linked_revision(event, link)" in page
-    assert 'action_text="Go to ›"' in page
+    assert 'action_text=tr("Go to ›")' in page
     assert "set_visible_item_limit(photo_limit)" in page
     assert "set_visible_item_limit(document_limit)" in page
     assert "self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)" in page

@@ -36,6 +36,7 @@ from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.plan_geometry_widget import PlanGeometryWidget
 from ui.editors.assessment_evaluation_editor import AssessmentAreaEvaluationDialog
 from ui.presentation_labels import format_assessment_elevation_interval, result_label
+from ui.widgets.design_system import SplitSaveButton
 
 
 def _value(value):
@@ -316,6 +317,9 @@ class AssessmentAreaPage(QWidget):
         inputs.addWidget(geometry_line)
         for editor in self.evaluation_editor.geometry_editors.values():
             inputs.addWidget(editor)
+        self.evaluation_editor.measured_wall_widget.setParent(self.assessment_inputs)
+        inputs.addWidget(self.evaluation_editor.measured_wall_widget)
+        self.evaluation_editor.measured_wall_widget.show()
         inputs.addSpacing(14)
         self.face_condition_section_title = QLabel(f"<b>{tr('Face condition')}</b>")
         inputs.addWidget(self.face_condition_section_title)
@@ -379,13 +383,12 @@ class AssessmentAreaPage(QWidget):
         layout.addLayout(notes)
         controls = QHBoxLayout()
         controls.addStretch()
-        self.save_evaluation_button = QPushButton(tr("Save draft"))
-        self.complete_evaluation_button = QPushButton(tr("Complete assessment"))
-        for button in (self.save_evaluation_button, self.complete_evaluation_button):
-            button.setEnabled(not self.read_only)
-            controls.addWidget(button)
-        self.save_evaluation_button.clicked.connect(lambda: self._save_evaluation("draft"))
-        self.complete_evaluation_button.clicked.connect(lambda: self._save_evaluation("completed"))
+        self.save_evaluation_button = SplitSaveButton(
+            lambda: self._save_evaluation("draft"), lambda: self._save_evaluation("completed"),
+            completion_text=tr("Complete assessment"),
+        )
+        self.save_evaluation_button.setEnabled(not self.read_only)
+        controls.addWidget(self.save_evaluation_button)
         layout.addLayout(controls)
         for page in obsolete:
             page.deleteLater()
@@ -665,7 +668,7 @@ class AssessmentAreaPage(QWidget):
                 tr(WORKFLOW_LABELS[workflow]),
                 getattr(workflow, "value", workflow),
                 self.controller.links.is_stale(link),
-                action_text="Go to ›",
+                action_text=tr("Go to ›"),
             ))
         self.related_events.set_rows(related_rows, empty_text="No linked blast events")
 
@@ -720,14 +723,14 @@ class AssessmentAreaPage(QWidget):
         selected_actions = QHBoxLayout()
         global_actions = QHBoxLayout()
         self.link_action_buttons = {}
-        for label, callback in (("Confirm", self.confirm_link), ("Exclude", self.exclude_link), ("Restore suggestion", self.restore_link)):
-            button = QPushButton(tr(label))
+        for label, translated, callback in (("Confirm", tr("Confirm"), self.confirm_link), ("Exclude", tr("Exclude"), self.exclude_link), ("Restore suggestion", tr("Restore suggestion"), self.restore_link)):
+            button = QPushButton(translated)
             button.setEnabled(not self.read_only)
             button.clicked.connect(callback)
             selected_actions.addWidget(button)
             self.link_action_buttons[label] = button
-        for label, callback in (("Add manually", self.add_manual_link), ("Recalculate links", self.recalculate_links)):
-            button = QPushButton(tr(label))
+        for label, translated, callback in (("Add manually", tr("Add manually"), self.add_manual_link), ("Recalculate links", tr("Recalculate links"), self.recalculate_links)):
+            button = QPushButton(translated)
             button.setEnabled(not self.read_only)
             button.clicked.connect(callback)
             global_actions.addWidget(button)

@@ -268,6 +268,22 @@ def test_technical_card_save_split_button_routes_existing_save_actions():
     button.click(); button.save_complete_action.trigger()
     assert calls == ["draft", "completed"]
     button.setEnabled(False)
+
+
+def test_main_split_save_keeps_incomplete_production_card_as_draft():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.technical_card_widgets import TechnicalCardEditorWidget, TechnicalCardSaveButton
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast); calls = []
+    assert draft.validate_completion() == ["Заполните минимальное геомеханическое описание"]
+    embedded = TechnicalCardEditorWidget(
+        blast, card, draft,
+        lambda _card, _revision, status, _date: calls.append(status),
+    )
+    save = TechnicalCardSaveButton(embedded.save_draft, embedded.complete)
+    save.click(); app.processEvents()
+    assert calls == ["draft"]
     assert not button.isEnabled()
     button.close(); app.processEvents()
 
@@ -353,9 +369,14 @@ def test_geomechanics_ui_uses_integer_ranges_and_barton_catalogues():
     assert dialog.rqd.minimum() == -1 and dialog.rqd.maximum() == 100
     assert dialog.gsi.buttonSymbols() == widgets.QAbstractSpinBox.ButtonSymbols.UpDownArrows
 
-    dip, direction = dialog.joint_set_rows[0]
+    dip, direction, spacing, persistence = dialog.joint_set_rows[0]
     assert isinstance(dip, widgets.QSpinBox) and (dip.minimum(), dip.maximum()) == (-1, 90)
     assert isinstance(direction, widgets.QSpinBox) and (direction.minimum(), direction.maximum()) == (-1, 359)
+    assert isinstance(spacing, widgets.QDoubleSpinBox)
+    assert isinstance(persistence, widgets.QDoubleSpinBox)
+    dip.setValue(45); direction.setValue(120); spacing.setValue(1.25); persistence.setValue(8.5)
+    restored_set = dialog._geomechanics_from_form().joint_sets[0]
+    assert (restored_set.spacing_m, restored_set.persistence_m) == (1.25, 8.5)
     dip.setValue(118); direction.setValue(500)
     assert (dip.value(), direction.value()) == (90, 359)
 

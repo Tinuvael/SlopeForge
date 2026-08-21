@@ -21,6 +21,7 @@ from domain.assessment.evaluation import (
 from ui.presentation_labels import (
     CRITERION_HELP, compact_criterion_label, criterion_label, domain_message, matrix_label, option_label, result_label,
 )
+from ui.widgets.design_system import SplitSaveButton
 
 DAMAGE_WARNING = "The matrix has no automatic score for the range of 1–5 features/m²."
 
@@ -229,10 +230,9 @@ class AssessmentAreaEvaluationDialog(QDialog):
         root = QVBoxLayout(self); self.tabs = QTabWidget(); root.addWidget(self.tabs)
         self._general(); self._geometry(); self._condition(); self._matrix(); self._events(); self._attachments(); self._history()
         buttons = QHBoxLayout(); buttons.addStretch()
-        self.draft_button = QPushButton(tr("Save draft")); self.complete_button = QPushButton(tr("Complete assessment")); self.cancel_button = QPushButton(tr("Close") if read_only else "Cancel")
-        self.draft_button.clicked.connect(lambda: self.save("draft")); self.complete_button.clicked.connect(lambda: self.save("completed")); self.cancel_button.clicked.connect(self.reject)
-        for button in (self.draft_button, self.complete_button, self.cancel_button): buttons.addWidget(button)
-        self.draft_button.setVisible(not read_only); self.complete_button.setVisible(not read_only); root.addLayout(buttons)
+        self.save_button = SplitSaveButton(lambda: self.save("draft"), lambda: self.save("completed"), completion_text=tr("Complete assessment"))
+        self.cancel_button = QPushButton(tr("Close") if read_only else tr("Cancel")); self.cancel_button.clicked.connect(self.reject)
+        self.save_button.setVisible(not read_only); buttons.addWidget(self.save_button); buttons.addWidget(self.cancel_button); root.addLayout(buttons)
         self._restore_controls()
         self._connect_general_signals()
         self._initializing = False
@@ -267,7 +267,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         page = QWidget(); form = QFormLayout(page)
         self.date = QDateEdit(); self.date.setCalendarPopup(True)
         self.inspector = QLineEdit(); self.override_reason = QLineEdit()
-        self.detected = QLabel(tr("Contour drilling detected from a confirmed link") if self.draft.controlled_blasting_present else "No confirmed contour event found")
+        self.detected = QLabel(tr("Contour drilling detected from a confirmed link") if self.draft.controlled_blasting_present else tr("No confirmed contour event found"))
         self.comments = QTextEdit(); self.recommendations = QTextEdit()
         self.matrix_value = QLabel(matrix_label(self.template.id, self.template.name))
         form.addRow(tr("Assessment date"), self.date); form.addRow(tr("Inspector"), self.inspector)
@@ -297,7 +297,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
             editor.set_primary_input(control); editor.set_help(self._geometry_help(criterion.id))
             editor.changed.connect(self._changed)
             self.geometry_editors[criterion.id] = editor; layout.addWidget(editor)
-        measured = QFrame(); measured.setObjectName("MeasuredWallGeometry"); measured_form = QFormLayout(measured)
+        measured = QFrame(); measured.setObjectName("MeasuredWallGeometry"); self.measured_wall_widget = measured; measured_form = QFormLayout(measured)
         measured_form.addRow(QLabel(f"<b>{tr('Measured wall geometry')}</b>"))
         self.measured_wall_controls = {}
         for label, name in (("Mean backbreak, m", "mean_backbreak_m"), ("Maximum backbreak, m", "maximum_backbreak_m"), ("Mean overbreak, m", "mean_overbreak_m"), ("Mean underbreak, m", "mean_underbreak_m"), ("Contour RMS deviation, m", "contour_rms_deviation_m")):

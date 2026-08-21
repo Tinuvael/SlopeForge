@@ -96,6 +96,21 @@ def test_interleaved_fids_build_their_own_triangles_and_skip_invalid_groups(tmp_
     }
 
 
+@pytest.mark.parametrize(("value", "code"), (("bad", "non_numeric"), ("nan", "non_finite")))
+def test_survey_csv_rejects_invalid_numeric_values(tmp_path, value, code):
+    design = tmp_path / "design.csv"; survey = tmp_path / "survey.csv"
+    design.write_text("PID,X,Y,Z,FID\n1,0,0,0,10\n2,10,0,0,10\n3,0,10,0,10\n")
+    survey.write_text(f"X,Y,Z\n1,1,{value}\n")
+    with pytest.raises(WallSurveyValidationError) as error:
+        calculate_wall_rms_from_csv(design, survey)
+    assert error.value.code == code
+
+
+def test_wall_rms_csv_parser_does_not_import_pandas():
+    source = __import__("pathlib").Path("infrastructure/geometry_import/wall_rms.py").read_text()
+    assert "import pandas" not in source
+
+
 @pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan")])
 def test_positive_geomechanics_measurements_are_validated(value):
     with pytest.raises(ValueError):
