@@ -17,6 +17,7 @@ from . import assessment_models  # noqa: F401  Ensure Assessment tables are vali
 from .connection import (DatabaseConnectionError, check_connection,
                          create_database_engine, create_session_factory)
 from .models import User  # noqa: F401
+from .migrations import upgrade_to_head
 from .settings import ConfigurationError, Settings, safe_database_location
 
 
@@ -92,8 +93,21 @@ def _verify_alembic_revision(engine, server: str | None) -> None:
     raise StartupError(
         f"Database revision: {current}. Current application revision: {required}.",
         server, reason="database_migration_required",
-        actions=("Run migrations:\npython -m database.cli migrate",),
     )
+
+
+def _initialize_empty_database(engine, settings: Settings, server: str | None) -> None:
+    """Apply the baseline only when no Alembic head and no user tables exist."""
+    if _database_alembic_heads(engine):
+        return
+    existing = set(inspect(engine).get_table_names())
+    if existing:
+        raise StartupError(
+            "The database has no Alembic revision but is not empty. Automatic "
+            "schema initialization was refused to protect existing data.",
+            server, reason="database_migration_required",
+        )
+    upgrade_to_head(settings)
 
 
 def initialize_database_runtime(settings: Settings | None = None):
@@ -103,6 +117,7 @@ def initialize_database_runtime(settings: Settings | None = None):
         engine = create_database_engine(runtime_settings)
         check_connection(engine)
         server = safe_database_location(runtime_settings.database_url)
+        _initialize_empty_database(engine, runtime_settings, server)
         _verify_alembic_revision(engine, server)
         configure_mappers()
         existing = set(inspect(engine).get_table_names())

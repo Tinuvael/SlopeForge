@@ -70,19 +70,10 @@ def test_mvp_baseline_is_self_contained() -> None:
     assert "op.drop_table" in migration
     assert 'revision = "0001_mvp_baseline"' in migration
     assert "down_revision = None" in migration
-    for enum_name in ["user_role", "blast_block_status"]:
-        assert f"name='{enum_name}'" in migration
-
-
-def test_destructive_legacy_removal_migration_is_explicit() -> None:
-    migration = Path("alembic/versions/0007_remove_mine_blastblock.py").read_text()
-    assert 'revision = "0007_remove_mine_blastblock"' in migration
-    assert 'down_revision = "0006_explosive_product_metadata"' in migration
-    assert 'op.drop_table("blast_blocks")' in migration
-    assert 'op.drop_table("mines")' in migration
-    assert 'op.drop_column("blast_events", "blast_block_id")' in migration
-    assert 'op.drop_column("sites", "mine_id")' in migration
-    assert 'op.execute("DROP TYPE IF EXISTS blast_block_status")' in migration
+    assert "user_role" in migration
+    assert "blast_block_status" not in migration
+    assert "mines" not in migration
+    assert "blast_blocks" not in migration
 
 
 def test_mvp_baseline_upgrade_and_downgrade_resolve_all_runtime_names(monkeypatch) -> None:

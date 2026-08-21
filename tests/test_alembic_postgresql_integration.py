@@ -109,63 +109,15 @@ def test_destructive_migration_guard_rejects_non_test_database() -> None:
         )
 
 
-@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
-def test_legacy_downgrade_chain_restores_each_revision_shape_without_duplicate_enum(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
-) -> None:
-    from alembic import command
-
-    url = os.environ["TEST_DATABASE_URL"]
-    config = _alembic_config(monkeypatch, tmp_path, url)
-    engine = create_engine(url)
-
-    def has_blast_block_status() -> bool:
-        with engine.connect() as connection:
-            return bool(connection.scalar(text(
-                "SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'blast_block_status')"
-            )))
-
-    try:
-        command.downgrade(config, "base")
-        for _cycle in range(2):
-            command.upgrade(config, "head")
-            command.downgrade(config, "0006_explosive_product_metadata")
-            columns = {column["name"] for column in inspect(engine).get_columns("blast_blocks")}
-            assert "status" not in columns and "planned_blast_date" not in columns
-            assert not has_blast_block_status()
-
-            command.downgrade(config, "0002_workflow_status")
-            columns = {column["name"] for column in inspect(engine).get_columns("blast_blocks")}
-            assert "status" not in columns and "planned_blast_date" not in columns
-            assert not has_blast_block_status()
-
-            command.downgrade(config, "0001_mvp_baseline")
-            columns = {column["name"] for column in inspect(engine).get_columns("blast_blocks")}
-            assert {"status", "planned_blast_date"} <= columns
-            assert has_blast_block_status()
-            command.downgrade(config, "base")
-            assert not has_blast_block_status()
-        command.upgrade(config, "head")
-    finally:
-        engine.dispose()
-
-
-def test_phase_78a_migration_is_the_only_alembic_head() -> None:
+def test_mvp_baseline_is_the_only_alembic_revision() -> None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0007_remove_mine_blastblock"]
+    assert script.get_heads() == ["0001_mvp_baseline"]
     assert [revision.revision for revision in script.walk_revisions()] == [
-        "0007_remove_mine_blastblock",
-        "0006_explosive_product_metadata",
-        "0005_explosive_charge_form",
-        "0004_charge_presets",
-        "0003_explosive_catalog",
-        "0002_workflow_status",
         "0001_mvp_baseline"
     ]
-
 
 def test_every_alembic_revision_fits_standard_version_column() -> None:
     from alembic.config import Config
@@ -193,11 +145,8 @@ def test_explosive_catalogue_migration_and_postgresql_round_trip(
     adapter = SqlAlchemyExplosiveCatalogue(sessions)
     try:
         command.downgrade(config, "base")
-        command.upgrade(config, "0002_workflow_status")
-        assert "explosive_products" not in inspect(engine).get_table_names()
-        command.upgrade(config, "0003_explosive_catalog")
+        command.upgrade(config, "head")
         assert "explosive_products" in inspect(engine).get_table_names()
-        command.upgrade(config, "0006_explosive_product_metadata")
         bulk = adapter.create_product(ExplosiveProduct(
             0, "Bulk PG", ExplosiveProductKind.BULK, "#AA0000", density_kg_m3=1000))
         cartridge = adapter.create_product(ExplosiveProduct(
@@ -209,9 +158,9 @@ def test_explosive_catalogue_migration_and_postgresql_round_trip(
         assert adapter.set_product_enabled(cartridge.id, False).enabled is False
         assert [item.id for item in adapter.list_products(enabled_only=True)] == [bulk.id]
         assert adapter.set_product_enabled(cartridge.id, True).enabled is True
-        command.downgrade(config, "0002_workflow_status")
+        command.downgrade(config, "base")
         assert "explosive_products" not in inspect(engine).get_table_names()
-        command.upgrade(config, "0006_explosive_product_metadata")
+        command.upgrade(config, "head")
         assert adapter.list_products() == []
     finally:
         engine.dispose()
@@ -225,7 +174,7 @@ def test_charge_preset_postgresql_round_trip(monkeypatch: pytest.MonkeyPatch, tm
     url=os.environ["TEST_DATABASE_URL"]; config=_alembic_config(monkeypatch,tmp_path,url)
     engine=create_engine(url); sessions=sessionmaker(engine,expire_on_commit=False)
     try:
-        command.downgrade(config,"base"); command.upgrade(config,"0007_remove_mine_blastblock")
+        command.downgrade(config,"base"); command.upgrade(config,"head")
         from database.models import Site
         with sessions() as session:
             site=Site(name="Preset project"); session.add(site); session.commit(); site_id=site.id
@@ -239,21 +188,29 @@ def test_charge_preset_postgresql_round_trip(monkeypatch: pytest.MonkeyPatch, tm
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
-def test_existing_preset_only_0004_upgrades_without_losing_rows(monkeypatch, tmp_path):
+def test_mvp_baseline_repeats_cleanly_without_leftover_types(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     from alembic import command
-    url=os.environ["TEST_DATABASE_URL"]; config=_alembic_config(monkeypatch,tmp_path,url); engine=create_engine(url)
+
+    url = os.environ["TEST_DATABASE_URL"]
+    config = _alembic_config(monkeypatch, tmp_path, url)
+    engine = create_engine(url)
     try:
-        command.downgrade(config,"base"); command.upgrade(config,"0004_charge_presets")
-        with engine.begin() as connection:
-            mine_id=connection.execute(text("INSERT INTO mines (name) VALUES ('M') RETURNING id")).scalar_one()
-            site_id=connection.execute(text("INSERT INTO sites (mine_id,name) VALUES (:m,'P') RETURNING id"),{"m":mine_id}).scalar_one()
-            connection.execute(text("INSERT INTO charge_design_presets (site_id,name,components_json) VALUES (:s,'Keep','[]'::jsonb)"),{"s":site_id})
-        command.upgrade(config,"0007_remove_mine_blastblock")
-        with engine.connect() as connection:
-            assert connection.execute(text("SELECT name FROM charge_design_presets")).scalar_one()=="Keep"
-            assert "mine_id" not in {column["name"] for column in inspect(connection).get_columns("sites")}
-        assert "charge_form" in {column["name"] for column in inspect(engine).get_columns("explosive_products")}
-    finally: engine.dispose()
+        command.downgrade(config, "base")
+        for _cycle in range(2):
+            command.upgrade(config, "head")
+            assert "users" in inspect(engine).get_table_names()
+            command.downgrade(config, "base")
+            assert set(inspect(engine).get_table_names()) <= {"alembic_version"}
+            with engine.connect() as connection:
+                assert not connection.scalar(text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname IN "
+                    "('user_role', 'blast_block_status'))"
+                ))
+        command.upgrade(config, "head")
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")

@@ -195,16 +195,12 @@ def test_metadata_and_indexes_compile_with_postgresql():
         for index in table(name).indexes: assert "CREATE" in str(CreateIndex(index).compile(dialect=dialect))
 
 
-def test_migration_chain_adds_destructive_legacy_removal_after_baseline():
+
+def test_current_schema_has_one_self_contained_mvp_baseline():
     versions = sorted(Path("alembic/versions").glob("*.py"))
-    assert [path.name for path in versions] == [
-        "0001_mvp_baseline.py", "0002_workflow_status.py", "0003_explosive_catalog.py",
-        "0004_charge_presets.py", "0005_explosive_charge_form.py",
-        "0006_explosive_product_metadata.py", "0007_remove_mine_blastblock.py"]
+    assert [path.name for path in versions] == ["0001_mvp_baseline.py"]
     baseline = versions[0].read_text()
-    removal = versions[-1].read_text()
-    assert 'revision = "0001_mvp_baseline"' in baseline and "down_revision = None" in baseline
-    assert 'revision = "0007_remove_mine_blastblock"' in removal
-    assert 'down_revision = "0006_explosive_product_metadata"' in removal
-    assert 'op.drop_table("blast_blocks")' in removal
-    assert 'op.drop_table("mines")' in removal
+    assert 'revision = "0001_mvp_baseline"' in baseline
+    assert "down_revision = None" in baseline
+    assert "mines" not in baseline
+    assert "blast_blocks" not in baseline

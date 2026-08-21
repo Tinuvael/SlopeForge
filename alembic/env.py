@@ -18,6 +18,9 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
+    explicit = config.attributes.get("database_url")
+    if explicit:
+        return str(explicit)
     return Settings.from_env().database_url
 
 

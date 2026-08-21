@@ -65,19 +65,38 @@ Do not use `alembic stamp` to hide a physical schema mismatch.
 The pre-production migration history was consolidated into the single canonical
 `0001_mvp_baseline` revision. Existing development databases must be dropped and
 recreated; revisions from the former development chain are not supported upgrade
-origins. Initialize an empty database with:
+origins. For the one-time transition on Windows, close SlopeForge and recreate the disposable databases from PowerShell (replace the database owner if needed):
 
-```bash
+```powershell
+dropdb --if-exists --username postgres slopeforge
+createdb --username postgres --owner slopeforge_user slopeforge
+dropdb --if-exists --username postgres slopeforge_test
+createdb --username postgres --owner slopeforge_user slopeforge_test
 python -m alembic upgrade head
 ```
+
+The final command reads `DATABASE_URL` from `.env`. Recreate only databases that are disposable, and never use `alembic stamp` for this transition.
+
+### GUI first-run initialization
+
+When the configured PostgreSQL database exists but has no user tables, SlopeForge
+applies the current Alembic baseline automatically. The connection may come from
+environment variables, the connection dialog, or the saved
+`%APPDATA%\SlopeForge\connection.ini`; a temporary `.env` is not required.
+Automatic initialization is refused when an unversioned database already contains
+user tables or reports an obsolete migration revision.
+
+Manual Windows smoke check:
+
+1. Remove `.env` and `%APPDATA%\SlopeForge\connection.ini`.
+2. Drop and recreate `slopeforge` as an empty PostgreSQL database.
+3. Launch SlopeForge and enter the connection and storage paths in the connection dialog.
+4. Confirm that the baseline is applied and the first-administrator dialog appears.
+5. Restart SlopeForge; the saved connection should open normally without showing the connection dialog again.
 
 After this baseline is accepted and databases may contain real data, **never
 rewrite the baseline again**. Every later schema change must use a normal appended
 migration (`0002_...`, `0003_...`, and so on).
-
-Issue #90 is stacked on #89. After #89 is merged—especially by squash merge—the
-#90 branch must be rebased or cherry-picked onto the new `main`, its PR base changed
-to `main`, its diff checked to contain only #90, and all tests rerun before review.
 
 ## First administrator
 
