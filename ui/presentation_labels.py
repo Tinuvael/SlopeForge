@@ -1,4 +1,4 @@
-"""English presentation labels for stable domain IDs and legacy snapshots.
+"""English presentation labels for stable domain values and stored snapshots.
 
 The keys stored in the database/domain snapshots are deliberately not changed.
 """

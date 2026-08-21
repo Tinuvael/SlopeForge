@@ -120,7 +120,7 @@ If there are no users, the GUI can create the first administrator. Existing user
 python main.py
 ```
 
-Normal UI terminology is Project / Quarry and Domain. Legacy internal `Mine`/`Site` names may still exist in transitional persistence code while architecture issue #79 is open, but they should not be exposed in normal user workflows.
+Normal UI terminology is Project / Quarry and Domain. Internal `Site` is the persistence name for a user-facing Project; removed Mine terminology is not exposed in normal workflows.
 
 ## Attachment storage
 

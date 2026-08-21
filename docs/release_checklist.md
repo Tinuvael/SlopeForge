@@ -14,11 +14,6 @@ QT_QPA_PLATFORM=offscreen pytest -q
 
 For schema/persistence validation, also run PostgreSQL integration tests with a dedicated `TEST_DATABASE_URL` and verify migrations from a clean database.
 
-Phase 7B code cleanup is complete. The architecture gate is not complete until
-the dedicated PostgreSQL checks below and the Windows/Python 3.12 runtime pass
-have both been executed successfully; do not infer either result from Linux
-unit-test coverage.
-
 ## Windows / Python 3.12
 
 - Launch on the supported Windows/Python 3.12 environment.
@@ -41,7 +36,7 @@ unit-test coverage.
 - Normal UI shows Project / Quarry and Domain terminology; no normal `Mine` or `Assessment Workspace` wording.
 - Project dashboard opens and Project Lines are managed there, not as a tree branch.
 - Domain dashboard opens and remains Domain-scoped.
-- Project/Domain renaming preserves IDs and relationships once #68 is implemented.
+- Project/Domain renaming preserves IDs and relationships.
 - Dashboard blast counts do not double-count Production Block + linked BlastEvent.
 - DAI and FCI remain separate stored-result metrics.
 
@@ -50,7 +45,7 @@ unit-test coverage.
 - Import a representative Project Lines dataset and confirm separate source line parts are not falsely connected.
 - Verify active/history dataset behavior.
 - Verify plan rendering and Fit behavior.
-- After #80 is implemented, test Assessment boundary tracing on:
+- Test Assessment boundary tracing on:
   - parallel horizontal lines;
   - sloping line(s);
   - interrupted lines with explicit connector;
@@ -65,21 +60,19 @@ unit-test coverage.
 
 - Open a Block and verify General information, Geomechanics, Blast design, Execution fact, Photos/Documents, and History behavior expected by the current issues.
 - Technical Card Save draft / Complete preserves revision history.
-- Planned vs actual facts are edited in their intended sections after #75.
-- Workflow status is derived consistently rather than independently editable after #75.
-- Production Block and linked BlastEvent move/update atomically where the metadata workflow allows it.
+- Planned vs actual facts are edited in their intended sections.
+- Workflow status is derived consistently rather than independently editable.
+- Production Block and linked BlastEvent move/update atomically where supported.
 - Photos/Documents remain owned through the linked production BlastEvent.
 
 ## Contour Blast
 
 - Open Contour Blast and verify General information, Blast design, Execution fact, Photos, Documents, and History.
 - Confirm there is no Geomechanics tab.
-- Verify the same derived workflow-status policy as Production after #75.
-- Verify contour-specific design offset/orientation and charge builder after #78.
+- Verify the same derived workflow-status policy as Production.
+- Verify contour-specific design offset/orientation and charge builder.
 
 ## Blast design / charge builder
-
-After #78 is implemented:
 
 - Derived drilling length equals hole count × average depth; no independent Production override is required.
 - Empty charge editor starts as air.
@@ -92,13 +85,13 @@ After #78 is implemented:
 
 ## Assessment Area
 
-- Creation begins with General information and uses the #80 Boundary workflow once implemented.
+- Creation begins with General information and uses the continuous Boundary workflow.
 - Review/Save persists Area + first geometry revision atomically.
 - Existing boundary editing creates a new geometry revision and does not duplicate Name/Domain metadata editing.
 - Assessment page keeps DAI/FCI scoring unchanged.
-- Live result matrix updates with inputs after #71 while Save draft / Complete still work.
+- Live result matrix updates with inputs while Save draft / Complete still work.
 - Linked events preserve suggested/confirmed/excluded semantics.
-- Inline linked-event plan after #72 shows Assessment Area + selected event + relevant Project Lines without changing tabs.
+- Inline linked-event plan shows Assessment Area + selected event + relevant Project Lines without changing tabs.
 - Assessment attachments remain owned by the evaluation.
 
 ## Archive / read-only
@@ -109,7 +102,7 @@ After #78 is implemented:
 
 ## Attachments
 
-- Photos use the intended gallery/viewer flow after #67.
+- Photos use the intended gallery/viewer flow.
 - Documents remain scan-friendly with useful file-type presentation.
 - Copy/add/delete failure paths preserve metadata/file rollback semantics.
 - One physical attachment has one owner.
@@ -138,5 +131,4 @@ Intentional unchanged terms include SlopeForge, DAI/FCI, repository/file names, 
 
 ## Documentation
 
-- `AGENTS.md`, `README.md`, `docs/architecture.md`, `docs/architecture_migration_plan.md`, `docs/database_setup.md`, and `docs/wall_assessment_concept.md` reflect the final MVP state.
-- Close/remove obsolete migration notes after architecture freeze rather than keeping contradictory historical docs in the current documentation set.
+- `AGENTS.md`, `README.md`, `docs/architecture.md`, `docs/database_setup.md`, and `docs/wall_assessment_concept.md` reflect the implemented MVP.

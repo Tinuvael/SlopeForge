@@ -1,5 +1,4 @@
 from datetime import date
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest

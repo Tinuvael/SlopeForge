@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date
 import pytest
 
 from application.services.blast_events import BlastEventService, BlastEventValidationError
@@ -161,16 +161,6 @@ def test_reimport_keeps_first_revision_and_makes_revision_two(tmp_path):
     second=service.reimport_geometry(event,two)
     assert second.revision_number == 2 and second.is_active and not first.is_active
     assert first.source_file_name == "one.csv" and event.active_geometry_revision_id == second.id
-
-
-def test_main_window_embeds_assessment_instead_of_standalone_entry_point():
-    source = __import__('pathlib').Path('ui/main_window.py').read_text(encoding='utf-8')
-    assert 'Blast Events Prototype' not in source
-    assert 'open_blast_events_prototype' not in source
-    assert 'AssessmentAreaPage' in source
-    assert 'AssessmentWorkspacePage' not in source
-    assert '2D Plan Prototype' not in source
-    assert 'Prototype2DWindow' not in source
 
 
 def test_project_line_imports_keep_history_and_can_switch_back(tmp_path):

@@ -6,9 +6,8 @@ Git history preserves old migration snapshots; current docs should not intention
 ## Maintained documents
 
 - `architecture.md` — current architecture, ownership boundaries, persistence/revision principles, and MVP target state.
-- `architecture_migration_plan.md` — short remaining Phase 5C/6/7 migration sequence; GitHub issue #79 is the live implementation gate.
 - `database_setup.md` — PostgreSQL/Alembic setup and integration-test safety.
-- `wall_assessment_concept.md` — stable final-wall assessment product model and the target Assessment geometry direction from #80.
+- `wall_assessment_concept.md` — stable final-wall assessment product model and the implemented Assessment geometry and scoring model.
 - `release_checklist.md` — consolidated Windows/manual/localization/release-candidate checks.
 
 ## Source-of-truth rule

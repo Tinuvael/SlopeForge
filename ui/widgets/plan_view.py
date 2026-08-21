@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QGraphicsView
 from domain.geometry.types import PlanPoint
 
 
-class PrototypePlanView(QGraphicsView):
+class PlanView(QGraphicsView):
     cursor_moved = Signal(float, float)
     escape_requested = Signal()
     workflow_key_requested = Signal(str)
@@ -45,12 +45,22 @@ class PrototypePlanView(QGraphicsView):
 
     def keyPressEvent(self, event):
         key = event.key()
-        if key == Qt.Key.Key_Escape: self.escape_requested.emit(); event.accept(); return
-        if key in {Qt.Key.Key_Return, Qt.Key.Key_Enter}: self.workflow_key_requested.emit("enter"); event.accept(); return
-        if key == Qt.Key.Key_Backspace: self.workflow_key_requested.emit("back"); event.accept(); return
-        if key == Qt.Key.Key_Delete: self.workflow_key_requested.emit("delete"); event.accept(); return
-        if key in {Qt.Key.Key_Up, Qt.Key.Key_Left}: self.workflow_key_requested.emit("candidate_previous"); event.accept(); return
-        if key in {Qt.Key.Key_Down, Qt.Key.Key_Right}: self.workflow_key_requested.emit("candidate_next"); event.accept(); return
+        actions = {
+            Qt.Key.Key_Escape: self.escape_requested.emit,
+            Qt.Key.Key_Return: lambda: self.workflow_key_requested.emit("enter"),
+            Qt.Key.Key_Enter: lambda: self.workflow_key_requested.emit("enter"),
+            Qt.Key.Key_Backspace: lambda: self.workflow_key_requested.emit("back"),
+            Qt.Key.Key_Delete: lambda: self.workflow_key_requested.emit("delete"),
+            Qt.Key.Key_Up: lambda: self.workflow_key_requested.emit("candidate_previous"),
+            Qt.Key.Key_Left: lambda: self.workflow_key_requested.emit("candidate_previous"),
+            Qt.Key.Key_Down: lambda: self.workflow_key_requested.emit("candidate_next"),
+            Qt.Key.Key_Right: lambda: self.workflow_key_requested.emit("candidate_next"),
+        }
+        action = actions.get(key)
+        if action is not None:
+            action()
+            event.accept()
+            return
         super().keyPressEvent(event)
 
     def mouseMoveEvent(self, event):

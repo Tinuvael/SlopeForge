@@ -1,7 +1,7 @@
 """Reusable, read-only plan viewer with optional comparison and focus extents."""
 
 from app.localization import tr
-from PySide6.QtCore import QPointF, QTimer, Qt
+from PySide6.QtCore import QPointF, QTimer
 from PySide6.QtGui import QBrush, QColor, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QGraphicsScene, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal
 
 from domain.geometry.types import PlanMultiPoint, PlanPolygon
-from ui.widgets.plan_view import PrototypePlanView
+from ui.widgets.plan_view import PlanView
 
 
 class PlanGeometryWidget(QWidget):
@@ -18,7 +18,7 @@ class PlanGeometryWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scene = QGraphicsScene(self)
-        self.view = PrototypePlanView(self.scene)
+        self.view = PlanView(self.scene)
         self._project_items = []
         self.comparison_geometries = (None, None)
         self.focus_geometry = None

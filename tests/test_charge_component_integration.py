@@ -7,7 +7,7 @@ import pytest
 from application.use_cases.charge_presets import ChargePresets
 from domain.blasting.charge_design import (
     ChargeComponent, ChargeComponentKind, ChargeDesignPreset, ChargeForm, ExplosiveClass,
-    ChargePresetComponent, ExplosiveProduct, ExplosiveProductKind,
+    ExplosiveProduct, ExplosiveProductKind,
 )
 from domain.blasting.technical_card import BlastEventTechnicalCard, DesignSlopeOrientation
 from tests.test_technical_cards import event

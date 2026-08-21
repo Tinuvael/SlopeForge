@@ -1,4 +1,4 @@
-"""Версионные наборы проектных линий для Blast Events Prototype."""
+"""Versioned Project Lines datasets shared by a Project's Domains."""
 from __future__ import annotations
 
 from datetime import datetime

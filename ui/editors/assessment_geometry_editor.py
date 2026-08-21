@@ -14,7 +14,7 @@ from domain.assessment.geometry import (AssessmentBoundary, EPSILON, ProjectLine
     snap_to_project_lines)
 from domain.geometry.types import PlanPoint
 from ui.presentation_labels import domain_message
-from ui.widgets.plan_view import PrototypePlanView
+from ui.widgets.plan_view import PlanView
 
 PROJECT_LINE_ROLE = 1001
 SNAP_MARKER_ROLE = 1002
@@ -33,7 +33,7 @@ class AssessmentGeometryEditorWidget(QWidget):
         self._segments=[]; self._first_point=None; self._first_anchor=None; self._last_point=None; self._last_anchor=None; self._candidate=None; self._cursor=None
         self._show_project_lines=True
         self._existing_area_context=()
-        self.scene=QGraphicsScene(self); self.plan_view=PrototypePlanView(self.scene)
+        self.scene=QGraphicsScene(self); self.plan_view=PlanView(self.scene)
         self.plan_view.scene_clicked.connect(self._drawing_click); self.plan_view.cursor_moved.connect(self._drawing_move)
         self.plan_view.escape_requested.connect(self.cancel_workflow); self.plan_view.workflow_key_requested.connect(self._workflow_key)
         layout=QVBoxLayout(self); layout.setContentsMargins(0,0,0,0); layout.addWidget(self.plan_view); self.draw_geometry()
