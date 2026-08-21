@@ -36,11 +36,11 @@ def test_assessment_overview_helpers_use_stabilized_entity_dimensions():
     ))
 
     assert geometry.sizeHint().width() == 700
-    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 460
+    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 610
     assert geometry.maximumWidth() == 800
     assert related.LIST_HEIGHT == 184
     assert related.LIST_HEIGHT > 136
-    assert related.ROW_RIGHT_INSET == 14
+    assert related.ROW_HORIZONTAL_INSET == 8
     assert related.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Expanding
     assert related.list.minimumHeight() == 184
     assert related.list.maximumHeight() > 184

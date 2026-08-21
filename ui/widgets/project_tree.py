@@ -87,7 +87,6 @@ class ProjectTree(QWidget):
 
     def __init__(self, context):
         super().__init__(); self.context = context; self._search_query = ""
-        self.setMinimumWidth(240)
         self.site_repo = SiteRepository(context.session_factory); self.domain_repo = DomainRepository(context.session_factory)
         self.block_repo = ProductionBlastRepository(context.session_factory); self.navigation_repo = NavigationRepository(context.session_factory)
         layout = QVBoxLayout(self); layout.setContentsMargins(8,8,8,8)

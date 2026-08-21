@@ -31,10 +31,10 @@ def test_contour_overview_helpers_share_block_dimensions_and_behaviour():
     ))
 
     assert geometry.sizeHint().width() == 700
-    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 460
+    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 610
     assert geometry.maximumWidth() == 800
     assert related.LIST_HEIGHT == 136
-    assert related.ROW_RIGHT_INSET == 14
+    assert related.ROW_HORIZONTAL_INSET == 8
     assert notes.EDITOR_HEIGHT == 46
     assert activity.SLOT_COUNT == 4
     assert activity.SLOT_HEIGHT == 32

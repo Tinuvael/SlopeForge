@@ -27,7 +27,7 @@ class BlockRelatedEntityList(RelatedEntityList):
     """Stable Block relationship card with an internally scrollable viewport."""
 
     LIST_HEIGHT = 136
-    ROW_RIGHT_INSET = 14
+    ROW_HORIZONTAL_INSET = 8
     STATE_COLORS = {
         "completed": ("#edf8f0", "#58a66a"),
         "assessed": ("#edf8f0", "#58a66a"),
@@ -82,8 +82,11 @@ class BlockRelatedEntityList(RelatedEntityList):
         self._sync_row_widths()
         self._fit_two_rows(use_visual_geometry=True)
 
+    def _row_available_width(self) -> int:
+        return max(1, self.list.viewport().width() - self.list.spacing() * 2)
+
     def _row_target_width(self) -> int:
-        return max(1, self.list.viewport().width() - self.ROW_RIGHT_INSET)
+        return max(1, self._row_available_width() - self.ROW_HORIZONTAL_INSET * 2)
 
     def _sync_row_widths(self) -> None:
         target = self._row_target_width()
@@ -92,8 +95,10 @@ class BlockRelatedEntityList(RelatedEntityList):
             holder = self._row_card(item)
             if holder is None:
                 continue
+            wrapper = self.list.itemWidget(item)
+            wrapper.setFixedWidth(self._row_available_width())
             holder.setFixedWidth(target)
-            item.setSizeHint(QSize(target, max(1, holder.sizeHint().height())))
+            item.setSizeHint(QSize(self._row_available_width(), max(1, holder.sizeHint().height())))
 
     def _fit_two_rows(self, *, use_visual_geometry=False) -> None:
         """Reserve a bounded viewport that never clips either of the first two rows."""
@@ -146,7 +151,9 @@ class BlockRelatedEntityList(RelatedEntityList):
             wrapper.setObjectName("BlockRelatedEntityWrapper")
             wrapper.setCursor(Qt.CursorShape.PointingHandCursor)
             wrapper_layout = QHBoxLayout(wrapper)
-            wrapper_layout.setContentsMargins(0, 0, 0, 0)
+            wrapper_layout.setContentsMargins(
+                self.ROW_HORIZONTAL_INSET, 0, self.ROW_HORIZONTAL_INSET, 0
+            )
             wrapper_layout.setSpacing(0)
             wrapper_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
@@ -190,7 +197,7 @@ class BlockRelatedEntityList(RelatedEntityList):
 
             target = self._row_target_width()
             holder.setFixedWidth(target)
-            item.setSizeHint(QSize(target, holder.sizeHint().height()))
+            item.setSizeHint(QSize(self._row_available_width(), holder.sizeHint().height()))
             self.list.addItem(item)
             self.list.setItemWidget(item, wrapper)
 
@@ -305,7 +312,7 @@ class BlockGeometryCard(SquareGeometryCard):
     """Wider Block geometry card whose vertical hint never drives the Overview row."""
 
     PREFERRED_WIDTH = 700
-    MINIMUM_WIDTH = 460
+    MINIMUM_WIDTH = 610
     MAXIMUM_WIDTH = 800
 
     def __init__(

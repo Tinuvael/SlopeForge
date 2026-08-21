@@ -30,7 +30,7 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     assert geometry.sizeHint().height() == 0
     assert geometry.minimumSizeHint().height() == 0
     assert geometry.sizeHint().width() == 700
-    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 460
+    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 610
     assert geometry.maximumWidth() == 800
 
     related = BlockRelatedEntityList("Related assessment areas")
@@ -46,18 +46,23 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     item = related.list.item(0)
     wrapper = related.list.itemWidget(item)
     holder = related._row_card(item)
-    target_width = related.list.viewport().width() - related.ROW_RIGHT_INSET
+    target_width = related._row_available_width() - related.ROW_HORIZONTAL_INSET * 2
     assert related.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Fixed
     assert related.list.minimumHeight() == related.list.maximumHeight()
     assert related.list.height() > 0
     assert related.sizeHint().height() > related.list.height()
-    assert related.ROW_RIGHT_INSET == 14
-    assert item.sizeHint().width() == target_width
+    assert related.ROW_HORIZONTAL_INSET == 8
+    assert item.sizeHint().width() == related._row_available_width()
     assert wrapper.objectName() == "BlockRelatedEntityWrapper"
-    assert wrapper.layout().contentsMargins().right() == 0
+    assert wrapper.layout().contentsMargins().left() == related.ROW_HORIZONTAL_INSET
+    assert wrapper.layout().contentsMargins().right() == related.ROW_HORIZONTAL_INSET
     assert holder is not None
     assert holder.width() == target_width
     assert holder.width() < related.list.viewport().width()
+    holder_left = wrapper.x() + holder.x()
+    holder_right_gap = related.list.viewport().width() - (holder_left + holder.width())
+    assert holder_left >= related.ROW_HORIZONTAL_INSET
+    assert holder_right_gap >= related.ROW_HORIZONTAL_INSET
     assert holder.sizePolicy().horizontalPolicy() == widgets.QSizePolicy.Policy.Fixed
     labels = [label.text() for label in holder.findChildren(widgets.QLabel)]
     assert "Area 1" in labels
@@ -110,6 +115,14 @@ def test_block_related_list_fits_two_rows_and_scrolls_when_more_exist():
     assert related.list.height() == two_row_height
     assert related.list.verticalScrollBar().maximum() > 0
     assert related.list.horizontalScrollBar().maximum() == 0
+    for index in range(related.list.count()):
+        item = related.list.item(index)
+        holder = related._row_card(item)
+        wrapper = related.list.itemWidget(item)
+        holder_left = wrapper.x() + holder.x()
+        holder_right_gap = related.list.viewport().width() - (holder_left + holder.width())
+        assert holder_left >= related.ROW_HORIZONTAL_INSET
+        assert holder_right_gap >= related.ROW_HORIZONTAL_INSET
     related.close()
     app.processEvents()
 
@@ -236,7 +249,7 @@ def test_block_page_has_no_layout_feedback_loop_or_tab_reinsertion():
     assert "top.addWidget(self.geometry_card, 0)" in text
     assert "PREFERRED_WIDTH = 700" in helpers
     assert "LIST_HEIGHT = 136" in helpers
-    assert "ROW_RIGHT_INSET = 14" in helpers
+    assert "ROW_HORIZONTAL_INSET = 8" in helpers
     assert "viewport().installEventFilter(self)" in helpers
     assert "def _sync_row_widths(self)" in helpers
     assert "BlockNotesCard" in helpers
