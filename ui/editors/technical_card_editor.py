@@ -316,6 +316,7 @@ class TechnicalCardDialog(QDialog):
 
     def _drilling_tab(self, title):
         self.drilling_layout = self._scroll_tab(tr(title))
+        if self.blast_event.event_type == "contour": self.drilling_layout.setSpacing(8)
         planned = QGroupBox(tr("Blast design")); planned.setObjectName("EngineeringCard"); planned_form = QFormLayout(planned)
         self.has_planned_date = QCheckBox(tr("Set planned date")); self.planned_date = QDateEdit(); self.planned_date.setCalendarPopup(True)
         if self.blast_event.event_date:
@@ -333,6 +334,8 @@ class TechnicalCardDialog(QDialog):
         if self.blast_event.event_type == "contour": planned_form.addRow(tr("Controlled blasting method"), self.method)
         self.drilling_layout.addWidget(planned)
         self.group_cards = QWidget(); self.group_cards_layout = QVBoxLayout(self.group_cards)
+        if self.blast_event.event_type == "contour":
+            self.group_cards_layout.setContentsMargins(0, 0, 0, 0); self.group_cards_layout.setSpacing(8)
         self.drilling_layout.addWidget(self.group_cards); self._render_groups()
         self.add_group_combo = QComboBox(); catalogue = PRODUCTION_GROUP_TYPES if self.blast_event.event_type == "production" else CONTOUR_GROUP_TYPES
         self.add_group_combo.addItem(tr("+ Add drilling type"), "")

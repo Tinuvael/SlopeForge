@@ -79,7 +79,8 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     assert page.assessment_right.width()/(inputs.width()+page.assessment_right.width())>.42
     assert page.assessment_basis_value.text()=="With contour drilling" or page.assessment_basis_value.text()=="Controlled blasting"
     assert page.assessment_basis_detection.text()=="Confirmed contour blast link"
-    assert page.face_condition_divider.isVisible()
+    assert page.face_condition_input_card.isVisible() and page.geometry_input_card.isVisible()
+    assert page.face_condition_input_card.objectName() == page.geometry_input_card.objectName() == "CriterionCard"
     assert not page.evaluation_editor.override_reason.isVisible()
     assert page.evaluation_editor.dai_value.isVisible()
     assert page.evaluation_editor.fci_value.isVisible()
@@ -97,11 +98,13 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     assert measured.objectName() == "CriterionCard"
     assert measured.layout().verticalSpacing() == 5
     input_layout = inputs.layout()
-    face_index = input_layout.indexOf(page.face_condition_section_title)
-    geometry_index = input_layout.indexOf(page.geometry_section_title)
-    measured_divider_index = input_layout.indexOf(page.measured_wall_divider)
+    face_index = input_layout.indexOf(page.face_condition_input_card)
+    geometry_index = input_layout.indexOf(page.geometry_input_card)
     measured_index = input_layout.indexOf(measured)
-    assert face_index < geometry_index < measured_divider_index < measured_index
+    assert face_index < geometry_index < measured_index
+    assert not hasattr(page, "face_condition_divider") and not hasattr(page, "measured_wall_divider")
+    assert page.face_condition_input_card.layout().spacing() == 5
+    assert page.geometry_input_card.layout().spacing() == 5
     assert any(button.text() == "Calculate from survey…" for button in measured.findChildren(QtWidgets.QPushButton))
     page.evaluation_editor.measured_wall_controls["mean_backbreak_m"].set_nullable_value(1.2)
     page.evaluation_editor.measured_wall_controls["contour_rms_deviation_m"].set_nullable_value(.4)

@@ -298,6 +298,7 @@ class AssessmentAreaPage(QWidget):
         self.assessment_details_card.setObjectName("CriterionCard")
         details = QVBoxLayout(self.assessment_details_card)
         details.setContentsMargins(8, 5, 8, 5)
+        details.setSpacing(5)
         details.addWidget(QLabel(f"<b>{tr('Assessment details')}</b>"))
         metadata = QHBoxLayout()
         metadata.addWidget(QLabel(tr("Assessment date")))
@@ -307,27 +308,20 @@ class AssessmentAreaPage(QWidget):
         metadata.addWidget(self.evaluation_editor.inspector, 1)
         details.addLayout(metadata)
         inputs.addWidget(self.assessment_details_card)
-        inputs.addSpacing(10)
-        self.face_condition_section_title = QLabel(f"<b>{tr('Face condition')}</b>")
-        inputs.addWidget(self.face_condition_section_title)
-        self.face_condition_divider = QFrame()
-        self.face_condition_divider.setFixedHeight(1)
-        self.face_condition_divider.setStyleSheet("background:#dfe3ea;border:0")
-        self.face_condition_divider.setObjectName("SectionDivider")
-        inputs.addWidget(self.face_condition_divider)
-        for editor in self.evaluation_editor.editors.values():
-            inputs.addWidget(editor)
-        inputs.addSpacing(10)
-        self.geometry_section_title = QLabel(f"<b>{tr('Geometry')}</b>")
-        inputs.addWidget(self.geometry_section_title)
-        geometry_line = QFrame(); geometry_line.setFixedHeight(1)
-        geometry_line.setStyleSheet("background:#dfe3ea;border:0"); geometry_line.setObjectName("SectionDivider")
-        inputs.addWidget(geometry_line)
-        for editor in self.evaluation_editor.geometry_editors.values():
-            inputs.addWidget(editor)
-        self.measured_wall_divider = QFrame(); self.measured_wall_divider.setFixedHeight(1)
-        self.measured_wall_divider.setStyleSheet("background:#dfe3ea;border:0"); self.measured_wall_divider.setObjectName("SectionDivider")
-        inputs.addWidget(self.measured_wall_divider)
+        def section_card(title, editors, object_name):
+            card = QFrame(); card.setObjectName("CriterionCard"); card.setProperty("assessmentSection", object_name)
+            card_layout = QVBoxLayout(card); card_layout.setContentsMargins(8, 5, 8, 5); card_layout.setSpacing(5)
+            heading = QLabel(f"<b>{tr(title)}</b>"); heading.setObjectName("EngineeringSectionTitle"); card_layout.addWidget(heading)
+            for editor in editors:
+                editor.setObjectName("AssessmentCriterionRow"); card_layout.addWidget(editor)
+            return card, heading
+
+        self.face_condition_input_card, self.face_condition_section_title = section_card(
+            "Face condition", self.evaluation_editor.editors.values(), "faceCondition")
+        inputs.addWidget(self.face_condition_input_card)
+        self.geometry_input_card, self.geometry_section_title = section_card(
+            "Geometry", self.evaluation_editor.geometry_editors.values(), "geometry")
+        inputs.addWidget(self.geometry_input_card)
         self.evaluation_editor.measured_wall_widget.setParent(self.assessment_inputs)
         inputs.addWidget(self.evaluation_editor.measured_wall_widget)
         self.evaluation_editor.measured_wall_widget.show()
