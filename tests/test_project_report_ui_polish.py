@@ -91,7 +91,15 @@ def test_assessment_page_is_one_continuous_visible_workspace(monkeypatch):
     measured = page.evaluation_editor.measured_wall_widget
     assert measured.isVisible() and inputs.isAncestorOf(measured)
     assert all(control.isVisible() for control in page.evaluation_editor.measured_wall_controls.values())
+    assert all(control.width() == 120 for control in page.evaluation_editor.measured_wall_controls.values())
     assert page.evaluation_editor.measurement_method.isVisible()
+    assert page.evaluation_editor.measurement_method.maximumWidth() == 220
+    input_layout = inputs.layout()
+    face_index = input_layout.indexOf(page.face_condition_section_title)
+    geometry_index = input_layout.indexOf(page.geometry_section_title)
+    measured_divider_index = input_layout.indexOf(page.measured_wall_divider)
+    measured_index = input_layout.indexOf(measured)
+    assert face_index < geometry_index < measured_divider_index < measured_index
     assert any(button.text() == "Calculate from survey…" for button in measured.findChildren(QtWidgets.QPushButton))
     page.evaluation_editor.measured_wall_controls["mean_backbreak_m"].set_nullable_value(1.2)
     page.evaluation_editor.measured_wall_controls["contour_rms_deviation_m"].set_nullable_value(.4)

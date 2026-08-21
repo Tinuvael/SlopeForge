@@ -4431,11 +4431,11 @@ Continue?</source><translation>Новый горизонт отличается 
     </message>
     <message>
         <source>Mean backbreak, m</source>
-        <translation>Средний закол за контуром, м</translation>
+        <translation>Среднее разрушение бровки, м</translation>
     </message>
     <message>
         <source>Maximum backbreak, m</source>
-        <translation>Максимальный закол за контуром, м</translation>
+        <translation>Максимальное разрушение бровки, м</translation>
     </message>
     <message>
         <source>Mean overbreak, m</source>
@@ -4536,6 +4536,10 @@ Continue?</source><translation>Новый горизонт отличается 
     <message>
         <source>No confirmed contour event found</source>
         <translation>Подтверждённое контурное событие не найдено</translation>
+    </message>
+    <message>
+        <source>Hole spacing, m</source>
+        <translation>Шаг между скважинами, м</translation>
     </message>
 </context>
 </TS>

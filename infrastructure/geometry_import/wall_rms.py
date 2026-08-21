@@ -32,6 +32,7 @@ def _dependencies():
     try:
         import numpy as np
         import trimesh
+        import rtree  # noqa: F401 - required by trimesh.nearest.on_surface
     except (ImportError, AttributeError) as exc:
         raise WallSurveyValidationError("dependencies", str(exc)) from exc
     return np, trimesh

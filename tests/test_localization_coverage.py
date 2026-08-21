@@ -90,7 +90,7 @@ def test_important_indirect_presentation_sources_are_in_catalogue():
         "Inspect the plan, then use Draw boundary.",
         "Planned", "In preparation", "Blasted", "Assessed", "Completed", "Draft",
         "Archived", "Active", "Inactive", "Enabled", "Disabled",
-        "Density", "Spacing, m", "Persistence, m",
+        "Density", "Spacing, m", "Persistence, m", "Hole spacing, m",
         "Mean collar deviation, m", "Max collar deviation, m",
         "Mean toe deviation, m", "Max toe deviation, m",
         "Mean backbreak, m", "Maximum backbreak, m", "Mean overbreak, m",
@@ -184,10 +184,11 @@ def test_issue_136_russian_engineering_terminology():
     catalogue = russian_catalog()
     assert catalogue["Contour RMS deviation, m"] == "RMS отклонения контура, м"
     assert catalogue["Spacing, m"] == "Шаг, м"
+    assert catalogue["Hole spacing, m"] == "Шаг между скважинами, м"
     assert catalogue["Mean toe deviation, m"] == "Среднее отклонение забоя скважины, м"
     assert catalogue["Max toe deviation, m"] == "Максимальное отклонение забоя скважины, м"
-    assert catalogue["Mean backbreak, m"] == "Средний закол за контуром, м"
-    assert catalogue["Maximum backbreak, m"] == "Максимальный закол за контуром, м"
+    assert catalogue["Mean backbreak, m"] == "Среднее разрушение бровки, м"
+    assert catalogue["Maximum backbreak, m"] == "Максимальное разрушение бровки, м"
     assert catalogue["Standard deviation"] == "Стандартное отклонение"
     for source in ("RMS dependencies are unavailable or incompatible.",
                    "Unexpected RMS calculation error.", "Invalid RMS input data."):

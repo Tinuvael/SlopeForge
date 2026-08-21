@@ -289,6 +289,42 @@ def test_main_split_save_keeps_incomplete_production_card_as_draft():
     save.close(); embedded.deleteLater(); app.processEvents()
 
 
+def test_visible_contour_design_edits_canonical_method_and_spacing():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.technical_card_widgets import TechnicalCardEditorWidget
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event("contour"); card, draft = new_technical_card(blast)
+    embedded = TechnicalCardEditorWidget(blast, card, draft, lambda *_: None)
+    design_page = embedded.take_tab("Contour drilling")
+    host = widgets.QWidget(); layout = widgets.QVBoxLayout(host); layout.addWidget(design_page)
+    host.show(); app.processEvents()
+    method = design_page.findChild(widgets.QComboBox)
+    method = next(combo for combo in design_page.findChildren(widgets.QComboBox)
+                  if combo.findData("presplit") >= 0)
+    assert method.isVisibleTo(host)
+    method.setCurrentIndex(method.findData("presplit"))
+    assert draft.contour_parameters.controlled_blasting_method == "presplit"
+    assert draft.validate_completion() == []
+    spacing = design_page.findChild(widgets.QDoubleSpinBox, "spacing_m")
+    assert spacing is not None and spacing.isVisibleTo(host)
+    spacing.setValue(.2); app.processEvents()
+    assert draft.drilling_groups[0].spacing_m == .2
+    host.close(); embedded.deleteLater(); app.processEvents()
+
+
+def test_production_design_keeps_existing_spacing_presentation():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast)
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None)
+    spacing = dialog.group_cards.findChild(widgets.QDoubleSpinBox, "spacing_m")
+    assert spacing is not None
+    spacing.setValue(4.5); assert draft.drilling_groups[0].spacing_m == 4.5
+    dialog.close(); app.processEvents()
+
+
 def test_drilling_group_uses_explicit_enabled_checkbox():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.editors.technical_card_editor import TechnicalCardDialog

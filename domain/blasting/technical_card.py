@@ -55,6 +55,13 @@ def polygon_area_m2(polygon: PlanPolygon | None) -> float | None:
     return abs(sum(a.x * b.y - b.x * a.y for a, b in zip(polygon.ring, polygon.ring[1:]))) / 2
 
 
+def nominal_contour_line_length(group: "BlastDrillingGroup | None") -> float | None:
+    """MVP product length for the primary contour row: holes × spacing."""
+    if group is None or group.hole_count is None or group.spacing_m is None:
+        return None
+    return group.hole_count * group.spacing_m
+
+
 def _ratio(numerator: float | None, denominator: float | None) -> float | None:
     if numerator is None or denominator in (None, 0):
         return None

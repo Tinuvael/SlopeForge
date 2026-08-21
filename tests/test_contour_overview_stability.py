@@ -74,6 +74,14 @@ def test_contour_keeps_hidden_general_widgets_required_by_technical_card_save():
     assert "self.editor.complete()" in page
 
 
+def test_nominal_contour_line_length_uses_hole_count_times_spacing():
+    from types import SimpleNamespace
+    from domain.blasting.technical_card import nominal_contour_line_length
+
+    assert nominal_contour_line_length(SimpleNamespace(hole_count=25, spacing_m=.2)) == 5.0
+    assert nominal_contour_line_length(SimpleNamespace(hole_count=None, spacing_m=.2)) is None
+
+
 def test_contour_bottom_cards_share_row_height_and_notes_split_space_evenly():
     page = Path("ui/pages/contour_event_page.py").read_text(encoding="utf-8")
 

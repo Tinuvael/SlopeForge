@@ -111,6 +111,21 @@ def test_wall_rms_csv_parser_does_not_import_pandas():
     assert "import pandas" not in source
 
 
+def test_missing_rtree_is_reported_as_dependency_error(monkeypatch):
+    import builtins
+    from infrastructure.geometry_import import wall_rms
+
+    real_import = builtins.__import__
+    def without_rtree(name, *args, **kwargs):
+        if name == "rtree":
+            raise ModuleNotFoundError("No module named 'rtree'")
+        return real_import(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, "__import__", without_rtree)
+    with pytest.raises(WallSurveyValidationError) as error:
+        wall_rms._dependencies()
+    assert error.value.code == "dependencies"
+
+
 @pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan")])
 def test_positive_geomechanics_measurements_are_validated(value):
     with pytest.raises(ValueError):

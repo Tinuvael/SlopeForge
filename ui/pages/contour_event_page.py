@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.localization import tr
+from domain.blasting.technical_card import nominal_contour_line_length
 from domain.blasting.workflow import (
     ASSESSMENT_PROGRESS_LABELS,
     WORKFLOW_LABELS,
@@ -469,22 +470,20 @@ class ContourEventPage(QWidget):
         contour = revision.contour_parameters
         actual = revision.actual_execution
         group = _primary_contour_group(revision)
-        spacing = contour.average_spacing_m if contour else None
-        if spacing is None and group is not None:
-            spacing = group.spacing_m
+        spacing = group.spacing_m if group and group.spacing_m is not None else (contour.average_spacing_m if contour else None)
         depth = contour.average_depth_m if contour else None
         if depth is None and group is not None:
             depth = group.average_depth_m
         inclination = group.inclination_deg if group and group.inclination_deg is not None else (contour.inclination_deg if contour else None)
         diameter = contour.diameter_mm if contour and contour.diameter_mm is not None else (group.diameter_mm if group else None)
-        holes = contour.hole_count if contour and contour.hole_count is not None else (group.hole_count if group else None)
+        holes = group.hole_count if group and group.hole_count is not None else (contour.hole_count if contour else None)
         explosive = (contour.explosive_type if contour else None) or (group.explosive_names() if group else "") or "—"
         actual_date = actual.actual_blast_date
         canonical_date = actual_date or self.blast_event.event_date
         self.general_info.set_rows((
             ("Blast date", _dateish(canonical_date), tr("Actual") if actual_date else tr("Planned")),
             ("Method", _method_label(contour.controlled_blasting_method) if contour else "—"),
-            ("Line length", _show(contour.line_length_m if contour else None, " m")),
+            ("Line length", _show(nominal_contour_line_length(group), " m")),
             ("Average depth", _show(depth, " m")),
             ("Azimuth", _show(group.azimuth_deg if group else None, "°")),
             ("Inclination", _show(inclination, "°")),
