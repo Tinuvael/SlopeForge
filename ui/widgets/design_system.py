@@ -193,44 +193,22 @@ def high_contrast_icon(icon: QIcon, color: str = "#ffffff", size: int = 20) -> Q
     painter.fillRect(result.rect(), QColor(color))
     painter.end()
     return QIcon(result)
-class SplitSaveButton(QWidget):
-    """Deterministic Save button plus a separate completion-menu arrow."""
+
+
+class SplitSaveButton(QToolButton):
+    """Compact primary Save button with one explicit completion menu action."""
 
     def __init__(self, save_draft, save_completed, *, completion_text=None, parent=None):
         super().__init__(parent)
+        self.setText(tr("Save"))
         self.setObjectName("SplitSaveButton")
+        self.setProperty("role", "primary")
         self.setMinimumSize(124, 32)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        self.main_button = QPushButton(tr("Save"), self)
-        self.main_button.setObjectName("SplitSaveMainButton")
-        self.main_button.setProperty("role", "primary")
-        self.main_button.setMinimumHeight(32)
-        self.main_button.clicked.connect(save_draft)
-
-        self.menu_button = QToolButton(self)
-        self.menu_button.setObjectName("SplitSaveMenuButton")
-        self.menu_button.setProperty("role", "primary")
-        self.menu_button.setText("▼")
-        self.menu_button.setMinimumSize(30, 32)
-        self.menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self._menu = QMenu(self.menu_button)
-        self.save_complete_action = self._menu.addAction(
+        self.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        menu = QMenu(self)
+        self.save_complete_action = menu.addAction(
             completion_text or tr("Save & complete")
         )
-        self.menu_button.setMenu(self._menu)
+        self.setMenu(menu)
+        self.clicked.connect(save_draft)
         self.save_complete_action.triggered.connect(save_completed)
-        layout.addWidget(self.main_button, 1)
-        layout.addWidget(self.menu_button)
-
-    def click(self) -> None:
-        """Compatibility convenience: activate only the ordinary draft Save."""
-        self.main_button.click()
-
-    def text(self) -> str:
-        return self.main_button.text()
-
-    def menu(self) -> QMenu:
-        return self._menu

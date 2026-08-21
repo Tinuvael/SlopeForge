@@ -391,10 +391,7 @@ def test_drilling_summary_ignores_qt_numeric_signal_arguments():
     dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None)
     group = draft.drilling_groups[0]
     controls = {
-        name: dialog.group_cards.findChild(
-            widgets.QSpinBox if name == "hole_count" else widgets.QDoubleSpinBox,
-            name,
-        )
+        name: dialog.group_cards.findChild(widgets.QDoubleSpinBox, name)
         for name in ("hole_count", "diameter_mm", "average_depth_m", "subdrill_m")
     }
     assert all(controls.values())
