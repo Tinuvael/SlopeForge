@@ -109,6 +109,47 @@ def test_destructive_migration_guard_rejects_non_test_database() -> None:
         )
 
 
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
+def test_legacy_downgrade_chain_restores_each_revision_shape_without_duplicate_enum(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from alembic import command
+
+    url = os.environ["TEST_DATABASE_URL"]
+    config = _alembic_config(monkeypatch, tmp_path, url)
+    engine = create_engine(url)
+
+    def has_blast_block_status() -> bool:
+        with engine.connect() as connection:
+            return bool(connection.scalar(text(
+                "SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'blast_block_status')"
+            )))
+
+    try:
+        command.downgrade(config, "base")
+        for _cycle in range(2):
+            command.upgrade(config, "head")
+            command.downgrade(config, "0006_explosive_product_metadata")
+            columns = {column["name"] for column in inspect(engine).get_columns("blast_blocks")}
+            assert "status" not in columns and "planned_blast_date" not in columns
+            assert not has_blast_block_status()
+
+            command.downgrade(config, "0002_workflow_status")
+            columns = {column["name"] for column in inspect(engine).get_columns("blast_blocks")}
+            assert "status" not in columns and "planned_blast_date" not in columns
+            assert not has_blast_block_status()
+
+            command.downgrade(config, "0001_mvp_baseline")
+            columns = {column["name"] for column in inspect(engine).get_columns("blast_blocks")}
+            assert {"status", "planned_blast_date"} <= columns
+            assert has_blast_block_status()
+            command.downgrade(config, "base")
+            assert not has_blast_block_status()
+        command.upgrade(config, "head")
+    finally:
+        engine.dispose()
+
+
 def test_phase_78a_migration_is_the_only_alembic_head() -> None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory

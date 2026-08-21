@@ -110,13 +110,21 @@ def test_production_event_version_and_children_commit_or_roll_back(factory, doma
         ))
         assert persisted is not None and persisted.event_type == "production"
         assert session.scalar(select(func.count()).select_from(orm.BlastEvent)) == 1
-        assert session.scalar(select(func.count()).select_from(AuditLogEntry)) == 1
+        audit_rows = list(session.scalars(select(AuditLogEntry).order_by(AuditLogEntry.id)))
+        assert [(row.action, row.field_name, row.description) for row in audit_rows] == [
+            ("create", None, "Block created"),
+            ("update", "geometry_revision", "Geometry imported"),
+        ]
     failing = CreateBlastEvent(SqlAlchemyBlastEventCreationPersistence(
         factory, failure_hook=lambda stage: (_ for _ in ()).throw(RuntimeError(stage))
-        if stage == "after_state_replace" else None))
+        if stage == "after_event_flush" else None))
     with pytest.raises(RuntimeError):
         failing.execute(CreateBlastEventCommand(
             domain_id, "P-2", "production", date.today(), 100, str(csv), None, True))
     assert versions(factory, domain_id) == (1,)
     with factory() as session:
         assert session.scalar(select(func.count()).select_from(orm.BlastEvent)) == 1
+        assert session.scalar(select(func.count()).select_from(
+            orm.BlastEventGeometryRevision
+        )) == 1
+        assert session.scalar(select(func.count()).select_from(AuditLogEntry)) == 2

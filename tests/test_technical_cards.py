@@ -265,7 +265,12 @@ def test_technical_card_save_split_button_routes_existing_save_actions():
     assert button.text() == "Save"
     assert button.minimumWidth() >= 120 and button.minimumHeight() >= 32
     assert [action.text() for action in button.menu().actions()] == ["Save & complete"]
-    button.click(); button.save_complete_action.trigger()
+    button.main_button.click()
+    assert calls == ["draft"]
+    button.menu_button.click(); app.processEvents()
+    assert calls == ["draft"]
+    button.menu().close()
+    button.save_complete_action.trigger()
     assert calls == ["draft", "completed"]
     button.setEnabled(False)
     assert not button.isEnabled()
@@ -314,13 +319,23 @@ def test_visible_split_save_main_and_menu_send_distinct_real_statuses(monkeypatc
         return host, editor, button, statuses
 
     draft_host, draft_editor, draft_button, draft_statuses = hosted_editor()
-    main_point = core.QPoint(12, draft_button.rect().center().y())
-    test.QTest.mouseClick(draft_button, core.Qt.MouseButton.LeftButton, pos=main_point)
+    main_point = draft_button.main_button.rect().center()
+    test.QTest.mouseClick(
+        draft_button.main_button, core.Qt.MouseButton.LeftButton, pos=main_point
+    )
     app.processEvents()
     assert draft_statuses == ["draft"]
     assert warnings == []
 
     complete_host, complete_editor, complete_button, complete_statuses = hosted_editor()
+    test.QTest.mouseClick(
+        complete_button.menu_button,
+        core.Qt.MouseButton.LeftButton,
+        pos=complete_button.menu_button.rect().center(),
+    )
+    app.processEvents()
+    assert complete_statuses == []
+    complete_button.menu().close()
     complete_button.save_complete_action.trigger(); app.processEvents()
     assert complete_statuses == ["completed"]
     assert warnings
