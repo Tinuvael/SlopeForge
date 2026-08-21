@@ -42,26 +42,20 @@ PySide6 UI
 - `app/` + `main.py`: bootstrap, configuration, localization, dependency wiring.
 - Do not add microservices or interface-per-class ceremonial abstractions without a real boundary need.
 
-Root `reports/`, `widgets/`, and `services/` were retired in Phase 7A. Report
-writers and concrete authentication/session services now live under
+Report writers and concrete authentication/session services live under
 `infrastructure/`, and Qt widgets under `ui/widgets/`. Root `database/` and
 `repositories/` remain an active, coupled ORM graph intentionally retained until
 a focused move has more benefit than import churn. New adapters belong under
 `infrastructure/`.
 
-### Current migration state
+### Current architecture facts
 
-Phase 4, 5A, 5B, and 5C are complete. Domain is the stable optimistic-concurrency owner; normal Assessment editing uses expected-version focused writes and has no whole-state save API. The reusable transaction guard can atomically protect multiple Domains for future moves.
-
-Issue #79 architecture work established:
-
-- 5C: COMPLETE — optimistic concurrency + removal of normal compatibility whole-state writes.
-- 6A: COMPLETE — `AssessmentWorkspace` persistence container removed; Blast events and Assessment areas have direct Domain ownership, while persistence logical IDs use `logical_id`.
-- 6B: COMPLETE — duplicate legacy engineering persistence and Block-owned attachment persistence removed; the revisioned Technical Card and AssessmentEntityAttachment remain canonical.
-- 7A: COMPLETE — package/shim/dead-compatibility normalization.
-- 7B code cleanup: COMPLETE — DXF import has a stable WCS/XYZ closure adapter contract.
-
-Do not revive persistence models already removed by these phases or by later completed schema issues.
+- Persistence ownership is `Site -> Domain -> BlastEvent / AssessmentArea`.
+- A Production Block is the production `BlastEvent`, not a separate persistence entity.
+- `Mine`, `BlastBlock`, and `AssessmentWorkspace` persistence are removed and must not be revived.
+- The revisioned Technical Card and revisioned Assessment persistence are canonical.
+- `Domain.version` is the optimistic-concurrency token for focused writes.
+- `0001_mvp_baseline` is immutable; every future physical schema change appends a normal Alembic revision.
 
 ## Product model
 

@@ -144,7 +144,7 @@ def test_automatic_detection_and_import_prefer_sid_over_ptn(tmp_path):
 def test_contour_empty_rows_have_clear_validation_error(tmp_path):
     source = tmp_path / "empty.csv"
     source.write_text("XP,YP,ZP,SID,PTN\n", encoding="utf-8")
-    with pytest.raises(BlastEventValidationError, match="валидных контурных скважин"):
+    with pytest.raises(BlastEventValidationError, match="no valid contour drillholes"):
         BlastEventService(AssessmentDomainState()).create_event(
             name="Контур", event_type="contour", event_date=None, elevation=500, csv_path=source
         )

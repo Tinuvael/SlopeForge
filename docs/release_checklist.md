@@ -60,7 +60,7 @@ For schema/persistence validation, also run PostgreSQL integration tests with a 
 ## Production Block
 
 - Open a Block and verify General information, Geomechanics, Blast design, Execution fact, Photos/Documents, and History behavior expected by the current issues.
-- Technical Card Save draft / Complete preserves revision history.
+- Technical Card uses one Save action and each save creates/preserves revision history.
 - Planned vs actual facts are edited in their intended sections.
 - Workflow status is derived consistently rather than independently editable.
 - Production Block metadata updates the same production BlastEvent identity.
@@ -82,7 +82,7 @@ For schema/persistence validation, also run PostgreSQL integration tests with a 
 - Components cannot overlap or extend outside the borehole.
 - Bulk explosive quantity uses configured/frozen product properties.
 - Cartridge products render/count as discrete cartridges and deck pitch changes count.
-- Catalogue edits do not retroactively change old completed Technical Card revisions.
+- Catalogue edits do not retroactively change historical Technical Card revisions.
 
 ## Assessment Area
 

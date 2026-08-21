@@ -45,23 +45,22 @@ class PlanView(QGraphicsView):
 
     def keyPressEvent(self, event):
         key = event.key()
-        actions = {
-            Qt.Key.Key_Escape: self.escape_requested.emit,
-            Qt.Key.Key_Return: lambda: self.workflow_key_requested.emit("enter"),
-            Qt.Key.Key_Enter: lambda: self.workflow_key_requested.emit("enter"),
-            Qt.Key.Key_Backspace: lambda: self.workflow_key_requested.emit("back"),
-            Qt.Key.Key_Delete: lambda: self.workflow_key_requested.emit("delete"),
-            Qt.Key.Key_Up: lambda: self.workflow_key_requested.emit("candidate_previous"),
-            Qt.Key.Key_Left: lambda: self.workflow_key_requested.emit("candidate_previous"),
-            Qt.Key.Key_Down: lambda: self.workflow_key_requested.emit("candidate_next"),
-            Qt.Key.Key_Right: lambda: self.workflow_key_requested.emit("candidate_next"),
-        }
-        action = actions.get(key)
-        if action is not None:
-            action()
-            event.accept()
+        if key == Qt.Key.Key_Escape:
+            self.escape_requested.emit()
+        elif key in {Qt.Key.Key_Return, Qt.Key.Key_Enter}:
+            self.workflow_key_requested.emit("enter")
+        elif key == Qt.Key.Key_Backspace:
+            self.workflow_key_requested.emit("back")
+        elif key == Qt.Key.Key_Delete:
+            self.workflow_key_requested.emit("delete")
+        elif key in {Qt.Key.Key_Up, Qt.Key.Key_Left}:
+            self.workflow_key_requested.emit("candidate_previous")
+        elif key in {Qt.Key.Key_Down, Qt.Key.Key_Right}:
+            self.workflow_key_requested.emit("candidate_next")
+        else:
+            super().keyPressEvent(event)
             return
-        super().keyPressEvent(event)
+        event.accept()
 
     def mouseMoveEvent(self, event):
         if self._middle_panning and self._pan_view_position is not None:
