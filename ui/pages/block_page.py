@@ -52,7 +52,6 @@ from ui.pages.technical_card_widgets import (
     BlastDesignEditorWidget,
     GeomechanicsEditorWidget,
     TechnicalCardEditorWidget,
-    TechnicalCardSaveButton,
 )
 from ui.presentation_labels import domain_message, format_assessment_elevation_interval
 
@@ -221,9 +220,11 @@ class BlockPage(QWidget):
         engineering_actions = QHBoxLayout(self.engineering_actions_widget)
         engineering_actions.setContentsMargins(0, 0, 0, 0)
         engineering_actions.addStretch()
-        self.engineering_save = TechnicalCardSaveButton(
-            self._save_technical_card_draft, self._complete_technical_card
-        )
+        self.engineering_save = QPushButton(tr("Save"))
+        self.engineering_save.setObjectName("TechnicalCardSaveButton")
+        self.engineering_save.setProperty("role", "primary")
+        self.engineering_save.setMinimumSize(108, 32)
+        self.engineering_save.clicked.connect(self._save_technical_card_draft)
         self.engineering_save.setEnabled(False)
         engineering_actions.addWidget(self.engineering_save)
         left.addWidget(self.engineering_actions_widget)
@@ -744,11 +745,6 @@ class BlockPage(QWidget):
     def _save_technical_card_draft(self):
         if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:
             if self.technical_card_editor.save_draft():
-                self._refresh_preserving_active_tab()
-
-    def _complete_technical_card(self):
-        if self.technical_card_editor is not None and self.context.current_user.can_edit and self.current_block and not self.current_block.is_archived:
-            if self.technical_card_editor.complete():
                 self._refresh_preserving_active_tab()
 
     def _refresh_preserving_active_tab(self):

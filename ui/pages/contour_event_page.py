@@ -41,7 +41,7 @@ from ui.pages.entity_overview_widgets import (
 )
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
-from ui.pages.technical_card_widgets import ActualExecutionEditorWidget, BlastDesignEditorWidget, TechnicalCardEditorWidget, TechnicalCardSaveButton
+from ui.pages.technical_card_widgets import ActualExecutionEditorWidget, BlastDesignEditorWidget, TechnicalCardEditorWidget
 from ui.presentation_labels import CONTROLLED_BLASTING_LABELS, domain_message, format_assessment_elevation_interval
 
 
@@ -139,7 +139,11 @@ class ContourEventPage(QWidget):
         actions = QHBoxLayout(self.engineering_actions_widget)
         actions.setContentsMargins(0, 0, 0, 0)
         actions.addStretch()
-        self.engineering_save = TechnicalCardSaveButton(self.save_draft, self.complete)
+        self.engineering_save = QPushButton(tr("Save"))
+        self.engineering_save.setObjectName("TechnicalCardSaveButton")
+        self.engineering_save.setProperty("role", "primary")
+        self.engineering_save.setMinimumSize(108, 32)
+        self.engineering_save.clicked.connect(self.save_draft)
         self.engineering_save.setEnabled(not self.read_only)
         actions.addWidget(self.engineering_save)
         left.addWidget(self.engineering_actions_widget)
@@ -637,15 +641,6 @@ class ContourEventPage(QWidget):
             QMessageBox.warning(self, tr("Read only"), tr("This contour event is read-only."))
             return False
         saved = self.editor.save_draft()
-        if saved:
-            self._refresh_all()
-        return saved
-
-    def complete(self):
-        if self.read_only:
-            QMessageBox.warning(self, tr("Read only"), tr("This contour event is read-only."))
-            return False
-        saved = self.editor.complete()
         if saved:
             self._refresh_all()
         return saved

@@ -116,8 +116,8 @@ def test_area_links_and_focused_creation_are_reused():
 def test_entity_page_integration_corrections_are_visible():
     main=source("ui/main_window.py")
     block=source("ui/pages/block_page.py")
-    assert "TechnicalCardSaveButton" in block
-    assert "save_draft()" in block and "complete()" in block
+    assert 'QPushButton(tr("Save"))' in block
+    assert "save_draft()" in block and "complete()" not in block
     area=source("ui/pages/assessment_area_page.py")
     area_compact=compact(area)
     assert "self.assessment_sections" not in area

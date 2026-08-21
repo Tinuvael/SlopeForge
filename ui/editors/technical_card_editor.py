@@ -106,11 +106,11 @@ class TechnicalCardDialog(QDialog):
         if event.event_type == "production":
             self._connect_geomechanics_dirty_tracking()
         buttons = QHBoxLayout(); buttons.addStretch()
-        self.draft_button = QPushButton(tr("Save draft")); self.complete_button = QPushButton(tr("Complete")); cancel = QPushButton(tr("Cancel"))
-        set_button_role(self.draft_button, "secondary"); set_button_role(self.complete_button, "primary"); set_button_role(cancel, "secondary")
-        self.draft_button.clicked.connect(lambda: self._save("draft")); self.complete_button.clicked.connect(lambda: self._save("completed")); cancel.clicked.connect(self.reject)
-        for button in (self.draft_button, self.complete_button): button.setEnabled(not read_only)
-        buttons.addWidget(self.draft_button); buttons.addWidget(self.complete_button); buttons.addWidget(cancel); root.addLayout(buttons)
+        self.save_button = QPushButton(tr("Save")); cancel = QPushButton(tr("Cancel"))
+        set_button_role(self.save_button, "primary"); set_button_role(cancel, "secondary")
+        self.save_button.clicked.connect(lambda: self._save("draft")); cancel.clicked.connect(self.reject)
+        self.save_button.setEnabled(not read_only)
+        buttons.addWidget(self.save_button); buttons.addWidget(cancel); root.addLayout(buttons)
 
     def _connect_geomechanics_dirty_tracking(self):
         """Track user/session changes without treating form population as an edit."""
@@ -404,7 +404,7 @@ class TechnicalCardDialog(QDialog):
             summary=QLabel(); summary.setObjectName("drillingChargeSummary"); summary.setWordWrap(True); content.addWidget(summary)
             state={"builder":None,"last_depth":group.average_depth_m}
             self._refresh_preset_combo(combo)
-            def refresh(g=group,label=summary):
+            def refresh(*_signal_args, g=group, label=summary):
                 drilling=g.drilling_length(); per=g.explosive_mass_per_hole_kg(); total=g.total_explosive_mass()
                 show=lambda value: "—" if value is None else f"{value:.3f}"
                 label.setText(f"{tr('Drilling length')}: {show(drilling)} m   |   {tr('Explosive mass / hole')}: {show(per)} kg   |   {tr('Total explosive mass')}: {show(total)} kg")

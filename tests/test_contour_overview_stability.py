@@ -71,7 +71,7 @@ def test_contour_keeps_hidden_general_widgets_required_by_technical_card_save():
     assert 'take_tab(tr("General"))' not in page
     assert "general_page.deleteLater()" not in page
     assert "self.editor.save_draft()" in page
-    assert "self.editor.complete()" in page
+    assert "self.editor.complete()" not in page
 
 
 def test_nominal_contour_line_length_uses_hole_count_times_spacing():
