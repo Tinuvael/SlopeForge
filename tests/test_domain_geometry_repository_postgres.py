@@ -8,10 +8,10 @@ from sqlalchemy import create_engine,event,func,select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
-URL=os.environ.get("SLOPEFORGE_TEST_DATABASE_URL")
-if not URL: pytest.skip("SLOPEFORGE_TEST_DATABASE_URL is not set; Domain Geometry DB tests skipped",allow_module_level=True)
+URL=os.environ.get("TEST_DATABASE_URL")
+if not URL: pytest.skip("TEST_DATABASE_URL is not set; Domain Geometry DB tests skipped",allow_module_level=True)
 if "test" not in (make_url(URL).database or "").lower(): pytest.fail("Refusing destructive tests: database name must contain 'test'",pytrace=False)
-from database.models import Domain,DomainGeometry,Mine,Site
+from database.models import Domain,DomainGeometry,Site
 from domain.geometry.types import PlanPoint, PlanPolygon
 from repositories.domain_geometry_repository import DomainGeometryRepository
 from repositories.dashboard_repository import DashboardRepository
@@ -33,9 +33,8 @@ def repository_context(tmp_path):
         else:os.environ["STORAGE_ROOT"]=old_storage
     engine=create_engine(URL); factory=sessionmaker(engine,expire_on_commit=False)
     with factory.begin() as session:
-        mine=Mine(name="Domain Geometry test mine"); session.add(mine); session.flush()
-        site=Site(mine_id=mine.id,name="Domain Geometry test site"); session.add(site); session.flush()
-        a=Domain(site_id=site.id,name="A"); b=Domain(site_id=site.id,name="B"); session.add_all((a,b)); session.flush(); ids=(mine.id,site.id,a.id,b.id)
+        site=Site(name="Domain Geometry test site"); session.add(site); session.flush()
+        a=Domain(site_id=site.id,name="A"); b=Domain(site_id=site.id,name="B"); session.add_all((a,b)); session.flush(); ids=(site.id,a.id,b.id)
     try:
         yield DomainGeometryRepository(factory),factory,ids
     finally:
@@ -43,7 +42,7 @@ def repository_context(tmp_path):
 
 
 def test_current_geometry_lifecycle_and_domain_isolation(repository_context):
-    repo,factory,(_,_,a,b)=repository_context
+    repo,factory,(_,a,b)=repository_context
     assert repo.get_for_domain(a) is None and repo.get_for_domain(b) is None
     first=repo.replace_imported(a,0,[polygon(),polygon(10)],"domains.dxf")
     assert first.polygons==(polygon(),polygon(10)) and first.source_kind=="imported" and first.source_file_name=="domains.dxf"
@@ -65,14 +64,14 @@ def test_current_geometry_lifecycle_and_domain_isolation(repository_context):
     PlanPolygon((PlanPoint(0,0),PlanPoint(2,float("-inf")),PlanPoint(0,2),PlanPoint(0,0))),
 ])
 def test_invalid_replacement_is_rejected_without_changing_existing_geometry(repository_context,invalid):
-    repo,_,(_,_,domain_id,_)=repository_context
+    repo,_,(_,domain_id,_)=repository_context
     existing=repo.replace_drawn(domain_id,0,[polygon(100)])
     with pytest.raises(ValueError): repo.replace_drawn(domain_id,1,[invalid])
     assert repo.get_for_domain(domain_id)==existing
 
 
 def test_dashboard_domain_context_palette_and_project_lines(repository_context):
-    repo,factory,(_,site,a,b)=repository_context
+    repo,factory,(site,a,b)=repository_context
     repo.replace_drawn(a,0,[polygon()]); repo.replace_drawn(b,0,[polygon(10)])
     with factory.begin() as session:
         session.add(ProjectLinesDataset(site_id=site,logical_id="LINES",name="Lines",imported_at=datetime.now(timezone.utc),source_file_name="lines.csv",is_active=True,is_archived=False,lines_json=[{"source_id":"L","points":[{"x":0,"y":0,"z":0,"source_row_number":1},{"x":2,"y":3,"z":0,"source_row_number":2}]}]))
@@ -84,7 +83,7 @@ def test_dashboard_domain_context_palette_and_project_lines(repository_context):
 
 
 def test_site_snapshot_loads_site_domain_geometry_once(repository_context):
-    repo,factory,(_,site,a,b)=repository_context
+    repo,factory,(site,a,b)=repository_context
     repo.replace_drawn(a,0,[polygon()]); repo.replace_imported(b,0,[polygon(10)],"domains.csv")
     statements=[]
     engine=factory.kw["bind"]
@@ -101,9 +100,9 @@ def test_site_snapshot_loads_site_domain_geometry_once(repository_context):
 
 
 def test_site_project_lines_exist_without_domains(repository_context):
-    _,factory,(mine,_,_,_)=repository_context
+    _,factory,(_,_,_)=repository_context
     with factory.begin() as session:
-        site=Site(mine_id=mine,name="Lines without domains"); session.add(site); session.flush(); site_id=site.id
+        site=Site(name="Lines without domains"); session.add(site); session.flush(); site_id=site.id
         session.add(ProjectLinesDataset(site_id=site_id,logical_id="ONLY",name="Only",imported_at=datetime.now(timezone.utc),source_file_name="only.csv",is_active=True,is_archived=False,lines_json=[{"source_id":"L","points":[{"x":1,"y":1},{"x":2,"y":2}]}]))
     snapshot=DashboardRepository(factory).site_snapshot(site_id)
     assert snapshot.domains==[] and len(snapshot.project_lines)==1

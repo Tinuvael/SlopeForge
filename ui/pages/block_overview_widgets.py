@@ -28,6 +28,7 @@ class BlockRelatedEntityList(RelatedEntityList):
 
     LIST_HEIGHT = 136
     ROW_HORIZONTAL_INSET = 8
+    VISIBLE_BOTTOM_MARGIN = 4
     STATE_COLORS = {
         "completed": ("#edf8f0", "#58a66a"),
         "assessed": ("#edf8f0", "#58a66a"),
@@ -42,6 +43,7 @@ class BlockRelatedEntityList(RelatedEntityList):
         super().__init__(title)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.layout.setSpacing(6)
+        self.list.setSpacing(2)
         self.list.setFixedHeight(self.LIST_HEIGHT)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -163,7 +165,7 @@ class BlockRelatedEntityList(RelatedEntityList):
             holder.setMinimumWidth(0)
             holder.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             layout = QVBoxLayout(holder)
-            layout.setContentsMargins(9, 4, 12, 4)
+            layout.setContentsMargins(9, 2, 12, 2)
             layout.setSpacing(1)
 
             top = QHBoxLayout()

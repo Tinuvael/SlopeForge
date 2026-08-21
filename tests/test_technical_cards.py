@@ -230,7 +230,7 @@ def test_real_embedded_production_editor_controls_and_ucs_persistence():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.technical_card_widgets import TechnicalCardEditorWidget
     app = widgets.QApplication.instance() or widgets.QApplication([])
-    blast = event(); blast.blast_block_id = 77
+    blast = event()
     state = AssessmentDomainState(blast_events=[blast]); service = TechnicalCardService(state)
     card, draft = service.edit_or_create(blast)
     embedded = TechnicalCardEditorWidget(blast, card, draft,
@@ -287,6 +287,47 @@ def test_main_split_save_keeps_incomplete_production_card_as_draft():
     save.click(); app.processEvents()
     assert calls == ["draft"]
     save.close(); embedded.deleteLater(); app.processEvents()
+
+
+def test_visible_split_save_main_and_menu_send_distinct_real_statuses(monkeypatch):
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    core = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    test = pytest.importorskip("PySide6.QtTest", exc_type=ImportError)
+    from ui.pages.technical_card_widgets import TechnicalCardEditorWidget, TechnicalCardSaveButton
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    warnings = []
+    monkeypatch.setattr(
+        "ui.editors.technical_card_editor.QMessageBox.warning",
+        lambda *args: warnings.append(args),
+    )
+
+    def hosted_editor():
+        blast = event(); card, draft = new_technical_card(blast); statuses = []
+        def persist(saved_card, revision, status, _date):
+            statuses.append(status)
+            saved_card.save_revision(revision, status=status)
+        editor = TechnicalCardEditorWidget(blast, card, draft, persist)
+        button = TechnicalCardSaveButton(editor.save_draft, editor.complete)
+        host = widgets.QWidget(); layout = widgets.QVBoxLayout(host); layout.addWidget(button)
+        host.show(); app.processEvents()
+        return host, editor, button, statuses
+
+    draft_host, draft_editor, draft_button, draft_statuses = hosted_editor()
+    main_point = core.QPoint(12, draft_button.rect().center().y())
+    test.QTest.mouseClick(draft_button, core.Qt.MouseButton.LeftButton, pos=main_point)
+    app.processEvents()
+    assert draft_statuses == ["draft"]
+    assert warnings == []
+
+    complete_host, complete_editor, complete_button, complete_statuses = hosted_editor()
+    complete_button.save_complete_action.trigger(); app.processEvents()
+    assert complete_statuses == ["completed"]
+    assert warnings
+
+    for host, editor in ((draft_host, draft_editor), (complete_host, complete_editor)):
+        host.close(); editor.deleteLater()
+    app.processEvents()
 
 
 def test_draft_design_save_preserves_untouched_incomplete_geomechanics(monkeypatch):

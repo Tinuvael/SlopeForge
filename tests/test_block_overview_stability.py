@@ -103,7 +103,9 @@ def test_block_related_list_fits_two_rows_and_scrolls_when_more_exist():
     app.processEvents()
     second_rect = related.list.visualItemRect(related.list.item(1))
     assert second_rect.isValid()
-    assert second_rect.bottom() <= related.list.viewport().rect().bottom()
+    assert second_rect.bottom() <= (
+        related.list.viewport().rect().bottom() - related.VISIBLE_BOTTOM_MARGIN
+    )
     first_rect = related.list.visualItemRect(related.list.item(0))
     assert first_rect.height() < related.LIST_HEIGHT / 2
     assert related.list.viewport().height() >= first_rect.height() + second_rect.height()

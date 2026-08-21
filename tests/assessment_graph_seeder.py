@@ -55,7 +55,6 @@ def _state_from_domain(events_rows, areas_rows,
                 "is_active": revision.is_active})
         events.append({"id": row.logical_id, "name": row.name, "event_type": row.event_type,
             "event_date": row.event_date.isoformat() if row.event_date else None, "elevation": float(row.elevation_m),
-            "blast_block_id": row.blast_block_id,
             "geometry_revisions": revisions,
             "active_geometry_revision_id": next((x.logical_id for x in row.geometry_revisions if x.is_active), None),
             "is_archived": row.is_archived, "archived_at": row.archived_at.isoformat() if row.archived_at else None,
@@ -191,8 +190,8 @@ class AssessmentGraphSeeder:
             orm.ProjectLinesDataset.site_id == domain.site_id)))
         self._synchronize(session, domain_id, events_rows, areas_rows, state, datasets)
         session.flush()
-        # Refresh only this aggregate.  The supplied session can also contain a
-        # newly-created BlastBlock/audit objects owned by the caller.
+        # Refresh only this aggregate; the supplied session may contain other
+        # newly-created audit objects owned by the caller.
         event_q, area_q = _domain_graph(domain_id)
         saved = _state_from_domain(list(session.scalars(event_q)), list(session.scalars(area_q)), datasets)
         return LoadedAssessmentState(domain_id, domain.site_id, saved, domain.version)
@@ -226,7 +225,7 @@ class AssessmentGraphSeeder:
                 session.add(row); events[item.id] = row
             row.name = item.name; row.event_type = item.event_type
             row.event_date = item.event_date; row.elevation_m = item.elevation
-            row.blast_block_id = item.blast_block_id; row.is_archived = item.is_archived
+            row.is_archived = item.is_archived
             row.archived_at = item.archived_at; row.archive_reason = item.archive_reason
             existing = {r.logical_id: r for r in row.geometry_revisions}
             for revision in item.geometry_revisions:
