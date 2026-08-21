@@ -23,6 +23,7 @@ class MainWindow(QMainWindow):
         super().__init__(); self.context=context; self.setWindowTitle(f"{APP_NAME} — {APP_VERSION}"); apply_window_icon(self); self.resize(1600,900)
         self.selected_site_id=None; self.selected_site_name=None; self.selected_domain_id=None; self.selected_domain_name=None; self.selected_block_id=None; self.selected_contour_event_id=None; self.selected_assessment_area_id=None
         self.assessment_page=None; self.assessment_domain_id=None; self.assessment_site_id=None
+        self.area_page=None; self.contour_page=None
         self.tree=ProjectTree(context); self.tree.setMaximumWidth(320); self.block_page=BlockPage(context); self.analysis_page=AnalysisPlaceholderPage(); self.page=self.block_page; self.page_stack=QStackedWidget(); self.page_stack.addWidget(self.block_page); self.page_stack.addWidget(self.analysis_page)
         self.header=Header(context); self._navigation_visible=True; self.create_blast_event=create_blast_event_use_case(context)
         self.create_project=create_project_use_case(context); self.create_domain=create_domain_use_case(context)
@@ -67,8 +68,14 @@ class MainWindow(QMainWindow):
         self.page_stack.setCurrentWidget(page)
     def _dispose_transient_page(self, incoming):
         current = self.page_stack.currentWidget()
-        if current is None or current is incoming or current is self.block_page or current is self.analysis_page or current is self.assessment_page:
+        if current is None or current is incoming or current is self.block_page or current is self.analysis_page:
             return
+        for attribute in ("assessment_page", "area_page", "contour_page"):
+            if getattr(self, attribute, None) is current:
+                setattr(self, attribute, None)
+        if self.assessment_page is None:
+            self.assessment_domain_id = None
+            self.assessment_site_id = None
         self.page_stack.removeWidget(current)
         current.deleteLater()
     def _guard_leave(self):

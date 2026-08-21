@@ -76,6 +76,26 @@ class BlockRelatedEntityList(RelatedEntityList):
             holder.setFixedWidth(target)
             item.setSizeHint(QSize(target, max(1, holder.sizeHint().height())))
 
+    def _fit_two_rows(self) -> None:
+        """Reserve a bounded viewport that never clips either of the first two rows."""
+        if not self.list.count():
+            height = self.LIST_HEIGHT
+        else:
+            row_heights = [
+                self.list.item(index).sizeHint().height()
+                for index in range(min(2, self.list.count()))
+            ]
+            if len(row_heights) == 1:
+                row_heights.append(row_heights[0])
+            height = (
+                sum(row_heights)
+                + self.list.spacing() * 4
+                + self.list.frameWidth() * 2
+                + 2
+            )
+        self.list.setFixedHeight(height)
+        self.empty_label.setFixedHeight(height)
+
     def set_rows(self, rows, *, empty_text="No linked entities"):
         """Build Block rows directly so QListWidget owns each wrapper only once."""
         rows = list(rows)
@@ -150,6 +170,7 @@ class BlockRelatedEntityList(RelatedEntityList):
             self.list.setItemWidget(item, wrapper)
 
         self._sync_row_widths()
+        self._fit_two_rows()
         self._sync_row_styles()
         self.updateGeometry()
 
@@ -310,7 +331,6 @@ class BlockSectionHost(QWidget):
         if old is not None:
             self._layout.removeWidget(old)
             old.hide()
-            old.setParent(None)
             old.deleteLater()
         self._content = widget
         widget.setParent(self)

@@ -634,7 +634,6 @@ class BlockPage(QWidget):
             ("Blast date", _fmt_dateish(blast_date), blast_hint),
             ("Block area", _fmt_number(area, " m²")),
             ("Bench height", _fmt_number(main.average_depth_m if main else None, " m")),
-            ("Q′", _fmt_number(qprime)),
             ("Stability", stability or tr("Not calculated")),
         ))
 
