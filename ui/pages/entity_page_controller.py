@@ -1,5 +1,6 @@
 """Thin UI adapter for entity-page application services."""
-from app.use_case_factory import create_entity_editing_session
+from app.use_case_factory import (create_assessment_area_context_queries,
+                                  create_entity_editing_session)
 from application.services.attachments import EntityAttachmentService
 from infrastructure.services.contour_blast_service import ContourBlastService
 
@@ -17,6 +18,7 @@ class EntityPageController:
             on_update=self.editing.update_attachment_metadata,
             on_delete=self.editing.delete_attachment_metadata)
         self.contour_service = ContourBlastService(context.session_factory)
+        self.area_context = create_assessment_area_context_queries(context)
 
     def _persist_attachment_add(self, attachments):
         owner = None
@@ -43,6 +45,9 @@ class EntityPageController:
 
     def area(self, area_id):
         return next((area for area in self.state.assessment_areas if area.id == area_id), None)
+
+    def project_assessment_boundaries(self):
+        return self.area_context.list_current_boundaries(self.site_id)
 
     def technical_card_draft(self, event):
         return self.editing.technical_card_draft(event)

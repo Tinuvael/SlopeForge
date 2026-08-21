@@ -22,6 +22,7 @@ from application.use_cases.explosive_catalogue import ExplosiveCatalogue
 from infrastructure.db.explosive_catalogue import SqlAlchemyExplosiveCatalogue
 from application.use_cases.charge_presets import ChargePresets
 from infrastructure.db.charge_presets import SqlAlchemyChargePresetPersistence
+from repositories.assessment_area_context_repository import AssessmentAreaContextRepository
 
 
 def create_blast_event_use_case(context):
@@ -42,6 +43,10 @@ def create_entity_editing_session(context, domain_id):
         can_edit=user.can_edit,
         writes=writes,
     )
+
+
+def create_assessment_area_context_queries(context):
+    return AssessmentAreaContextRepository(context.session_factory)
 
 
 def create_project_use_case(context):

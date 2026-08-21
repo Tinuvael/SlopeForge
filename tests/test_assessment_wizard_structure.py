@@ -40,13 +40,17 @@ def preview(count=0):
     )
 
 
-def build_page(monkeypatch, state, app, *, preview_count=0):
+def build_page(monkeypatch, state, app, *, preview_count=0, area_context=()):
     import ui.pages.assessment_area_creation_page as module
 
     class Controller:
         def __init__(self, context, domain_id):
             self.state = state
             self.commits = []
+            self.domain_id = domain_id
+
+        def project_assessment_boundaries(self):
+            return area_context
 
         def save_assessment_area_geometry(self, **values):
             self.commits.append(values)
@@ -139,3 +143,27 @@ def test_assessment_creation_translation_helpers_remain_static():
 
     assert isinstance(inspect.getattr_static(AssessmentAreaCreationPage, "_section"), staticmethod)
     assert isinstance(inspect.getattr_static(AssessmentAreaCreationPage, "_add_row"), staticmethod)
+
+
+def test_creation_page_scopes_context_and_excludes_current_area():
+    source = Path("ui/pages/assessment_area_creation_page.py").read_text(encoding="utf-8")
+    assert "self.controller.project_assessment_boundaries()" in source
+    assert "item.domain_id == self.controller.domain_id" in source
+    assert "item.assessment_area_id == edit_area_id" in source
+
+
+def test_creation_page_passes_nonempty_project_context_to_editor(monkeypatch, state, app):
+    from domain.geometry.types import PlanPoint
+    from ui.editors.assessment_geometry_editor import ASSESSMENT_CONTEXT_ROLE
+
+    context = (SimpleNamespace(
+        assessment_area_id="AA-CONTEXT", domain_id=2,
+        ring=(PlanPoint(20, 20), PlanPoint(30, 20),
+              PlanPoint(30, 30), PlanPoint(20, 20)),
+    ),)
+    page = build_page(monkeypatch, state, app, area_context=context)
+
+    assert page.editor._existing_area_context == context
+    assert len([item for item in page.editor.scene.items()
+                if item.data(ASSESSMENT_CONTEXT_ROLE)]) == 1
+    page.close()

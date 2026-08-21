@@ -18,6 +18,7 @@ from ui.widgets.plan_view import PrototypePlanView
 
 PROJECT_LINE_ROLE = 1001
 SNAP_MARKER_ROLE = 1002
+ASSESSMENT_CONTEXT_ROLE = 1003
 SNAP_PIXELS = 10.0
 ACTIVE_LINE_HYSTERESIS_PIXELS = 3.0
 
@@ -31,6 +32,7 @@ class AssessmentGeometryEditorWidget(QWidget):
         self.area_service=AssessmentAreaService(state); self.workflow_state="IDLE"; self.selected_area=None; self._editing_area=None
         self._segments=[]; self._first_point=None; self._first_anchor=None; self._last_point=None; self._last_anchor=None; self._candidate=None; self._cursor=None
         self._show_project_lines=True
+        self._existing_area_context=()
         self.scene=QGraphicsScene(self); self.plan_view=PrototypePlanView(self.scene)
         self.plan_view.scene_clicked.connect(self._drawing_click); self.plan_view.cursor_moved.connect(self._drawing_move)
         self.plan_view.escape_requested.connect(self.cancel_workflow); self.plan_view.workflow_key_requested.connect(self._workflow_key)
@@ -153,7 +155,21 @@ class AssessmentGeometryEditorWidget(QWidget):
         self._show_project_lines=v
         if not v: self._candidate=None
         self.draw_geometry()
-    def fit_to_extent(self): self.plan_view.fit_to_extent()
+    def set_existing_area_context(self, areas):
+        """Opt in to detached, presentation-only Assessment boundary context."""
+        self._existing_area_context=tuple(areas)
+        self.draw_geometry()
+    def fit_to_extent(self):
+        # Project-wide context can be distant; keep Fit focused on working items.
+        rect = None
+        for item in self.scene.items():
+            if item.data(ASSESSMENT_CONTEXT_ROLE):
+                continue
+            bounds = item.sceneBoundingRect()
+            rect = bounds if rect is None else rect.united(bounds)
+        if rect is not None:
+            margin = max(min(max(rect.width(), rect.height()) * 0.03, 100.0), 1.0)
+            self.plan_view.fit_to_rect(rect.adjusted(-margin, -margin, margin, margin))
     def _workflow_key(self,key):
         if key=="back": self.undo_vertex()
         elif key=="enter" and self.workflow_state=="DRAWING": self.finish_polygon()
@@ -163,6 +179,10 @@ class AssessmentGeometryEditorWidget(QWidget):
         self.scene.clear(); dataset=self.state.active_dataset()
         if dataset and self._show_project_lines:
             for line in dataset.lines: self._draw_points(line.points,QPen(QColor(125,140,150),1),10)
+        context_pen=QPen(QColor(105,110,115,210),1.75,Qt.PenStyle.DashLine)
+        context_pen.setCosmetic(True)
+        for area in self._existing_area_context:
+            self._draw_points(area.ring,context_pen,15,role=ASSESSMENT_CONTEXT_ROLE)
         if self.selected_area: self._draw_points(self.selected_area.final_geometry_frozen.ring,QPen(QColor(20,110,190),3),20)
         for segment in self._segments:
             self._draw_points(self._segment_points(segment),QPen(QColor(20,125,205) if isinstance(segment,ProjectLineSpan) else QColor(225,125,25),3),50)
@@ -181,8 +201,11 @@ class AssessmentGeometryEditorWidget(QWidget):
         item.setPen(QPen(QColor(20,135,215),1.5)); item.setBrush(QColor(255,255,255,220))
         item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         item.setZValue(90); item.setData(SNAP_MARKER_ROLE,True); self.scene.addItem(item)
-    def _draw_points(self,points,pen,z):
+    def _draw_points(self,points,pen,z,role=None):
         if len(points)<2:return
         path=QPainterPath(QPointF(points[0].x,-points[0].y))
         for p in points[1:]: path.lineTo(p.x,-p.y)
-        item=QGraphicsPathItem(path); item.setPen(pen); item.setZValue(z); item.setData(PROJECT_LINE_ROLE,z==10); self.scene.addItem(item)
+        item=QGraphicsPathItem(path); item.setPen(pen); item.setZValue(z)
+        item.setData(PROJECT_LINE_ROLE,z==10)
+        if role is not None: item.setData(role,True)
+        self.scene.addItem(item)

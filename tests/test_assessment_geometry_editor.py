@@ -4,7 +4,9 @@ from types import SimpleNamespace
 import pytest
 
 pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QApplication, QGraphicsPathItem
 
 from application.services.assessment_areas import AssessmentAreaService
 from application.services.project_lines import ProjectLinesDatasetService
@@ -12,7 +14,7 @@ from application.state.assessment_domain_state import AssessmentDomainState
 from domain.assessment.geometry import ProjectLineSpan, SpatialPoint, StraightConnector, extract_project_line_span
 from domain.geometry.types import PlanPoint, PlanPolygon
 from tests.assessment_boundary_fixtures import boundary_from_polygon
-from ui.editors.assessment_geometry_editor import (PROJECT_LINE_ROLE, SNAP_MARKER_ROLE,
+from ui.editors.assessment_geometry_editor import (ASSESSMENT_CONTEXT_ROLE, PROJECT_LINE_ROLE, SNAP_MARKER_ROLE,
                                                     AssessmentGeometryEditorWidget)
 
 
@@ -51,6 +53,30 @@ def test_editor_starts_idle_and_navigation_does_not_commit(state, app):
     assert editor.workflow_state == "IDLE"
     assert editor._segments == [] and editor._first_point is None
     assert editor.plan_view.dragMode() == editor.plan_view.DragMode.ScrollHandDrag
+    assert not [item for item in editor.scene.items() if item.data(ASSESSMENT_CONTEXT_ROLE)]
+
+
+def test_existing_area_context_is_faint_noninteractive_and_does_not_change_snap(state, app):
+    context = SimpleNamespace(
+        assessment_area_id="AA-OTHER", domain_id=2,
+        ring=(PlanPoint(1000, 1000), PlanPoint(1010, 1000),
+              PlanPoint(1010, 1010), PlanPoint(1000, 1000)),
+    )
+    editor = AssessmentGeometryEditorWidget(state, committer(state))
+    snap_before = editor._snap(1, 10.4)
+    editor.set_existing_area_context((context,))
+
+    items = [item for item in editor.scene.items() if item.data(ASSESSMENT_CONTEXT_ROLE)]
+    assert len(items) == 1 and isinstance(items[0], QGraphicsPathItem)
+    item = items[0]
+    assert not item.data(PROJECT_LINE_ROLE)
+    assert item.zValue() == 15
+    assert item.brush().style() == Qt.BrushStyle.NoBrush
+    assert item.pen().style() == Qt.PenStyle.DashLine
+    assert item.pen().isCosmetic() and item.pen().widthF() == 1.75
+    assert item.pen().color() == QColor(105, 110, 115, 210)
+    assert not (item.flags() & QGraphicsPathItem.GraphicsItemFlag.ItemIsSelectable)
+    assert editor._snap(1, 10.4) == snap_before
 
 
 def test_creation_page_does_not_auto_start_drawing():
