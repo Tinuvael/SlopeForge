@@ -265,10 +265,11 @@ def test_visible_technical_card_save_is_one_draft_qpushbutton(monkeypatch):
     app = widgets.QApplication.instance() or widgets.QApplication([])
     blast = event(); card, draft = new_technical_card(blast); statuses = []; warnings = []
     assert draft.validate_completion() == ["Заполните минимальное геомеханическое описание"]
-    embedded = TechnicalCardEditorWidget(
-        blast, card, draft,
-        lambda _card, _revision, status, _date: statuses.append(status),
-    )
+    def persist(saved_card, revision, status, _date):
+        statuses.append(status)
+        saved_card.save_revision(revision, status=status)
+
+    embedded = TechnicalCardEditorWidget(blast, card, draft, persist)
     monkeypatch.setattr(
         "ui.editors.technical_card_editor.QMessageBox.warning",
         lambda *args: warnings.append(args),
@@ -286,6 +287,8 @@ def test_visible_technical_card_save_is_one_draft_qpushbutton(monkeypatch):
     app.processEvents()
     assert statuses == ["draft"]
     assert warnings == []
+    assert len(card.revisions) == 1
+    assert card.active_revision().status == "draft"
     embedded.deleteLater(); app.processEvents()
 
 
