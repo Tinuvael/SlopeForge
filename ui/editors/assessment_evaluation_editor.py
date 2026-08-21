@@ -4,11 +4,12 @@ from __future__ import annotations
 from app.localization import tr
 
 from copy import deepcopy
+from pathlib import Path
 from PySide6.QtCore import QDate, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFormLayout,
-    QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
+    QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
     QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QToolButton,
     QVBoxLayout, QWidget,
 )
@@ -20,6 +21,7 @@ from domain.assessment.evaluation import (
 from ui.presentation_labels import (
     CRITERION_HELP, compact_criterion_label, criterion_label, domain_message, matrix_label, option_label, result_label,
 )
+from ui.widgets.design_system import SplitSaveButton
 
 DAMAGE_WARNING = "The matrix has no automatic score for the range of 1–5 features/m²."
 
@@ -228,10 +230,9 @@ class AssessmentAreaEvaluationDialog(QDialog):
         root = QVBoxLayout(self); self.tabs = QTabWidget(); root.addWidget(self.tabs)
         self._general(); self._geometry(); self._condition(); self._matrix(); self._events(); self._attachments(); self._history()
         buttons = QHBoxLayout(); buttons.addStretch()
-        self.draft_button = QPushButton(tr("Save draft")); self.complete_button = QPushButton(tr("Complete assessment")); self.cancel_button = QPushButton(tr("Close") if read_only else "Cancel")
-        self.draft_button.clicked.connect(lambda: self.save("draft")); self.complete_button.clicked.connect(lambda: self.save("completed")); self.cancel_button.clicked.connect(self.reject)
-        for button in (self.draft_button, self.complete_button, self.cancel_button): buttons.addWidget(button)
-        self.draft_button.setVisible(not read_only); self.complete_button.setVisible(not read_only); root.addLayout(buttons)
+        self.save_button = SplitSaveButton(lambda: self.save("draft"), lambda: self.save("completed"), completion_text=tr("Complete assessment"))
+        self.cancel_button = QPushButton(tr("Close") if read_only else tr("Cancel")); self.cancel_button.clicked.connect(self.reject)
+        self.save_button.setVisible(not read_only); buttons.addWidget(self.save_button); buttons.addWidget(self.cancel_button); root.addLayout(buttons)
         self._restore_controls()
         self._connect_general_signals()
         self._initializing = False
@@ -266,7 +267,7 @@ class AssessmentAreaEvaluationDialog(QDialog):
         page = QWidget(); form = QFormLayout(page)
         self.date = QDateEdit(); self.date.setCalendarPopup(True)
         self.inspector = QLineEdit(); self.override_reason = QLineEdit()
-        self.detected = QLabel(tr("Contour drilling detected from a confirmed link") if self.draft.controlled_blasting_present else "No confirmed contour event found")
+        self.detected = QLabel(tr("Contour drilling detected from a confirmed link") if self.draft.controlled_blasting_present else tr("No confirmed contour event found"))
         self.comments = QTextEdit(); self.recommendations = QTextEdit()
         self.matrix_value = QLabel(matrix_label(self.template.id, self.template.name))
         form.addRow(tr("Assessment date"), self.date); form.addRow(tr("Inspector"), self.inspector)
@@ -296,6 +297,22 @@ class AssessmentAreaEvaluationDialog(QDialog):
             editor.set_primary_input(control); editor.set_help(self._geometry_help(criterion.id))
             editor.changed.connect(self._changed)
             self.geometry_editors[criterion.id] = editor; layout.addWidget(editor)
+        measured = QFrame(); measured.setObjectName("CriterionCard"); measured.setProperty("assessmentSection", "measuredWallGeometry"); self.measured_wall_widget = measured
+        measured_form = QGridLayout(measured); measured_form.setContentsMargins(8, 5, 8, 5); measured_form.setHorizontalSpacing(12); measured_form.setVerticalSpacing(5); measured_form.setColumnStretch(0, 1)
+        measured_title = QLabel(f"<b>{tr('Measured wall geometry')}</b>"); measured_title.setObjectName("EngineeringSectionTitle"); measured_form.addWidget(measured_title, 0, 0, 1, 2)
+        self.measured_wall_controls = {}
+        for row, (label, name) in enumerate((("Mean backbreak, m", "mean_backbreak_m"), ("Maximum backbreak, m", "maximum_backbreak_m"), ("Mean overbreak, m", "mean_overbreak_m"), ("Mean underbreak, m", "mean_underbreak_m"), ("Contour RMS deviation, m", "contour_rms_deviation_m")), 1):
+            control = self._nullable(); control.setFixedWidth(120); control.setEnabled(not self.read_only); self.measured_wall_controls[name] = control
+            measured_form.addWidget(QLabel(tr(label)), row, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            measured_form.addWidget(control, row, 1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.measurement_method = QComboBox(); self.measurement_method.addItem("—", None)
+        for code, label in (("survey", "Survey"), ("photogrammetry", "Photogrammetry"), ("laser_scan", "Laser scan"), ("manual_measurement", "Manual measurement"), ("visual_estimate", "Visual estimate")):
+            self.measurement_method.addItem(tr(label), code)
+        self.measurement_method.setMaximumWidth(220)
+        self.measurement_method.setEnabled(not self.read_only); measured_form.addWidget(QLabel(tr("Measurement method")), 6, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter); measured_form.addWidget(self.measurement_method, 6, 1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.measurement_method.currentIndexChanged.connect(self._changed)
+        calculate = QPushButton(tr("Calculate from survey…")); calculate.setMaximumWidth(180); calculate.setEnabled(not self.read_only); calculate.clicked.connect(self._calculate_wall_rms); measured_form.addWidget(calculate, 7, 1, Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(measured)
         layout.addStretch()
         scroll.setWidget(page); self.tabs.addTab(scroll, tr("Geometry"))
 
@@ -390,6 +407,9 @@ class AssessmentAreaEvaluationDialog(QDialog):
         if deficit is None and d.get("design_berm_width_m") is not None and d.get("actual_berm_width_m") is not None:
             deficit = max(d["design_berm_width_m"] - d["actual_berm_width_m"], 0)
         self.shortfall.set_nullable_value(shortfall); self.deficit.set_nullable_value(deficit); self.toe.set_nullable_value(d.get("toe_offset_from_design_m"))
+        measured = self.draft.measured_wall_geometry
+        for name, control in self.measured_wall_controls.items(): control.set_nullable_value(getattr(measured, name))
+        self.measurement_method.setCurrentIndex(max(0, self.measurement_method.findData(measured.measurement_method)))
         for criterion_id, editor in self.geometry_editors.items(): editor.restore(results.get(criterion_id))
         face = self.draft.face_condition_inputs or {}
         for criterion_id, editor in self.editors.items():
@@ -408,6 +428,8 @@ class AssessmentAreaEvaluationDialog(QDialog):
         revision.assessment_date = self.date.date().toPython(); revision.inspector = self.inspector.text().strip(); revision.comments = self.comments.toPlainText(); revision.recommendations = self.recommendations.toPlainText(); revision.change_reason = self.override_reason.text().strip()
         shortfall, deficit, toe = self.shortfall.nullable_value(), self.deficit.nullable_value(), self.toe.nullable_value()
         revision.design_inputs = {"bench_angle_shortfall_deg": shortfall, "berm_width_deficit_m": deficit, "toe_offset_from_design_m": toe}
+        for name, control in self.measured_wall_controls.items(): setattr(revision.measured_wall_geometry, name, control.nullable_value())
+        revision.measured_wall_geometry.measurement_method = self.measurement_method.currentData()
         values = {"bench_angle": shortfall, "berm_width": deficit, "toe_position": abs(toe) if toe is not None else None}
         results = []
         for criterion in self.template.section(DESIGN).criteria:
@@ -424,6 +446,16 @@ class AssessmentAreaEvaluationDialog(QDialog):
         revision.face_condition_inputs = face_inputs; revision.criterion_results = results
         calculate_revision(revision)
         return revision
+
+    def _calculate_wall_rms(self):
+        from ui.dialogs.wall_rms_dialog import WallRmsDialog
+        dialog = WallRmsDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result:
+            self.measured_wall_controls["contour_rms_deviation_m"].set_nullable_value(dialog.result.rms_m)
+            measured = self.draft.measured_wall_geometry
+            measured.design_surface_source = Path(dialog.design.text()).name
+            measured.survey_source = Path(dialog.survey.text()).name
+            measured.survey_point_count = dialog.result.point_count; measured.calculation_method = dialog.result.method
 
     def refresh(self, mark_dirty=True):
         if self._initializing: return

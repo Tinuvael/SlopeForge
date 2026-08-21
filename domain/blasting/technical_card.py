@@ -55,6 +55,13 @@ def polygon_area_m2(polygon: PlanPolygon | None) -> float | None:
     return abs(sum(a.x * b.y - b.x * a.y for a, b in zip(polygon.ring, polygon.ring[1:]))) / 2
 
 
+def nominal_contour_line_length(group: "BlastDrillingGroup | None") -> float | None:
+    """MVP product length for the primary contour row: holes × spacing."""
+    if group is None or group.hole_count is None or group.spacing_m is None:
+        return None
+    return group.hole_count * group.spacing_m
+
+
 def _ratio(numerator: float | None, denominator: float | None) -> float | None:
     if numerator is None or denominator in (None, 0):
         return None
@@ -99,17 +106,24 @@ class DesignSlopeOrientation:
 class JointSetOrientation:
     dip_deg: float
     dip_direction_deg: float
+    spacing_m: float | None = None
+    persistence_m: float | None = None
 
     def __post_init__(self) -> None:
         if not isfinite(self.dip_deg) or not 0 <= self.dip_deg <= 90:
             raise ValueError("Joint-set dip must be between 0 and 90 degrees")
         if not isfinite(self.dip_direction_deg) or not 0 <= self.dip_direction_deg < 360:
             raise ValueError("Joint-set dip direction must be at least 0 and less than 360 degrees")
+        for name in ("spacing_m", "persistence_m"):
+            value = getattr(self, name)
+            if value is not None and (not isfinite(value) or value <= 0):
+                raise ValueError(f"Joint-set {name} must be finite and positive")
 
 
 @dataclass
 class GeomechanicalParameters:
     lithology: str = ""
+    rock_density_t_m3: float | None = None
     ucs_mpa: float | None = None
     # Compatibility-only reader for pre-#102 payloads; never emitted or edited.
     q_value: float | None = field(default=None, repr=False)
@@ -126,12 +140,14 @@ class GeomechanicalParameters:
     def __post_init__(self) -> None:
         if len(self.joint_sets) > 5:
             raise ValueError("Geomechanics may contain at most five joint sets")
-        for name in ("ucs_mpa", "q_value", "rqd_percent", "gsi", "ff", "jw", "jn", "jr", "ja"):
+        for name in ("rock_density_t_m3", "ucs_mpa", "q_value", "rqd_percent", "gsi", "ff", "jw", "jn", "jr", "ja"):
             value = getattr(self, name)
             if value is not None and not isfinite(value):
                 raise ValueError(f"{name} must be finite")
         if self.ucs_mpa is not None and self.ucs_mpa < 0:
             raise ValueError("UCS must be non-negative")
+        if self.rock_density_t_m3 is not None and self.rock_density_t_m3 <= 0:
+            raise ValueError("Rock density must be positive")
         if self.rqd_percent is not None and not 0 <= self.rqd_percent <= 100:
             raise ValueError("RQD must be between 0 and 100 percent")
         if self.gsi is not None and not 1 <= self.gsi <= 100:
@@ -254,8 +270,17 @@ class ActualDrillingGroup:
     air_deck_count: int | None = None; deck_notes: str = ""; charge_decks: list[dict[str, Any]] = field(default_factory=list)
     rejected_hole_count: int | None = None; redrilled_hole_count: int | None = None
     wet_hole_count: int | None = None; uncharged_hole_count: int | None = None
+    mean_collar_deviation_m: float | None = None; max_collar_deviation_m: float | None = None
+    mean_toe_deviation_m: float | None = None; max_toe_deviation_m: float | None = None
     deviations_text: str = ""; notes: str = ""
     charge_components: list[ChargeComponent] = field(default_factory=list)
+
+    def __post_init__(self):
+        for name in ("mean_collar_deviation_m", "max_collar_deviation_m",
+                     "mean_toe_deviation_m", "max_toe_deviation_m"):
+            value = getattr(self, name)
+            if value is not None and (not isfinite(value) or value < 0):
+                raise ValueError(f"{name} must be finite and non-negative")
 
     def effective_drilling_length(self):
         if not self.included: return 0.0
@@ -270,6 +295,10 @@ class ActualDrillingGroup:
         if not self.charge_components: return 0.0
         try: return sum(component_explosive_mass_kg(item, self.diameter_mm) for item in self.charge_components)
         except ValueError: return None
+
+    def stemming_total_m(self) -> float:
+        """Current factual stemming derived only from factual charge components."""
+        return sum(item.length_m for item in self.charge_components if item.kind is ChargeComponentKind.STEMMING)
 
     def charge_matches(self, design: BlastDrillingGroup | None) -> bool:
         return design is not None and charge_engineering_content(self.charge_components) == charge_engineering_content(design.charge_components)
@@ -355,7 +384,14 @@ class ActualExecution:
 
     def copy_from_design(self, groups, revision_id=None, mode="fill_empty"):
         if mode not in {"fill_empty", "add_missing", "replace"}: raise ValueError("Unsupported copy mode")
-        if mode == "replace": self.actual_drilling_groups = [ActualDrillingGroup.from_design(g, revision_id) for g in groups]
+        if mode == "replace":
+            previous = {g.design_group_id: g for g in self.actual_drilling_groups if g.design_group_id}
+            self.actual_drilling_groups = [ActualDrillingGroup.from_design(g, revision_id) for g in groups]
+            for actual in self.actual_drilling_groups:
+                old = previous.get(actual.design_group_id)
+                if old:
+                    for name in ("mean_collar_deviation_m", "max_collar_deviation_m", "mean_toe_deviation_m", "max_toe_deviation_m"):
+                        setattr(actual, name, getattr(old, name))
         else:
             by_design = {g.design_group_id: g for g in self.actual_drilling_groups if g.design_group_id}
             for design in groups:
@@ -444,12 +480,65 @@ class BlastEventTechnicalCardRevision:
         rows.extend(comparison_value("ИТОГО", label, unit, project, actual) for label, unit, project, actual in totals)
         return rows
 
+    def compact_design_actual(self, design_group_id: str) -> list[dict[str, Any]]:
+        """Comparable engineering values matched only by the stable design group id."""
+        design = next((g for g in self.drilling_groups if g.id == design_group_id), None)
+        actual = next((g for g in self.actual_execution.actual_drilling_groups
+                       if g.design_group_id == design_group_id), None)
+        specs = (("burden_m", "Burden"), ("spacing_m", "Spacing"),
+                 ("stemming_length_m", "Stemming"), ("charge_mass_per_hole_kg", "Charge mass per hole"),
+                 ("average_depth_m", "Average depth"), ("subdrill_m", "Subdrill"),
+                 ("inclination_deg", "Inclination"), ("azimuth_deg", "Azimuth"))
+        rows = []
+        for attr, label in specs:
+            if design is None:
+                planned = None
+            elif attr == "stemming_length_m":
+                planned = design.stemming_total_m()
+            elif attr == "charge_mass_per_hole_kg":
+                planned = design.explosive_mass_per_hole_kg()
+            else:
+                planned = getattr(design, attr)
+            if actual is None:
+                factual = None
+            elif attr == "stemming_length_m":
+                factual = actual.stemming_total_m()
+            elif attr == "charge_mass_per_hole_kg":
+                factual = actual.explosive_mass_per_hole_kg()
+            else:
+                factual = getattr(actual, attr)
+            delta = None
+            if planned is not None and factual is not None:
+                raw = factual - planned
+                delta = ((raw + 180) % 360) - 180 if attr == "azimuth_deg" else raw
+            rows.append({"parameter": label, "design": planned, "actual": factual, "delta": delta})
+        return rows
+
+    def engineering_ratios(self, design_group_id: str) -> dict[str, float | None]:
+        actual = next((g for g in self.actual_execution.actual_drilling_groups
+                       if g.design_group_id == design_group_id), None)
+        burden = actual.burden_m if actual else None
+        spacing = actual.spacing_m if actual else None
+        toe = actual.mean_toe_deviation_m if actual else None
+        bench = self.production_parameters.design_bench_height_m if self.production_parameters else None
+        return {"B/S": _positive_ratio(burden, spacing), "S/B": _positive_ratio(spacing, burden),
+                "H/B": _positive_ratio(bench, burden),
+                "mean toe deviation / burden": _positive_ratio(toe, burden),
+                "mean toe deviation / spacing": _positive_ratio(toe, spacing)}
+
 
 def comparison_value(group, parameter, unit, project, actual):
     absolute = actual - project if actual is not None and project is not None else None
     relative = absolute / project * 100 if absolute is not None and project not in (None, 0) else None
     return {"group": group, "parameter": parameter, "unit": unit, "project": project, "actual": actual,
             "absolute_deviation": absolute, "relative_deviation_percent": relative}
+
+
+def _positive_ratio(numerator, denominator):
+    if numerator is None or denominator is None or denominator <= 0:
+        return None
+    value = numerator / denominator
+    return value if isfinite(value) else None
 
 
 @dataclass
@@ -462,6 +551,10 @@ class BlastEventTechnicalCard:
 
     def save_revision(self, draft: BlastEventTechnicalCardRevision, *, status="draft", change_reason=""):
         saved = deepcopy(draft); number = len(self.revisions) + 1
+        if saved.geomechanical_parameters:
+            saved.geomechanical_parameters.__post_init__()
+            for joint_set in saved.geomechanical_parameters.joint_sets: joint_set.__post_init__()
+        for actual_group in saved.actual_execution.actual_drilling_groups: actual_group.__post_init__()
         saved.id = f"{self.id}-R{number:03d}"; saved.technical_card_id = self.id
         saved.revision_number = number; saved.created_at = utc_now(); saved.status = status; saved.change_reason = change_reason
         if status == "completed" and saved.validate_completion(): raise ValueError("; ".join(saved.validate_completion()))

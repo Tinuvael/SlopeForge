@@ -328,7 +328,7 @@ class CompactSummaryList(DashboardCard):
                 trailing.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
                 layout.addWidget(trailing)
             if self.show_go_to:
-                go_to = OverviewLinkButton("Go to ›")
+                go_to = OverviewLinkButton(tr("Go to ›"))
                 go_to.setToolTip(tr("Open"))
                 go_to.clicked.connect(
                     lambda _checked=False, current_key=key: self.go_to_requested.emit(current_key)

@@ -4321,5 +4321,225 @@ Continue?</source><translation>Новый горизонт отличается 
         <source>Inspect the plan, then use Draw boundary.</source>
         <translation>Проверьте план, затем нажмите «Построить границу».</translation>
     </message>
+    <message>
+        <source>Actual survey</source>
+        <translation>Фактическая съёмка</translation>
+    </message>
+    <message>
+        <source>CSV files (*.csv)</source>
+        <translation>Файлы CSV (*.csv)</translation>
+    </message>
+    <message>
+        <source>Calculate</source>
+        <translation>Рассчитать</translation>
+    </message>
+    <message>
+        <source>Calculate from survey</source>
+        <translation>Расчёт по съёмке</translation>
+    </message>
+    <message>
+        <source>Calculate from survey…</source>
+        <translation>Рассчитать по съёмке…</translation>
+    </message>
+    <message>
+        <source>Calculation failed</source>
+        <translation>Ошибка расчёта</translation>
+    </message>
+    <message>
+        <source>Design surface</source>
+        <translation>Проектная поверхность</translation>
+    </message>
+    <message>
+        <source>Load CSV</source>
+        <translation>Загрузить CSV</translation>
+    </message>
+    <message>
+        <source>Load both CSV files, then calculate.</source>
+        <translation>Загрузите оба CSV-файла, затем выполните расчёт.</translation>
+    </message>
+    <message>
+        <source>Load…</source>
+        <translation>Загрузить…</translation>
+    </message>
+    <message>
+        <source>Maximum distance</source>
+        <translation>Максимальное расстояние</translation>
+    </message>
+    <message>
+        <source>Mean distance</source>
+        <translation>Среднее расстояние</translation>
+    </message>
+    <message>
+        <source>Measured wall geometry</source>
+        <translation>Измеренная геометрия откоса</translation>
+    </message>
+    <message>
+        <source>Minimum distance</source>
+        <translation>Минимальное расстояние</translation>
+    </message>
+    <message>
+        <source>Point count</source>
+        <translation>Количество точек</translation>
+    </message>
+    <message>
+        <source>Standard deviation</source>
+        <translation>Стандартное отклонение</translation>
+    </message>
+    <message>
+        <source>Use result</source>
+        <translation>Использовать результат</translation>
+    </message>
+    <message>
+        <source>Ratios</source>
+        <translation>Отношения</translation>
+    </message>
+    <message>
+        <source>Burden</source>
+        <translation>ЛНС</translation>
+    </message>
+    <message>
+        <source>Δ</source>
+        <translation>Δ</translation>
+    </message>
+    <message>
+        <source>Density</source>
+        <translation>Плотность</translation>
+    </message>
+    <message>
+        <source>Spacing, m</source>
+        <translation>Шаг, м</translation>
+    </message>
+    <message>
+        <source>Persistence, m</source>
+        <translation>Протяжённость, м</translation>
+    </message>
+    <message>
+        <source>Mean collar deviation, m</source>
+        <translation>Среднее отклонение устья, м</translation>
+    </message>
+    <message>
+        <source>Max collar deviation, m</source>
+        <translation>Максимальное отклонение устья, м</translation>
+    </message>
+    <message>
+        <source>Mean toe deviation, m</source>
+        <translation>Среднее отклонение забоя скважины, м</translation>
+    </message>
+    <message>
+        <source>Max toe deviation, m</source>
+        <translation>Максимальное отклонение забоя скважины, м</translation>
+    </message>
+    <message>
+        <source>Mean backbreak, m</source>
+        <translation>Среднее разрушение бровки, м</translation>
+    </message>
+    <message>
+        <source>Maximum backbreak, m</source>
+        <translation>Максимальное разрушение бровки, м</translation>
+    </message>
+    <message>
+        <source>Mean overbreak, m</source>
+        <translation>Средний перебор, м</translation>
+    </message>
+    <message>
+        <source>Mean underbreak, m</source>
+        <translation>Средний недобор, м</translation>
+    </message>
+    <message>
+        <source>Contour RMS deviation, m</source>
+        <translation>RMS отклонения контура, м</translation>
+    </message>
+    <message>
+        <source>Photogrammetry</source>
+        <translation>Фотограмметрия</translation>
+    </message>
+    <message>
+        <source>Laser scan</source>
+        <translation>Лазерное сканирование</translation>
+    </message>
+    <message>
+        <source>Manual measurement</source>
+        <translation>Ручное измерение</translation>
+    </message>
+    <message>
+        <source>Visual estimate</source>
+        <translation>Визуальная оценка</translation>
+    </message>
+    <message>
+        <source>RMS dependencies are unavailable or incompatible.</source>
+        <translation>Зависимости для расчёта RMS недоступны или несовместимы.</translation>
+    </message>
+    <message>
+        <source>The design surface contains no valid three-point FID triangles.</source>
+        <translation>Проектная поверхность не содержит корректных треугольников FID из трёх точек.</translation>
+    </message>
+    <message>
+        <source>The actual survey contains no points.</source>
+        <translation>Фактическая съёмка не содержит точек.</translation>
+    </message>
+    <message>
+        <source>The actual survey must contain finite XYZ points.</source>
+        <translation>Фактическая съёмка должна содержать конечные координаты XYZ.</translation>
+    </message>
+    <message>
+        <source>Point-to-surface distance calculation failed.</source>
+        <translation>Не удалось рассчитать расстояния от точек до поверхности.</translation>
+    </message>
+    <message>
+        <source>The selected CSV file could not be read.</source>
+        <translation>Не удалось прочитать выбранный CSV-файл.</translation>
+    </message>
+    <message>
+        <source>The CSV file is missing required columns: %1</source>
+        <translation>В CSV-файле отсутствуют обязательные столбцы: %1</translation>
+    </message>
+    <message>
+        <source>The CSV file contains non-numeric coordinate values.</source>
+        <translation>CSV-файл содержит нечисловые значения координат.</translation>
+    </message>
+    <message>
+        <source>The CSV file contains non-finite coordinate values.</source>
+        <translation>CSV-файл содержит неконечные значения координат.</translation>
+    </message>
+    <message>
+        <source>Unexpected RMS calculation error.</source>
+        <translation>Непредвиденная ошибка расчёта RMS.</translation>
+    </message>
+    <message>
+        <source>Invalid RMS input data.</source>
+        <translation>Некорректные входные данные для расчёта RMS.</translation>
+    </message>
+    <message>
+        <source>Confirm</source>
+        <translation>Подтвердить</translation>
+    </message>
+    <message>
+        <source>Exclude</source>
+        <translation>Исключить</translation>
+    </message>
+    <message>
+        <source>Restore suggestion</source>
+        <translation>Вернуть предложение</translation>
+    </message>
+    <message>
+        <source>Add manually</source>
+        <translation>Добавить вручную</translation>
+    </message>
+    <message>
+        <source>Recalculate links</source>
+        <translation>Пересчитать связи</translation>
+    </message>
+    <message>
+        <source>Go to ›</source>
+        <translation>Перейти ›</translation>
+    </message>
+    <message>
+        <source>No confirmed contour event found</source>
+        <translation>Подтверждённое контурное событие не найдено</translation>
+    </message>
+    <message>
+        <source>Hole spacing, m</source>
+        <translation>Шаг между скважинами, м</translation>
+    </message>
 </context>
 </TS>

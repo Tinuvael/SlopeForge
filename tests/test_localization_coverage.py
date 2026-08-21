@@ -90,6 +90,12 @@ def test_important_indirect_presentation_sources_are_in_catalogue():
         "Inspect the plan, then use Draw boundary.",
         "Planned", "In preparation", "Blasted", "Assessed", "Completed", "Draft",
         "Archived", "Active", "Inactive", "Enabled", "Disabled",
+        "Density", "Spacing, m", "Persistence, m", "Hole spacing, m",
+        "Mean collar deviation, m", "Max collar deviation, m",
+        "Mean toe deviation, m", "Max toe deviation, m",
+        "Mean backbreak, m", "Maximum backbreak, m", "Mean overbreak, m",
+        "Mean underbreak, m", "Contour RMS deviation, m", "Measurement method",
+        "Survey", "Photogrammetry", "Laser scan", "Manual measurement", "Visual estimate",
     }
     # Category labels are stable presentation text paired with canonical userData.
     from domain.attachments.policy import ATTACHMENT_CATEGORIES
@@ -172,6 +178,22 @@ def test_representative_active_screen_labels_are_translated():
     }
     assert {source: catalogue[source] for source in expected} == expected
     assert catalogue["Project tree"] == "Дерево проекта"
+
+
+def test_issue_136_russian_engineering_terminology():
+    catalogue = russian_catalog()
+    assert catalogue["Contour RMS deviation, m"] == "RMS отклонения контура, м"
+    assert catalogue["Spacing, m"] == "Шаг, м"
+    assert catalogue["Hole spacing, m"] == "Шаг между скважинами, м"
+    assert catalogue["Mean toe deviation, m"] == "Среднее отклонение забоя скважины, м"
+    assert catalogue["Max toe deviation, m"] == "Максимальное отклонение забоя скважины, м"
+    assert catalogue["Mean backbreak, m"] == "Среднее разрушение бровки, м"
+    assert catalogue["Maximum backbreak, m"] == "Максимальное разрушение бровки, м"
+    assert catalogue["Standard deviation"] == "Стандартное отклонение"
+    for source in ("RMS dependencies are unavailable or incompatible.",
+                   "Unexpected RMS calculation error.", "Invalid RMS input data."):
+        assert "RMS" in catalogue[source]
+        assert "СКО" not in catalogue[source]
 
 
 def test_active_ui_has_no_runtime_russian_fallback_bridge():

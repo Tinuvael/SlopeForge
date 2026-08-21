@@ -272,6 +272,65 @@ def test_technical_card_save_split_button_routes_existing_save_actions():
     button.close(); app.processEvents()
 
 
+def test_main_split_save_keeps_incomplete_production_card_as_draft():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.technical_card_widgets import TechnicalCardEditorWidget, TechnicalCardSaveButton
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast); calls = []
+    assert draft.validate_completion() == ["Заполните минимальное геомеханическое описание"]
+    embedded = TechnicalCardEditorWidget(
+        blast, card, draft,
+        lambda _card, _revision, status, _date: calls.append(status),
+    )
+    save = TechnicalCardSaveButton(embedded.save_draft, embedded.complete)
+    save.click(); app.processEvents()
+    assert calls == ["draft"]
+    save.close(); embedded.deleteLater(); app.processEvents()
+
+
+def test_visible_contour_design_edits_canonical_method_and_spacing():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.pages.technical_card_widgets import TechnicalCardEditorWidget
+
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event("contour"); card, draft = new_technical_card(blast)
+    embedded = TechnicalCardEditorWidget(blast, card, draft, lambda *_: None)
+    design_page = embedded.take_tab("Contour drilling")
+    host = widgets.QWidget(); layout = widgets.QVBoxLayout(host); layout.addWidget(design_page)
+    host.show(); app.processEvents()
+    method = design_page.findChild(widgets.QComboBox)
+    method = next(combo for combo in design_page.findChildren(widgets.QComboBox)
+                  if combo.findData("presplit") >= 0)
+    assert method.isVisibleTo(host)
+    planned = design_page.findChild(widgets.QGroupBox, "EngineeringCard")
+    assert planned is not None and planned.isAncestorOf(method)
+    assert design_page.findChild(widgets.QGroupBox, "controlledBlastingMethodPanel") is None
+    workspace = design_page.findChild(widgets.QWidget, "EngineeringWorkspace")
+    assert workspace.layout().spacing() == 8
+    assert embedded.editor.group_cards_layout.spacing() == 8
+    method.setCurrentIndex(method.findData("presplit"))
+    assert draft.contour_parameters.controlled_blasting_method == "presplit"
+    assert draft.validate_completion() == []
+    spacing = design_page.findChild(widgets.QDoubleSpinBox, "spacing_m")
+    assert spacing is not None and spacing.isVisibleTo(host)
+    spacing.setValue(.2); app.processEvents()
+    assert draft.drilling_groups[0].spacing_m == .2
+    host.close(); embedded.deleteLater(); app.processEvents()
+
+
+def test_production_design_keeps_existing_spacing_presentation():
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast)
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_: None)
+    spacing = dialog.group_cards.findChild(widgets.QDoubleSpinBox, "spacing_m")
+    assert spacing is not None
+    spacing.setValue(4.5); assert draft.drilling_groups[0].spacing_m == 4.5
+    dialog.close(); app.processEvents()
+
+
 def test_drilling_group_uses_explicit_enabled_checkbox():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.editors.technical_card_editor import TechnicalCardDialog
@@ -353,9 +412,14 @@ def test_geomechanics_ui_uses_integer_ranges_and_barton_catalogues():
     assert dialog.rqd.minimum() == -1 and dialog.rqd.maximum() == 100
     assert dialog.gsi.buttonSymbols() == widgets.QAbstractSpinBox.ButtonSymbols.UpDownArrows
 
-    dip, direction = dialog.joint_set_rows[0]
+    dip, direction, spacing, persistence = dialog.joint_set_rows[0]
     assert isinstance(dip, widgets.QSpinBox) and (dip.minimum(), dip.maximum()) == (-1, 90)
     assert isinstance(direction, widgets.QSpinBox) and (direction.minimum(), direction.maximum()) == (-1, 359)
+    assert isinstance(spacing, widgets.QDoubleSpinBox)
+    assert isinstance(persistence, widgets.QDoubleSpinBox)
+    dip.setValue(45); direction.setValue(120); spacing.setValue(1.25); persistence.setValue(8.5)
+    restored_set = dialog._geomechanics_from_form().joint_sets[0]
+    assert (restored_set.spacing_m, restored_set.persistence_m) == (1.25, 8.5)
     dip.setValue(118); direction.setValue(500)
     assert (dip.value(), direction.value()) == (90, 359)
 

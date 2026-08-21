@@ -2,23 +2,15 @@
 from app.localization import tr
 """Reusable embedded views backed by the existing TechnicalCardDialog editor."""
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMenu,QSizePolicy,QToolButton,QVBoxLayout,QWidget
+from PySide6.QtWidgets import QSizePolicy,QVBoxLayout,QWidget
 from ui.editors.technical_card_editor import TechnicalCardDialog
+from ui.widgets.design_system import SplitSaveButton
 
-class TechnicalCardSaveButton(QToolButton):
+class TechnicalCardSaveButton(SplitSaveButton):
     """One save action with completion available from its native popup menu."""
     def __init__(self, save_draft, save_completed, parent=None):
-        super().__init__(parent)
-        self.setText(tr("Save"))
+        super().__init__(save_draft, save_completed, parent=parent)
         self.setObjectName("TechnicalCardSaveButton")
-        self.setProperty("role", "primary")
-        self.setMinimumSize(124, 32)
-        self.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        menu = QMenu(self)
-        self.save_complete_action = menu.addAction(tr("Save & complete"))
-        self.setMenu(menu)
-        self.clicked.connect(save_draft)
-        self.save_complete_action.triggered.connect(save_completed)
 
 class TechnicalCardEditorWidget(QWidget):
     """Permanently hidden adapter that lends pages from the proven editor."""

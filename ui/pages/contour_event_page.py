@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.localization import tr
+from domain.blasting.technical_card import nominal_contour_line_length
 from domain.blasting.workflow import (
     ASSESSMENT_PROGRESS_LABELS,
     WORKFLOW_LABELS,
@@ -41,7 +42,7 @@ from ui.pages.entity_overview_widgets import (
 from ui.pages.entity_page_controller import EntityPageController
 from ui.pages.entity_tabs import create_attachment_tab_page, create_entity_tabs
 from ui.pages.technical_card_widgets import ActualExecutionEditorWidget, BlastDesignEditorWidget, TechnicalCardEditorWidget, TechnicalCardSaveButton
-from ui.presentation_labels import domain_message, format_assessment_elevation_interval
+from ui.presentation_labels import CONTROLLED_BLASTING_LABELS, domain_message, format_assessment_elevation_interval
 
 
 def _show(value, unit="", digits=2):
@@ -81,16 +82,7 @@ def _history_bounds(entries):
 
 
 def _method_label(code):
-    labels = {
-        "buffer_cushion": "Buffer / cushion blasting",
-        "trim": "Trim blasting",
-        "presplit": "Presplit",
-        "midsplit": "Midsplit",
-        "postsplit": "Postsplit",
-        "line_drilling": "Line drilling",
-        "other": "Other",
-    }
-    return tr(labels.get(code, code.replace("_", " ").title())) if code else "—"
+    return tr(CONTROLLED_BLASTING_LABELS.get(code, code.replace("_", " ").title())) if code else "—"
 
 
 def _primary_contour_group(revision):
@@ -469,22 +461,20 @@ class ContourEventPage(QWidget):
         contour = revision.contour_parameters
         actual = revision.actual_execution
         group = _primary_contour_group(revision)
-        spacing = contour.average_spacing_m if contour else None
-        if spacing is None and group is not None:
-            spacing = group.spacing_m
+        spacing = group.spacing_m if group and group.spacing_m is not None else (contour.average_spacing_m if contour else None)
         depth = contour.average_depth_m if contour else None
         if depth is None and group is not None:
             depth = group.average_depth_m
         inclination = group.inclination_deg if group and group.inclination_deg is not None else (contour.inclination_deg if contour else None)
         diameter = contour.diameter_mm if contour and contour.diameter_mm is not None else (group.diameter_mm if group else None)
-        holes = contour.hole_count if contour and contour.hole_count is not None else (group.hole_count if group else None)
+        holes = group.hole_count if group and group.hole_count is not None else (contour.hole_count if contour else None)
         explosive = (contour.explosive_type if contour else None) or (group.explosive_names() if group else "") or "—"
         actual_date = actual.actual_blast_date
         canonical_date = actual_date or self.blast_event.event_date
         self.general_info.set_rows((
             ("Blast date", _dateish(canonical_date), tr("Actual") if actual_date else tr("Planned")),
             ("Method", _method_label(contour.controlled_blasting_method) if contour else "—"),
-            ("Line length", _show(contour.line_length_m if contour else None, " m")),
+            ("Line length", _show(nominal_contour_line_length(group), " m")),
             ("Average depth", _show(depth, " m")),
             ("Azimuth", _show(group.azimuth_deg if group else None, "°")),
             ("Inclination", _show(inclination, "°")),
@@ -547,7 +537,7 @@ class ContourEventPage(QWidget):
                 f"{area.id} · {format_assessment_elevation_interval(rev.min_elevation, rev.max_elevation)}",
                 tr(ASSESSMENT_PROGRESS_LABELS[progress]),
                 getattr(progress, "value", progress),
-                action_text="Go to ›",
+                action_text=tr("Go to ›"),
             ))
         self.related_areas.set_rows(rows, empty_text="No linked assessment areas")
 
