@@ -16,27 +16,23 @@ class FakeInspector:
 def test_expected_alembic_head_resolves_real_repository_graph():
     """Exercise the production path/config rather than a mocked head helper."""
     repository_heads = ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
-    assert repository_heads == ["0007_remove_mine_blastblock"]
+    assert repository_heads == ["0001_mvp_baseline"]
     assert startup._expected_alembic_head() == repository_heads[0]
 
 
 class FakeScript:
     def get_revision(self, revision):
-        return object() if revision in {
-            "0001_mvp_baseline", "0002_workflow_status", "0003_explosive_catalog",
-            "0004_charge_presets", "0005_explosive_charge_form",
-            "0006_explosive_product_metadata", "0007_remove_mine_blastblock",
-        } else None
+        return object() if revision == "0001_mvp_baseline" else None
 
 
-def arrange_startup(monkeypatch, *, revision="0002_workflow_status", tables=None):
+def arrange_startup(monkeypatch, *, revision="0001_mvp_baseline", tables=None):
     settings = Settings("postgresql+psycopg://u:secret@db.example:5432/slopeforge", Path("/tmp/storage"))
     engine = object()
     monkeypatch.setattr(startup.Settings, "from_env", lambda: settings)
     monkeypatch.setattr(startup, "create_database_engine", lambda value: engine)
     monkeypatch.setattr(startup, "create_session_factory", lambda value: "sessions")
     monkeypatch.setattr(startup, "check_connection", lambda value: None)
-    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "0002_workflow_status")
+    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "0001_mvp_baseline")
     monkeypatch.setattr(startup, "_alembic_script", lambda: FakeScript())
     monkeypatch.setattr(startup, "_database_alembic_heads", lambda value: (() if revision is None else (revision,)))
     monkeypatch.setattr(startup, "configure_mappers", lambda: None)
@@ -63,16 +59,6 @@ def test_startup_accepts_database_at_the_single_current_head(monkeypatch):
     assert startup.initialize_database_runtime() == (settings, engine, "sessions")
 
 
-def test_startup_known_previous_revision_requires_migration(monkeypatch):
-    arrange_startup(monkeypatch, revision="0001_mvp_baseline")
-    with pytest.raises(startup.StartupError) as caught:
-        startup.initialize_database_runtime()
-    message = str(caught.value)
-    assert caught.value.reason == "database_migration_required"
-    assert "0001_mvp_baseline" in message
-    assert "python -m database.cli migrate" in caught.value.presentation()
-
-
 def test_startup_removed_revision_requires_reset_not_migrate(monkeypatch):
     arrange_startup(monkeypatch, revision="20260809_0008")
     with pytest.raises(startup.StartupError) as caught:
@@ -80,14 +66,14 @@ def test_startup_removed_revision_requires_reset_not_migrate(monkeypatch):
     rendered = caught.value.presentation()
     assert caught.value.reason == "database_revision_obsolete"
     assert "20260809_0008" in rendered
-    assert "0002_workflow_status" in rendered
+    assert "0001_mvp_baseline" in rendered
     assert "reset-dev-db" in rendered
     assert "database.cli migrate" not in rendered
 
 
 def test_real_script_directory_classifies_removed_revision(monkeypatch):
     monkeypatch.setattr(startup, "_expected_alembic_head",
-                        lambda: "0002_workflow_status")
+                        lambda: "0001_mvp_baseline")
     monkeypatch.setattr(startup, "_database_alembic_heads",
                         lambda _engine: ("20260809_0008",))
     with pytest.raises(startup.StartupError) as caught:
@@ -101,7 +87,7 @@ def test_startup_rejects_missing_alembic_version_with_clear_guidance(monkeypatch
         startup.initialize_database_runtime()
     message = str(caught.value)
     assert "Database revision: missing" in message
-    assert "Current application revision: 0002_workflow_status" in message
+    assert "Current application revision: 0001_mvp_baseline" in message
     assert "python -m database.cli migrate" in caught.value.presentation()
 
 

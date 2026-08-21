@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 
 
@@ -28,9 +28,14 @@ def test_fresh_head_matches_application_metadata(monkeypatch: pytest.MonkeyPatch
         command.downgrade(config, "base")
         command.upgrade(config, "head")
         inspector = inspect(engine)
-        assert set(inspector.get_table_names()) >= set(Base.metadata.tables)
-        assert "mines" not in inspector.get_table_names()
-        assert "blast_blocks" not in inspector.get_table_names()
+        application_tables = set(inspector.get_table_names()) - {"alembic_version"}
+        assert application_tables == set(Base.metadata.tables)
+        assert "mines" not in application_tables
+        assert "blast_blocks" not in application_tables
+        with engine.connect() as connection:
+            assert not connection.scalar(text(
+                "SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'blast_block_status')"
+            ))
         for name, model_table in Base.metadata.tables.items():
             actual_columns = {column["name"]: column for column in inspector.get_columns(name)}
             assert set(actual_columns) == set(model_table.columns.keys()), name
@@ -50,6 +55,16 @@ def test_fresh_head_matches_application_metadata(monkeypatch: pytest.MonkeyPatch
             assert actual_fks == expected_fks, name
             actual_indexes = {index["name"] for index in inspector.get_indexes(name)}
             assert {index.name for index in model_table.indexes} <= actual_indexes
+            actual_unique = {
+                tuple(constraint["column_names"])
+                for constraint in inspector.get_unique_constraints(name)
+            }
+            expected_unique = {
+                tuple(column.name for column in constraint.columns)
+                for constraint in model_table.constraints
+                if constraint.__class__.__name__ == "UniqueConstraint"
+            }
+            assert actual_unique == expected_unique, name
             actual_checks = {check["name"] for check in inspector.get_check_constraints(name)}
             expected_checks = {
                 check.name for check in model_table.constraints

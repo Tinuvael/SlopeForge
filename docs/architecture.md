@@ -256,8 +256,8 @@ Caller, navigation, bootstrap, report, repository, test, migration, and packagin
 | Lithology and old ExplosiveType | DEAD | They only supported the retired engineering graph; removed. This does not implement the #78A catalogue. |
 | old Attachment and AttachmentRepository | DEAD | No production composition caller remained; removed with the competing Block-owned table. |
 | AssessmentEntityAttachment | ACTIVE | Current entity attachment service/controller and Photos/Documents pages use it; retained as canonical one-owner persistence. |
-| Mine and MineRepository | ACTIVE_BUT_MISPLACED | Project creation, Site repositories, read models, bootstrap, and PostgreSQL tests still depend on the Mine → Site compatibility pair; retained for Phase 7 or a dedicated Project schema decision. |
-| BlastBlock.status and planned_blast_date | ACTIVE | Current CRUD, UI, dashboards, reports, and audit history use them; retained pending #75. |
-| AuditLogEntry and legacy entity_type labels | COMPATIBILITY_ONLY (labels); ACTIVE (Block audit) | Block create/update audit remains active. Historical allowed labels do not keep tables alive, so the constraint is unchanged to avoid unrelated audit redesign. |
+| Mine and MineRepository | DEAD | Current Project persistence starts at Site; the obsolete compatibility pair is absent from the ORM and consolidated MVP baseline. |
+| BlastBlock persistence | DEAD | Production Blocks are current `BlastEvent(event_type="production")` rows; workflow status is derived rather than persisted. |
+| AuditLogEntry | ACTIVE | The entity-generic audit table remains current persistence without a BlastBlock foreign key. |
 
-The canonical `0001_mvp_baseline` creates only the active MVP persistence graph and removes it in foreign-key-safe order on downgrade. The native `user_role` and `blast_block_status` PostgreSQL enum types remain part of that graph. Project Lines remain Site-owned, and Technical Card/evaluation revision history and stored DAI/FCI are unchanged.
+The canonical `0001_mvp_baseline` creates only the active MVP persistence graph and removes it in foreign-key-safe order on downgrade. The native `user_role` PostgreSQL enum remains part of that graph; the obsolete `blast_block_status` type is absent. Project Lines remain Site-owned, and Technical Card/evaluation revision history and stored DAI/FCI are unchanged.
