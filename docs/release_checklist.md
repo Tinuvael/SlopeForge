@@ -37,7 +37,8 @@ For schema/persistence validation, also run PostgreSQL integration tests with a 
 - Project dashboard opens and Project Lines are managed there, not as a tree branch.
 - Domain dashboard opens and remains Domain-scoped.
 - Project/Domain renaming preserves IDs and relationships.
-- Dashboard blast counts do not double-count Production Block + linked BlastEvent.
+- Dashboard blast counts treat a Production Block as its production BlastEvent,
+  not as a second blast.
 - DAI and FCI remain separate stored-result metrics.
 
 ## Project Lines / geometry
@@ -62,8 +63,8 @@ For schema/persistence validation, also run PostgreSQL integration tests with a 
 - Technical Card Save draft / Complete preserves revision history.
 - Planned vs actual facts are edited in their intended sections.
 - Workflow status is derived consistently rather than independently editable.
-- Production Block and linked BlastEvent move/update atomically where supported.
-- Photos/Documents remain owned through the linked production BlastEvent.
+- Production Block metadata updates the same production BlastEvent identity.
+- Photos/Documents are owned by that production BlastEvent.
 
 ## Contour Blast
 

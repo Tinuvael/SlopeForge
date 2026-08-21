@@ -152,8 +152,7 @@ The current scoring model is correct and should not be redesigned during MVP cle
 Attachment ownership is intentionally singular:
 
 ```text
-Production Block
--> linked production BlastEvent
+Production BlastEvent (shown as Block)
 -> Photos / Documents
 
 Contour BlastEvent
