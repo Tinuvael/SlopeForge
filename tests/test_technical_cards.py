@@ -289,6 +289,71 @@ def test_main_split_save_keeps_incomplete_production_card_as_draft():
     save.close(); embedded.deleteLater(); app.processEvents()
 
 
+def test_draft_design_save_preserves_untouched_incomplete_geomechanics(monkeypatch):
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast); calls = []; warnings = []
+    original_geo = draft.geomechanical_parameters
+    dialog = TechnicalCardDialog(blast, card, draft,
+        lambda _card, revision, status, _date: calls.append((revision, status)))
+    dialog.group_cards.findChild(widgets.QDoubleSpinBox, "spacing_m").setValue(4.5)
+    monkeypatch.setattr("ui.editors.technical_card_editor.QMessageBox.warning", lambda *args: warnings.append(args))
+    assert dialog._save("draft") is True
+    assert calls and calls[0][1] == "draft"
+    assert draft.geomechanical_parameters is original_geo
+    assert warnings == []
+    dialog.deleteLater(); app.processEvents()
+
+
+def test_draft_execution_save_preserves_untouched_incomplete_geomechanics(monkeypatch):
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast); calls = []; warnings = []
+    original_geo = draft.geomechanical_parameters
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_args: calls.append(True))
+    dialog.execution_notes.setPlainText("Execution checked")
+    monkeypatch.setattr("ui.editors.technical_card_editor.QMessageBox.warning", lambda *args: warnings.append(args))
+    assert dialog._save("draft") is True
+    assert calls == [True]
+    assert draft.geomechanical_parameters is original_geo
+    assert warnings == []
+    dialog.deleteLater(); app.processEvents()
+
+
+def test_dirty_invalid_geomechanics_still_blocks_draft_save(monkeypatch):
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast); calls = []; warnings = []
+    dialog = TechnicalCardDialog(blast, card, draft, lambda *_args: calls.append(True))
+    dip, direction, _spacing, _persistence = dialog.joint_set_rows[0]
+    dip.setValue(45); direction.setValue(direction.minimum())
+    monkeypatch.setattr("ui.editors.technical_card_editor.QMessageBox.warning", lambda *args: warnings.append(args))
+    assert dialog._geomechanics_dirty is True
+    assert dialog._save("draft") is False
+    assert calls == [] and warnings
+    dialog.close(); app.processEvents()
+
+
+def test_complete_still_validates_untouched_incomplete_production_geomechanics(monkeypatch):
+    widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.editors.technical_card_editor import TechnicalCardDialog
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    blast = event(); card, draft = new_technical_card(blast); warnings = []
+    def save_with_completion_validation(_card, revision, status, _date):
+        if status == "completed":
+            errors = revision.validate_completion()
+            if errors: raise ValueError(errors[0])
+    dialog = TechnicalCardDialog(blast, card, draft, save_with_completion_validation)
+    monkeypatch.setattr("ui.editors.technical_card_editor.QMessageBox.warning", lambda *args: warnings.append(args))
+    assert dialog._geomechanics_dirty is False
+    assert dialog._save("completed") is False
+    assert warnings
+    dialog.close(); app.processEvents()
+
+
 def test_visible_contour_design_edits_canonical_method_and_spacing():
     widgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.pages.technical_card_widgets import TechnicalCardEditorWidget

@@ -38,6 +38,7 @@ class EntityTabWidget(QTabWidget):
         self.setProperty("entityTabs", True)
         self.setDocumentMode(True)
         self.setMinimumHeight(0)
+        self.setMinimumWidth(0)
         QTabWidget.setSizePolicy(
             self,
             QSizePolicy.Policy.Expanding,
@@ -67,8 +68,7 @@ class EntityTabWidget(QTabWidget):
         return QSize(hint.width(), 0)
 
     def minimumSizeHint(self) -> QSize:
-        hint = super().minimumSizeHint()
-        return QSize(hint.width(), 0)
+        return QSize(0, 0)
 
 
 def create_entity_tabs(parent: QWidget | None = None) -> QTabWidget:

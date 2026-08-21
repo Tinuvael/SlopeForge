@@ -30,7 +30,7 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     assert geometry.sizeHint().height() == 0
     assert geometry.minimumSizeHint().height() == 0
     assert geometry.sizeHint().width() == 700
-    assert geometry.minimumWidth() == 610
+    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 460
     assert geometry.maximumWidth() == 800
 
     related = BlockRelatedEntityList("Related assessment areas")
@@ -49,7 +49,7 @@ def test_block_geometry_and_related_rows_use_stable_overview_presentation():
     target_width = related.list.viewport().width() - related.ROW_RIGHT_INSET
     assert related.sizePolicy().verticalPolicy() == widgets.QSizePolicy.Policy.Fixed
     assert related.list.minimumHeight() == related.list.maximumHeight()
-    assert related.list.height() >= related.LIST_HEIGHT
+    assert related.list.height() > 0
     assert related.sizeHint().height() > related.list.height()
     assert related.ROW_RIGHT_INSET == 14
     assert item.sizeHint().width() == target_width
@@ -99,6 +99,9 @@ def test_block_related_list_fits_two_rows_and_scrolls_when_more_exist():
     second_rect = related.list.visualItemRect(related.list.item(1))
     assert second_rect.isValid()
     assert second_rect.bottom() <= related.list.viewport().rect().bottom()
+    first_rect = related.list.visualItemRect(related.list.item(0))
+    assert first_rect.height() < related.LIST_HEIGHT / 2
+    assert related.list.viewport().height() >= first_rect.height() + second_rect.height()
     two_row_height = related.list.height()
     assert related.list.horizontalScrollBar().maximum() == 0
 

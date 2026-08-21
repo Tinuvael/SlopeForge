@@ -31,7 +31,7 @@ def test_contour_overview_helpers_share_block_dimensions_and_behaviour():
     ))
 
     assert geometry.sizeHint().width() == 700
-    assert geometry.minimumWidth() == 610
+    assert geometry.minimumWidth() == geometry.MINIMUM_WIDTH == 460
     assert geometry.maximumWidth() == 800
     assert related.LIST_HEIGHT == 136
     assert related.ROW_RIGHT_INSET == 14

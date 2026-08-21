@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QSize, Qt
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -57,11 +57,30 @@ class BlockRelatedEntityList(RelatedEntityList):
         self.empty_label.hide()
         self.layout.addWidget(self.empty_label)
         self.list.itemSelectionChanged.connect(self._sync_row_styles)
+        self._refit_pending = False
 
     def eventFilter(self, watched, event):
         if watched is self.list.viewport() and event.type() == QEvent.Type.Resize:
             self._sync_row_widths()
+            self._schedule_row_refit()
         return super().eventFilter(watched, event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._schedule_row_refit()
+
+    def _schedule_row_refit(self) -> None:
+        if self._refit_pending:
+            return
+        self._refit_pending = True
+        QTimer.singleShot(0, self._refit_after_layout)
+
+    def _refit_after_layout(self) -> None:
+        self._refit_pending = False
+        if not self.list.count() or self.list.isHidden():
+            return
+        self._sync_row_widths()
+        self._fit_two_rows(use_visual_geometry=True)
 
     def _row_target_width(self) -> int:
         return max(1, self.list.viewport().width() - self.ROW_RIGHT_INSET)
@@ -76,7 +95,7 @@ class BlockRelatedEntityList(RelatedEntityList):
             holder.setFixedWidth(target)
             item.setSizeHint(QSize(target, max(1, holder.sizeHint().height())))
 
-    def _fit_two_rows(self) -> None:
+    def _fit_two_rows(self, *, use_visual_geometry=False) -> None:
         """Reserve a bounded viewport that never clips either of the first two rows."""
         if not self.list.count():
             height = self.LIST_HEIGHT
@@ -93,6 +112,12 @@ class BlockRelatedEntityList(RelatedEntityList):
                 + self.list.frameWidth() * 2
                 + 2
             )
+            if use_visual_geometry:
+                second = self.list.item(min(1, self.list.count() - 1))
+                rect = self.list.visualItemRect(second)
+                if rect.isValid():
+                    viewport_chrome = self.list.height() - self.list.viewport().height()
+                    height = max(height, rect.bottom() + 1 + viewport_chrome)
         self.list.setFixedHeight(height)
         self.empty_label.setFixedHeight(height)
 
@@ -131,8 +156,8 @@ class BlockRelatedEntityList(RelatedEntityList):
             holder.setMinimumWidth(0)
             holder.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             layout = QVBoxLayout(holder)
-            layout.setContentsMargins(9, 7, 12, 7)
-            layout.setSpacing(2)
+            layout.setContentsMargins(9, 4, 12, 4)
+            layout.setSpacing(1)
 
             top = QHBoxLayout()
             title = QLabel(row.title)
@@ -171,6 +196,7 @@ class BlockRelatedEntityList(RelatedEntityList):
 
         self._sync_row_widths()
         self._fit_two_rows()
+        self._schedule_row_refit()
         self._sync_row_styles()
         self.updateGeometry()
 
@@ -279,7 +305,7 @@ class BlockGeometryCard(SquareGeometryCard):
     """Wider Block geometry card whose vertical hint never drives the Overview row."""
 
     PREFERRED_WIDTH = 700
-    MINIMUM_WIDTH = 610
+    MINIMUM_WIDTH = 460
     MAXIMUM_WIDTH = 800
 
     def __init__(
