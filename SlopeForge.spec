@@ -14,12 +14,18 @@ datas = [
     (str(project_root / "alembic"), "alembic"),
 ]
 
+# alembic/env.py is loaded dynamically by Alembic at runtime, so PyInstaller cannot
+# discover its stdlib imports from the normal main.py import graph.
+hiddenimports = [
+    "logging.config",
+]
+
 a = Analysis(
     ["main.py"],
     pathex=[str(project_root)],
     binaries=[],
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -41,7 +47,8 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX is optional; PyInstaller builds must not depend on it being installed.
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     icon=str(icon_path) if icon_path.exists() else None,
@@ -53,7 +60,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name="SlopeForge",
 )

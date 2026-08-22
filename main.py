@@ -1,7 +1,6 @@
 from app.localization import tr
 import logging
 import sys
-from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -12,6 +11,7 @@ from app.connection_settings import (
     resolve_runtime_settings,
 )
 from app.platform import set_windows_app_user_model_id
+from app.runtime_paths import runtime_log_path
 from app.qt import apply_application_icon
 from app.localization import install_selected_translator, tr
 from app.splash import SlopeForgeSplash
@@ -25,7 +25,8 @@ from ui.connection_dialog import ConnectionSetupDialog
 from ui.main_window import MainWindow
 from ui.theme import apply_theme
 
-LOG_PATH = Path("slopeforge.log").resolve()
+LOG_PATH = runtime_log_path()
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO)
 logger = logging.getLogger(__name__)
 
