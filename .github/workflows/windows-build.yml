@@ -1,6 +1,9 @@
 name: Windows Build
 
 on:
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -24,7 +27,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -r requirements-build.txt
-          choco install innosetup --no-progress -y
+          choco install innosetup --version=6.7.1 --no-progress -y
 
       - name: Build canonical Windows release
         shell: cmd
