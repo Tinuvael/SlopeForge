@@ -14,12 +14,18 @@ datas = [
     (str(project_root / "alembic"), "alembic"),
 ]
 
+# alembic/env.py is loaded dynamically by Alembic at runtime, so PyInstaller cannot
+# discover its stdlib imports from the normal main.py import graph.
+hiddenimports = [
+    "logging.config",
+]
+
 a = Analysis(
     ["main.py"],
     pathex=[str(project_root)],
     binaries=[],
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
