@@ -39,6 +39,47 @@ On Windows the saved profile is stored in `%APPDATA%\SlopeForge\connection.ini`.
 
 MVP limitation: the saved PostgreSQL password is currently stored in the per-user connection INI file rather than Windows Credential Manager. Do not share that file. Moving the secret to Windows-native credential storage can be done as a focused security hardening follow-up without changing the connection UI contract.
 
+## Windows release packages
+
+The canonical Windows release command is `build_release.bat`, run from the
+repository root on Windows. It requires Python 3.12, the packages in
+`requirements.txt` and `requirements-build.txt` (including PyInstaller), and
+Inno Setup 6. `ISCC.exe` may be on `PATH`; alternatively set `ISCC_PATH` to its
+full path. The builder uses the existing PyInstaller **onedir** specification,
+then packages that same complete payload as:
+
+```text
+release\SlopeForge-<version>-Windows-x64.zip
+release\SlopeForge-<version>-Windows-x64-Setup.exe
+```
+
+`app.config.APP_VERSION` is the only release-version source. It controls both
+filenames, the installer's `AppVersion`, and the `v<version>` tag and release
+title created by GitHub Actions.
+
+The **Windows Build** workflow is a manual packaging-only action that can run
+from any branch. It keeps the ZIP and installer as workflow artifacts for 14
+days and never creates a tag or GitHub Release. The manual, `main`-only
+**Windows Release** workflow performs the same canonical build, rejects an
+existing version tag or release, and publishes both files to a new GitHub
+Release.
+
+Both workflows extract and validate the portable payload and perform a silent
+install/uninstall smoke test. Starting the GUI and completing its first-run
+connection dialog remains a manual release-candidate check because GUI process
+timing is not deterministic on hosted runners; see `docs/release_checklist.md`.
+
+The installer places application binaries under Program Files. Connection
+settings remain under `%APPDATA%\SlopeForge`, logs are written under
+`%LOCALAPPDATA%\SlopeForge\logs`, and user-selected engineering file storage
+is not owned or removed by the installer. PostgreSQL itself, deployment
+credentials, `.env` files, and private signing material are not bundled.
+
+Initial packages are unsigned and can therefore show Windows SmartScreen or
+Unknown Publisher warnings. Production Authenticode signing requires a real
+certificate and is intentionally deferred; never commit its private key or
+password.
+
 ## Development
 
 Repository-wide agent/development rules are in [AGENTS.md](AGENTS.md). Current architecture documentation is indexed in [docs/README.md](docs/README.md).
