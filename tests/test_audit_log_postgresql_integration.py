@@ -5,7 +5,7 @@ import pytest
 
 pytestmark = pytest.mark.postgres
 from sqlalchemy import create_engine, select
-from sqlalchemy.engine import make_url
+from tests.postgres_test_database import is_disposable_test_database
 from sqlalchemy.orm import sessionmaker
 
 from application.dto.current_user import CurrentUser
@@ -20,7 +20,7 @@ from infrastructure.services.production_blast_service import (
 
 URL=os.getenv("TEST_DATABASE_URL")
 if not URL: pytest.skip("TEST_DATABASE_URL is not set",allow_module_level=True)
-if "test" not in (make_url(URL).database or "").lower(): pytest.fail("Refusing audit tests outside a test database",pytrace=False)
+if not is_disposable_test_database(URL): pytest.fail("Refusing audit tests outside a test database",pytrace=False)
 
 class FailingAuditLogRepository(AuditLogRepository):
     def add_entry(self,*args,**kwargs): raise RuntimeError("audit failed")

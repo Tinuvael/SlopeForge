@@ -7,12 +7,12 @@ pytestmark = pytest.mark.postgres
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine,event,func,select
-from sqlalchemy.engine import make_url
+from tests.postgres_test_database import is_disposable_test_database
 from sqlalchemy.orm import sessionmaker
 
 URL=os.environ.get("TEST_DATABASE_URL")
 if not URL: pytest.skip("TEST_DATABASE_URL is not set; Domain Geometry DB tests skipped",allow_module_level=True)
-if "test" not in (make_url(URL).database or "").lower(): pytest.fail("Refusing destructive tests: database name must contain 'test'",pytrace=False)
+if not is_disposable_test_database(URL): pytest.fail("Refusing destructive tests: database name must contain 'test'",pytrace=False)
 from database.models import Domain,DomainGeometry,Site
 from domain.geometry.types import PlanPoint, PlanPolygon
 from repositories.domain_geometry_repository import DomainGeometryRepository

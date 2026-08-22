@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 import pytest
 from sqlalchemy import create_engine, inspect
-from sqlalchemy.engine import make_url
 from database.env import load_local_env
+from tests.postgres_test_database import is_disposable_test_database
 
 
 load_local_env(".env.test")
@@ -32,10 +32,9 @@ def isolate_installed_translator():
 
 
 def _assert_disposable_database(url: str) -> None:
-    database_name = (make_url(url).database or "").lower()
-    if "test" not in database_name:
+    if not is_disposable_test_database(url):
         pytest.fail(
-            "Refusing destructive PostgreSQL test reset outside a database whose name contains 'test'",
+            "Refusing destructive PostgreSQL test reset outside an explicitly named test database",
             pytrace=False,
         )
 

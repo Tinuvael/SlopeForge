@@ -9,7 +9,7 @@ import pytest
 
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.engine import make_url
+from tests.postgres_test_database import is_disposable_test_database
 
 from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
 from domain.assessment.geometry import (
@@ -90,7 +90,7 @@ def test_mvp_assessment_fixture_uses_canonical_domain_serialization() -> None:
 
 
 def _require_destructive_test_database(url: str) -> None:
-    if "test" not in (make_url(url).database or "").lower():
+    if not is_disposable_test_database(url):
         pytest.fail("Refusing migration test outside a test database", pytrace=False)
 
 

@@ -10,13 +10,13 @@ pytestmark = pytest.mark.postgres
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, delete, event, func, select
-from sqlalchemy.engine import make_url
+from tests.postgres_test_database import is_disposable_test_database
 from sqlalchemy.orm import Session, sessionmaker
 
 URL = os.environ.get("TEST_DATABASE_URL")
 if not URL:
     pytest.skip("TEST_DATABASE_URL is not set; Project workflow PostgreSQL tests skipped", allow_module_level=True)
-if "test" not in (make_url(URL).database or "").lower():
+if not is_disposable_test_database(URL):
     pytest.fail("Refusing destructive Project workflow tests outside a test database", pytrace=False)
 
 from application.use_cases.create_project import CreateProject, CreateProjectCommand

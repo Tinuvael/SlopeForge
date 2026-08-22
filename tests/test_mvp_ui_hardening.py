@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -195,14 +196,69 @@ def _block_page(monkeypatch, *, can_edit, archived):
 
 def test_editable_block_attachment_controls_are_enabled(monkeypatch):
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    application = _app()
     page = _block_page(monkeypatch, can_edit=True, archived=False)
     assert page.photos.add_button.text() == "Add"
     assert page.photos.add_button.isEnabled()
     assert page.photos.open_button.isEnabled()
     assert page.documents.add_button.isEnabled()
     assert not page.photo_manager.read_only and not page.document_manager.read_only
+    assert page.photo_manager.owner_type == "blast_event"
+    assert page.photo_manager.owner_id == "BE-P-7"
+    assert page.document_manager.owner_type == "blast_event"
+    assert page.document_manager.owner_id == "BE-P-7"
     assert all(button.isEnabled() for button in page.photo_manager.mutation_buttons)
-    page.close()
+    page.close(); application.processEvents()
+
+
+def test_contour_attachment_managers_use_contour_blast_event_owner():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QWidget
+    from ui.pages.contour_event_page import ContourEventPage
+
+    application = _app()
+    page = ContourEventPage.__new__(ContourEventPage)
+    QWidget.__init__(page)
+    page.controller = SimpleNamespace(attachments=SimpleNamespace(list_for_owner=lambda *_: []))
+    page.blast_event = SimpleNamespace(id="BE-C-7")
+    page.read_only = False
+
+    photos = page._attachments("Photos")
+    documents = page._attachments("Documents")
+
+    assert page.photo_manager.owner_type == "blast_event"
+    assert page.photo_manager.owner_id == "BE-C-7"
+    assert page.document_manager.owner_type == "blast_event"
+    assert page.document_manager.owner_id == "BE-C-7"
+    photos.close(); documents.close(); page.close(); application.processEvents()
+
+
+def test_assessment_attachment_managers_use_current_evaluation_owner():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QTabWidget, QWidget
+    from ui.pages.assessment_area_page import AssessmentAreaPage
+
+    application = _app()
+    page = AssessmentAreaPage.__new__(AssessmentAreaPage)
+    QWidget.__init__(page)
+    evaluation = SimpleNamespace(id="EVAL-7")
+    page.area = SimpleNamespace(id="AREA-7")
+    page.evaluation = evaluation
+    page.controller = SimpleNamespace(
+        attachments=SimpleNamespace(list_for_owner=lambda *_: []),
+        state=SimpleNamespace(evaluations=[evaluation]),
+    )
+    page.read_only = False
+    page.tabs = QTabWidget(page)
+
+    page._attachment_tab("Photos")
+    page._attachment_tab("Documents")
+
+    assert page.photo_manager.owner_type == "assessment_evaluation"
+    assert page.photo_manager.owner_id == "EVAL-7"
+    assert page.document_manager.owner_type == "assessment_evaluation"
+    assert page.document_manager.owner_id == "EVAL-7"
+    page.close(); application.processEvents()
 
 
 def test_archived_and_viewer_block_attachment_managers_are_read_only(monkeypatch):
