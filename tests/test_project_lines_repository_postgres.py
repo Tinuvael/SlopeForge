@@ -5,14 +5,16 @@ from datetime import datetime, timezone
 import os
 
 import pytest
+
+pytestmark = pytest.mark.postgres
 from sqlalchemy import create_engine
-from sqlalchemy.engine import make_url
+from tests.postgres_test_database import is_disposable_test_database
 from sqlalchemy.orm import sessionmaker
 
 URL = os.environ.get("TEST_DATABASE_URL")
 if not URL:
     pytest.skip("TEST_DATABASE_URL is not set", allow_module_level=True)
-if "test" not in (make_url(URL).database or "").lower():
+if not is_disposable_test_database(URL):
     pytest.fail("Refusing destructive Project Lines tests outside a test database", pytrace=False)
 
 from database.models import Domain, Site

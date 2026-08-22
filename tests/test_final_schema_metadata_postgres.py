@@ -4,8 +4,10 @@ import os
 from pathlib import Path
 
 import pytest
+
+pytestmark = pytest.mark.postgres
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.engine import make_url
+from tests.postgres_test_database import is_disposable_test_database
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
@@ -18,7 +20,7 @@ def test_fresh_head_matches_application_metadata(monkeypatch: pytest.MonkeyPatch
     import database.models  # noqa: F401
 
     url = os.environ["TEST_DATABASE_URL"]
-    if "test" not in (make_url(url).database or "").lower():
+    if not is_disposable_test_database(url):
         pytest.fail("Refusing migration test outside a test database", pytrace=False)
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))

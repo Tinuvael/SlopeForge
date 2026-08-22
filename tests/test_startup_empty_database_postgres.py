@@ -4,9 +4,11 @@ import os
 from pathlib import Path
 
 import pytest
+
+pytestmark = pytest.mark.postgres
 from alembic import command
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.engine import make_url
+from tests.postgres_test_database import is_disposable_test_database
 
 from database.base import Base
 from database.migrations import alembic_config
@@ -16,7 +18,7 @@ from database.startup import StartupError, initialize_database_runtime
 
 def _settings(tmp_path: Path) -> Settings:
     url = os.environ["TEST_DATABASE_URL"]
-    if "test" not in (make_url(url).database or "").lower():
+    if not is_disposable_test_database(url):
         pytest.fail("Refusing startup test outside a test database", pytrace=False)
     return Settings(url, tmp_path / "storage")
 

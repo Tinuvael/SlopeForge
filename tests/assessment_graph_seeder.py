@@ -169,7 +169,7 @@ class AssessmentGraphSeeder:
                 _state_from_domain(events, areas, datasets), domain.version)
 
     def seed_for_domain(self, domain_id: int, state: AssessmentDomainState) -> LoadedAssessmentState:
-        """Compatibility-only whole-state synchronization retained through Phase 5C."""
+        """Compatibility-only whole-state synchronization for repository tests."""
         # Keep the original public transaction boundary: validation, one owned
         # transaction, and the same fully reloaded return value.
         validate_assessment_state(state)

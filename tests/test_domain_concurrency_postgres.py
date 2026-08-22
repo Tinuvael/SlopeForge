@@ -1,18 +1,20 @@
-"""Real PostgreSQL Phase 5C concurrency and rollback coverage."""
+"""PostgreSQL Domain concurrency and rollback coverage."""
 import os
 from datetime import date
 
 import pytest
+
+pytestmark = pytest.mark.postgres
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, func, select
-from sqlalchemy.engine import make_url
+from tests.postgres_test_database import is_disposable_test_database
 from sqlalchemy.orm import sessionmaker
 
 URL = os.getenv("TEST_DATABASE_URL")
 if not URL:
     pytest.skip("TEST_DATABASE_URL is not set", allow_module_level=True)
-if "test" not in (make_url(URL).database or "").lower():
+if not is_disposable_test_database(URL):
     pytest.fail("Refusing destructive tests outside a database containing 'test'", pytrace=False)
 
 from application.errors import DomainConcurrencyConflict
@@ -27,9 +29,17 @@ from infrastructure.db.domain_version import guard_domain_versions
 
 @pytest.fixture(scope="module")
 def factory(tmp_path_factory):
+    old_database = os.environ.get("DATABASE_URL")
+    old_storage = os.environ.get("STORAGE_ROOT")
     os.environ["DATABASE_URL"] = URL
     os.environ["STORAGE_ROOT"] = str(tmp_path_factory.mktemp("domain-concurrency-storage"))
-    command.upgrade(Config("alembic.ini"), "head")
+    try:
+        command.upgrade(Config("alembic.ini"), "head")
+    finally:
+        if old_database is None: os.environ.pop("DATABASE_URL", None)
+        else: os.environ["DATABASE_URL"] = old_database
+        if old_storage is None: os.environ.pop("STORAGE_ROOT", None)
+        else: os.environ["STORAGE_ROOT"] = old_storage
     engine = create_engine(URL)
     yield sessionmaker(engine, expire_on_commit=False)
     engine.dispose()

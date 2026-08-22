@@ -5,16 +5,18 @@ from datetime import date
 import os
 
 import pytest
+
+pytestmark = pytest.mark.postgres
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, delete, event, func, select
-from sqlalchemy.engine import make_url
+from tests.postgres_test_database import is_disposable_test_database
 from sqlalchemy.orm import Session, sessionmaker
 
 URL = os.environ.get("TEST_DATABASE_URL")
 if not URL:
     pytest.skip("TEST_DATABASE_URL is not set; Project workflow PostgreSQL tests skipped", allow_module_level=True)
-if "test" not in (make_url(URL).database or "").lower():
+if not is_disposable_test_database(URL):
     pytest.fail("Refusing destructive Project workflow tests outside a test database", pytrace=False)
 
 from application.use_cases.create_project import CreateProject, CreateProjectCommand
@@ -35,7 +37,7 @@ def factory(tmp_path_factory):
     old_database = os.environ.get("DATABASE_URL")
     old_storage = os.environ.get("STORAGE_ROOT")
     os.environ["DATABASE_URL"] = URL
-    os.environ["STORAGE_ROOT"] = str(tmp_path_factory.mktemp("phase4c-storage"))
+    os.environ["STORAGE_ROOT"] = str(tmp_path_factory.mktemp("project-workflow-storage"))
     try:
         command.upgrade(Config("alembic.ini"), "head")
     finally:
@@ -49,7 +51,7 @@ def factory(tmp_path_factory):
 
 
 def command_for(path=None):
-    return CreateProjectCommand("  Phase 4C Project  ", "", str(path) if path else None, 1, True)
+    return CreateProjectCommand("  Project workflow test  ", "", str(path) if path else None, 1, True)
 
 
 def cleanup_project(factory, site_id):
@@ -99,7 +101,7 @@ def test_concrete_project_creation_is_direct_site_transaction(factory):
     finally:
         cleanup_project(factory, site_id)
 
-    marker = "Phase 4C forced rollback"
+    marker = "forced Site rollback"
     def fail_site_flush(session, _context, _instances):
         if any(isinstance(row, Site) and row.name == marker for row in session.new):
             raise RuntimeError("forced Site failure")

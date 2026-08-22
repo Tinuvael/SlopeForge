@@ -9,7 +9,7 @@ import pytest
 
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.engine import make_url
+from tests.postgres_test_database import is_disposable_test_database
 
 from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
 from domain.assessment.geometry import (
@@ -21,7 +21,7 @@ from domain.project.project_lines import ProjectLinesDataset
 
 
 def _build_mvp_assessment_fixture() -> tuple[ProjectLinesDataset, AssessmentArea]:
-    """Build the real post-#89 domain fixture independently of PostgreSQL."""
+    """Build the canonical Assessment fixture independently of PostgreSQL."""
     source_line = DatamineLine(
         source_id="crest-1",
         points=[
@@ -90,7 +90,7 @@ def test_mvp_assessment_fixture_uses_canonical_domain_serialization() -> None:
 
 
 def _require_destructive_test_database(url: str) -> None:
-    if "test" not in (make_url(url).database or "").lower():
+    if not is_disposable_test_database(url):
         pytest.fail("Refusing migration test outside a test database", pytrace=False)
 
 
@@ -131,6 +131,7 @@ def test_every_alembic_revision_fits_standard_version_column() -> None:
     )
 
 
+@pytest.mark.postgres
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
 def test_explosive_catalogue_migration_and_postgresql_round_trip(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -166,6 +167,7 @@ def test_explosive_catalogue_migration_and_postgresql_round_trip(
         engine.dispose()
 
 
+@pytest.mark.postgres
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
 def test_charge_preset_postgresql_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from alembic import command
@@ -187,6 +189,7 @@ def test_charge_preset_postgresql_round_trip(monkeypatch: pytest.MonkeyPatch, tm
     finally: engine.dispose()
 
 
+@pytest.mark.postgres
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
 def test_mvp_baseline_repeats_cleanly_without_leftover_types(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -213,6 +216,7 @@ def test_mvp_baseline_repeats_cleanly_without_leftover_types(
         engine.dispose()
 
 
+@pytest.mark.postgres
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
 def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
