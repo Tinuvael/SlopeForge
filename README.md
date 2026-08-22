@@ -1,115 +1,53 @@
 # SlopeForge
 
-SlopeForge is a desktop MVP for managing open-pit blast engineering data and final-wall assessments.
+[![Release](https://img.shields.io/github/v/release/Tinuvael/SlopeForge?display_name=tag)](https://github.com/Tinuvael/SlopeForge/releases/latest)
+[![Windows Build](https://github.com/Tinuvael/SlopeForge/actions/workflows/windows-build.yml/badge.svg?branch=main)](https://github.com/Tinuvael/SlopeForge/actions/workflows/windows-build.yml)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![PySide6](https://img.shields.io/badge/UI-PySide6-41CD52?logo=qt&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)
+[![License](https://img.shields.io/github/license/Tinuvael/SlopeForge)](LICENSE)
 
-## Implemented MVP
+**SlopeForge** is an open-source desktop application for open-pit geotechnical and blasting engineering data management, final-wall assessment, and blast-quality tracking.
 
-- Projects (quarries) and Domains with engineering dashboards.
-- Production and contour BlastEvents grouped by virtual Horizons.
-- Production Blocks with general information, geomechanics, blast design, execution facts, and Technical Card revision history.
-- Assessment Areas grouped by virtual Intervals, boundary drawing/refinement, linked blast events, and revision history.
-- Existing DAI and FCI assessment matrices and quadrant presentation.
-- Site-wide Project Lines imported from Datamine CSV or supported DXF 2D/3D polylines.
-- BlastEvent-owned and assessment-evaluation-owned Photos and Documents.
-- Tree navigation, search, status filters, and archived-item visibility.
-- Project-level Excel report generation from stored application data/results.
-- PostgreSQL persistence through SQLAlchemy and Alembic.
-- Role-aware editor and read-only Viewer experiences.
+It organizes engineering data around Projects, Domains, Blast Events, Production Blocks, Contour Blasts, and Assessment Areas while preserving calculation, geometry, attachment, and revision history.
 
-## Geometry import formats
+## Features
 
-Project Lines and Blast geometry accept Datamine CSV and supported DXF 2D/3D polylines.
-DXF import is intentionally limited to straight `LWPOLYLINE`, 2D `POLYLINE`,
-and 3D `POLYLINE` entities in modelspace. Curved segments are rejected; SPLINE,
-ARC, mesh, polyface, and INSERT entities are not processed.
+- Production and Contour Blast Events with blast-design and execution data
+- Production Block Technical Cards with revision history
+- Geomechanical inputs and blast-design charge construction
+- Assessment Areas with DAI and FCI evaluation results
+- Project-wide reference geometry and Assessment boundary workflows
+- Project and Domain dashboards with blast and assessment summaries
+- Photos and engineering documents with controlled ownership
+- Project-level Excel reporting
+- PostgreSQL persistence with SQLAlchemy and Alembic
+- English and Russian UI localization
 
-The MVP does not provide PDF reports, GIS, AI recommendations, TARP, or automatic engineering recommendations.
+## Download
 
-## Database setup
+Download the latest Windows package from **[GitHub Releases](https://github.com/Tinuvael/SlopeForge/releases/latest)**.
 
-SlopeForge uses PostgreSQL as its only application database, with SQLAlchemy 2.x, psycopg 3, Alembic, environment variables, and Argon2 password hashing. The desktop package does not bundle a SQLite database. See [docs/database_setup.md](docs/database_setup.md).
+Available release artifacts include a portable ZIP and Windows installer. PostgreSQL is not bundled and must be configured separately.
 
-### Connection configuration
+## Run from source
 
-On a normal first launch without a complete `DATABASE_URL` / `STORAGE_ROOT` environment configuration, SlopeForge opens a connection setup dialog before the login dialog. The user configures PostgreSQL host, port, database, user/password, and the shared attachment-storage folder, then tests and saves the configuration.
-
-The same values can be edited later from `Settings > Connection`. Saved changes take effect after restarting SlopeForge so the running application never switches databases or storage roots halfway through a session.
-
-On Windows the saved profile is stored in `%APPDATA%\SlopeForge\connection.ini`. `DATABASE_URL` and `STORAGE_ROOT` remain supported for development/administration and, when both are present, override the saved profile.
-
-MVP limitation: the saved PostgreSQL password is currently stored in the per-user connection INI file rather than Windows Credential Manager. Do not share that file. Moving the secret to Windows-native credential storage can be done as a focused security hardening follow-up without changing the connection UI contract.
-
-## Windows release packages
-
-The canonical Windows release command is `build_release.bat`, run from the
-repository root on Windows. It requires Python 3.12, the packages in
-`requirements.txt` and `requirements-build.txt` (including PyInstaller), and
-Inno Setup 6. `ISCC.exe` may be on `PATH`; alternatively set `ISCC_PATH` to its
-full path. The builder uses the existing PyInstaller **onedir** specification,
-then packages that same complete payload as:
-
-```text
-release\SlopeForge-<version>-Windows-x64.zip
-release\SlopeForge-<version>-Windows-x64-Setup.exe
-```
-
-`app.config.APP_VERSION` is the only release-version source. It controls both
-filenames, the installer's `AppVersion`, and the `v<version>` tag and release
-title created by GitHub Actions.
-
-The **Windows Build** workflow is a manual packaging-only action that can run
-from any branch. It keeps the ZIP and installer as workflow artifacts for 14
-days and never creates a tag or GitHub Release. The manual, `main`-only
-**Windows Release** workflow performs the same canonical build, rejects an
-existing version tag or release, and publishes both files to a new GitHub
-Release.
-
-Both workflows extract and validate the portable payload and perform a silent
-install/uninstall smoke test. Starting the GUI and completing its first-run
-connection dialog remains a manual release-candidate check because GUI process
-timing is not deterministic on hosted runners; see `docs/release_checklist.md`.
-
-The installer places application binaries under Program Files. Connection
-settings remain under `%APPDATA%\SlopeForge`, logs are written under
-`%LOCALAPPDATA%\SlopeForge\logs`, and user-selected engineering file storage
-is not owned or removed by the installer. PostgreSQL itself, deployment
-credentials, `.env` files, and private signing material are not bundled.
-
-Initial packages are unsigned and can therefore show Windows SmartScreen or
-Unknown Publisher warnings. Production Authenticode signing requires a real
-certificate and is intentionally deferred; never commit its private key or
-password.
-
-## Development
-
-Repository-wide agent/development rules are in [AGENTS.md](AGENTS.md). Current architecture documentation is indexed in [docs/README.md](docs/README.md).
+Use Python 3.12 and a PostgreSQL database. See **[Database setup](docs/database_setup.md)** for connection configuration.
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 alembic upgrade head
 python main.py
 ```
 
-Run the test suite without a display server:
+## Geometry import
 
-```bash
-QT_QPA_PLATFORM=offscreen pytest -q
-```
+Project Lines and Blast geometry support Datamine CSV and supported DXF 2D/3D polylines. Domain geometry can also be imported or drawn as lightweight plan-view reference geometry.
 
-PostgreSQL integration tests require an explicitly isolated database in `TEST_DATABASE_URL`; destructive tests refuse obviously non-test database names. Never point it at the normal `DATABASE_URL`.
+## Engineering note
 
-## Disclaimer
+SlopeForge is an engineering data-management and decision-support tool. It does not replace professional engineering judgement, site-specific investigations, blast design, or geotechnical design. Users are responsible for verifying engineering decisions and input data.
 
-SlopeForge is an engineering data-management and decision-support tool. It does not replace professional engineering judgement, site-specific investigations, or engineering design. Users are responsible for verifying engineering decisions and the suitability of blasting parameters for their conditions.
+## License
 
-## Translations
-
-English source text is canonical, and `translations/slopeforge_ru.ts` is the
-source-controlled Russian catalogue. SlopeForge reads this XML file through a
-Qt translator adapter, so normal source execution does not require Qt Linguist,
-`pyside6-lrelease`, or a precompiled `.qm` file. A future packaged release may
-optionally compile TS to QM as a build-time optimization.
-
-## Domain Geometry
-
-A Domain may optionally have a lightweight plan-view reference footprint. It can be imported from CSV/DXF or drawn manually, and may contain multiple disconnected polygons. Imported 3D geometry is projected to XY. Domain Geometry is visual context only: it does not create 3D solids or automatically assign any object to a Domain.
+Distributed under the [GNU General Public License v3.0](LICENSE).
