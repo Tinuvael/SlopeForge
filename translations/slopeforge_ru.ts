@@ -7,6 +7,10 @@
             <translation> не найден</translation>
         </message>
         <message>
+            <source>Dataset %1 was not found</source>
+            <translation>Набор данных %1 не найден</translation>
+        </message>
+        <message>
             <source>+ Add actual group</source>
             <translation>+ Добавить фактическую группу</translation>
         </message>

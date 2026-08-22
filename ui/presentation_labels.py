@@ -89,6 +89,11 @@ RESULT_LABELS = {
 }
 
 DOMAIN_MESSAGES = {
+    "Enter a blast event name": "Enter a blast event name",
+    "Select the blast event type: production or contour": "Select the blast event type: production or contour",
+    "Enter the blast event horizon": "Enter the blast event horizon",
+    "Geometry file contains no valid contour drillholes": "Geometry file contains no valid contour drillholes",
+    "Geometry file contains no suitable lines": "Geometry file contains no suitable lines",
     "Нет фактических групп": "No actual groups",
     "Не указана фактическая дата взрыва": "Actual blast date is missing",
     "Не указано число фактических скважин": "Actual hole count is missing",
@@ -240,6 +245,7 @@ def domain_message(value: str) -> str:
     if unsupported:
         return tr("Unsupported geometry file extension %1. Use .csv or .dxf.").replace("%1", unsupported.group(1))
     prefixes = {
+        "Could not import geometry file: ": "Could not import geometry file: ",
         "Не заполнено: ": "Missing required fields: ",
         "Не удалось импортировать CSV: ": "Could not import CSV: ",
         "Не удалось импортировать файл геометрии: ": "Could not import geometry file: ",
@@ -265,9 +271,12 @@ def domain_message(value: str) -> str:
                 }
                 for source in sorted(fields, key=len, reverse=True):
                     detail = detail.replace(source, tr(fields[source]))
-            else:
+            elif prefix != "Could not import geometry file: ":
                 detail = domain_message(detail)
             return tr(translated) + detail
+    dataset_not_found = re.fullmatch(r"Dataset (.+) was not found", value)
+    if dataset_not_found:
+        return tr("Dataset %1 was not found").replace("%1", dataset_not_found.group(1))
     if value.startswith("Dataset ") and value.endswith(" не найден"):
         return value[:-len(" не найден")] + tr(" was not found")
     if value.startswith("BlastEvent ") and value.endswith(" не найден"):
