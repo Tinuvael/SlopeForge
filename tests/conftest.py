@@ -1,21 +1,13 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
-
 import pytest
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import make_url
 from database.env import load_local_env
 
 
-# Older focused PostgreSQL modules used a second environment-variable name.
-# Keep one documented test database sufficient for the complete suite.
 load_local_env(".env.test")
-_test_database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("SLOPEFORGE_TEST_DATABASE_URL")
-if _test_database_url:
-    os.environ.setdefault("TEST_DATABASE_URL", _test_database_url)
-    os.environ.setdefault("SLOPEFORGE_TEST_DATABASE_URL", _test_database_url)
 
 
 def _remove_installed_slopeforge_translator() -> None:
@@ -67,15 +59,16 @@ def _truncate_test_data(url: str) -> None:
         engine.dispose()
 
 
-def _is_postgresql_integration_item(item) -> bool:
-    filename = Path(str(item.fspath)).name
-    return ("postgres" in filename.lower()
-            and filename != "test_alembic_postgresql_integration.py")
-
-
 @pytest.fixture(scope="session", autouse=True)
-def reset_disposable_postgresql_test_database(tmp_path_factory):
+def reset_disposable_postgresql_test_database(request, tmp_path_factory):
     """Start integration tests from a clean Alembic head on the dedicated test DB."""
+    has_postgres_tests = any(
+        item.get_closest_marker("postgres") is not None
+        for item in request.session.items
+    )
+    if not has_postgres_tests:
+        yield
+        return
     url = os.getenv("TEST_DATABASE_URL")
     if not url:
         yield
@@ -108,25 +101,13 @@ def reset_disposable_postgresql_test_database(tmp_path_factory):
 
 @pytest.fixture(autouse=True)
 def isolate_postgresql_integration_test_data(request):
-    """Give each PostgreSQL integration test an empty data set before setup."""
-    url = os.getenv("TEST_DATABASE_URL")
-    if not url or not _is_postgresql_integration_item(request.node):
+    """Give every explicitly marked PostgreSQL test an isolated empty data set."""
+    if request.node.get_closest_marker("postgres") is None:
         yield
         return
+    url = os.getenv("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL is not set")
     _truncate_test_data(url)
     yield
-
-
-@pytest.hookimpl(hookwrapper=True, tryfirst=True)
-def pytest_runtest_teardown(item, nextitem):  # noqa: ARG001
-    """Clear data before legacy fixture finalizers start deleting parent rows.
-
-    Several older integration fixtures manually delete Domain/Site rows but do not
-    know about newer revision/link foreign keys.  The suite owns a disposable DB,
-    so truncating application rows first is both safer and more representative than
-    teaching every historical finalizer the current dependency graph.
-    """
-    url = os.getenv("TEST_DATABASE_URL")
-    if url and _is_postgresql_integration_item(item):
-        _truncate_test_data(url)
-    yield
+    _truncate_test_data(url)

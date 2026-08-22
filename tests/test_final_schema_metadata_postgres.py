@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 
 import pytest
+
+pytestmark = pytest.mark.postgres
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 

@@ -5,6 +5,8 @@ from datetime import date
 import os
 
 import pytest
+
+pytestmark = pytest.mark.postgres
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, delete, event, func, select

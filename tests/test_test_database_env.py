@@ -16,7 +16,6 @@ def _run_conftest_env_loading(monkeypatch, tmp_path, *, real_url=None):
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
-    monkeypatch.delenv("SLOPEFORGE_TEST_DATABASE_URL", raising=False)
     if real_url is not None:
         monkeypatch.setenv("TEST_DATABASE_URL", real_url)
     runpy.run_path(str(CONFTEST))
@@ -27,7 +26,7 @@ def test_conftest_loads_test_database_url_from_dot_env_test(monkeypatch, tmp_pat
     file_url = _run_conftest_env_loading(monkeypatch, tmp_path)
 
     assert os.environ["TEST_DATABASE_URL"] == file_url
-    assert os.environ["SLOPEFORGE_TEST_DATABASE_URL"] == file_url
+    assert "SLOPEFORGE_TEST_DATABASE_URL" not in os.environ
 
 
 def test_real_test_database_url_takes_precedence_over_dot_env_test(monkeypatch, tmp_path):
@@ -35,4 +34,4 @@ def test_real_test_database_url_takes_precedence_over_dot_env_test(monkeypatch, 
     _run_conftest_env_loading(monkeypatch, tmp_path, real_url=real_url)
 
     assert os.environ["TEST_DATABASE_URL"] == real_url
-    assert os.environ["SLOPEFORGE_TEST_DATABASE_URL"] == real_url
+    assert "SLOPEFORGE_TEST_DATABASE_URL" not in os.environ

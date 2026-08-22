@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import os
 
 import pytest
+
+pytestmark = pytest.mark.postgres
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker

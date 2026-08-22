@@ -2,6 +2,8 @@ from __future__ import annotations
 import os
 from datetime import date
 import pytest
+
+pytestmark = pytest.mark.postgres
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker

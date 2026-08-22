@@ -3,6 +3,8 @@ import os
 from datetime import date
 
 import pytest
+
+pytestmark = pytest.mark.postgres
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, func, select

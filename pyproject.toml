@@ -1,3 +1,6 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "postgres: requires the disposable PostgreSQL database configured by TEST_DATABASE_URL",
+]

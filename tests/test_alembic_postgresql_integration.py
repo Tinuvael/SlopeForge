@@ -131,6 +131,7 @@ def test_every_alembic_revision_fits_standard_version_column() -> None:
     )
 
 
+@pytest.mark.postgres
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
 def test_explosive_catalogue_migration_and_postgresql_round_trip(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -166,6 +167,7 @@ def test_explosive_catalogue_migration_and_postgresql_round_trip(
         engine.dispose()
 
 
+@pytest.mark.postgres
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
 def test_charge_preset_postgresql_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from alembic import command
@@ -187,6 +189,7 @@ def test_charge_preset_postgresql_round_trip(monkeypatch: pytest.MonkeyPatch, tm
     finally: engine.dispose()
 
 
+@pytest.mark.postgres
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
 def test_mvp_baseline_repeats_cleanly_without_leftover_types(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -213,6 +216,7 @@ def test_mvp_baseline_repeats_cleanly_without_leftover_types(
         engine.dispose()
 
 
+@pytest.mark.postgres
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
 def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
