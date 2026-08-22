@@ -1,4 +1,4 @@
-"""Concrete Phase 4C adapters against a disposable PostgreSQL database."""
+"""Current Project workflow adapters against a disposable PostgreSQL database."""
 from __future__ import annotations
 
 from datetime import date
@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 URL = os.environ.get("TEST_DATABASE_URL")
 if not URL:
-    pytest.skip("TEST_DATABASE_URL is not set; Phase 4C DB tests skipped", allow_module_level=True)
+    pytest.skip("TEST_DATABASE_URL is not set; Project workflow PostgreSQL tests skipped", allow_module_level=True)
 if "test" not in (make_url(URL).database or "").lower():
-    pytest.fail("Refusing destructive Phase 4C tests outside a test database", pytrace=False)
+    pytest.fail("Refusing destructive Project workflow tests outside a test database", pytrace=False)
 
 from application.use_cases.create_project import CreateProject, CreateProjectCommand
 from database import assessment_models as orm

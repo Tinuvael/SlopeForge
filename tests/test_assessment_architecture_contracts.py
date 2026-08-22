@@ -1,4 +1,4 @@
-"""Permanent Phase 5C API/dependency ratchets."""
+"""Permanent Assessment concurrency and ownership architecture contracts."""
 import ast
 import inspect
 from pathlib import Path
@@ -56,8 +56,8 @@ def test_every_focused_assessment_write_requires_expected_version():
         assert parameters["expected_version"].default is inspect.Parameter.empty, name
 
 
-def test_phase6a_workspace_container_cannot_return():
-    """Phase 6A owns Assessment roots directly through Domain FKs."""
+def test_removed_workspace_container_cannot_return():
+    """Assessment roots are owned directly through Domain foreign keys."""
     from database.base import Base
     from database import assessment_models  # noqa: F401
     assert "assessment_workspaces" not in Base.metadata.tables

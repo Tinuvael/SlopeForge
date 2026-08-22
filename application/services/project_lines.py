@@ -1,4 +1,4 @@
-"""Версионные наборы проектных линий для Blast Events Prototype."""
+"""Versioned Project Lines datasets shared by a Project's Domains."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -16,7 +16,7 @@ class ProjectLinesImportError(ValueError):
 
 
 class ProjectLinesDatasetService:
-    """Создаёт наборы, хранит историю и управляет активной версией."""
+    """Create datasets, retain their history, and select the active version."""
 
     def __init__(self, state: AssessmentDomainState):
         self.state = state
@@ -65,7 +65,7 @@ class ProjectLinesDatasetService:
     def set_active(self, dataset_id: str) -> ProjectLinesDataset:
         selected = next((item for item in self.state.datasets if item.id == dataset_id), None)
         if selected is None:
-            raise ValueError(f"Dataset {dataset_id!r} не найден")
+            raise ValueError(f"Dataset {dataset_id!r} was not found")
         for dataset in self.state.datasets:
             dataset.is_active = dataset is selected
         return selected

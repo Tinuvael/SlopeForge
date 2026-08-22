@@ -28,7 +28,7 @@ from infrastructure.db.domain_version import guard_domain_versions
 @pytest.fixture(scope="module")
 def factory(tmp_path_factory):
     os.environ["DATABASE_URL"] = URL
-    os.environ["STORAGE_ROOT"] = str(tmp_path_factory.mktemp("phase5c-storage"))
+    os.environ["STORAGE_ROOT"] = str(tmp_path_factory.mktemp("domain-concurrency-storage"))
     command.upgrade(Config("alembic.ini"), "head")
     engine = create_engine(URL)
     yield sessionmaker(engine, expire_on_commit=False)
@@ -38,7 +38,7 @@ def factory(tmp_path_factory):
 @pytest.fixture
 def domains(factory):
     with factory.begin() as session:
-        site = Site(name="phase5c site"); session.add(site); session.flush()
+        site = Site(name="domain concurrency site"); session.add(site); session.flush()
         first = Domain(site_id=site.id, name="A"); second = Domain(site_id=site.id, name="B")
         session.add_all((first, second)); session.flush()
         ids = first.id, second.id, site.id

@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QGraphicsView
 from domain.geometry.types import PlanPoint
 
 
-class PrototypePlanView(QGraphicsView):
+class PlanView(QGraphicsView):
     cursor_moved = Signal(float, float)
     escape_requested = Signal()
     workflow_key_requested = Signal(str)
@@ -45,13 +45,22 @@ class PrototypePlanView(QGraphicsView):
 
     def keyPressEvent(self, event):
         key = event.key()
-        if key == Qt.Key.Key_Escape: self.escape_requested.emit(); event.accept(); return
-        if key in {Qt.Key.Key_Return, Qt.Key.Key_Enter}: self.workflow_key_requested.emit("enter"); event.accept(); return
-        if key == Qt.Key.Key_Backspace: self.workflow_key_requested.emit("back"); event.accept(); return
-        if key == Qt.Key.Key_Delete: self.workflow_key_requested.emit("delete"); event.accept(); return
-        if key in {Qt.Key.Key_Up, Qt.Key.Key_Left}: self.workflow_key_requested.emit("candidate_previous"); event.accept(); return
-        if key in {Qt.Key.Key_Down, Qt.Key.Key_Right}: self.workflow_key_requested.emit("candidate_next"); event.accept(); return
-        super().keyPressEvent(event)
+        if key == Qt.Key.Key_Escape:
+            self.escape_requested.emit()
+        elif key in {Qt.Key.Key_Return, Qt.Key.Key_Enter}:
+            self.workflow_key_requested.emit("enter")
+        elif key == Qt.Key.Key_Backspace:
+            self.workflow_key_requested.emit("back")
+        elif key == Qt.Key.Key_Delete:
+            self.workflow_key_requested.emit("delete")
+        elif key in {Qt.Key.Key_Up, Qt.Key.Key_Left}:
+            self.workflow_key_requested.emit("candidate_previous")
+        elif key in {Qt.Key.Key_Down, Qt.Key.Key_Right}:
+            self.workflow_key_requested.emit("candidate_next")
+        else:
+            super().keyPressEvent(event)
+            return
+        event.accept()
 
     def mouseMoveEvent(self, event):
         if self._middle_panning and self._pan_view_position is not None:

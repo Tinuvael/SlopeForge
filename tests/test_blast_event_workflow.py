@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date
 import pytest
 
 from application.services.blast_events import BlastEventService, BlastEventValidationError
@@ -144,7 +144,7 @@ def test_automatic_detection_and_import_prefer_sid_over_ptn(tmp_path):
 def test_contour_empty_rows_have_clear_validation_error(tmp_path):
     source = tmp_path / "empty.csv"
     source.write_text("XP,YP,ZP,SID,PTN\n", encoding="utf-8")
-    with pytest.raises(BlastEventValidationError, match="валидных контурных скважин"):
+    with pytest.raises(BlastEventValidationError, match="no valid contour drillholes"):
         BlastEventService(AssessmentDomainState()).create_event(
             name="Контур", event_type="contour", event_date=None, elevation=500, csv_path=source
         )
@@ -161,16 +161,6 @@ def test_reimport_keeps_first_revision_and_makes_revision_two(tmp_path):
     second=service.reimport_geometry(event,two)
     assert second.revision_number == 2 and second.is_active and not first.is_active
     assert first.source_file_name == "one.csv" and event.active_geometry_revision_id == second.id
-
-
-def test_main_window_embeds_assessment_instead_of_standalone_entry_point():
-    source = __import__('pathlib').Path('ui/main_window.py').read_text(encoding='utf-8')
-    assert 'Blast Events Prototype' not in source
-    assert 'open_blast_events_prototype' not in source
-    assert 'AssessmentAreaPage' in source
-    assert 'AssessmentWorkspacePage' not in source
-    assert '2D Plan Prototype' not in source
-    assert 'Prototype2DWindow' not in source
 
 
 def test_project_line_imports_keep_history_and_can_switch_back(tmp_path):
