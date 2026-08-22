@@ -21,7 +21,7 @@ from domain.project.project_lines import ProjectLinesDataset
 
 
 def _build_mvp_assessment_fixture() -> tuple[ProjectLinesDataset, AssessmentArea]:
-    """Build the real post-#89 domain fixture independently of PostgreSQL."""
+    """Build the canonical Assessment fixture independently of PostgreSQL."""
     source_line = DatamineLine(
         source_id="crest-1",
         points=[

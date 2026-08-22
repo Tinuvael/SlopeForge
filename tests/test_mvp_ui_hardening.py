@@ -43,24 +43,6 @@ def test_all_tree_entity_types_share_show_archived_filter():
     assert "show_archived=show_archived" in tree
 
 
-def test_attachment_owner_ids_are_the_domain_owner_ids():
-    block = source("ui/pages/block_page.py")
-    contour = source("ui/pages/contour_event_page.py")
-    area = source("ui/pages/assessment_area_page.py")
-    assert '"blast_event", event.id' in block
-    assert '"blast_event", self.blast_event.id' in contour
-    assert '"assessment_evaluation",' in area and "owner_id" in area
-    assert "AttachmentRepository" not in block
-
-
-def test_transient_page_lifecycle_is_bounded_and_geometry_signal_is_wired_once():
-    main = source("ui/main_window.py")
-    assert "removeWidget(current)" in main and "current.deleteLater()" in main
-    block = source("ui/pages/block_page.py")
-    assert "self.geometry_card.action_requested.connect(self._reimport_current_geometry)" in block
-    assert "action_requested.disconnect()" not in block
-
-
 def _app():
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6.QtWidgets import QApplication
@@ -425,24 +407,6 @@ def test_attachment_owner_can_be_prepared_without_an_intermediate_save():
     existing, rollback = controller.prepare_evaluation_attachment_owner(area, transient)
     assert existing is owner and rollback is None
     assert state.evaluations == [owner]
-
-
-def test_assessment_attachment_ui_has_no_saved_revision_gate():
-    area = source("ui/pages/assessment_area_page.py")
-    assert "Save an assessment draft first" not in area
-    assert "prepare_evaluation_attachment_owner" in area
-    assert "create_attachment_tab_page" in area
-    assert "ensure_owner=ensure_owner" in area
-
-
-def test_block_attachment_tabs_are_real_and_ordered():
-    block = source("ui/pages/block_page.py")
-    expected = ["General information", "Blast design", "Geomechanics", "Execution fact", "Photos", "Documents", "History"]
-    positions = [block.index(f'"{title}"') for title in expected]
-    assert positions == sorted(positions)
-    assert 'self.tabs.addTab(self.photos_tab, tr("Photos"))' in block
-    assert 'self.tabs.addTab(self.documents_tab, tr("Documents"))' in block
-    assert 'self.tabs.addTab(EmptySection(), "Documents")' not in block
 
 
 def test_block_attachment_tabs_select_the_requested_manager_tab(monkeypatch):

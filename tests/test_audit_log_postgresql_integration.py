@@ -29,8 +29,17 @@ class FailingAuditLogRepository(AuditLogRepository):
 def factory(tmp_path_factory):
     from alembic import command
     from alembic.config import Config
-    os.environ["DATABASE_URL"]=URL; os.environ["STORAGE_ROOT"]=str(tmp_path_factory.mktemp("audit-storage"))
-    command.upgrade(Config("alembic.ini"),"head")
+    old_database = os.environ.get("DATABASE_URL")
+    old_storage = os.environ.get("STORAGE_ROOT")
+    os.environ["DATABASE_URL"] = URL
+    os.environ["STORAGE_ROOT"] = str(tmp_path_factory.mktemp("audit-storage"))
+    try:
+        command.upgrade(Config("alembic.ini"), "head")
+    finally:
+        if old_database is None: os.environ.pop("DATABASE_URL", None)
+        else: os.environ["DATABASE_URL"] = old_database
+        if old_storage is None: os.environ.pop("STORAGE_ROOT", None)
+        else: os.environ["STORAGE_ROOT"] = old_storage
     engine=create_engine(URL); yield sessionmaker(engine,expire_on_commit=False); engine.dispose()
 
 @pytest.fixture

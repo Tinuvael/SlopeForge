@@ -1,5 +1,6 @@
 import inspect
 from pathlib import Path
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -40,7 +41,7 @@ def preview(count=0):
     )
 
 
-def build_page(monkeypatch, state, app, *, preview_count=0, area_context=()):
+def build_page(monkeypatch, state, app, *, preview_count=0, area_context=(), edit_area_id=None):
     import ui.pages.assessment_area_creation_page as module
 
     class Controller:
@@ -60,11 +61,17 @@ def build_page(monkeypatch, state, app, *, preview_count=0, area_context=()):
             return preview(preview_count)
 
         def area(self, area_id):
+            if area_id == edit_area_id:
+                return SimpleNamespace(name="Edited Area", assessment_date=date(2026, 8, 22))
             return None
 
     monkeypatch.setattr(module, "EntityPageController", Controller)
+    if edit_area_id:
+        monkeypatch.setattr(module.AssessmentGeometryEditorWidget, "inspect_area", lambda *_: None)
     context = SimpleNamespace(current_user=SimpleNamespace(can_edit=True))
-    page = module.AssessmentAreaCreationPage(context, 1, "North", 1)
+    page = module.AssessmentAreaCreationPage(
+        context, 1, "North", 1, edit_area_id=edit_area_id,
+    )
     page.resize(1366, 768); page.show(); app.processEvents()
     return page
 
@@ -145,11 +152,19 @@ def test_assessment_creation_translation_helpers_remain_static():
     assert isinstance(inspect.getattr_static(AssessmentAreaCreationPage, "_add_row"), staticmethod)
 
 
-def test_creation_page_scopes_context_and_excludes_current_area():
-    source = Path("ui/pages/assessment_area_creation_page.py").read_text(encoding="utf-8")
-    assert "self.controller.project_assessment_boundaries()" in source
-    assert "item.domain_id == self.controller.domain_id" in source
-    assert "item.assessment_area_id == edit_area_id" in source
+def test_creation_page_passes_project_context_and_excludes_current_area(monkeypatch, state, app):
+    from domain.geometry.types import PlanPoint
+
+    ring = (PlanPoint(20, 20), PlanPoint(30, 20), PlanPoint(20, 20))
+    current = SimpleNamespace(assessment_area_id="AA-CURRENT", domain_id=1, ring=ring)
+    other_domain = SimpleNamespace(assessment_area_id="AA-OTHER", domain_id=2, ring=ring)
+    page = build_page(
+        monkeypatch, state, app, area_context=(current, other_domain),
+        edit_area_id="AA-CURRENT",
+    )
+
+    assert page.editor._existing_area_context == (other_domain,)
+    page.close()
 
 
 def test_creation_page_passes_nonempty_project_context_to_editor(monkeypatch, state, app):

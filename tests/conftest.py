@@ -74,6 +74,9 @@ def reset_disposable_postgresql_test_database(request, tmp_path_factory):
         yield
         return
     _assert_disposable_database(url)
+    original_runtime_environment = {
+        name: os.environ.get(name) for name in ("DATABASE_URL", "STORAGE_ROOT")
+    }
 
     from alembic import command
     from alembic.config import Config
@@ -97,6 +100,11 @@ def reset_disposable_postgresql_test_database(request, tmp_path_factory):
             os.environ["STORAGE_ROOT"] = old_storage
 
     yield
+
+    for name, original in original_runtime_environment.items():
+        assert os.environ.get(name) == original, (
+            f"PostgreSQL tests leaked process environment variable {name}"
+        )
 
 
 @pytest.fixture(autouse=True)

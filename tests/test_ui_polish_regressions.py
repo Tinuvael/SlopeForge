@@ -42,7 +42,7 @@ def test_entity_tabs_keep_sizing_contract_with_compact_padding():
     assert "return QSize(hint.width(), 0)" in tabs
 
 
-def test_block_and_contour_use_one_compact_draft_save_button():
+def test_block_and_contour_expose_one_technical_card_save_action():
     block = source("ui/pages/block_page.py")
     contour = source("ui/pages/contour_event_page.py")
     assert 'QPushButton(tr("Save"))' in block
