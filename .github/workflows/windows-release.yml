@@ -56,11 +56,45 @@ jobs:
           $zip = "release/SlopeForge-$version-Windows-x64.zip"
           $setup = "release/SlopeForge-$version-Windows-x64-Setup.exe"
           if (!(Test-Path $zip) -or !(Test-Path $setup)) { throw "Versioned release artifacts are missing" }
-          git ls-remote --exit-code --tags origin "refs/tags/$tag" *> $null
-          if ($LASTEXITCODE -eq 0) { throw "Tag $tag already exists" }
-          if ($LASTEXITCODE -ne 2) { throw "Could not verify remote tag state" }
-          gh release view $tag --repo "${{ github.repository }}" *> $null
-          if ($LASTEXITCODE -eq 0) { throw "GitHub Release $tag already exists" }
+
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+
+          function Assert-GitHubResourceAbsent {
+            param(
+              [Parameter(Mandatory = $true)][string]$Uri,
+              [Parameter(Mandatory = $true)][string]$ExistsMessage,
+              [Parameter(Mandatory = $true)][string]$VerifyMessage
+            )
+
+            try {
+              Invoke-RestMethod -Uri $Uri -Headers $headers -Method Get -ErrorAction Stop | Out-Null
+            }
+            catch {
+              $response = $_.Exception.Response
+              if ($null -ne $response -and [int]$response.StatusCode -eq 404) {
+                return
+              }
+              throw "${VerifyMessage}: $($_.Exception.Message)"
+            }
+
+            throw $ExistsMessage
+          }
+
+          $repo = "${{ github.repository }}"
+          $escapedTag = [System.Uri]::EscapeDataString($tag)
+          Assert-GitHubResourceAbsent `
+            -Uri "https://api.github.com/repos/$repo/git/ref/tags/$escapedTag" `
+            -ExistsMessage "Tag $tag already exists" `
+            -VerifyMessage "Could not verify remote tag state"
+          Assert-GitHubResourceAbsent `
+            -Uri "https://api.github.com/repos/$repo/releases/tags/$escapedTag" `
+            -ExistsMessage "GitHub Release $tag already exists" `
+            -VerifyMessage "Could not verify GitHub Release state"
+
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "zip=$zip" >> $env:GITHUB_OUTPUT
