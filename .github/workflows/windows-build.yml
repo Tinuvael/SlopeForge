@@ -1,0 +1,66 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out selected ref
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-build.txt
+          choco install innosetup --no-progress -y
+
+      - name: Build canonical Windows release
+        shell: cmd
+        run: build_release.bat
+
+      - name: Read release version
+        id: version
+        shell: pwsh
+        run: |
+          $version = python -c "from app.config import APP_VERSION; print(APP_VERSION)"
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Smoke-test portable and installer payloads
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "${{ steps.version.outputs.version }}"
+          $zip = "release/SlopeForge-$version-Windows-x64.zip"
+          $setup = "release/SlopeForge-$version-Windows-x64-Setup.exe"
+          if (!(Test-Path $zip) -or !(Test-Path $setup)) { throw "Release artifacts are missing" }
+          $portable = Join-Path $env:RUNNER_TEMP "portable"
+          Expand-Archive $zip $portable
+          python tools/validate_windows_payload.py "$portable/SlopeForge"
+          $installed = Join-Path $env:RUNNER_TEMP "installed"
+          Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installed" -Wait -NoNewWindow
+          python tools/validate_windows_payload.py $installed
+          if (!(Test-Path "$installed/unins000.exe")) { throw "Installer did not create an uninstaller" }
+          Start-Process "$installed/unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -NoNewWindow
+          if (Test-Path "$installed/SlopeForge.exe") { throw "Silent uninstall left application files behind" }
+
+      - name: Upload Windows release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SlopeForge-${{ steps.version.outputs.version }}-Windows-x64
+          path: |
+            release/SlopeForge-${{ steps.version.outputs.version }}-Windows-x64.zip
+            release/SlopeForge-${{ steps.version.outputs.version }}-Windows-x64-Setup.exe
+          if-no-files-found: error
+          retention-days: 14

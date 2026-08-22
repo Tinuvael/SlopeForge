@@ -41,7 +41,8 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX is optional; PyInstaller builds must not depend on it being installed.
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     icon=str(icon_path) if icon_path.exists() else None,
@@ -53,7 +54,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name="SlopeForge",
 )

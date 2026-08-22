@@ -1,0 +1,98 @@
+name: Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: Publish as a prerelease
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Require the main branch
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}" -ne "refs/heads/main") { throw "Windows Release may only run from main" }
+
+      - name: Check out exact workflow SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-build.txt
+          choco install innosetup --no-progress -y
+
+      - name: Build canonical Windows release
+        shell: cmd
+        run: build_release.bat
+
+      - name: Validate version and release safety
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = python -c "from app.config import APP_VERSION; import re; assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?', APP_VERSION); print(APP_VERSION)"
+          if (!$version) { throw "APP_VERSION is empty or invalid" }
+          $tag = "v$version"
+          $zip = "release/SlopeForge-$version-Windows-x64.zip"
+          $setup = "release/SlopeForge-$version-Windows-x64-Setup.exe"
+          if (!(Test-Path $zip) -or !(Test-Path $setup)) { throw "Versioned release artifacts are missing" }
+          git ls-remote --exit-code --tags origin "refs/tags/$tag" *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Tag $tag already exists" }
+          if ($LASTEXITCODE -ne 2) { throw "Could not verify remote tag state" }
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) { throw "GitHub Release $tag already exists" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "setup=$setup" >> $env:GITHUB_OUTPUT
+
+      - name: Smoke-test portable and installer payloads
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $portable = Join-Path $env:RUNNER_TEMP "portable"
+          Expand-Archive "${{ steps.release.outputs.zip }}" $portable
+          python tools/validate_windows_payload.py "$portable/SlopeForge"
+          $installed = Join-Path $env:RUNNER_TEMP "installed"
+          Start-Process "${{ steps.release.outputs.setup }}" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installed" -Wait -NoNewWindow
+          python tools/validate_windows_payload.py $installed
+          if (!(Test-Path "$installed/unins000.exe")) { throw "Installer did not create an uninstaller" }
+          Start-Process "$installed/unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -NoNewWindow
+          if (Test-Path "$installed/SlopeForge.exe") { throw "Silent uninstall left application files behind" }
+
+      - name: Create tag and GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.release.outputs.tag }}"
+          git tag $tag "${{ github.sha }}"
+          git push origin "refs/tags/$tag"
+          $prerelease = if ("${{ inputs.prerelease }}" -eq "true") { @("--prerelease") } else { @() }
+          gh release create $tag `
+            "${{ steps.release.outputs.zip }}" `
+            "${{ steps.release.outputs.setup }}" `
+            --repo "${{ github.repository }}" `
+            --title "SlopeForge ${{ steps.release.outputs.version }}" `
+            --generate-notes `
+            @prerelease
