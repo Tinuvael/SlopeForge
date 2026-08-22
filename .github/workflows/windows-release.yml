@@ -37,7 +37,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -r requirements-build.txt
-          choco install innosetup --no-progress -y
+          choco install innosetup --version=6.7.1 --no-progress -y
 
       - name: Build canonical Windows release
         shell: cmd
@@ -80,18 +80,17 @@ jobs:
           Start-Process "$installed/unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -NoNewWindow
           if (Test-Path "$installed/SlopeForge.exe") { throw "Silent uninstall left application files behind" }
 
-      - name: Create tag and GitHub Release
+      - name: Create GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ steps.release.outputs.tag }}"
-          git tag $tag "${{ github.sha }}"
-          git push origin "refs/tags/$tag"
           $prerelease = if ("${{ inputs.prerelease }}" -eq "true") { @("--prerelease") } else { @() }
           gh release create $tag `
             "${{ steps.release.outputs.zip }}" `
             "${{ steps.release.outputs.setup }}" `
+            --target "${{ github.sha }}" `
             --repo "${{ github.repository }}" `
             --title "SlopeForge ${{ steps.release.outputs.version }}" `
             --generate-notes `
