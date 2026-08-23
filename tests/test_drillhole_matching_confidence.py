@@ -20,6 +20,16 @@ def test_stable_compatible_ids_remain_preferred():
     assert by_actual["A-2"].match_method == "matched_geometry_high_confidence"
 
 
+def test_stable_id_that_strongly_contradicts_collar_geometry_is_not_forced():
+    design = (hole("H-1", 0, 0), hole("H-2", 10, 0))
+    actual = (hole("H-1", 9.9, 0), hole("A-2", 0.1, 0))
+    matches = match_actual_to_design(design, actual)
+    by_actual = {item.actual_hole_id: item for item in matches if item.actual_hole_id}
+    assert by_actual["H-1"].design_hole_id == "H-2"
+    assert by_actual["H-1"].match_method == "matched_geometry_high_confidence"
+    assert by_actual["A-2"].design_hole_id == "H-1"
+
+
 def test_dense_geometric_match_is_flagged_low_confidence():
     design = (hole("D-1", 0, 0), hole("D-2", 1, 0))
     actual = (hole("A-1", 0.49, 0),)
