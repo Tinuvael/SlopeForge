@@ -115,6 +115,7 @@ def test_design_import_ignores_flat_marker_strings_and_reimport_increments_revis
     assert second.matched_design_dataset_id is None
     assert first.summary_json["hole_count"] == 2
     assert [item["hole_id"] for item in first.holes_json] == ["H1", "H2"]
+    assert all(item["source_attributes"]["stable_hole_id"] is False for item in first.holes_json)
     assert len(storage.copied) == 2
 
 
@@ -167,14 +168,14 @@ def test_actual_import_requires_design_dataset(tmp_path):
         service.import_dataset(7, "BE-1", "actual", source)
 
 
-def test_group_assignment_is_exclusive_and_stable_ids_carry_across_reimport(tmp_path):
-    source = tmp_path / "design.dxf"; source.write_text("d")
+def test_group_assignment_is_exclusive_and_stable_datamine_ids_carry_across_reimport(tmp_path):
+    source = tmp_path / "design.dmx"; source.write_text("d")
     repo = MemoryRepository(); storage = MemoryStorage()
     service = BlastEventDrillholeDatasetService(
         repo,
         storage,
         importer_for({
-            "design.dxf": [
+            "design.dmx": [
                 line("H1", [(0,0,630),(0,0,620)]),
                 line("H2", [(5,0,630),(5,0,620)]),
                 line("H3", [(10,0,630),(10,0,620)]),
@@ -198,3 +199,26 @@ def test_group_assignment_is_exclusive_and_stable_ids_carry_across_reimport(tmp_
     assert {hole.hole_id for hole in service.assigned_holes(7, "BE-1", "MAIN")} == {"H1"}
     assert {hole.hole_id for hole in service.assigned_holes(7, "BE-1", "BUFFER")} == {"H3"}
     assert next(hole for hole in service.current_holes(7, "BE-1", "design") if hole.hole_id == "H2").engineering_group_id is None
+
+
+def test_dxf_document_local_ids_do_not_carry_group_assignment_to_new_revision(tmp_path):
+    source = tmp_path / "design.dxf"; source.write_text("d")
+    service = BlastEventDrillholeDatasetService(
+        MemoryRepository(),
+        MemoryStorage(),
+        importer_for({
+            "design.dxf": [
+                line("2F", [(0,0,630),(0,0,620)]),
+                line("30", [(10,0,630),(10,0,620)]),
+            ]
+        }),
+    )
+    service.import_dataset(7, "BE-1", "design", source)
+    service.assign_design_holes(7, "BE-1", "MAIN", {"2F"})
+
+    service.import_dataset(7, "BE-1", "design", source)
+
+    assert all(
+        hole.engineering_group_id is None
+        for hole in service.current_holes(7, "BE-1", "design")
+    )
