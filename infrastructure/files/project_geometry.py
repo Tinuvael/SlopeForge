@@ -56,9 +56,9 @@ class ProjectGeometryFileStorage:
         )
 
     @staticmethod
-    def _sha256(path: Path) -> str:
+    def sha256(path: Path) -> str:
         digest = hashlib.sha256()
-        with path.open("rb") as source:
+        with Path(path).open("rb") as source:
             for chunk in iter(lambda: source.read(1024 * 1024), b""):
                 digest.update(chunk)
         return digest.hexdigest()
@@ -105,7 +105,7 @@ class ProjectGeometryFileStorage:
                         stored_filename=destination.name,
                         relative_path=destination.relative_to(self.data_root).as_posix(),
                         file_size_bytes=destination.stat().st_size,
-                        sha256=self._sha256(destination),
+                        sha256=self.sha256(destination),
                     )
                 )
         except Exception:
@@ -118,6 +118,28 @@ class ProjectGeometryFileStorage:
         path = (self.data_root / relative_path).resolve()
         if path != root and root not in path.parents:
             raise ValueError("Project geometry file path escapes the data directory")
+        return path
+
+    def verify(
+        self,
+        relative_path: str,
+        *,
+        expected_size: int,
+        expected_sha256: str,
+    ) -> Path:
+        path = self.resolve(relative_path)
+        if not path.is_file():
+            raise ProjectGeometryStorageError(
+                f"Stored Project geometry file is missing: {relative_path}"
+            )
+        if path.stat().st_size != int(expected_size):
+            raise ProjectGeometryStorageError(
+                f"Stored Project geometry file size does not match metadata: {path.name}"
+            )
+        if self.sha256(path).lower() != str(expected_sha256).lower():
+            raise ProjectGeometryStorageError(
+                f"Stored Project geometry file hash does not match metadata: {path.name}"
+            )
         return path
 
     def remove_dataset(self, site_id: int, kind: str, logical_id: str) -> None:
