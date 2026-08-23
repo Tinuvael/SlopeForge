@@ -19,7 +19,7 @@ def test_domain_geometry_metadata_contract():
     assert "jsonb_typeof" in checks["ck_domain_geometries_polygons_array"]
 
 
-def test_domain_geometry_is_part_of_the_single_mvp_baseline():
+def test_domain_geometry_remains_in_immutable_mvp_baseline_with_appended_migrations():
     path = Path("alembic/versions/0001_mvp_baseline.py")
     spec = spec_from_file_location("mvp_baseline", path)
     module = module_from_spec(spec)
@@ -27,7 +27,9 @@ def test_domain_geometry_is_part_of_the_single_mvp_baseline():
     assert module.revision == "0001_mvp_baseline"
     assert module.down_revision is None
     assert sorted(item.name for item in Path("alembic/versions").glob("*.py")) == [
-        "0001_mvp_baseline.py"]
+        "0001_mvp_baseline.py",
+        "0002_project_surface_datasets.py",
+    ]
 
 
 def test_project_lines_are_project_owned_and_independent_of_domains():
@@ -48,7 +50,7 @@ def test_domain_dashboard_permissions_and_import_filter_are_explicit():
     assert "def _can_edit(self) -> bool:" in source
     assert "self.plan_card.set_actions_enabled(editable)" in source
     assert 'tr("Edit boundaries") if current else tr("Draw geometry")' in source
-    assert "*.csv *.dxf" in source
+    assert "*.dxf *.dm *.dmx" in source and "*.csv" not in source
     assert "if dialog.exec():" in source and "replace_drawn" in source
 
 
