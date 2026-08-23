@@ -12,6 +12,7 @@ from ui.presentation_labels import criterion_label, domain_message, history_text
 from application.services.blast_events import BlastEventService, BlastEventValidationError
 from application.services.project_lines import ProjectLinesDatasetService
 from application.state.assessment_domain_state import AssessmentDomainState
+from tests.geometry_test_files import write_dxf_lines
 
 
 @pytest.fixture(scope="module")
@@ -89,7 +90,7 @@ def test_blast_event_validation_uses_selected_locale(qapp, tmp_path, language, e
     assert install_selected_translator(qapp, store) == language
     service = BlastEventService(AssessmentDomainState())
     assert _presented_blast_error(lambda: service.create_event(
-        name="", event_type="production", event_date=None, elevation=500, csv_path="unused.csv",
+        name="", event_type="production", event_date=None, elevation=500, csv_path="unused.dxf",
     )) == expected
 
 
@@ -104,8 +105,7 @@ def test_empty_blast_geometry_error_uses_selected_locale(qapp, tmp_path, languag
     store = isolated_settings(tmp_path)
     save_language(language, store)
     assert install_selected_translator(qapp, store) == language
-    source = tmp_path / "empty.csv"
-    source.write_text("XP,YP,ZP,SID,PTN\n", encoding="utf-8")
+    source = write_dxf_lines(tmp_path / "empty.dxf", [])
     service = BlastEventService(AssessmentDomainState())
     assert _presented_blast_error(
         lambda: service.inspect_event_geometry("contour", source)
@@ -127,7 +127,7 @@ def test_dynamic_geometry_import_detail_is_preserved(qapp, tmp_path, monkeypatch
     monkeypatch.setattr("application.services.blast_events.import_line_geometry", invalid_geometry)
     service = BlastEventService(AssessmentDomainState())
     assert _presented_blast_error(
-        lambda: service.inspect_event_geometry("production", "lines.csv")
+        lambda: service.inspect_event_geometry("production", "lines.dxf")
     ) == prefix + "invalid column XP"
 
 
