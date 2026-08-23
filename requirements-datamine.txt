@@ -1,0 +1,3 @@
+# Optional Windows-only dependency for native Datamine DM/DMX access.
+# Normal SlopeForge startup and DXF workflows must not require this package.
+pywin32>=306; sys_platform == "win32"
