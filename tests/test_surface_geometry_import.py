@@ -41,7 +41,16 @@ class FakeWireframeTable:
             )
         else:
             self.Schema = FakeSchema(
-                ("PID1", "PID2", "PID3", "TRIANGLE", "COLOUR", "LINK", "LSTYLE", "SYMBOL")
+                (
+                    "PID1",
+                    "PID2",
+                    "PID3",
+                    "TRIANGLE",
+                    "COLOUR",
+                    "LINK",
+                    "LSTYLE",
+                    "SYMBOL",
+                )
             )
             self.rows = (
                 (1.0, 2.0, 3.0, 101.0, 2.0, 0.0, 1001.0, 201.0),
@@ -66,7 +75,9 @@ def _wireframe_pair(tmp_path: Path) -> tuple[Path, Path]:
     return triangle, points
 
 
-def test_datamine_wireframe_pair_builds_canonical_surface_and_preserves_triangle_attributes(tmp_path: Path) -> None:
+def test_datamine_wireframe_pair_builds_canonical_surface_and_preserves_triangle_attributes(
+    tmp_path: Path,
+) -> None:
     triangle, points = _wireframe_pair(tmp_path)
     assert resolve_wireframe_pair(points) == (triangle, points)
 
@@ -89,7 +100,7 @@ def test_datamine_wireframe_pair_builds_canonical_surface_and_preserves_triangle
 def test_datamine_wireframe_requires_unambiguous_tr_pt_pair(tmp_path: Path) -> None:
     triangle = tmp_path / "walltr.dmx"
     triangle.write_bytes(b"triangles")
-    with pytest.raises(DatamineWireframeImportError, match="matching Datamine \*pt"):
+    with pytest.raises(DatamineWireframeImportError, match=r"matching Datamine \*pt"):
         resolve_wireframe_pair(triangle)
 
 
@@ -102,7 +113,10 @@ def test_surface_dispatcher_accepts_datamine_pair(tmp_path: Path) -> None:
     assert result.source_format == "datamine"
     assert result.triangle_count == 2
     assert result.vertex_count == 4
-    assert tuple(path.name for path in result.source_paths) == ("walltr.dmx", "wallpt.dmx")
+    assert tuple(path.name for path in result.source_paths) == (
+        "walltr.dmx",
+        "wallpt.dmx",
+    )
 
 
 def test_dxf_3dface_surface_preserves_bylayer_effective_colour(tmp_path: Path) -> None:
@@ -124,3 +138,38 @@ def test_dxf_3dface_surface_preserves_bylayer_effective_colour(tmp_path: Path) -
     assert result.surface.triangles[0].source_attributes["dxf_layer"] == "FACE"
     assert result.surface.triangles[0].source_attributes["dxf_colour_mode"] == "BYLAYER"
     assert result.surface.triangles[0].source_attributes["dxf_effective_aci"] == 3
+
+
+@pytest.mark.parametrize("entity_kind", ["polyface", "mesh"])
+def test_dxf_mesh_entities_use_same_canonical_surface_model(
+    tmp_path: Path, entity_kind: str
+) -> None:
+    ezdxf = pytest.importorskip("ezdxf")
+    from ezdxf.render import MeshBuilder
+
+    path = tmp_path / f"{entity_kind}.dxf"
+    document = ezdxf.new("R2000")
+    document.layers.add("SURFACE", color=5)
+    builder = MeshBuilder()
+    builder.add_face([(0, 0, 0), (10, 0, 0), (10, 10, 0), (0, 10, 0)])
+    if entity_kind == "polyface":
+        builder.render_polyface(
+            document.modelspace(), dxfattribs={"layer": "SURFACE", "color": 256}
+        )
+    else:
+        builder.render_mesh(
+            document.modelspace(), dxfattribs={"layer": "SURFACE", "color": 256}
+        )
+    document.saveas(path)
+
+    result = import_dxf_surface(path)
+
+    assert result.vertex_count == 4
+    assert result.triangle_count == 2
+    assert {triangle.source_attributes["dxf_layer"] for triangle in result.surface.triangles} == {
+        "SURFACE"
+    }
+    assert {
+        triangle.source_attributes["dxf_effective_aci"]
+        for triangle in result.surface.triangles
+    } == {5}
