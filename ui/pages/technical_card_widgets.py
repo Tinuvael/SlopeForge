@@ -4,20 +4,58 @@ from __future__ import annotations
 from statistics import mean
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.localization import tr
 from app.use_case_factory import create_drillhole_dataset_service
 from domain.blasting.contour_drilling import summarize_contour_drilling
-from domain.blasting.technical_card import ActualDrillingGroup, BlastDrillingGroup
+from domain.blasting.drillholes import summarize_drillholes
+from domain.blasting.technical_card import ActualDrillingGroup, BlastDrillingGroup, polygon_area_m2
+from domain.geometry.types import PlanPolygon
+from ui.dialogs.drillhole_group_assignment_dialog import DrillholeGroupAssignmentDialog
 from ui.editors.technical_card_editor import TechnicalCardDialog
 from ui.pages.drillhole_dataset_widgets import DrillholeDatasetCard
 from ui.presentation_labels import domain_message
+from ui.widgets.design_system import set_button_role
 
 
 DRILLHOLE_FILE_FILTER = (
     "Drillhole files (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"
 )
+
+
+class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
+    """The proven Technical Card editor with one non-invasive group action hook."""
+
+    group_assign_callback = None
+
+    def _render_groups(self):
+        super()._render_groups()
+        callback = getattr(self, "group_assign_callback", None)
+        if not callable(callback):
+            return
+        for index, group in enumerate(self.revision.drilling_groups):
+            item = self.group_cards_layout.itemAt(index)
+            box = item.widget() if item is not None else None
+            if box is None or box.layout() is None:
+                continue
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.addStretch()
+            assign = set_button_role(QPushButton(tr("Assign holes")), "secondary")
+            assign.setObjectName("assignDrillholesButton")
+            assign.setEnabled(not self.read_only)
+            assign.clicked.connect(lambda _checked=False, current=group: callback(current))
+            row.addWidget(assign)
+            box.layout().addLayout(row)
 
 
 class _DrillholeEngineeringPage(QWidget):
@@ -72,7 +110,7 @@ class TechnicalCardEditorWidget(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.setFixedSize(0, 0)
         self.hide()
-        self.editor = TechnicalCardDialog(
+        self.editor = _DrillholeTechnicalCardDialog(
             event,
             card,
             revision,
@@ -92,6 +130,9 @@ class TechnicalCardEditorWidget(QWidget):
             else None
         )
         self._drillhole_pages: dict[str, _DrillholeEngineeringPage] = {}
+        if self._drillhole_service is not None:
+            self.editor.group_assign_callback = self.assign_holes_to_group
+            self.editor._render_groups()
 
     def take_tab(self, title):
         for index in range(self.tabs.count()):
@@ -137,11 +178,15 @@ class TechnicalCardEditorWidget(QWidget):
         row = self._current_row(dataset_kind)
         holes = self._current_holes(dataset_kind) if row is not None else ()
         page.dataset_card.set_dataset(row, holes)
-        if apply_to_draft and row is not None and self.editor.blast_event.event_type == "contour":
-            if dataset_kind == "design":
-                self._apply_contour_design(row, holes)
-            else:
+        if not apply_to_draft or row is None:
+            return
+        if dataset_kind == "design" and self.editor.blast_event.event_type == "contour":
+            self._apply_contour_design(row, holes)
+        elif dataset_kind == "actual":
+            if self.editor.blast_event.event_type == "contour":
                 self._apply_contour_actual(row)
+            else:
+                self._apply_actual_group_matches(row)
 
     def import_drillholes(self, dataset_kind: str):
         if self.editor.read_only or self._drillhole_service is None or self._controller is None:
@@ -160,11 +205,13 @@ class TechnicalCardEditorWidget(QWidget):
                 imported_by_user_id=user.id,
             )
             holes = self._current_holes(dataset_kind)
-            if self.editor.blast_event.event_type == "contour":
-                if dataset_kind == "design":
-                    self._apply_contour_design(row, holes)
-                else:
+            if dataset_kind == "design" and self.editor.blast_event.event_type == "contour":
+                self._apply_contour_design(row, holes)
+            elif dataset_kind == "actual":
+                if self.editor.blast_event.event_type == "contour":
                     self._apply_contour_actual(row)
+                else:
+                    self._apply_actual_group_matches(row)
             self.refresh_drillhole_page(dataset_kind)
             QMessageBox.information(
                 self,
@@ -173,6 +220,76 @@ class TechnicalCardEditorWidget(QWidget):
             )
         except Exception as exc:
             QMessageBox.warning(self, tr("Drillhole import"), domain_message(str(exc)))
+
+    def assign_holes_to_group(self, group: BlastDrillingGroup):
+        if self.editor.read_only or self._drillhole_service is None or self._controller is None:
+            return
+        holes = self._current_holes("design")
+        if not holes:
+            QMessageBox.information(
+                self,
+                tr("Design drillholes"),
+                tr("Import design drillholes before assigning holes to drilling groups."),
+            )
+            return
+        selected = {hole.hole_id for hole in holes if hole.engineering_group_id == group.id}
+        geometry = self.editor.blast_event.active_geometry_revision()
+        dialog = DrillholeGroupAssignmentDialog(
+            group.name or group.group_type,
+            holes,
+            selected_ids=selected,
+            plan_geometry=geometry.plan_geometry if geometry else None,
+            parent=self,
+        )
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+        try:
+            self._drillhole_service.assign_design_holes(
+                self._controller.domain_id,
+                self.editor.blast_event.id,
+                group.id,
+                dialog.selected_hole_ids,
+            )
+            assigned = self._drillhole_service.assigned_holes(
+                self._controller.domain_id,
+                self.editor.blast_event.id,
+                group.id,
+            )
+            self._apply_design_group_metrics(group, assigned)
+            self.editor._render_groups()
+            self.refresh_drillhole_page("design")
+            actual_row = self._current_row("actual")
+            if actual_row is not None:
+                self._apply_actual_group_matches(actual_row)
+                self.refresh_drillhole_page("actual")
+        except Exception as exc:
+            QMessageBox.warning(self, tr("Assign drillholes"), domain_message(str(exc)))
+
+    def _apply_design_group_metrics(self, group: BlastDrillingGroup, holes) -> None:
+        if not holes:
+            group.hole_count = 0
+            group.planned_drilling_length_m = 0.0
+            return
+        summary = summarize_drillholes(holes)
+        group.hole_count = summary.hole_count
+        group.average_depth_m = summary.mean_length_m
+        group.planned_drilling_length_m = summary.total_drilling_length_m
+        group.inclination_deg = summary.mean_inclination_deg
+        group.azimuth_deg = summary.mean_azimuth_deg
+        if self.editor.blast_event.event_type == "contour":
+            contour = summarize_contour_drilling(holes)
+            group.spacing_m = contour.mean_spacing_m
+            parameters = self.editor.revision.contour_parameters
+            if parameters is not None:
+                parameters.hole_count = summary.hole_count
+                parameters.average_depth_m = summary.mean_length_m
+                parameters.average_spacing_m = contour.mean_spacing_m
+                parameters.inclination_deg = summary.mean_inclination_deg
+                parameters.line_length_m = contour.line_length_m
+        elif self.editor.revision.production_parameters is not None:
+            self.editor.revision.production_parameters.recalculate(
+                self.editor.revision.drilling_groups
+            )
 
     def _primary_contour_group(self):
         preferred = {
@@ -198,27 +315,47 @@ class TechnicalCardEditorWidget(QWidget):
     def _apply_contour_design(self, row, holes) -> None:
         if not holes:
             return
-        summary = dict(row.summary_json or {})
-        contour = summarize_contour_drilling(holes)
         group = self._primary_contour_group()
-        group.hole_count = int(summary["hole_count"])
-        group.average_depth_m = float(summary["mean_length_m"])
-        group.planned_drilling_length_m = float(summary["total_drilling_length_m"])
-        group.inclination_deg = summary.get("mean_inclination_deg")
-        group.azimuth_deg = summary.get("mean_azimuth_deg")
-        group.spacing_m = contour.mean_spacing_m
-        parameters = self.editor.revision.contour_parameters
-        if parameters is not None:
-            parameters.hole_count = group.hole_count
-            parameters.average_depth_m = group.average_depth_m
-            parameters.average_spacing_m = group.spacing_m
-            parameters.inclination_deg = group.inclination_deg
-            parameters.line_length_m = contour.line_length_m
+        # A Contour Blast's initial geometry file is the contour drillhole set,
+        # so it is unambiguous to seed the primary contour group automatically.
+        if self._drillhole_service is not None and self._controller is not None:
+            self._drillhole_service.assign_design_holes(
+                self._controller.domain_id,
+                self.editor.blast_event.id,
+                group.id,
+                {hole.hole_id for hole in holes},
+            )
+            holes = self._drillhole_service.assigned_holes(
+                self._controller.domain_id,
+                self.editor.blast_event.id,
+                group.id,
+            )
+        self._apply_design_group_metrics(group, holes)
         self.editor._render_groups()
 
-    def _apply_contour_actual(self, row) -> None:
-        summary = dict(row.summary_json or {})
-        design = self._primary_contour_group()
+    @staticmethod
+    def _deviation_values(matches, key: str):
+        return [
+            float(item[key])
+            for item in matches
+            if item.get(key) is not None
+        ]
+
+    def _set_actual_group_geometry(self, actual, holes, matches) -> None:
+        summary = summarize_drillholes(holes)
+        actual.hole_count = summary.hole_count
+        actual.average_depth_m = summary.mean_length_m
+        actual.drilling_length_m = summary.total_drilling_length_m
+        actual.inclination_deg = summary.mean_inclination_deg
+        actual.azimuth_deg = summary.mean_azimuth_deg
+        collar = self._deviation_values(matches, "collar_deviation_3d_m")
+        toe = self._deviation_values(matches, "toe_deviation_3d_m")
+        actual.mean_collar_deviation_m = mean(collar) if collar else None
+        actual.max_collar_deviation_m = max(collar) if collar else None
+        actual.mean_toe_deviation_m = mean(toe) if toe else None
+        actual.max_toe_deviation_m = max(toe) if toe else None
+
+    def _ensure_actual_group(self, design: BlastDrillingGroup):
         execution = self.editor.revision.actual_execution
         actual = next(
             (item for item in execution.actual_drilling_groups if item.design_group_id == design.id),
@@ -227,34 +364,71 @@ class TechnicalCardEditorWidget(QWidget):
         if actual is None:
             actual = ActualDrillingGroup.from_design(design, self.editor.revision.id)
             execution.actual_drilling_groups.append(actual)
-        actual.hole_count = int(summary["hole_count"])
-        actual.average_depth_m = float(summary["mean_length_m"])
-        actual.drilling_length_m = float(summary["total_drilling_length_m"])
-        actual.inclination_deg = summary.get("mean_inclination_deg")
-        actual.azimuth_deg = summary.get("mean_azimuth_deg")
+        return actual
 
-        matches = list(row.matches_json or [])
-        paired = [
-            item for item in matches
-            if item.get("design_hole_id") and item.get("actual_hole_id")
-        ]
-        collar = [
-            float(item["collar_deviation_3d_m"])
-            for item in paired
-            if item.get("collar_deviation_3d_m") is not None
-        ]
-        toe = [
-            float(item["toe_deviation_3d_m"])
-            for item in paired
-            if item.get("toe_deviation_3d_m") is not None
-        ]
-        actual.mean_collar_deviation_m = mean(collar) if collar else None
-        actual.max_collar_deviation_m = max(collar) if collar else None
-        actual.mean_toe_deviation_m = mean(toe) if toe else None
-        actual.max_toe_deviation_m = max(toe) if toe else None
-        execution.recalculate(production=False)
+    def _recalculate_actual(self):
+        execution = self.editor.revision.actual_execution
+        geometry = self.editor.blast_event.active_geometry_revision()
+        plan = geometry.plan_geometry if geometry else None
+        area = polygon_area_m2(plan) if isinstance(plan, PlanPolygon) else None
+        execution.recalculate(
+            geometry_area_m2=area,
+            production=self.editor.blast_event.event_type == "production",
+        )
         self.editor._render_actual_groups()
         self.editor._refresh_actual_summary()
+
+    def _apply_contour_actual(self, row) -> None:
+        holes = self._current_holes("actual")
+        if not holes:
+            return
+        design = self._primary_contour_group()
+        actual = self._ensure_actual_group(design)
+        paired = [
+            item for item in list(row.matches_json or [])
+            if item.get("design_hole_id") and item.get("actual_hole_id")
+        ]
+        self._set_actual_group_geometry(actual, holes, paired)
+        self._recalculate_actual()
+
+    def _apply_actual_group_matches(self, row) -> None:
+        design_holes = self._current_holes("design")
+        actual_holes = self._current_holes("actual")
+        if not design_holes or not actual_holes:
+            return
+        actual_by_id = {hole.hole_id: hole for hole in actual_holes}
+        matches = list(row.matches_json or [])
+        matches_by_design = {
+            str(item["design_hole_id"]): item
+            for item in matches
+            if item.get("design_hole_id") and item.get("actual_hole_id")
+        }
+        changed = False
+        for design_group in self.editor.revision.drilling_groups:
+            assigned_design_ids = {
+                hole.hole_id
+                for hole in design_holes
+                if hole.engineering_group_id == design_group.id
+            }
+            if not assigned_design_ids:
+                continue
+            group_matches = [
+                matches_by_design[hole_id]
+                for hole_id in assigned_design_ids
+                if hole_id in matches_by_design
+            ]
+            actual_subset = tuple(
+                actual_by_id[str(item["actual_hole_id"])]
+                for item in group_matches
+                if str(item["actual_hole_id"]) in actual_by_id
+            )
+            if not actual_subset:
+                continue
+            actual_group = self._ensure_actual_group(design_group)
+            self._set_actual_group_geometry(actual_group, actual_subset, group_matches)
+            changed = True
+        if changed:
+            self._recalculate_actual()
 
 
 class _SectionWidget(QWidget):
