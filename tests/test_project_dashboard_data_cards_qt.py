@@ -7,7 +7,7 @@ import pytest
 
 try:
     from PySide6.QtCore import QPoint
-    from PySide6.QtWidgets import QApplication, QHBoxLayout, QSizePolicy, QWidget
+    from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QSizePolicy, QWidget
 
     from ui.pages.dashboards.project_geometry_card import ProjectGeometryCard
     from ui.pages.dashboards.widgets import (
@@ -99,15 +99,21 @@ def test_project_data_cards_share_header_and_first_row_baselines_without_overflo
 
     domain_row = domain.list.itemWidget(domain.list.item(0))
     lines_row = lines.list.itemWidget(lines.list.item(0))
+    domain_title = domain_row.findChild(QLabel, "RelatedEntityTitle")
+    lines_title = lines_row.findChild(QLabel, "RelatedEntityTitle")
     design_title = geometry._rows["design"][0]
     actual_title = geometry._rows["actual"][0]
+    assert domain_title is not None and lines_title is not None
 
-    first_row_y = [
-        domain_row.mapTo(host, QPoint(0, 0)).y(),
-        lines_row.mapTo(host, QPoint(0, 0)).y(),
-        design_title.mapTo(host, QPoint(0, 0)).y() - 4,
+    # Compare text baselines, not the outer row containers: list viewport/item
+    # margins differ slightly from the direct Geometry row but the visible
+    # first-line labels must align.
+    first_title_y = [
+        domain_title.mapTo(host, QPoint(0, 0)).y(),
+        lines_title.mapTo(host, QPoint(0, 0)).y(),
+        design_title.mapTo(host, QPoint(0, 0)).y(),
     ]
-    assert max(first_row_y) - min(first_row_y) <= 3
+    assert max(first_title_y) - min(first_title_y) <= 3
 
     widths = [card.width() for card in cards]
     assert max(widths) - min(widths) <= 2
@@ -121,6 +127,7 @@ def test_project_data_cards_share_header_and_first_row_baselines_without_overflo
     assert expected_offset - 3 <= actual_y - design_y <= expected_offset + 3
 
     host.close()
+    app.processEvents()
 
 
 def test_persistent_dashboard_rows_rebind_after_pre_layout_wide_geometry(app):
@@ -156,3 +163,4 @@ def test_persistent_dashboard_rows_rebind_after_pre_layout_wide_geometry(app):
 
     domain.close()
     lines.close()
+    app.processEvents()
