@@ -32,7 +32,11 @@ class SurfaceImportResult:
         return len(self.surface.triangles)
 
 
-def _same_xyz(a: tuple[float, float, float], b: tuple[float, float, float], tolerance: float = 1e-9) -> bool:
+def _same_xyz(
+    a: tuple[float, float, float],
+    b: tuple[float, float, float],
+    tolerance: float = 1e-9,
+) -> bool:
     return all(abs(left - right) <= tolerance for left, right in zip(a, b))
 
 
@@ -53,7 +57,9 @@ def _dxf_entity_attributes(document: Any, entity: Any) -> dict[str, Any]:
         "dxf_handle": entity.dxf.get("handle", None),
         "dxf_layer": layer_name,
         "dxf_raw_aci": raw_aci,
-        "dxf_colour_mode": "BYLAYER" if raw_aci == 256 else "BYBLOCK" if raw_aci == 0 else "ACI",
+        "dxf_colour_mode": (
+            "BYLAYER" if raw_aci == 256 else "BYBLOCK" if raw_aci == 0 else "ACI"
+        ),
         "dxf_effective_aci": effective_aci,
         "dxf_true_color": int(true_color) if true_color is not None else None,
     }
@@ -63,12 +69,16 @@ def _triangulate_indices(indices: Iterable[int]) -> list[tuple[int, int, int]]:
     values = list(indices)
     if len(values) < 3:
         return []
-    return [(values[0], values[index], values[index + 1]) for index in range(1, len(values) - 1)]
+    return [
+        (values[0], values[index], values[index + 1])
+        for index in range(1, len(values) - 1)
+    ]
 
 
 def import_dxf_surface(path: str | Path) -> SurfaceImportResult:
     try:
         import ezdxf
+        from ezdxf.render import MeshBuilder
     except ImportError as exc:
         raise SurfaceImportError("ezdxf is required to import DXF surfaces") from exc
 
@@ -89,7 +99,9 @@ def import_dxf_surface(path: str | Path) -> SurfaceImportResult:
             vertices.append(SurfaceVertex(*xyz))
         return vertex_lookup[xyz]
 
-    def append_face(face_vertices: list[Any], entity: Any, source_suffix: str = "") -> None:
+    def append_face(
+        face_vertices: list[Any], entity: Any, source_suffix: str = ""
+    ) -> None:
         xyz = [(float(value.x), float(value.y), float(value.z)) for value in face_vertices]
         if len(xyz) == 4 and _same_xyz(xyz[2], xyz[3]):
             face_vertices = face_vertices[:3]
@@ -106,7 +118,9 @@ def import_dxf_surface(path: str | Path) -> SurfaceImportResult:
                     )
                 )
             except ValueError as exc:
-                raise SurfaceImportError(f"Invalid DXF face {handle!r}: {exc}") from exc
+                raise SurfaceImportError(
+                    f"Invalid DXF face {handle!r}: {exc}"
+                ) from exc
 
     for entity in document.modelspace():
         entity_type = entity.dxftype()
@@ -117,34 +131,45 @@ def import_dxf_surface(path: str | Path) -> SurfaceImportResult:
             )
             continue
 
-        if entity_type == "POLYLINE" and bool(getattr(entity, "is_poly_face_mesh", False)):
+        if entity_type == "POLYLINE" and bool(
+            getattr(entity, "is_poly_face_mesh", False)
+        ):
             try:
-                mesh_vertices, mesh_faces = entity.indexed_faces()
-                mesh_vertices = list(mesh_vertices)
-                for face_number, face in enumerate(mesh_faces, start=1):
-                    indices_method = getattr(face, "indices", None)
-                    if not callable(indices_method):
-                        raise SurfaceImportError("Unsupported DXF polyface face representation")
-                    face_vertices = [mesh_vertices[index].dxf.location for index in indices_method()]
-                    append_face(face_vertices, entity, f":face{face_number}")
+                mesh = MeshBuilder.from_polyface(entity)
+                for face_number, face in enumerate(mesh.faces, start=1):
+                    append_face(
+                        [mesh.vertices[int(index)] for index in face],
+                        entity,
+                        f":face{face_number}",
+                    )
             except SurfaceImportError:
                 raise
             except Exception as exc:
-                raise SurfaceImportError(f"Could not read DXF polyface mesh: {exc}") from exc
+                raise SurfaceImportError(
+                    f"Could not read DXF polyface mesh: {exc}"
+                ) from exc
             continue
 
         if entity_type == "MESH":
             try:
-                mesh_vertices = list(entity.vertices)
-                for face_number, face in enumerate(entity.faces, start=1):
-                    face_vertices = [mesh_vertices[int(index)] for index in face]
-                    append_face(face_vertices, entity, f":face{face_number}")
+                mesh = MeshBuilder.from_mesh(entity)
+                for face_number, face in enumerate(mesh.faces, start=1):
+                    append_face(
+                        [mesh.vertices[int(index)] for index in face],
+                        entity,
+                        f":face{face_number}",
+                    )
+            except SurfaceImportError:
+                raise
             except Exception as exc:
-                raise SurfaceImportError(f"Could not read DXF MESH entity: {exc}") from exc
+                raise SurfaceImportError(
+                    f"Could not read DXF MESH entity: {exc}"
+                ) from exc
 
     if not triangles:
         raise SurfaceImportError(
-            "DXF contains no supported triangulated surface entities (3DFACE, polyface POLYLINE or MESH)."
+            "DXF contains no supported triangulated surface entities "
+            "(3DFACE, polyface POLYLINE or MESH)."
         )
     try:
         surface = TriangleSurface(
@@ -169,7 +194,9 @@ def import_surface_geometry(
         return import_dxf_surface(source_path)
     if suffix in {".dm", ".dmx"}:
         try:
-            result = import_datamine_wireframe(source_path, dispatch_factory=dispatch_factory)
+            result = import_datamine_wireframe(
+                source_path, dispatch_factory=dispatch_factory
+            )
         except DatamineWireframeImportError as exc:
             raise SurfaceImportError(str(exc)) from exc
         return SurfaceImportResult(
