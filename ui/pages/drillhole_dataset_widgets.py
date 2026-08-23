@@ -85,13 +85,15 @@ class DrillholeDatasetCard(CardFrame):
         row,
         holes: tuple[Drillhole, ...] = (),
         *,
-        design_revision_current: bool = True,
+        design_revision_current: bool | None = None,
     ):
         if row is None:
             self.source.setText(tr("No dataset loaded"))
             self.button.setText(tr("Import"))
             self._set_metrics([])
             return
+        if design_revision_current is None:
+            design_revision_current = bool(getattr(row, "design_revision_current", True))
         self.button.setText(tr("Update"))
         source_text = (
             f"R{row.revision_number} · {str(row.source_format).upper()} · {self._source_name(row)}"
