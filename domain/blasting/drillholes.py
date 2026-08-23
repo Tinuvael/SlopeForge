@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import atan2, degrees, hypot, sqrt
+from math import atan2, degrees, hypot, isfinite, sqrt
 from statistics import mean, median
 from typing import Any, Iterable
 
@@ -57,6 +57,10 @@ class DrillholePoint:
     x: float
     y: float
     z: float
+
+    def __post_init__(self) -> None:
+        if not all(isfinite(float(value)) for value in (self.x, self.y, self.z)):
+            raise ValueError("Drillhole coordinates must be finite")
 
     def to_dict(self) -> dict[str, float]:
         return {"x": self.x, "y": self.y, "z": self.z}
