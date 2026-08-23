@@ -625,7 +625,7 @@ class ContourEventPage(QWidget):
             self,
             tr("Reimport contour geometry"),
             "",
-            tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"),
+            tr("Geometry files (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"),
         )
         if not path:
             return
