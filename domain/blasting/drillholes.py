@@ -153,7 +153,12 @@ class HoleMatch:
     design_length_m: float | None = None
     actual_length_m: float | None = None
     length_deviation_m: float | None = None
+    length_deviation_percent: float | None = None
+    design_azimuth_deg: float | None = None
+    actual_azimuth_deg: float | None = None
     azimuth_deviation_deg: float | None = None
+    design_inclination_deg: float | None = None
+    actual_inclination_deg: float | None = None
     inclination_deviation_deg: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -164,9 +169,9 @@ def drillhole_from_line(line: DatamineLine) -> Drillhole:
     if len(line.points) < 2:
         raise ValueError(f"Drillhole {line.source_id!r} has fewer than two points")
     points = tuple(DrillholePoint(float(p.x), float(p.y), float(p.z)) for p in line.points)
-    # Imported Datamine/DXF strings are not guaranteed to be directed. For blast
-    # holes the collar is normally the higher endpoint; normalize to collar -> toe
-    # without changing the intermediate survey geometry.
+    # Blast-hole strings are not guaranteed to arrive directed. The higher end
+    # is the collar for the supported open-pit drilling workflow; intermediate
+    # survey stations remain in the original order relative to that direction.
     if points[-1].z > points[0].z:
         points = tuple(reversed(points))
     attrs = dict(line.source_attributes or {})
@@ -221,6 +226,12 @@ def _match_pair(design: Drillhole, actual: Drillhole, method: str) -> HoleMatch:
     collar_z = actual.collar.z - design.collar.z
     toe_xy = _distance_xy(design.toe, actual.toe)
     toe_z = actual.toe.z - design.toe.z
+    length_delta = actual.length_m - design.length_m
+    length_percent = (
+        length_delta / design.length_m * 100.0
+        if design.length_m > 1e-12
+        else None
+    )
     return HoleMatch(
         design_hole_id=design.hole_id,
         actual_hole_id=actual.hole_id,
@@ -233,8 +244,13 @@ def _match_pair(design: Drillhole, actual: Drillhole, method: str) -> HoleMatch:
         toe_deviation_3d_m=sqrt(toe_xy ** 2 + toe_z ** 2),
         design_length_m=design.length_m,
         actual_length_m=actual.length_m,
-        length_deviation_m=actual.length_m - design.length_m,
+        length_deviation_m=length_delta,
+        length_deviation_percent=length_percent,
+        design_azimuth_deg=design.azimuth_deg,
+        actual_azimuth_deg=actual.azimuth_deg,
         azimuth_deviation_deg=_wrapped_angle_difference(actual.azimuth_deg, design.azimuth_deg),
+        design_inclination_deg=design.inclination_deg,
+        actual_inclination_deg=actual.inclination_deg,
         inclination_deviation_deg=(
             None
             if actual.inclination_deg is None or design.inclination_deg is None
@@ -243,11 +259,52 @@ def _match_pair(design: Drillhole, actual: Drillhole, method: str) -> HoleMatch:
     )
 
 
+def _geometry_match_method(
+    chosen_distance: float,
+    actual: Drillhole,
+    design_candidates: tuple[Drillhole, ...],
+) -> str:
+    """Classify deterministic collar matching without inventing site tolerances.
+
+    Confidence is relative to competing design collars rather than an absolute
+    engineering tolerance. A pair is high-confidence when the chosen collar is
+    the actual hole's nearest candidate and the second candidate is at least
+    twice as far away. With one remaining candidate the assignment is unique.
+    Dense/equidistant layouts are retained but explicitly flagged for review.
+    """
+    distances = sorted(_distance_xy(candidate.collar, actual.collar) for candidate in design_candidates)
+    if not distances:
+        return "matched_geometry_low_confidence"
+    nearest = distances[0]
+    if chosen_distance > nearest + 1e-9:
+        return "matched_geometry_low_confidence"
+    if len(distances) == 1:
+        return "matched_geometry_high_confidence"
+    second = distances[1]
+    if nearest <= 1e-9:
+        return (
+            "matched_geometry_high_confidence"
+            if second > 1e-9
+            else "matched_geometry_low_confidence"
+        )
+    return (
+        "matched_geometry_high_confidence"
+        if second / nearest >= 2.0
+        else "matched_geometry_low_confidence"
+    )
+
+
 def match_actual_to_design(
     design_holes: Iterable[Drillhole],
     actual_holes: Iterable[Drillhole],
 ) -> tuple[HoleMatch, ...]:
-    """Deterministic one-to-one matching: stable IDs first, nearest collar second."""
+    """Deterministic one-to-one matching with explicit ambiguity state.
+
+    Compatible stable IDs are authoritative. Remaining holes are proposed by
+    nearest collar under one-to-one constraints. Dense or contested geometric
+    proposals are kept as low-confidence rather than being silently presented as
+    definitive matches.
+    """
     design = tuple(design_holes)
     actual = tuple(actual_holes)
     design_by_id = {hole.hole_id: hole for hole in design}
@@ -262,24 +319,24 @@ def match_actual_to_design(
         matched_design.add(hole_id)
         matched_actual.add(hole_id)
 
-    remaining_design = [hole for hole in design if hole.hole_id not in matched_design]
-    remaining_actual = [hole for hole in actual if hole.hole_id not in matched_actual]
-
+    remaining_design = tuple(hole for hole in design if hole.hole_id not in matched_design)
+    remaining_actual = tuple(hole for hole in actual if hole.hole_id not in matched_actual)
     candidates = sorted(
         (
-            _distance_xy(d.collar, a.collar),
-            d.hole_id,
-            a.hole_id,
-            d,
-            a,
+            _distance_xy(design_hole.collar, actual_hole.collar),
+            design_hole.hole_id,
+            actual_hole.hole_id,
+            design_hole,
+            actual_hole,
         )
-        for d in remaining_design
-        for a in remaining_actual
+        for design_hole in remaining_design
+        for actual_hole in remaining_actual
     )
-    for _distance, _design_id, _actual_id, design_hole, actual_hole in candidates:
+    for distance, _design_id, _actual_id, design_hole, actual_hole in candidates:
         if design_hole.hole_id in matched_design or actual_hole.hole_id in matched_actual:
             continue
-        matches.append(_match_pair(design_hole, actual_hole, "matched_nearest_collar"))
+        method = _geometry_match_method(distance, actual_hole, remaining_design)
+        matches.append(_match_pair(design_hole, actual_hole, method))
         matched_design.add(design_hole.hole_id)
         matched_actual.add(actual_hole.hole_id)
 
