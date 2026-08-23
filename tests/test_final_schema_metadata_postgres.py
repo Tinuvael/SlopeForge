@@ -18,6 +18,7 @@ def test_fresh_head_matches_application_metadata(monkeypatch: pytest.MonkeyPatch
     from database.base import Base
     import database.assessment_models  # noqa: F401
     import database.models  # noqa: F401
+    import database.project_surface_models  # noqa: F401
 
     url = os.environ["TEST_DATABASE_URL"]
     if not is_disposable_test_database(url):
