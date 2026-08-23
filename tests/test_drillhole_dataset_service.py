@@ -41,12 +41,12 @@ class MemoryStorage:
         self.copied = []
         self.removed = []
 
-    def copy_dataset(self, event_id, kind, logical_id, source_paths):
-        self.copied.append((event_id, kind, logical_id, source_paths))
+    def copy_dataset(self, domain_id, event_id, kind, logical_id, source_paths):
+        self.copied.append((domain_id, event_id, kind, logical_id, source_paths))
         return [Stored(path) for path in source_paths]
 
-    def remove_dataset(self, event_id, kind, logical_id):
-        self.removed.append((event_id, kind, logical_id))
+    def remove_dataset(self, domain_id, event_id, kind, logical_id):
+        self.removed.append((domain_id, event_id, kind, logical_id))
 
 
 class MemoryRepository:
@@ -123,6 +123,7 @@ def test_design_import_ignores_flat_marker_strings_and_reimport_increments_revis
     assert [item["hole_id"] for item in first.holes_json] == ["H1", "H2"]
     assert all(item["source_attributes"]["stable_hole_id"] is False for item in first.holes_json)
     assert len(storage.copied) == 2
+    assert storage.copied[0][:3] == (7, "BE-1", "design")
 
 
 def test_actual_import_matches_current_design_revision_and_persists_qa(tmp_path):
