@@ -3,6 +3,7 @@ from application.use_cases.create_blast_event import CreateBlastEvent
 from infrastructure.db.blast_event_creation import SqlAlchemyBlastEventCreationPersistence
 from application.services.entity_editing import AssessmentEditingSession
 from application.services.project_surfaces import ProjectSurfaceDatasetService
+from application.services.drillhole_datasets import BlastEventDrillholeDatasetService
 from infrastructure.db.assessment_state import SqlAlchemyAssessmentStatePersistence
 from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
 from application.use_cases.create_project import CreateProject
@@ -14,6 +15,7 @@ from infrastructure.db.domain_creation import SqlAlchemyDomainCreation
 from infrastructure.db.project_navigation import SqlAlchemyProjectNavigationQueries
 from infrastructure.db.project_report import SqlAlchemyProjectReportQuery
 from infrastructure.files.project_geometry import ProjectGeometryFileStorage
+from infrastructure.files.drillhole_geometry import BlastEventDrillholeFileStorage
 from infrastructure.geometry_import.surfaces import import_surface_geometry
 from infrastructure.reports.excel_project_report import OpenPyxlProjectReportWriter
 from application.use_cases.rename_project import RenameProject
@@ -27,6 +29,7 @@ from application.use_cases.charge_presets import ChargePresets
 from infrastructure.db.charge_presets import SqlAlchemyChargePresetPersistence
 from repositories.assessment_area_context_repository import AssessmentAreaContextRepository
 from repositories.project_surface_repository import ProjectSurfaceDatasetRepository
+from repositories.drillhole_dataset_repository import BlastEventDrillholeDatasetRepository
 
 
 def create_blast_event_use_case(context):
@@ -63,6 +66,13 @@ def create_project_surface_dataset_service(context):
         ProjectSurfaceDatasetRepository(context.session_factory),
         ProjectGeometryFileStorage(context.storage_root),
         import_surface_geometry,
+    )
+
+
+def create_drillhole_dataset_service(context):
+    return BlastEventDrillholeDatasetService(
+        BlastEventDrillholeDatasetRepository(context.session_factory),
+        BlastEventDrillholeFileStorage(context.storage_root),
     )
 
 
