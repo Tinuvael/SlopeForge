@@ -30,6 +30,18 @@ class BlastEventDrillholeDatasetRepository:
             BlastEvent.logical_id == str(event_logical_id),
         )
 
+    @staticmethod
+    def _current_dataset_id(session, event_id: int, dataset_kind: str) -> int | None:
+        return session.scalar(
+            select(BlastEventDrillholeDataset.id)
+            .where(
+                BlastEventDrillholeDataset.blast_event_id == int(event_id),
+                BlastEventDrillholeDataset.dataset_kind == dataset_kind,
+            )
+            .order_by(BlastEventDrillholeDataset.revision_number.desc())
+            .limit(1)
+        )
+
     def add_dataset(
         self,
         domain_id: int,
@@ -65,6 +77,11 @@ class BlastEventDrillholeDatasetRepository:
                     raise ValueError("Matched design drillhole dataset does not exist")
                 if design_row.dataset_kind != "design" or design_row.blast_event_id != event.id:
                     raise ValueError("Matched design drillhole dataset belongs to a different Blast Event")
+                current_design_id = self._current_dataset_id(session, event.id, "design")
+                if current_design_id != design_row.id:
+                    raise DrillholeDatasetConflictError(
+                        "Design drillhole dataset changed while as-drilled holes were being imported. Re-import the factual holes against the current design."
+                    )
             current_revision = session.scalar(
                 select(func.max(BlastEventDrillholeDataset.revision_number)).where(
                     BlastEventDrillholeDataset.blast_event_id == event.id,
@@ -120,15 +137,7 @@ class BlastEventDrillholeDatasetRepository:
                 with_for_update=True,
                 populate_existing=True,
             )
-            current_id = session.scalar(
-                select(BlastEventDrillholeDataset.id)
-                .where(
-                    BlastEventDrillholeDataset.blast_event_id == event.id,
-                    BlastEventDrillholeDataset.dataset_kind == "design",
-                )
-                .order_by(BlastEventDrillholeDataset.revision_number.desc())
-                .limit(1)
-            )
+            current_id = self._current_dataset_id(session, event.id, "design")
             if current_id != row.id:
                 raise DrillholeDatasetConflictError(
                     "Design drillhole dataset changed while group assignments were being edited. Refresh and retry."
