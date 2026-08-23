@@ -18,19 +18,33 @@ class ProjectGeometryCard(DashboardCard):
     def __init__(self, parent=None):
         super().__init__("Geometry", parent)
         self.setMinimumHeight(140)
+        self.setMinimumWidth(0)
         self.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Expanding,
         )
         self._rows: dict[str, tuple[QLabel, QLabel, OverviewLinkButton]] = {}
+
+        # Three visual row slots: design at the top, one intentionally empty
+        # slot in the middle, actual survey at the bottom. This keeps the two
+        # independent working surfaces visually separated and uses the full
+        # height of the Project data card instead of bunching both rows at top.
+        self.body = QVBoxLayout()
+        self.body.setContentsMargins(0, 0, 0, 0)
+        self.body.setSpacing(0)
+        self.layout.addLayout(self.body, 1)
         self._add_dataset_row("design", tr("Design surface"))
+        self.body.addStretch(1)
         self._add_dataset_row("actual", tr("Actual survey"))
-        self.layout.addStretch(1)
 
     def _add_dataset_row(self, kind: str, label: str) -> None:
         host = QWidget()
+        host.setMinimumWidth(0)
         host.setFixedHeight(self.ROW_HEIGHT)
-        host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        host.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Fixed,
+        )
         row = QHBoxLayout(host)
         row.setContentsMargins(0, 2, 0, 2)
         row.setSpacing(8)
@@ -45,6 +59,7 @@ class ProjectGeometryCard(DashboardCard):
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,
         )
+        title.setToolTip(label)
         detail = QLabel("—")
         detail.setObjectName("MutedText")
         detail.setMinimumWidth(0)
@@ -58,13 +73,17 @@ class ProjectGeometryCard(DashboardCard):
         row.addLayout(text, 1)
 
         action = OverviewLinkButton(tr("Import"))
+        action.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
         action.clicked.connect(
             lambda _checked=False, dataset_kind=kind: self.upload_requested.emit(
                 dataset_kind
             )
         )
         row.addWidget(action)
-        self.layout.addWidget(host)
+        self.body.addWidget(host)
         self._rows[kind] = (title, detail, action)
 
     @staticmethod
