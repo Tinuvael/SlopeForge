@@ -180,9 +180,14 @@ class TechnicalCardEditorWidget(QWidget):
         page.dataset_card.set_dataset(row, holes)
         if not apply_to_draft or row is None:
             return
-        if dataset_kind == "design" and self.editor.blast_event.event_type == "contour":
-            self._apply_contour_design(row, holes)
+        if dataset_kind == "design":
+            if self.editor.blast_event.event_type == "contour":
+                self._apply_contour_design(row, holes)
+            else:
+                self._apply_production_design_assignments(holes)
         elif dataset_kind == "actual":
+            if not bool(getattr(row, "design_revision_current", True)):
+                return
             if self.editor.blast_event.event_type == "contour":
                 self._apply_contour_actual(row)
             else:
@@ -205,8 +210,11 @@ class TechnicalCardEditorWidget(QWidget):
                 imported_by_user_id=user.id,
             )
             holes = self._current_holes(dataset_kind)
-            if dataset_kind == "design" and self.editor.blast_event.event_type == "contour":
-                self._apply_contour_design(row, holes)
+            if dataset_kind == "design":
+                if self.editor.blast_event.event_type == "contour":
+                    self._apply_contour_design(row, holes)
+                else:
+                    self._apply_production_design_assignments(holes)
             elif dataset_kind == "actual":
                 if self.editor.blast_event.event_type == "contour":
                     self._apply_contour_actual(row)
@@ -216,7 +224,7 @@ class TechnicalCardEditorWidget(QWidget):
             QMessageBox.information(
                 self,
                 tr("Drillhole import"),
-                tr("Drillholes were imported and derived values were updated in the current Technical Card draft. Save the Technical Card to keep those values."),
+                tr("Drillholes were imported. Average drilling and deviation values were applied automatically to the current Technical Card draft. Save the Technical Card to keep those values."),
             )
         except Exception as exc:
             QMessageBox.warning(self, tr("Drillhole import"), domain_message(str(exc)))
@@ -256,25 +264,41 @@ class TechnicalCardEditorWidget(QWidget):
                 group.id,
                 dialog.selected_hole_ids,
             )
-            assigned = self._drillhole_service.assigned_holes(
-                self._controller.domain_id,
-                self.editor.blast_event.id,
-                group.id,
-            )
-            self._apply_design_group_metrics(group, assigned)
-            self.editor._render_groups()
+            if self.editor.blast_event.event_type == "production":
+                self._apply_production_design_assignments(self._current_holes("design"))
+            else:
+                assigned = self._drillhole_service.assigned_holes(
+                    self._controller.domain_id,
+                    self.editor.blast_event.id,
+                    group.id,
+                )
+                self._apply_design_group_metrics(group, assigned)
+                self.editor._render_groups()
             self.refresh_drillhole_page("design")
             actual_row = self._current_row("actual")
-            if actual_row is not None:
-                self._apply_actual_group_matches(actual_row)
+            if actual_row is not None and bool(getattr(actual_row, "design_revision_current", True)):
+                if self.editor.blast_event.event_type == "contour":
+                    self._apply_contour_actual(actual_row)
+                else:
+                    self._apply_actual_group_matches(actual_row)
                 self.refresh_drillhole_page("actual")
         except Exception as exc:
             QMessageBox.warning(self, tr("Assign drillholes"), domain_message(str(exc)))
 
     def _apply_design_group_metrics(self, group: BlastDrillingGroup, holes) -> None:
+        holes = tuple(holes)
         if not holes:
             group.hole_count = 0
+            group.average_depth_m = None
             group.planned_drilling_length_m = 0.0
+            group.inclination_deg = None
+            group.azimuth_deg = None
+            if self.editor.blast_event.event_type == "contour":
+                group.spacing_m = None
+            if self.editor.revision.production_parameters is not None:
+                self.editor.revision.production_parameters.recalculate(
+                    self.editor.revision.drilling_groups
+                )
             return
         summary = summarize_drillholes(holes)
         group.hole_count = summary.hole_count
@@ -296,6 +320,23 @@ class TechnicalCardEditorWidget(QWidget):
             self.editor.revision.production_parameters.recalculate(
                 self.editor.revision.drilling_groups
             )
+
+    def _apply_production_design_assignments(self, holes) -> None:
+        holes = tuple(holes)
+        if not holes:
+            return
+        # Until the user classifies at least one hole, keep manually entered
+        # production-group values untouched. Once classification starts, the
+        # persisted drillhole grouping becomes authoritative for geometry-derived
+        # averages in every existing drilling group.
+        if not any(hole.engineering_group_id for hole in holes):
+            return
+        for group in self.editor.revision.drilling_groups:
+            assigned = tuple(
+                hole for hole in holes if hole.engineering_group_id == group.id
+            )
+            self._apply_design_group_metrics(group, assigned)
+        self.editor._render_groups()
 
     def _primary_contour_group(self):
         preferred = {
@@ -335,7 +376,23 @@ class TechnicalCardEditorWidget(QWidget):
             if item.get(key) is not None
         ]
 
+    @staticmethod
+    def _clear_actual_group_geometry(actual: ActualDrillingGroup) -> None:
+        actual.hole_count = 0
+        actual.average_depth_m = None
+        actual.drilling_length_m = None
+        actual.inclination_deg = None
+        actual.azimuth_deg = None
+        actual.mean_collar_deviation_m = None
+        actual.max_collar_deviation_m = None
+        actual.mean_toe_deviation_m = None
+        actual.max_toe_deviation_m = None
+
     def _set_actual_group_geometry(self, actual, holes, matches) -> None:
+        holes = tuple(holes)
+        if not holes:
+            self._clear_actual_group_geometry(actual)
+            return
         summary = summarize_drillholes(holes)
         actual.hole_count = summary.hole_count
         actual.average_depth_m = summary.mean_length_m
@@ -416,8 +473,6 @@ class TechnicalCardEditorWidget(QWidget):
                 for item in group_matches
                 if str(item["actual_hole_id"]) in actual_by_id
             )
-            if not actual_subset:
-                continue
             actual_group = self._ensure_actual_group(design_group)
             self._set_actual_group_geometry(actual_group, actual_subset, group_matches)
             changed = True
