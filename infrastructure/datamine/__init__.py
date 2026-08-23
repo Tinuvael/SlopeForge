@@ -9,6 +9,7 @@ from infrastructure.datamine.dmfile import (
     DatamineReadError,
     DatamineTablePreview,
     DatamineUnavailableError,
+    read_datamine_table,
     read_datamine_table_preview,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "DatamineReadError",
     "DatamineTablePreview",
     "DatamineUnavailableError",
+    "read_datamine_table",
     "read_datamine_table_preview",
 ]
