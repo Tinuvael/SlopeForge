@@ -14,6 +14,7 @@ class ProjectGeometryCard(DashboardCard):
 
     upload_requested = Signal(str)
     ROW_HEIGHT = 44
+    DATASET_GAP = 22
 
     def __init__(self, parent=None):
         super().__init__("Geometry", parent)
@@ -25,17 +26,16 @@ class ProjectGeometryCard(DashboardCard):
         )
         self._rows: dict[str, tuple[QLabel, QLabel, OverviewLinkButton]] = {}
 
-        # Three visual row slots: design at the top, one intentionally empty
-        # slot in the middle, actual survey at the bottom. This keeps the two
-        # independent working surfaces visually separated and uses the full
-        # height of the Project data card instead of bunching both rows at top.
         self.body = QVBoxLayout()
         self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(0)
         self.layout.addLayout(self.body, 1)
         self._add_dataset_row("design", tr("Design surface"))
-        self.body.addStretch(1)
+        # Keep the datasets visibly separated, but only by roughly half of the
+        # previous free row-sized gap. Remaining spare height stays below them.
+        self.body.addSpacing(self.DATASET_GAP)
         self._add_dataset_row("actual", tr("Actual survey"))
+        self.body.addStretch(1)
 
     def _add_dataset_row(self, kind: str, label: str) -> None:
         host = QWidget()
