@@ -93,6 +93,7 @@ def test_blast_event_drillhole_dataset_is_event_owned_and_revisioned():
     dataset = table("blast_event_drillhole_datasets")
     assert fk("blast_event_drillhole_datasets", "blast_event_id").target_fullname == "blast_events.id"
     assert fk("blast_event_drillhole_datasets", "blast_event_id").ondelete == "CASCADE"
+    assert fk("blast_event_drillhole_datasets", "matched_design_dataset_id").target_fullname == "blast_event_drillhole_datasets.id"
     assert ("blast_event_id", "logical_id") in uniques("blast_event_drillhole_datasets")
     assert ("blast_event_id", "dataset_kind", "revision_number") in uniques("blast_event_drillhole_datasets")
     sql = checks("blast_event_drillhole_datasets")
@@ -193,6 +194,7 @@ def test_all_foreign_key_delete_actions():
         ("blast_event_technical_card_revisions", "technical_card_id"): "CASCADE",
         ("blast_event_technical_card_revisions", "blast_event_geometry_revision_id"): "RESTRICT",
         ("blast_event_drillhole_datasets", "blast_event_id"): "CASCADE",
+        ("blast_event_drillhole_datasets", "matched_design_dataset_id"): "CASCADE",
         ("blast_event_drillhole_datasets", "imported_by_user_id"): "SET NULL",
         ("assessment_areas", "domain_id"): "RESTRICT",
         ("assessment_area_geometry_revisions", "assessment_area_id"): "CASCADE",
@@ -230,5 +232,5 @@ def test_current_schema_keeps_immutable_mvp_baseline_and_appends_migrations():
     assert 'revision = "0002_project_surface_datasets"' in surface_revision
     assert 'down_revision = "0001_mvp_baseline"' in surface_revision
     drillhole_revision = versions[2].read_text()
-    assert 'revision = "0003_blast_event_drillhole_datasets"' in drillhole_revision
+    assert 'revision = "0003_drillhole_datasets"' in drillhole_revision
     assert 'down_revision = "0002_project_surface_datasets"' in drillhole_revision
