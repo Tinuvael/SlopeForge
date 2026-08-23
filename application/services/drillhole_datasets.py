@@ -115,17 +115,20 @@ class BlastEventDrillholeDatasetService:
         return row
 
     def current(self, domain_id: int, event_logical_id: str, dataset_kind: str):
-        return self.repository.get_current(domain_id, event_logical_id, dataset_kind)
+        row = self.repository.get_current(domain_id, event_logical_id, dataset_kind)
+        if row is not None and dataset_kind == "actual":
+            design = self.repository.get_current(domain_id, event_logical_id, "design")
+            row.design_revision_current = (
+                design is not None
+                and row.matched_design_dataset_id is not None
+                and int(row.matched_design_dataset_id) == int(design.id)
+            )
+        return row
 
     def actual_uses_current_design(self, domain_id: int, event_logical_id: str) -> bool:
         """True when current as-drilled QA was calculated against current design evidence."""
         actual = self.current(domain_id, event_logical_id, "actual")
-        if actual is None:
-            return True
-        design = self.current(domain_id, event_logical_id, "design")
-        if design is None:
-            return False
-        return int(actual.matched_design_dataset_id) == int(design.id)
+        return actual is None or bool(getattr(actual, "design_revision_current", False))
 
     def current_holes(
         self,
@@ -134,7 +137,13 @@ class BlastEventDrillholeDatasetService:
         dataset_kind: str,
     ) -> tuple[Drillhole, ...]:
         row = self.current(domain_id, event_logical_id, dataset_kind)
-        return () if row is None else self._holes_from_row(row)
+        if row is None:
+            return ()
+        if dataset_kind == "actual" and not bool(getattr(row, "design_revision_current", False)):
+            # Historical as-drilled geometry remains stored and reviewable in the
+            # dataset row, but its QA must not be projected onto a newer design.
+            return ()
+        return self._holes_from_row(row)
 
     def assigned_holes(
         self,
