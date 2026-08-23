@@ -186,6 +186,25 @@ def test_actual_cannot_reference_design_from_another_blast_event(factory, event_
         )
 
 
+def test_actual_cannot_be_persisted_against_superseded_design(factory, event_graph) -> None:
+    _site_id, domain_id, _first_pk, _second_pk = event_graph
+    repository = BlastEventDrillholeDatasetRepository(factory)
+    old_design = _add(repository, domain_id, "BE-DRILL-1", "DH-OLD", "design")
+    _add(repository, domain_id, "BE-DRILL-1", "DH-NEW", "design")
+
+    with pytest.raises(DrillholeDatasetConflictError, match="changed while as-drilled"):
+        _add(
+            repository,
+            domain_id,
+            "BE-DRILL-1",
+            "DH-ACTUAL-STALE",
+            "actual",
+            matched_design_dataset_id=old_design.id,
+        )
+
+    assert repository.get_current(domain_id, "BE-DRILL-1", "actual") is None
+
+
 def test_group_assignment_updates_only_current_design_revision(factory, event_graph) -> None:
     _site_id, domain_id, _first_pk, _second_pk = event_graph
     repository = BlastEventDrillholeDatasetRepository(factory)
