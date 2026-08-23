@@ -8,7 +8,7 @@ import database.startup as startup
 from database.settings import Settings
 
 
-CURRENT_HEAD = "0003_blast_event_drillhole_datasets"
+CURRENT_HEAD = "0003_drillhole_datasets"
 PROJECT_SURFACE_HEAD = "0002_project_surface_datasets"
 BASELINE = "0001_mvp_baseline"
 
