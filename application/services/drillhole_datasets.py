@@ -57,17 +57,28 @@ class BlastEventDrillholeDatasetService:
 
     @staticmethod
     def _mark_source_identity(path: Path, holes: tuple[Drillhole, ...]) -> None:
-        """Record whether imported IDs can safely identify a hole across files.
+        """Record whether an imported ID is safe as cross-file hole identity.
 
-        Current DXF line import uses entity handles/import order as source IDs.
-        Those identifiers are document-local and can be reused by an independent
-        design/fact export, so they must never be treated as stable blast-hole
-        identity. Native Datamine SID/PVALUE is the supported stable identity.
+        DXF entity handles are document-local. Datamine PVALUE is verified as a
+        string-grouping field, but not as a persistent blast-hole identifier, so
+        it is also document-local for matching/revision carry-forward purposes.
+        Only an explicit Datamine SID is currently treated as stable identity.
         """
-        is_stable = path.suffix.lower() in {".dm", ".dmx"}
-        identity_kind = "datamine_string_id" if is_stable else "dxf_entity_id"
+        is_datamine = path.suffix.lower() in {".dm", ".dmx"}
         for hole in holes:
-            hole.source_attributes["stable_hole_id"] = is_stable
+            line_id_field = str(
+                hole.source_attributes.get("datamine_line_id_field") or ""
+            ).upper()
+            stable = is_datamine and line_id_field == "SID"
+            if stable:
+                identity_kind = "datamine_sid"
+            elif is_datamine and line_id_field == "PVALUE":
+                identity_kind = "datamine_pvalue"
+            elif is_datamine:
+                identity_kind = "datamine_string_id_unverified"
+            else:
+                identity_kind = "dxf_entity_id"
+            hole.source_attributes["stable_hole_id"] = stable
             hole.source_attributes["source_identity_kind"] = identity_kind
 
     @classmethod
