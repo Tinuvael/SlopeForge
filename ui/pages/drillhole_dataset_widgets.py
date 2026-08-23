@@ -3,7 +3,7 @@ from __future__ import annotations
 from statistics import mean
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton
 
 from app.localization import tr
 from domain.blasting.contour_drilling import summarize_contour_drilling
@@ -115,11 +115,16 @@ class DrillholeDatasetCard(CardFrame):
         paired = [item for item in matches if item.get("design_hole_id") and item.get("actual_hole_id")]
         missing = sum(item.get("match_method") == "unmatched_design" for item in matches)
         additional = sum(item.get("match_method") == "unmatched_actual" for item in matches)
+        low_confidence = sum(
+            item.get("match_method") == "matched_geometry_low_confidence"
+            for item in matches
+        )
         collar = [float(item["collar_distance_xy_m"]) for item in paired if item.get("collar_distance_xy_m") is not None]
         toe = [float(item["toe_deviation_3d_m"]) for item in paired if item.get("toe_deviation_3d_m") is not None]
         values = [
             ("Actual holes", _value(summary.get("hole_count"))),
             ("Matched", str(len(paired))),
+            ("Low-confidence matches", str(low_confidence)),
             ("Missing design holes", str(missing)),
             ("Additional holes", str(additional)),
             ("Mean collar deviation", _value(mean(collar) if collar else None, " m")),
