@@ -74,14 +74,14 @@ def test_dataset_summary_derives_counts_lengths_orientation_and_elevation_ranges
     assert summary.mean_inclination_deg is not None
 
 
-def test_matching_prefers_stable_id_before_geometric_proposals():
+def test_matching_prefers_compatible_stable_id_before_geometric_proposals():
     design = (
         _hole("H-1", (0, 0, 630), (0, 0, 620)),
         _hole("H-2", (10, 0, 630), (10, 0, 620)),
     )
     actual = (
-        _hole("H-1", (9.9, 0, 630), (9.9, 0, 620)),
-        _hole("ACTUAL-2", (0.1, 0, 630), (0.1, 0, 620)),
+        _hole("H-1", (0.2, 0, 630), (0.2, 0, 620)),
+        _hole("ACTUAL-2", (10.1, 0, 630), (10.1, 0, 620)),
     )
 
     matches = match_actual_to_design(design, actual)
