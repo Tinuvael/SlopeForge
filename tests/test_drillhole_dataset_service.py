@@ -167,7 +167,7 @@ def test_actual_import_requires_design_dataset(tmp_path):
         service.import_dataset(7, "BE-1", "actual", source)
 
 
-def test_group_assignment_is_exclusive_and_can_clear_previous_membership(tmp_path):
+def test_group_assignment_is_exclusive_and_stable_ids_carry_across_reimport(tmp_path):
     source = tmp_path / "design.dxf"; source.write_text("d")
     repo = MemoryRepository(); storage = MemoryStorage()
     service = BlastEventDrillholeDatasetService(
@@ -193,3 +193,8 @@ def test_group_assignment_is_exclusive_and_can_clear_previous_membership(tmp_pat
 
     service.assign_design_holes(7, "BE-1", "BUFFER", {"H3"})
     assert {hole.hole_id for hole in service.assigned_holes(7, "BE-1", "BUFFER")} == {"H3"}
+
+    service.import_dataset(7, "BE-1", "design", source)
+    assert {hole.hole_id for hole in service.assigned_holes(7, "BE-1", "MAIN")} == {"H1"}
+    assert {hole.hole_id for hole in service.assigned_holes(7, "BE-1", "BUFFER")} == {"H3"}
+    assert next(hole for hole in service.current_holes(7, "BE-1", "design") if hole.hole_id == "H2").engineering_group_id is None
