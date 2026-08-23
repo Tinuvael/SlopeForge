@@ -5,6 +5,7 @@ from domain.project.domain_geometry import DomainGeometryValidationError,build_d
 from domain.geometry.operations import validate_simple_polygon
 from infrastructure.geometry_import.lines import import_line_geometry
 from domain.geometry.types import DatamineLine,DataminePoint
+from tests.geometry_test_files import write_dxf_lines
 
 def line(points,identifier="L",order=0):
     return DatamineLine(identifier,[DataminePoint(x,y,z,i) for i,(x,y,z) in enumerate(points)],import_order=order)
@@ -45,8 +46,11 @@ def test_no_valid_polygons_is_clear_error():
     with pytest.raises(DomainGeometryValidationError,match="No valid closed Domain polygons"):
         build_domain_polygons([line([(0,0,0),(1,0,0)])])
 
-def test_real_csv_importer_projects_two_sid_lines(tmp_path):
-    path=tmp_path/'domains.csv'; path.write_text('X,Y,Z,SID\n0,0,10,A\n2,0,11,A\n0,2,12,A\n0,0,9,A\n10,10,3,B\n12,10,4,B\n10,12,5,B\n10,10,1,B\n')
+def test_supported_dxf_importer_projects_two_domain_lines(tmp_path):
+    path=write_dxf_lines(tmp_path/'domains.dxf',[
+        ('A',[(0,0,10),(2,0,11),(0,2,12),(0,0,9)]),
+        ('B',[(10,10,3),(12,10,4),(10,12,5),(10,10,1)]),
+    ])
     result=build_domain_polygons(import_line_geometry(path).lines)
     assert len(result.polygons)==2
 
