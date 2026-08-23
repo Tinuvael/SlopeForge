@@ -55,6 +55,21 @@ class BlastEventDrillholeDatasetService:
     def _holes_from_row(row) -> tuple[Drillhole, ...]:
         return tuple(Drillhole.from_dict(item) for item in row.holes_json)
 
+    @classmethod
+    def _carry_design_assignments(cls, previous_row, holes: tuple[Drillhole, ...]) -> None:
+        """Preserve explicit group classification only across stable hole identities."""
+        if previous_row is None:
+            return
+        previous = {
+            hole.hole_id: hole.engineering_group_id
+            for hole in cls._holes_from_row(previous_row)
+            if hole.engineering_group_id
+        }
+        for hole in holes:
+            group_id = previous.get(hole.hole_id)
+            if group_id:
+                hole.engineering_group_id = group_id
+
     def import_dataset(
         self,
         domain_id: int,
@@ -73,6 +88,10 @@ class BlastEventDrillholeDatasetService:
         # excludes those rows; keep the same product semantics here.
         candidate_lines = [line for line in imported.lines if not line.is_horizontal]
         holes = drillholes_from_lines(candidate_lines)
+        previous_design = None
+        if dataset_kind == "design":
+            previous_design = self.repository.get_current(domain_id, event_logical_id, "design")
+            self._carry_design_assignments(previous_design, holes)
         summary = summarize_drillholes(holes)
 
         matches = []
