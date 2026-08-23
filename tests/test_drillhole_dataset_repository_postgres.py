@@ -221,3 +221,17 @@ def test_group_assignment_updates_only_current_design_revision(factory, event_gr
         domain_id, "BE-DRILL-1", "DH-CURRENT-1"
     )
     assert historical.holes_json[0]["engineering_group_id"] == "MAIN"
+
+
+def test_archived_event_rejects_import_and_group_assignment(factory, event_graph) -> None:
+    _site_id, domain_id, first_pk, _second_pk = event_graph
+    repository = BlastEventDrillholeDatasetRepository(factory)
+    design = _add(repository, domain_id, "BE-DRILL-1", "DH-ARCHIVE", "design")
+    with factory.begin() as session:
+        event = session.get(BlastEvent, first_pk)
+        event.is_archived = True
+
+    with pytest.raises(ValueError, match="read-only"):
+        _add(repository, domain_id, "BE-DRILL-1", "DH-ARCHIVE-2", "design")
+    with pytest.raises(ValueError, match="read-only"):
+        repository.update_holes(design.id, [_hole("H-1", group_id="MAIN")])
