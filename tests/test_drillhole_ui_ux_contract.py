@@ -16,6 +16,15 @@ def test_production_assignment_only_updates_assigned_or_explicitly_changed_group
     assert "if assigned or group.id in changed_group_ids:" in method
 
 
+def test_design_reimport_recalculates_groups_that_lost_all_holes():
+    source = Path("ui/pages/technical_card_widgets.py").read_text(encoding="utf-8")
+    start = source.index("    def import_drillholes")
+    end = source.index("    def assign_holes_to_group", start)
+    method = source[start:end]
+    assert "previous_design_group_ids = {" in method
+    assert "changed_group_ids=previous_design_group_ids" in method
+
+
 def test_actual_import_is_disabled_until_design_drillholes_exist():
     source = Path("ui/pages/technical_card_widgets.py").read_text(encoding="utf-8")
     assert 'design_exists = self._current_row("design") is not None' in source
