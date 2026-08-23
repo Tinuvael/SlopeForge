@@ -19,7 +19,7 @@ class TrackingStorage:
     def __init__(self):
         self.removed = []
 
-    def copy_dataset(self, event_id, kind, logical_id, source_paths):
+    def copy_dataset(self, domain_id, event_id, kind, logical_id, source_paths):
         return [
             SimpleNamespace(
                 to_dict=lambda: {
@@ -32,8 +32,8 @@ class TrackingStorage:
             )
         ]
 
-    def remove_dataset(self, event_id, kind, logical_id):
-        self.removed.append((event_id, kind, logical_id))
+    def remove_dataset(self, domain_id, event_id, kind, logical_id):
+        self.removed.append((domain_id, event_id, kind, logical_id))
 
 
 def test_import_removes_copied_files_when_repository_write_fails(tmp_path: Path) -> None:
@@ -61,7 +61,8 @@ def test_import_removes_copied_files_when_repository_write_fails(tmp_path: Path)
         service.import_dataset(7, "BE-1", "design", source)
 
     assert len(storage.removed) == 1
-    event_id, kind, logical_id = storage.removed[0]
+    domain_id, event_id, kind, logical_id = storage.removed[0]
+    assert domain_id == 7
     assert event_id == "BE-1"
     assert kind == "design"
     assert logical_id.startswith("DH-")
