@@ -37,7 +37,8 @@ def test_map_geometry_decoder_supports_persisted_plan_types():
         {"type": "Polygon", "coordinates": [[[1, 2], [3, 4], [1, 2]]]}
     ) == ((1.0, 2.0), (3.0, 4.0), (1.0, 2.0))
     assert _geometry_points(
-        {"type": "MultiPoint", "coordinates": [[5, 6], [7, 8]]}
+        {"type": "MultiPoint", "coordinates": [[5, 6], [7, 8]]
+        }
     ) == ((5.0, 6.0), (7.0, 8.0))
     assert _geometry_points({}) == ()
 
@@ -66,14 +67,32 @@ def test_plan_overview_is_read_only_and_actions_live_in_single_card_header():
 def test_project_dashboard_data_cards_keep_one_bounded_aligned_row():
     project = source("ui/pages/dashboards/site_dashboard.py")
     geometry = source("ui/pages/dashboards/project_geometry_card.py")
+    widgets = source("ui/pages/dashboards/widgets.py")
+
     assert "PROJECT_DATA_CARD_HEIGHT = 192" in project
+    assert "PROJECT_DATA_ROW_HEIGHT = 44" in project
+    assert "PROJECT_DATA_ROW_SPACING = 3" in project
     assert "data_row.setFixedHeight(PROJECT_DATA_CARD_HEIGHT)" in project
     assert "(self.domain_summary, self.lines_card, self.geometry_card)" in project
-    assert "card.setMinimumHeight(PROJECT_DATA_CARD_HEIGHT)" in project
-    assert "card.setMaximumHeight(PROJECT_DATA_CARD_HEIGHT)" in project
+    assert "row_height=PROJECT_DATA_ROW_HEIGHT" in project
+    assert "row_spacing=PROJECT_DATA_ROW_SPACING" in project
+    assert "card.setMinimumWidth(0)" in project
+    assert "QSizePolicy.Policy.Ignored" in project
+
+    # A header action such as Project Lines -> Add must not increase the header
+    # band and shift only that card's title/body downward.
+    assert "HEADER_HEIGHT = 26" in widgets
+    assert "self.header_host.setFixedHeight(self.HEADER_HEIGHT)" in widgets
+    assert "button.setFixedHeight(self.HEADER_HEIGHT)" in widgets
+    assert "ROW_HEIGHT = 44" in widgets
+
+    # Design occupies the first body row and Actual survey the bottom row with
+    # one flexible row-sized gap between them.
     assert "ROW_HEIGHT = 44" in geometry
     assert "host.setFixedHeight(self.ROW_HEIGHT)" in geometry
-    assert "self.layout.addStretch(1)" in geometry
+    assert 'self._add_dataset_row("design"' in geometry
+    assert "self.body.addStretch(1)" in geometry
+    assert 'self._add_dataset_row("actual"' in geometry
     assert "QSizePolicy.Policy.Ignored" in geometry
 
 
