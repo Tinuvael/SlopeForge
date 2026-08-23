@@ -21,6 +21,7 @@ except ImportError as exc:
 
 CARD_HEIGHT = 192
 ROW_HEIGHT = 44
+GEOMETRY_GAP = 22
 
 
 @pytest.fixture(scope="module")
@@ -39,6 +40,24 @@ def _surface(revision: int, name: str):
     )
 
 
+def _domain_row():
+    return SummaryRow(
+        "1",
+        "North-east domain with a deliberately long name",
+        "Blast events: 123 · Production: 100 · Contour: 23",
+        "Assessment areas: 99/100 · DAI 0.75 · FCI 0.62",
+    )
+
+
+def _project_lines_dataset():
+    return SimpleNamespace(
+        name="var1cor_st_with_a_deliberately_long_dataset_name",
+        imported_at=datetime(2026, 8, 23, 16, 10),
+        source_file_name="var1cor_st_with_a_very_long_source_filename.dmx",
+        is_active=True,
+    )
+
+
 def test_project_data_cards_share_header_and_first_row_baselines_without_overflow(app):
     host = QWidget()
     host.resize(1200, CARD_HEIGHT)
@@ -53,29 +72,11 @@ def test_project_data_cards_share_header_and_first_row_baselines_without_overflo
         row_height=ROW_HEIGHT,
         row_spacing=3,
     )
-    domain.set_rows(
-        [
-            SummaryRow(
-                "1",
-                "North-east domain with a deliberately long name",
-                "Blast events: 123 · Production: 100 · Contour: 23",
-                "Assessment areas: 99/100 · DAI 0.75 · FCI 0.62",
-            )
-        ]
-    )
+    domain.set_rows([_domain_row()])
 
     lines = ProjectLinesCard()
     lines.add_header_action("Add")
-    lines.set_datasets(
-        [
-            SimpleNamespace(
-                name="var1cor_st_with_a_deliberately_long_dataset_name",
-                imported_at=datetime(2026, 8, 23, 16, 10),
-                source_file_name="var1cor_st_with_a_very_long_source_filename.dmx",
-                is_active=True,
-            )
-        ]
-    )
+    lines.set_datasets([_project_lines_dataset()])
 
     geometry = ProjectGeometryCard()
     geometry.set_datasets(
@@ -108,18 +109,50 @@ def test_project_data_cards_share_header_and_first_row_baselines_without_overflo
     ]
     assert max(first_row_y) - min(first_row_y) <= 3
 
-    # Long labels must shrink/clip inside the equal third-width cards instead
-    # of increasing a column's minimum width and pushing the right card out.
     widths = [card.width() for card in cards]
     assert max(widths) - min(widths) <= 2
     assert geometry.geometry().right() <= host.contentsRect().right()
+    assert domain_row.geometry().right() <= domain.list.viewport().rect().right()
+    assert lines_row.geometry().right() <= lines.list.viewport().rect().right()
+
+    design_y = design_title.mapTo(geometry, QPoint(0, 0)).y()
+    actual_y = actual_title.mapTo(geometry, QPoint(0, 0)).y()
+    expected_offset = ROW_HEIGHT + GEOMETRY_GAP
+    assert expected_offset - 3 <= actual_y - design_y <= expected_offset + 3
+
+    host.close()
+
+
+def test_persistent_dashboard_rows_rebind_after_pre_layout_wide_geometry(app):
+    """Rows populated before final dashboard sizing must not keep stale width."""
+    domain = CompactSummaryList(
+        "Domain summary",
+        visible_rows=3,
+        show_go_to=True,
+        row_height=ROW_HEIGHT,
+        row_spacing=3,
+    )
+    domain.resize(760, CARD_HEIGHT)
+    domain.show()
+    domain.set_rows([_domain_row()])
+
+    lines = ProjectLinesCard()
+    lines.add_header_action("Add")
+    lines.resize(760, CARD_HEIGHT)
+    lines.show()
+    lines.set_datasets([_project_lines_dataset()])
+    app.processEvents()
+
+    domain.resize(330, CARD_HEIGHT)
+    lines.resize(330, CARD_HEIGHT)
+    app.processEvents()
+
+    domain_row = domain.list.itemWidget(domain.list.item(0))
+    lines_row = lines.list.itemWidget(lines.list.item(0))
+    assert domain_row.geometry().right() <= domain.list.viewport().rect().right()
+    assert lines_row.geometry().right() <= lines.list.viewport().rect().right()
     assert domain_row.width() <= domain.list.viewport().width()
     assert lines_row.width() <= lines.list.viewport().width()
 
-    # The actual survey intentionally occupies the bottom visual slot, leaving
-    # approximately one row of breathing room below the design surface row.
-    design_y = design_title.mapTo(geometry, QPoint(0, 0)).y()
-    actual_y = actual_title.mapTo(geometry, QPoint(0, 0)).y()
-    assert actual_y - design_y >= ROW_HEIGHT * 2 - 4
-
-    host.close()
+    domain.close()
+    lines.close()
