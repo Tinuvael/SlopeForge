@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from app.localization import tr
 from app.use_case_factory import create_rename_project_use_case
 from application.services.project_lines import ProjectLinesDatasetService
+from application.services.project_surfaces import ProjectSurfaceDatasetService
 from application.state.assessment_domain_state import AssessmentDomainState
 from application.use_cases.rename_project import RenameProjectCommand
 from repositories.dashboard_repository import DashboardRepository
@@ -23,6 +24,7 @@ from ui.presentation_labels import domain_message
 
 from .charts import AssessmentTrendCard, CompactChart
 from .plan_overview import DashboardPlanCard
+from .project_geometry_card import ProjectGeometryCard
 from .widgets import (
     CompactSummaryList,
     DashboardCard,
@@ -32,6 +34,13 @@ from .widgets import (
     ProjectLinesCard,
     SummaryRow,
     metric,
+)
+
+
+SURFACE_FILE_FILTER = (
+    "Surface files (*.dxf *.dm *.dmx);;"
+    "AutoCAD DXF (*.dxf);;"
+    "Datamine wireframe files (*.dm *.dmx)"
 )
 
 
@@ -49,6 +58,9 @@ class SiteDashboardPage(QWidget):
         self.site_id = site_id
         self.repo = DashboardRepository(context.session_factory)
         self.lines_repo = ProjectLinesRepository(context.session_factory)
+        self.surface_service = ProjectSurfaceDatasetService(
+            context.session_factory, context.storage_root
+        )
         self.rename_project = create_rename_project_use_case(context)
         self.snapshot = self.repo.site_snapshot(site_id)
 
@@ -115,6 +127,13 @@ class SiteDashboardPage(QWidget):
         right_layout.addWidget(self.attention_card, 1)
         workspace.addWidget(right_top, 0, 1)
 
+        data_row = QWidget()
+        data_layout = QGridLayout(data_row)
+        data_layout.setContentsMargins(0, 0, 0, 0)
+        data_layout.setHorizontalSpacing(9)
+        for column in range(3):
+            data_layout.setColumnStretch(column, 1)
+
         self.domain_summary = CompactSummaryList(
             "Domain summary", visible_rows=3, show_go_to=True
         )
@@ -122,12 +141,18 @@ class SiteDashboardPage(QWidget):
         self.domain_summary.go_to_requested.connect(
             lambda value: self.domain_requested.emit(int(value))
         )
-        workspace.addWidget(self.domain_summary, 1, 0)
+        data_layout.addWidget(self.domain_summary, 0, 0)
 
         self.lines_card = ProjectLinesCard()
         self.lines_add_button = self.lines_card.add_header_action("Add")
         self.lines_add_button.clicked.connect(self.import_lines)
-        workspace.addWidget(self.lines_card, 1, 1)
+        data_layout.addWidget(self.lines_card, 0, 1)
+
+        self.geometry_card = ProjectGeometryCard()
+        self.geometry_card.upload_requested.connect(self.import_surface)
+        data_layout.addWidget(self.geometry_card, 0, 2)
+
+        workspace.addWidget(data_row, 1, 0, 1, 2)
 
         self.trend_card = AssessmentTrendCard()
         workspace.addWidget(self.trend_card, 2, 0)
@@ -255,6 +280,7 @@ class SiteDashboardPage(QWidget):
         editable = self._can_edit()
         self.plan_card.set_actions_enabled(editable)
         self.lines_add_button.setEnabled(editable)
+        self.geometry_card.set_actions_enabled(editable)
         self.result_chart.set_data(self.snapshot.quadrants)
         self.attention_card.set_rows(
             self._attention_rows(), empty_text="No areas require attention"
@@ -263,6 +289,10 @@ class SiteDashboardPage(QWidget):
             self._domain_rows(), empty_text="No Domains yet"
         )
         self.lines_card.set_datasets(self.snapshot.datasets)
+        self.geometry_card.set_datasets(
+            self.surface_service.current(self.site_id, "design"),
+            self.surface_service.current(self.site_id, "actual"),
+        )
         self.trend_card.set_rows(self.snapshot.trend_rows)
         self.recent_card.set_entries(self.snapshot.recent)
 
@@ -314,6 +344,35 @@ class SiteDashboardPage(QWidget):
             ).import_dataset(path)
             self.lines_repo.import_dataset(
                 self.site_id, dataset, make_active=True
+            )
+            self.refresh()
+        except Exception as exc:
+            QMessageBox.warning(self, tr("Import error"), domain_message(str(exc)))
+
+    def import_surface(self, dataset_kind: str):
+        if not self._can_edit():
+            return
+        if dataset_kind == "design":
+            title = tr("Design surface")
+        elif dataset_kind == "actual":
+            title = tr("Actual survey")
+        else:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            title,
+            "",
+            SURFACE_FILE_FILTER,
+        )
+        if not path:
+            return
+        try:
+            user = self.context.current_user
+            self.surface_service.import_dataset(
+                self.site_id,
+                dataset_kind,
+                path,
+                imported_by_user_id=user.id,
             )
             self.refresh()
         except Exception as exc:
