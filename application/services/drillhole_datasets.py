@@ -76,12 +76,14 @@ class BlastEventDrillholeDatasetService:
         summary = summarize_drillholes(holes)
 
         matches = []
+        matched_design_dataset_id = None
         if dataset_kind == "actual":
             design_row = self.repository.get_current(domain_id, event_logical_id, "design")
             if design_row is None:
                 raise ValueError("Import design drillholes before importing as-drilled holes")
             design_holes = self._holes_from_row(design_row)
             matches = [item.to_dict() for item in match_actual_to_design(design_holes, holes)]
+            matched_design_dataset_id = int(design_row.id)
 
         logical_id = self._logical_id()
         stored_files = self.storage.copy_dataset(
@@ -96,6 +98,7 @@ class BlastEventDrillholeDatasetService:
                 event_logical_id,
                 logical_id=logical_id,
                 dataset_kind=dataset_kind,
+                matched_design_dataset_id=matched_design_dataset_id,
                 imported_at=datetime.now(timezone.utc),
                 imported_by_user_id=imported_by_user_id,
                 source_format=self._source_format(path),
