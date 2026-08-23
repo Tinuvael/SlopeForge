@@ -44,6 +44,7 @@ SURFACE_FILE_FILTER = (
     "AutoCAD DXF (*.dxf);;"
     "Datamine wireframe files (*.dm *.dmx)"
 )
+PROJECT_DATA_CARD_HEIGHT = 192
 
 
 class SiteDashboardPage(QWidget):
@@ -128,9 +129,15 @@ class SiteDashboardPage(QWidget):
         workspace.addWidget(right_top, 0, 1)
 
         data_row = QWidget()
+        data_row.setFixedHeight(PROJECT_DATA_CARD_HEIGHT)
+        data_row.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         data_layout = QGridLayout(data_row)
         data_layout.setContentsMargins(0, 0, 0, 0)
         data_layout.setHorizontalSpacing(9)
+        data_layout.setRowStretch(0, 1)
         for column in range(3):
             data_layout.setColumnStretch(column, 1)
 
@@ -141,16 +148,24 @@ class SiteDashboardPage(QWidget):
         self.domain_summary.go_to_requested.connect(
             lambda value: self.domain_requested.emit(int(value))
         )
-        data_layout.addWidget(self.domain_summary, 0, 0)
 
         self.lines_card = ProjectLinesCard()
         self.lines_add_button = self.lines_card.add_header_action("Add")
         self.lines_add_button.clicked.connect(self.import_lines)
-        data_layout.addWidget(self.lines_card, 0, 1)
 
         self.geometry_card = ProjectGeometryCard()
         self.geometry_card.upload_requested.connect(self.import_surface)
-        data_layout.addWidget(self.geometry_card, 0, 2)
+
+        for column, card in enumerate(
+            (self.domain_summary, self.lines_card, self.geometry_card)
+        ):
+            card.setMinimumHeight(PROJECT_DATA_CARD_HEIGHT)
+            card.setMaximumHeight(PROJECT_DATA_CARD_HEIGHT)
+            card.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Expanding,
+            )
+            data_layout.addWidget(card, 0, column)
 
         workspace.addWidget(data_row, 1, 0, 1, 2)
 
