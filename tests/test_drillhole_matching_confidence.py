@@ -1,13 +1,14 @@
 from domain.blasting.drillholes import Drillhole, DrillholePoint, match_actual_to_design
 
 
-def hole(hole_id, x, y, toe_x=None, toe_y=None):
+def hole(hole_id, x, y, toe_x=None, toe_y=None, *, stable=True):
     return Drillhole(
         hole_id,
         (
             DrillholePoint(x, y, 630),
             DrillholePoint(x if toe_x is None else toe_x, y if toe_y is None else toe_y, 620),
         ),
+        source_attributes={"stable_hole_id": stable},
     )
 
 
@@ -28,6 +29,22 @@ def test_stable_id_that_strongly_contradicts_collar_geometry_is_not_forced():
     assert by_actual["H-1"].design_hole_id == "H-2"
     assert by_actual["H-1"].match_method == "matched_geometry_high_confidence"
     assert by_actual["A-2"].design_hole_id == "H-1"
+
+
+def test_same_synthetic_id_is_not_treated_as_stable_identity():
+    design = (
+        hole("2F", 0, 0, stable=False),
+        hole("30", 10, 0, stable=False),
+    )
+    actual = (
+        hole("2F", 9.9, 0, stable=False),
+        hole("30", 0.1, 0, stable=False),
+    )
+    matches = match_actual_to_design(design, actual)
+    by_actual = {item.actual_hole_id: item for item in matches if item.actual_hole_id}
+    assert by_actual["2F"].design_hole_id == "30"
+    assert by_actual["2F"].match_method == "matched_geometry_high_confidence"
+    assert by_actual["30"].design_hole_id == "2F"
 
 
 def test_dense_geometric_match_is_flagged_low_confidence():
