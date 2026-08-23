@@ -24,9 +24,13 @@ from ui.pages.technical_card_widgets import (
     _clear_copied_charge_beyond_depth,
 )
 
+_APP = None
+
 
 def _app():
-    return QApplication.instance() or QApplication([])
+    global _APP
+    _APP = QApplication.instance() or QApplication([])
+    return _APP
 
 
 def _hole(hole_id: str, x: float, group_id: str | None = None) -> Drillhole:
