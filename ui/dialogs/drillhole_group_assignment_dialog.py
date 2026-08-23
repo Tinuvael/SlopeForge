@@ -45,11 +45,10 @@ class DrillholeSelectionView(QGraphicsView):
         self.target_group_id = str(target_group_id) if target_group_id else None
         self._initial_group_hole_ids = {str(hole_id) for hole_id in selected_ids}
         self.group_labels = dict(group_labels or {})
-        self.selected_ids = {
-            hole_id
-            for hole_id in self._initial_group_hole_ids
-            if self._hole_is_available(hole_id)
-        }
+        # The assignment dialog is an explicit replace-set editor.  Existing
+        # group ownership still controls availability, but the active selection
+        # always starts empty so the user can make a clean new selection.
+        self.selected_ids: set[str] = set()
         self.mode = "individual"
         self._polygon_points: list[tuple[float, float]] = []
         self._hole_items: dict[str, QGraphicsEllipseItem] = {}
