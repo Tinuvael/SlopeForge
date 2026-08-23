@@ -6,6 +6,8 @@ def test_production_create_dialog_exposes_optional_design_drillholes():
     assert 'tr("Design drillholes")' in source
     assert '"design_drillhole_path"' in source
     assert "self.geometry_form.setRowVisible(self.design_drillholes_host, is_production)" in source
+    assert 'tr("Block upper contour *")' in source
+    assert 'tr("Contour drillholes *")' in source
 
 
 def test_main_window_forwards_optional_design_drillholes_to_create_command():
