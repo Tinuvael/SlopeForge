@@ -33,6 +33,7 @@ class BlastEventDrillholeDatasetRepository:
         *,
         logical_id: str,
         dataset_kind: str,
+        matched_design_dataset_id: int | None,
         imported_at: datetime,
         imported_by_user_id: int | None,
         source_format: str,
@@ -49,6 +50,17 @@ class BlastEventDrillholeDatasetRepository:
             event = session.scalar(self._event_statement(domain_id, event_logical_id).with_for_update())
             if event is None:
                 raise ValueError(f"BlastEvent {event_logical_id!r} does not exist in Domain {domain_id}")
+            if dataset_kind == "design":
+                if matched_design_dataset_id is not None:
+                    raise ValueError("Design drillhole datasets cannot reference another design dataset")
+            else:
+                if matched_design_dataset_id is None:
+                    raise ValueError("As-drilled datasets require the exact matched design dataset")
+                design_row = session.get(BlastEventDrillholeDataset, int(matched_design_dataset_id))
+                if design_row is None:
+                    raise ValueError("Matched design drillhole dataset does not exist")
+                if design_row.dataset_kind != "design" or design_row.blast_event_id != event.id:
+                    raise ValueError("Matched design drillhole dataset belongs to a different Blast Event")
             current_revision = session.scalar(
                 select(func.max(BlastEventDrillholeDataset.revision_number)).where(
                     BlastEventDrillholeDataset.blast_event_id == event.id,
@@ -60,6 +72,7 @@ class BlastEventDrillholeDatasetRepository:
                 logical_id=logical_id,
                 dataset_kind=dataset_kind,
                 revision_number=int(current_revision or 0) + 1,
+                matched_design_dataset_id=matched_design_dataset_id,
                 imported_at=imported_at,
                 imported_by_user_id=imported_by_user_id,
                 source_format=source_format,
