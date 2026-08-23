@@ -8,7 +8,8 @@ import database.startup as startup
 from database.settings import Settings
 
 
-CURRENT_HEAD = "0002_project_surface_datasets"
+CURRENT_HEAD = "0003_blast_event_drillhole_datasets"
+PROJECT_SURFACE_HEAD = "0002_project_surface_datasets"
 BASELINE = "0001_mvp_baseline"
 
 
@@ -26,7 +27,7 @@ def test_expected_alembic_head_resolves_real_repository_graph():
 
 class FakeScript:
     def get_revision(self, revision):
-        return object() if revision in {BASELINE, CURRENT_HEAD} else None
+        return object() if revision in {BASELINE, PROJECT_SURFACE_HEAD, CURRENT_HEAD} else None
 
 
 def arrange_startup(monkeypatch, *, revision=CURRENT_HEAD, tables=None):
@@ -66,6 +67,7 @@ def test_startup_requires_assessment_tables_and_does_not_run_migrations(monkeypa
     assert "assessment_workspaces" not in startup.Base.metadata.tables
     assert "blast_events" in startup.Base.metadata.tables
     assert "assessment_entity_attachments" in startup.Base.metadata.tables
+    assert "blast_event_drillhole_datasets" in startup.Base.metadata.tables
 
 
 def test_startup_accepts_database_at_the_single_current_head(monkeypatch):
@@ -73,13 +75,14 @@ def test_startup_accepts_database_at_the_single_current_head(monkeypatch):
     assert startup.initialize_database_runtime() == (settings, engine, "sessions")
 
 
-def test_startup_known_older_revision_requires_migration(monkeypatch):
-    arrange_startup(monkeypatch, revision=BASELINE)
+@pytest.mark.parametrize("older_revision", [BASELINE, PROJECT_SURFACE_HEAD])
+def test_startup_known_older_revision_requires_migration(monkeypatch, older_revision):
+    arrange_startup(monkeypatch, revision=older_revision)
     with pytest.raises(startup.StartupError) as caught:
         startup.initialize_database_runtime()
     assert caught.value.reason == "database_migration_required"
     rendered = caught.value.presentation()
-    assert BASELINE in rendered
+    assert older_revision in rendered
     assert CURRENT_HEAD in rendered
 
 
