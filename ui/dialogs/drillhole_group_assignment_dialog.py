@@ -43,11 +43,12 @@ class DrillholeSelectionView(QGraphicsView):
         super().__init__(parent)
         self.holes = tuple(holes)
         self.target_group_id = str(target_group_id) if target_group_id else None
+        self._initial_group_hole_ids = {str(hole_id) for hole_id in selected_ids}
         self.group_labels = dict(group_labels or {})
         self.selected_ids = {
-            str(hole_id)
-            for hole_id in selected_ids
-            if self._hole_is_available(str(hole_id))
+            hole_id
+            for hole_id in self._initial_group_hole_ids
+            if self._hole_is_available(hole_id)
         }
         self.mode = "individual"
         self._polygon_points: list[tuple[float, float]] = []
@@ -70,7 +71,11 @@ class DrillholeSelectionView(QGraphicsView):
         if hole is None:
             return False
         assigned = hole.engineering_group_id
-        return not assigned or str(assigned) == self.target_group_id
+        if not assigned:
+            return True
+        if self.target_group_id is not None:
+            return str(assigned) == self.target_group_id
+        return hole_id in self._initial_group_hole_ids
 
     def _available_hole_ids(self) -> set[str]:
         return {hole.hole_id for hole in self.holes if self._hole_is_available(hole.hole_id)}
@@ -136,7 +141,6 @@ class DrillholeSelectionView(QGraphicsView):
             item = self._hole_items.get(hole.hole_id)
             if item is None:
                 continue
-            pen = None
             if hole.hole_id in self.selected_ids:
                 pen = QPen(QColor(Color.ACCENT), 1.8)
                 item.setBrush(QBrush(QColor(Color.SELECTED)))
@@ -151,8 +155,6 @@ class DrillholeSelectionView(QGraphicsView):
 
     def showEvent(self, event):
         super().showEvent(event)
-        # The view receives its final dialog geometry only after it is shown.
-        # Fit on the next event-loop turn so the first frame is already centered.
         QTimer.singleShot(0, self.fit_all)
 
     def fit_all(self):
