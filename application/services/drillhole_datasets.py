@@ -117,6 +117,16 @@ class BlastEventDrillholeDatasetService:
     def current(self, domain_id: int, event_logical_id: str, dataset_kind: str):
         return self.repository.get_current(domain_id, event_logical_id, dataset_kind)
 
+    def actual_uses_current_design(self, domain_id: int, event_logical_id: str) -> bool:
+        """True when current as-drilled QA was calculated against current design evidence."""
+        actual = self.current(domain_id, event_logical_id, "actual")
+        if actual is None:
+            return True
+        design = self.current(domain_id, event_logical_id, "design")
+        if design is None:
+            return False
+        return int(actual.matched_design_dataset_id) == int(design.id)
+
     def current_holes(
         self,
         domain_id: int,
