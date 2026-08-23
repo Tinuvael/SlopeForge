@@ -1,0 +1,125 @@
+from __future__ import annotations
+
+from datetime import datetime
+from types import SimpleNamespace
+
+import pytest
+
+try:
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QApplication, QHBoxLayout, QSizePolicy, QWidget
+
+    from ui.pages.dashboards.project_geometry_card import ProjectGeometryCard
+    from ui.pages.dashboards.widgets import (
+        CompactSummaryList,
+        ProjectLinesCard,
+        SummaryRow,
+    )
+except ImportError as exc:
+    pytest.skip(f"Qt runtime unavailable: {exc}", allow_module_level=True)
+
+
+CARD_HEIGHT = 192
+ROW_HEIGHT = 44
+
+
+@pytest.fixture(scope="module")
+def app():
+    return QApplication.instance() or QApplication([])
+
+
+def _surface(revision: int, name: str):
+    return SimpleNamespace(
+        revision_number=revision,
+        source_format="datamine",
+        vertex_count=124027,
+        triangle_count=248042,
+        imported_at=datetime(2026, 8, 23, 18, 6),
+        source_files_json=[{"original_filename": name}],
+    )
+
+
+def test_project_data_cards_share_header_and_first_row_baselines_without_overflow(app):
+    host = QWidget()
+    host.resize(1200, CARD_HEIGHT)
+    layout = QHBoxLayout(host)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(9)
+
+    domain = CompactSummaryList(
+        "Domain summary",
+        visible_rows=3,
+        show_go_to=True,
+        row_height=ROW_HEIGHT,
+        row_spacing=3,
+    )
+    domain.set_rows(
+        [
+            SummaryRow(
+                "1",
+                "North-east domain with a deliberately long name",
+                "Blast events: 123 · Production: 100 · Contour: 23",
+                "Assessment areas: 99/100 · DAI 0.75 · FCI 0.62",
+            )
+        ]
+    )
+
+    lines = ProjectLinesCard()
+    lines.add_header_action("Add")
+    lines.set_datasets(
+        [
+            SimpleNamespace(
+                name="var1cor_st_with_a_deliberately_long_dataset_name",
+                imported_at=datetime(2026, 8, 23, 16, 10),
+                source_file_name="var1cor_st_with_a_very_long_source_filename.dmx",
+                is_active=True,
+            )
+        ]
+    )
+
+    geometry = ProjectGeometryCard()
+    geometry.set_datasets(
+        _surface(1, "design_surface_with_a_long_name_tr.dmx"),
+        _surface(2, "actual_surface_with_a_long_name_tr.dmx"),
+    )
+
+    cards = (domain, lines, geometry)
+    for card in cards:
+        card.setMinimumWidth(0)
+        card.setFixedHeight(CARD_HEIGHT)
+        card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        layout.addWidget(card)
+
+    host.show()
+    app.processEvents()
+
+    header_y = [card.heading.mapTo(host, QPoint(0, 0)).y() for card in cards]
+    assert max(header_y) - min(header_y) <= 1
+
+    domain_row = domain.list.itemWidget(domain.list.item(0))
+    lines_row = lines.list.itemWidget(lines.list.item(0))
+    design_title = geometry._rows["design"][0]
+    actual_title = geometry._rows["actual"][0]
+
+    first_row_y = [
+        domain_row.mapTo(host, QPoint(0, 0)).y(),
+        lines_row.mapTo(host, QPoint(0, 0)).y(),
+        design_title.mapTo(host, QPoint(0, 0)).y() - 4,
+    ]
+    assert max(first_row_y) - min(first_row_y) <= 3
+
+    # Long labels must shrink/clip inside the equal third-width cards instead
+    # of increasing a column's minimum width and pushing the right card out.
+    widths = [card.width() for card in cards]
+    assert max(widths) - min(widths) <= 2
+    assert geometry.geometry().right() <= host.contentsRect().right()
+    assert domain_row.width() <= domain.list.viewport().width()
+    assert lines_row.width() <= lines.list.viewport().width()
+
+    # The actual survey intentionally occupies the bottom visual slot, leaving
+    # approximately one row of breathing room below the design surface row.
+    design_y = design_title.mapTo(geometry, QPoint(0, 0)).y()
+    actual_y = actual_title.mapTo(geometry, QPoint(0, 0)).y()
+    assert actual_y - design_y >= ROW_HEIGHT * 2 - 4
+
+    host.close()
