@@ -338,7 +338,7 @@ class DomainDashboardPage(QWidget):
             tr("Select Domain geometry file"),
             "",
             tr(
-                "Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"
+                "Geometry files (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"
             ),
         )
         if not path:
