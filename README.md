@@ -1,8 +1,6 @@
 # SlopeForge
 
 [![Release](https://img.shields.io/github/v/release/Tinuvael/SlopeForge?display_name=tag)](https://github.com/Tinuvael/SlopeForge/releases/latest)
-[![Windows Build](https://github.com/Tinuvael/SlopeForge/actions/workflows/windows-build.yml/badge.svg?branch=main)](https://github.com/Tinuvael/SlopeForge/actions/workflows/windows-build.yml)
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![PySide6](https://img.shields.io/badge/UI-PySide6-41CD52?logo=qt&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)
 [![License](https://img.shields.io/github/license/Tinuvael/SlopeForge)](LICENSE)
@@ -39,10 +37,6 @@ python -m pip install -r requirements.txt
 alembic upgrade head
 python main.py
 ```
-
-## Geometry import
-
-Project Lines and Blast geometry support Datamine CSV and supported DXF 2D/3D polylines. Domain geometry can also be imported or drawn as lightweight plan-view reference geometry.
 
 ## Engineering note
 
