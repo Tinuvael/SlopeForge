@@ -24,12 +24,19 @@ class DrillholeRepositoryPort(Protocol):
 class DrillholeStoragePort(Protocol):
     def copy_dataset(
         self,
+        domain_id: int,
         event_logical_id: str,
         kind: str,
         logical_id: str,
         source_paths: tuple[Path, ...],
     ) -> list[Any]: ...
-    def remove_dataset(self, event_logical_id: str, kind: str, logical_id: str) -> None: ...
+    def remove_dataset(
+        self,
+        domain_id: int,
+        event_logical_id: str,
+        kind: str,
+        logical_id: str,
+    ) -> None: ...
 
 
 class BlastEventDrillholeDatasetService:
@@ -135,6 +142,7 @@ class BlastEventDrillholeDatasetService:
 
         logical_id = self._logical_id()
         stored_files = self.storage.copy_dataset(
+            domain_id,
             event_logical_id,
             dataset_kind,
             logical_id,
@@ -158,7 +166,9 @@ class BlastEventDrillholeDatasetService:
                 total_drilling_length_m=summary.total_drilling_length_m,
             )
         except Exception:
-            self.storage.remove_dataset(event_logical_id, dataset_kind, logical_id)
+            self.storage.remove_dataset(
+                domain_id, event_logical_id, dataset_kind, logical_id
+            )
             raise
         return row
 
