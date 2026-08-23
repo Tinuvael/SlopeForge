@@ -86,7 +86,12 @@ class BlastEventDialog(QDialog):
         self.name.setFocus()
 
     def _choose_csv(self):
-        path, _ = QFileDialog.getOpenFileName(self, tr("Select geometry file"), "", tr("Geometry files (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"))
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("Select geometry file"),
+            "",
+            tr("Geometry files (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"),
+        )
         if not path:
             return
         self.csv.setText(path)
