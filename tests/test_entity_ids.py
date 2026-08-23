@@ -11,6 +11,7 @@ from application.state.assessment_domain_state import AssessmentDomainState
 from domain.entity_ids import generate_entity_id
 from domain.geometry.types import PlanPoint, PlanPolygon
 from tests.assessment_boundary_fixtures import boundary_from_polygon
+from tests.geometry_test_files import write_contour_dxf, write_production_dxf
 
 
 ID_PATTERNS = {
@@ -51,33 +52,18 @@ def test_generator_fails_cleanly_after_repeated_collisions() -> None:
         )
 
 
-def _production_csv(path) -> None:
-    path.write_text(
-        "XP,YP,ZP,SID,PTN\n"
-        "0,0,620,top,1\n"
-        "10,0,620,top,2\n"
-        "10,10,620,top,3\n"
-        "0,0,620,top,4\n",
-        encoding="utf-8",
-    )
-
-
-def _contour_csv(path) -> None:
-    path.write_text(
-        "XP,YP,ZP,SID,PTN\n"
-        "0,0,630,h1,1\n"
-        "0,0,600,h1,2\n"
-        "10,0,632,h2,1\n"
-        "10,0,600,h2,2\n",
-        encoding="utf-8",
-    )
-
-
 def test_blast_event_creation_generates_type_specific_ids_and_round_trips(tmp_path) -> None:
-    production_path = tmp_path / "production.csv"
-    contour_path = tmp_path / "contour.csv"
-    _production_csv(production_path)
-    _contour_csv(contour_path)
+    production_path = write_production_dxf(
+        tmp_path / "production.dxf", elevation=620,
+        ring=((0,0),(10,0),(10,10),(0,0)),
+    )
+    contour_path = write_contour_dxf(
+        tmp_path / "contour.dxf",
+        [
+            ("h1", [(0,0,630),(0,0,600)]),
+            ("h2", [(10,0,632),(10,0,600)]),
+        ],
+    )
     state = AssessmentDomainState()
     service = BlastEventService(state)
 
