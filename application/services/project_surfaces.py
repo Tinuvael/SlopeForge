@@ -3,10 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 from uuid import uuid4
-
-from sqlalchemy.orm import Session
 
 from infrastructure.files.project_geometry import ProjectGeometryFileStorage
 from infrastructure.geometry_import.surfaces import SurfaceImportResult, import_surface_geometry
@@ -16,7 +14,7 @@ from repositories.project_surface_repository import ProjectSurfaceDatasetReposit
 class ProjectSurfaceDatasetService:
     def __init__(
         self,
-        session_factory: Callable[[], Session],
+        session_factory: Callable[[], Any],
         storage_root: Path,
     ):
         self.repository = ProjectSurfaceDatasetRepository(session_factory)
