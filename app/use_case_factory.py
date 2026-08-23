@@ -16,6 +16,7 @@ from infrastructure.db.project_navigation import SqlAlchemyProjectNavigationQuer
 from infrastructure.db.project_report import SqlAlchemyProjectReportQuery
 from infrastructure.files.project_geometry import ProjectGeometryFileStorage
 from infrastructure.files.drillhole_geometry import BlastEventDrillholeFileStorage
+from infrastructure.geometry_import.lines import import_line_geometry
 from infrastructure.geometry_import.surfaces import import_surface_geometry
 from infrastructure.reports.excel_project_report import OpenPyxlProjectReportWriter
 from application.use_cases.rename_project import RenameProject
@@ -36,6 +37,7 @@ def create_drillhole_dataset_service(context):
     return BlastEventDrillholeDatasetService(
         BlastEventDrillholeDatasetRepository(context.session_factory),
         BlastEventDrillholeFileStorage(context.storage_root),
+        import_line_geometry,
     )
 
 
