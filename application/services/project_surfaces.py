@@ -66,10 +66,16 @@ class ProjectSurfaceDatasetService:
     def current(self, site_id: int, dataset_kind: str):
         return self.repository.get_current(site_id, dataset_kind)
 
-    def load_dataset(self, site_id: int, logical_id: str) -> tuple[object, SurfaceImportResult]:
+    def load_dataset(
+        self, site_id: int, logical_id: str
+    ) -> tuple[object, SurfaceImportResult]:
         row = self.repository.get_by_logical_id(site_id, logical_id)
         paths = [
-            self.storage.resolve(str(file_metadata["relative_path"]))
+            self.storage.verify(
+                str(file_metadata["relative_path"]),
+                expected_size=int(file_metadata["file_size_bytes"]),
+                expected_sha256=str(file_metadata["sha256"]),
+            )
             for file_metadata in row.source_files_json
         ]
         if not paths:
