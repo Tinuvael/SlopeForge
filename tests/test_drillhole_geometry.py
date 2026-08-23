@@ -74,7 +74,7 @@ def test_dataset_summary_derives_counts_lengths_orientation_and_elevation_ranges
     assert summary.mean_inclination_deg is not None
 
 
-def test_matching_prefers_stable_id_before_nearest_collar():
+def test_matching_prefers_stable_id_before_geometric_proposals():
     design = (
         _hole("H-1", (0, 0, 630), (0, 0, 620)),
         _hole("H-2", (10, 0, 630), (10, 0, 620)),
@@ -90,10 +90,10 @@ def test_matching_prefers_stable_id_before_nearest_collar():
     assert by_actual["H-1"].design_hole_id == "H-1"
     assert by_actual["H-1"].match_method == "matched_by_id"
     assert by_actual["ACTUAL-2"].design_hole_id == "H-2"
-    assert by_actual["ACTUAL-2"].match_method == "matched_nearest_collar"
+    assert by_actual["ACTUAL-2"].match_method == "matched_geometry_high_confidence"
 
 
-def test_nearest_collar_matching_is_one_to_one_and_reports_missing_or_additional_holes():
+def test_geometric_matching_is_one_to_one_and_reports_missing_or_additional_holes():
     design = (
         _hole("D-1", (0, 0, 630), (0, 0, 620)),
         _hole("D-2", (10, 0, 630), (10, 0, 620)),
@@ -116,7 +116,7 @@ def test_nearest_collar_matching_is_one_to_one_and_reports_missing_or_additional
     assert sum(item.match_method == "unmatched_design" for item in matches) == 0
 
 
-def test_matched_pair_exposes_collar_toe_length_and_orientation_deviations():
+def test_matched_pair_exposes_complete_collar_toe_length_and_orientation_qa():
     design = (_hole("D", (0, 0, 630), (0, 0, 620)),)
     actual = (_hole("A", (3, 4, 632), (6, 8, 618)),)
 
@@ -128,5 +128,12 @@ def test_matched_pair_exposes_collar_toe_length_and_orientation_deviations():
     assert match.toe_distance_xy_m == pytest.approx(10)
     assert match.toe_deviation_z_m == pytest.approx(-2)
     assert match.toe_deviation_3d_m == pytest.approx(sqrt(104))
+    assert match.design_length_m == pytest.approx(10)
+    assert match.actual_length_m is not None
     assert match.length_deviation_m is not None
+    assert match.length_deviation_percent is not None
+    assert match.design_azimuth_deg is None
+    assert match.actual_azimuth_deg is not None
+    assert match.design_inclination_deg == pytest.approx(90)
+    assert match.actual_inclination_deg is not None
     assert match.inclination_deviation_deg is not None
