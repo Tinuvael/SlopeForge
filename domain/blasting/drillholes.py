@@ -259,6 +259,31 @@ def _match_pair(design: Drillhole, actual: Drillhole, method: str) -> HoleMatch:
     )
 
 
+def _stable_id_is_compatible(
+    design: Drillhole,
+    actual: Drillhole,
+    all_design: tuple[Drillhole, ...],
+) -> bool:
+    """Reject only stable IDs that strongly contradict collar geometry.
+
+    Hole identity remains the stronger signal in a dense layout, but an ID is
+    not treated as authoritative when another design collar is more than three
+    times closer. This is a relative consistency check, not a site tolerance.
+    """
+    same_distance = _distance_xy(design.collar, actual.collar)
+    alternatives = [
+        _distance_xy(candidate.collar, actual.collar)
+        for candidate in all_design
+        if candidate.hole_id != design.hole_id
+    ]
+    if not alternatives:
+        return True
+    nearest_alternative = min(alternatives)
+    if nearest_alternative <= 1e-9:
+        return same_distance <= 1e-9
+    return same_distance <= nearest_alternative * 3.0
+
+
 def _geometry_match_method(
     chosen_distance: float,
     actual: Drillhole,
@@ -315,7 +340,11 @@ def match_actual_to_design(
     matches: list[HoleMatch] = []
 
     for hole_id in sorted(set(design_by_id) & set(actual_by_id)):
-        matches.append(_match_pair(design_by_id[hole_id], actual_by_id[hole_id], "matched_by_id"))
+        design_hole = design_by_id[hole_id]
+        actual_hole = actual_by_id[hole_id]
+        if not _stable_id_is_compatible(design_hole, actual_hole, design):
+            continue
+        matches.append(_match_pair(design_hole, actual_hole, "matched_by_id"))
         matched_design.add(hole_id)
         matched_actual.add(hole_id)
 
