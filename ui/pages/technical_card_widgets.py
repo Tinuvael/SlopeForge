@@ -458,13 +458,6 @@ class TechnicalCardEditorWidget(QWidget):
         if not holes:
             return
         selected = {hole.hole_id for hole in holes if hole.engineering_group_id == group.id}
-        if (
-            self.editor.blast_event.event_type == "contour"
-            and not selected
-            and not any(hole.engineering_group_id for hole in holes)
-            and self._is_primary_contour_group(group)
-        ):
-            selected = {hole.hole_id for hole in holes}
         geometry = self.editor.blast_event.active_geometry_revision()
         group_labels = {
             item.id: technical_group_label(item.group_type, item.name)
@@ -649,6 +642,38 @@ class TechnicalCardEditorWidget(QWidget):
         actual.mean_toe_deviation_m = mean(toe) if toe else None
         actual.max_toe_deviation_m = max(toe) if toe else None
 
+    @staticmethod
+    def _restore_charge_cleared_by_geometry_guard(
+        actual: ActualDrillingGroup,
+        design: BlastDrillingGroup,
+    ) -> None:
+        """Repair drafts produced by the earlier copied-charge depth workaround.
+
+        That workaround marked the copied design charge as non-copied and erased
+        its components when a group-wide factual mean depth was slightly shorter
+        than the design template.  If the exact signature of that automatic
+        clearing is present, restore the design charge.  A genuine user-edited
+        factual charge is never overwritten.
+        """
+        if actual.charge_components or not design.charge_components:
+            return
+        if actual.copied_from_design:
+            return
+        if actual.copied_from_technical_revision_id is None:
+            return
+        if actual.explosive_type or actual.stemming_length_m not in (None, 0.0):
+            return
+        restored = ActualDrillingGroup.from_design(
+            design,
+            actual.copied_from_technical_revision_id,
+        )
+        actual.charge_components = restored.charge_components
+        actual.stemming_length_m = restored.stemming_length_m
+        actual.charge_mass_per_hole_kg = None
+        actual.total_charge_mass_kg = None
+        actual.explosive_type = restored.explosive_type
+        actual.copied_from_design = True
+
     def _ensure_actual_group(self, design: BlastDrillingGroup):
         execution = self.editor.revision.actual_execution
         actual = next(
@@ -658,6 +683,8 @@ class TechnicalCardEditorWidget(QWidget):
         if actual is None:
             actual = ActualDrillingGroup.from_design(design, self.editor.revision.id)
             execution.actual_drilling_groups.append(actual)
+        else:
+            self._restore_charge_cleared_by_geometry_guard(actual, design)
         return actual
 
     def _recalculate_actual(self):
