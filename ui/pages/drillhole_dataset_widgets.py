@@ -80,16 +80,26 @@ class DrillholeDatasetCard(CardFrame):
         first = files[0] if isinstance(files[0], dict) else {}
         return str(first.get("original_filename") or first.get("stored_filename") or "—")
 
-    def set_dataset(self, row, holes: tuple[Drillhole, ...] = ()):
+    def set_dataset(
+        self,
+        row,
+        holes: tuple[Drillhole, ...] = (),
+        *,
+        design_revision_current: bool = True,
+    ):
         if row is None:
             self.source.setText(tr("No dataset loaded"))
             self.button.setText(tr("Import"))
             self._set_metrics([])
             return
         self.button.setText(tr("Update"))
-        self.source.setText(
+        source_text = (
             f"R{row.revision_number} · {str(row.source_format).upper()} · {self._source_name(row)}"
         )
+        if self.dataset_kind == "actual" and not design_revision_current:
+            source_text += f" · {tr('Design changed')}"
+            self.button.setText(tr("Re-import"))
+        self.source.setText(source_text)
         summary = dict(row.summary_json or {})
         if self.dataset_kind == "design":
             values = [
@@ -122,6 +132,7 @@ class DrillholeDatasetCard(CardFrame):
         collar = [float(item["collar_distance_xy_m"]) for item in paired if item.get("collar_distance_xy_m") is not None]
         toe = [float(item["toe_deviation_3d_m"]) for item in paired if item.get("toe_deviation_3d_m") is not None]
         values = [
+            ("Design comparison", tr("Current") if design_revision_current else tr("Outdated — re-import fact")),
             ("Actual holes", _value(summary.get("hole_count"))),
             ("Matched", str(len(paired))),
             ("Low-confidence matches", str(low_confidence)),
