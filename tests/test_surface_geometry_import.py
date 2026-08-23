@@ -67,6 +67,35 @@ class FakeWireframeTable:
         self.row_index += 1
 
 
+class FakeWireframeWithDegenerateFace(FakeWireframeTable):
+    """Mimic a real survey with one zero-area triangle among valid faces."""
+
+    def Open(self, path: str, _mode: int) -> None:
+        super().Open(path, _mode)
+        if Path(path).stem.lower().endswith("pt"):
+            # PID 5 intentionally duplicates PID 4 XYZ while remaining a distinct PID.
+            self.rows = self.rows + ((10.0, 10.0, 0.0, 5.0),)
+        else:
+            self.rows = self.rows + (
+                (2.0, 4.0, 5.0, 103.0, 25.0, 0.0, 1001.0, 201.0),
+            )
+
+
+class FakeAllDegenerateWireframe(FakeWireframeTable):
+    def Open(self, path: str, _mode: int) -> None:
+        super().Open(path, _mode)
+        if Path(path).stem.lower().endswith("pt"):
+            self.rows = (
+                (0.0, 0.0, 0.0, 1.0),
+                (10.0, 0.0, 0.0, 2.0),
+                (20.0, 0.0, 0.0, 3.0),
+            )
+        else:
+            self.rows = (
+                (1.0, 2.0, 3.0, 201.0, 2.0, 0.0, 1001.0, 201.0),
+            )
+
+
 def _wireframe_pair(tmp_path: Path) -> tuple[Path, Path]:
     triangle = tmp_path / "walltr.dmx"
     points = tmp_path / "wallpt.dmx"
@@ -95,6 +124,36 @@ def test_datamine_wireframe_pair_builds_canonical_surface_and_preserves_triangle
     assert result.surface.triangles[0].source_attributes["COLOUR"] == 2.0
     assert result.surface.triangles[1].source_attributes["COLOUR"] == 7.0
     assert result.surface.source_files == ("walltr.dmx", "wallpt.dmx")
+    assert result.surface.source_attributes["source_triangle_count"] == 2
+    assert result.surface.source_attributes["skipped_degenerate_triangle_count"] == 0
+
+
+def test_datamine_wireframe_skips_isolated_zero_area_source_faces(tmp_path: Path) -> None:
+    triangle, _points = _wireframe_pair(tmp_path)
+
+    result = import_datamine_wireframe(
+        triangle,
+        dispatch_factory=lambda _prog_id: FakeWireframeWithDegenerateFace(),
+    )
+
+    assert len(result.surface.vertices) == 5
+    assert len(result.surface.triangles) == 2
+    assert result.surface.source_attributes["source_triangle_count"] == 3
+    assert result.surface.source_attributes["skipped_degenerate_triangle_count"] == 1
+    assert result.surface.source_attributes["skipped_degenerate_triangle_ids"] == ("103",)
+
+
+def test_datamine_wireframe_rejects_dataset_with_no_usable_faces(tmp_path: Path) -> None:
+    triangle, _points = _wireframe_pair(tmp_path)
+
+    with pytest.raises(
+        DatamineWireframeImportError,
+        match="no usable non-degenerate triangles",
+    ):
+        import_datamine_wireframe(
+            triangle,
+            dispatch_factory=lambda _prog_id: FakeAllDegenerateWireframe(),
+        )
 
 
 def test_datamine_wireframe_requires_unambiguous_tr_pt_pair(tmp_path: Path) -> None:
@@ -166,9 +225,10 @@ def test_dxf_mesh_entities_use_same_canonical_surface_model(
 
     assert result.vertex_count == 4
     assert result.triangle_count == 2
-    assert {triangle.source_attributes["dxf_layer"] for triangle in result.surface.triangles} == {
-        "SURFACE"
-    }
+    assert {
+        triangle.source_attributes["dxf_layer"]
+        for triangle in result.surface.triangles
+    } == {"SURFACE"}
     assert {
         triangle.source_attributes["dxf_effective_aci"]
         for triangle in result.surface.triangles
