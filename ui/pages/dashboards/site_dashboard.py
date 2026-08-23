@@ -303,7 +303,7 @@ class SiteDashboardPage(QWidget):
             tr("Select Project Lines file"),
             "",
             tr(
-                "Project Lines (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"
+                "Project Lines (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"
             ),
         )
         if not path:
