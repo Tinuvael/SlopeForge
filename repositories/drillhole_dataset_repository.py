@@ -75,6 +75,23 @@ class BlastEventDrillholeDatasetRepository:
             row_id = row.id
         return self._get_row(row_id)
 
+    def update_holes(self, row_id: int, holes: list[dict[str, object]]) -> BlastEventDrillholeDataset:
+        """Persist semantic group assignment on the current source revision.
+
+        File re-import creates revisions. Group assignment is editable design
+        classification of that revision and therefore does not duplicate the
+        physical source file or increment the geometry revision number.
+        """
+        with self._session_factory.begin() as session:
+            row = session.get(BlastEventDrillholeDataset, int(row_id), with_for_update=True)
+            if row is None:
+                raise DrillholeDatasetNotFoundError(str(row_id))
+            if row.dataset_kind != "design":
+                raise ValueError("Only design drillholes can be assigned to design groups")
+            row.holes_json = list(holes)
+            session.flush()
+        return self._get_row(row_id)
+
     def list_for_event(
         self,
         domain_id: int,
