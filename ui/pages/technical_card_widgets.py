@@ -352,6 +352,13 @@ class TechnicalCardEditorWidget(QWidget):
         path, _ = QFileDialog.getOpenFileName(self, title, "", tr(DRILLHOLE_FILE_FILTER))
         if not path:
             return
+        previous_design_group_ids = set()
+        if dataset_kind == "design":
+            previous_design_group_ids = {
+                hole.engineering_group_id
+                for hole in self._current_holes("design")
+                if hole.engineering_group_id
+            }
         try:
             user = self._controller.context.current_user
             row = self._drillhole_service.import_dataset(
@@ -364,9 +371,16 @@ class TechnicalCardEditorWidget(QWidget):
             holes = self._current_holes(dataset_kind)
             if dataset_kind == "design":
                 if self.editor.blast_event.event_type == "contour":
-                    self._apply_contour_design(row, holes)
+                    self._apply_contour_design(
+                        row,
+                        holes,
+                        changed_group_ids=previous_design_group_ids,
+                    )
                 else:
-                    self._apply_production_design_assignments(holes)
+                    self._apply_production_design_assignments(
+                        holes,
+                        changed_group_ids=previous_design_group_ids,
+                    )
             elif dataset_kind == "actual":
                 if self.editor.blast_event.event_type == "contour":
                     self._apply_contour_actual(row)
