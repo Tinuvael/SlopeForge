@@ -48,14 +48,23 @@ class BlastEventDrillholeFileStorage:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    def dataset_folder(self, event_logical_id: str, kind: str, logical_id: str) -> Path:
+    def dataset_folder(
+        self,
+        domain_id: int,
+        event_logical_id: str,
+        kind: str,
+        logical_id: str,
+    ) -> Path:
         if kind not in {"design", "actual"}:
             raise ValueError(f"Unsupported drillhole dataset kind: {kind!r}")
+        domain_segment = self._safe_segment(str(int(domain_id)), "Domain id")
         event_id = self._safe_segment(event_logical_id, "BlastEvent id")
         dataset_id = self._safe_segment(logical_id, "drillhole dataset id")
         return (
             self.data_root
             / "files"
+            / "domains"
+            / domain_segment
             / "blast_events"
             / event_id
             / "drillholes"
@@ -65,6 +74,7 @@ class BlastEventDrillholeFileStorage:
 
     def copy_dataset(
         self,
+        domain_id: int,
         event_logical_id: str,
         kind: str,
         logical_id: str,
@@ -72,7 +82,7 @@ class BlastEventDrillholeFileStorage:
     ) -> list[StoredDrillholeGeometryFile]:
         if not source_paths:
             raise DrillholeGeometryStorageError("Drillhole dataset has no source files")
-        folder = self.dataset_folder(event_logical_id, kind, logical_id)
+        folder = self.dataset_folder(domain_id, event_logical_id, kind, logical_id)
         if folder.exists():
             raise DrillholeGeometryStorageError(
                 f"Drillhole dataset storage already exists: {logical_id}"
@@ -133,7 +143,13 @@ class BlastEventDrillholeFileStorage:
             )
         return path
 
-    def remove_dataset(self, event_logical_id: str, kind: str, logical_id: str) -> None:
-        folder = self.dataset_folder(event_logical_id, kind, logical_id)
+    def remove_dataset(
+        self,
+        domain_id: int,
+        event_logical_id: str,
+        kind: str,
+        logical_id: str,
+    ) -> None:
+        folder = self.dataset_folder(domain_id, event_logical_id, kind, logical_id)
         if folder.exists():
             shutil.rmtree(folder)
