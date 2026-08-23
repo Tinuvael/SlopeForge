@@ -102,6 +102,17 @@ class Drillhole:
     def inclination_deg(self) -> float | None:
         return _inclination_deg(self.collar, self.toe)
 
+    @property
+    def has_stable_source_id(self) -> bool:
+        """Whether the imported source ID is suitable as cross-revision identity.
+
+        Direct/domain-created Drillhole objects keep the historical default of
+        stable IDs. Import adapters can explicitly mark synthetic IDs (notably
+        DXF entity handles/order) as unstable so they are never mistaken for a
+        real blast-hole identifier.
+        """
+        return self.source_attributes.get("stable_hole_id") is not False
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "hole_id": self.hole_id,
@@ -264,12 +275,9 @@ def _stable_id_is_compatible(
     actual: Drillhole,
     all_design: tuple[Drillhole, ...],
 ) -> bool:
-    """Reject only stable IDs that strongly contradict collar geometry.
-
-    Hole identity remains the stronger signal in a dense layout, but an ID is
-    not treated as authoritative when another design collar is more than three
-    times closer. This is a relative consistency check, not a site tolerance.
-    """
+    """Reject only stable IDs that strongly contradict collar geometry."""
+    if not design.has_stable_source_id or not actual.has_stable_source_id:
+        return False
     same_distance = _distance_xy(design.collar, actual.collar)
     alternatives = [
         _distance_xy(candidate.collar, actual.collar)
@@ -325,10 +333,10 @@ def match_actual_to_design(
 ) -> tuple[HoleMatch, ...]:
     """Deterministic one-to-one matching with explicit ambiguity state.
 
-    Compatible stable IDs are authoritative. Remaining holes are proposed by
-    nearest collar under one-to-one constraints. Dense or contested geometric
-    proposals are kept as low-confidence rather than being silently presented as
-    definitive matches.
+    Only explicitly stable source IDs are authoritative. Remaining holes are
+    proposed by nearest collar under one-to-one constraints. Dense or contested
+    geometric proposals are kept as low-confidence rather than being silently
+    presented as definitive matches.
     """
     design = tuple(design_holes)
     actual = tuple(actual_holes)
