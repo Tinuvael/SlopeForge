@@ -14,11 +14,17 @@ datas = [
     (str(project_root / "alembic"), "alembic"),
 ]
 
-# alembic/env.py is loaded dynamically by Alembic at runtime, so PyInstaller cannot
-# discover its stdlib imports from the normal main.py import graph.
+# alembic/env.py and the optional Datamine adapter both contain runtime/dynamic
+# imports that PyInstaller cannot discover from main.py's static import graph.
 hiddenimports = [
     "logging.config",
 ]
+if sys.platform == "win32":
+    hiddenimports.extend([
+        "win32com.client",
+        "pythoncom",
+        "pywintypes",
+    ])
 
 a = Analysis(
     ["main.py"],
