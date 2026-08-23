@@ -22,12 +22,22 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install runtime and build dependencies
+      - name: Install runtime, test and build dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -r requirements-build.txt
+          python -m pip install -r requirements.txt -r requirements-build.txt pytest
           choco install innosetup --version=6.7.1 --no-progress -y
+
+      - name: Validate Python code and non-PostgreSQL tests
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m compileall app application domain infrastructure database repositories ui
+          python tools/architecture_audit.py | Out-Null
+          python -m pytest -q -m "not postgres"
 
       - name: Build canonical Windows release
         shell: cmd
