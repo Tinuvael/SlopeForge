@@ -13,16 +13,23 @@ class ProjectGeometryCard(DashboardCard):
     """Compact Project-level current design/actual surface summary."""
 
     upload_requested = Signal(str)
+    ROW_HEIGHT = 44
 
     def __init__(self, parent=None):
         super().__init__("Geometry", parent)
-        self.setMinimumHeight(118)
+        self.setMinimumHeight(140)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         self._rows: dict[str, tuple[QLabel, QLabel, OverviewLinkButton]] = {}
         self._add_dataset_row("design", tr("Design surface"))
         self._add_dataset_row("actual", tr("Actual survey"))
+        self.layout.addStretch(1)
 
     def _add_dataset_row(self, kind: str, label: str) -> None:
         host = QWidget()
+        host.setFixedHeight(self.ROW_HEIGHT)
         host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         row = QHBoxLayout(host)
         row.setContentsMargins(0, 2, 0, 2)
@@ -33,9 +40,18 @@ class ProjectGeometryCard(DashboardCard):
         text.setSpacing(0)
         title = QLabel(label)
         title.setObjectName("RelatedEntityTitle")
+        title.setMinimumWidth(0)
+        title.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         detail = QLabel("—")
         detail.setObjectName("MutedText")
         detail.setMinimumWidth(0)
+        detail.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         detail.setToolTip("")
         text.addWidget(title)
         text.addWidget(detail)
@@ -43,7 +59,9 @@ class ProjectGeometryCard(DashboardCard):
 
         action = OverviewLinkButton(tr("Import"))
         action.clicked.connect(
-            lambda _checked=False, dataset_kind=kind: self.upload_requested.emit(dataset_kind)
+            lambda _checked=False, dataset_kind=kind: self.upload_requested.emit(
+                dataset_kind
+            )
         )
         row.addWidget(action)
         self.layout.addWidget(host)
@@ -68,14 +86,16 @@ class ProjectGeometryCard(DashboardCard):
         names = self._source_names(dataset)
         stamp = format_dashboard_datetime(getattr(dataset, "imported_at", None))
         revision = int(getattr(dataset, "revision_number", 0) or 0)
-        source_format = str(getattr(dataset, "source_format", "") or "").upper()
+        source_format = str(
+            getattr(dataset, "source_format", "") or ""
+        ).upper()
         vertices = int(getattr(dataset, "vertex_count", 0) or 0)
         triangles = int(getattr(dataset, "triangle_count", 0) or 0)
         summary = f"R{revision} · {source_format} · V {vertices} · T {triangles}"
         if stamp != "—":
             summary = f"{summary} · {stamp}"
         detail.setText(summary)
-        detail.setToolTip(names)
+        detail.setToolTip(names or summary)
 
     def set_datasets(self, design, actual) -> None:
         self.set_dataset("design", design)
