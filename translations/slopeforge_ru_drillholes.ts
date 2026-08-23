@@ -11,7 +11,7 @@
         <message><source>Assigned to</source><translation>Назначено в группу</translation></message>
         <message><source>Assignment updated. Geometry-derived group values were recalculated automatically. Save the page to keep them.</source><translation>Распределение обновлено. Значения группы, рассчитанные по геометрии, пересчитаны автоматически. Сохраните страницу, чтобы сохранить изменения.</translation></message>
         <message><source>Block upper contour *</source><translation>Верхний контур блока *</translation></message>
-        <message><source>Blue: selected. Amber outline: assigned to another group. Selecting an assigned hole moves it to this group when you apply the change.</source><translation>Синий: выбрано. Янтарный контур: назначено другой группе. При выборе назначенной скважины она будет перенесена в эту группу после применения изменений.</translation></message>
+        <message><source>Blue: selected. Amber outline: assigned to another group and unavailable here.</source><translation>Синий: выбрано. Янтарный контур: скважина назначена другой группе и недоступна для выбора здесь.</translation></message>
         <message><source>Calculated automatically from imported drillhole geometry.</source><translation>Рассчитано автоматически по импортированной геометрии скважин.</translation></message>
         <message><source>Clear selection</source><translation>Очистить выбор</translation></message>
         <message><source>Click at least three vertices around the drillholes, then choose Finish polygon or double-click. Press Esc to cancel the polygon.</source><translation>Укажите не менее трёх вершин вокруг скважин, затем нажмите «Завершить полигон» или сделайте двойной щелчок. Esc отменяет полигон.</translation></message>
