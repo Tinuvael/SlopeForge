@@ -4,7 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDateEdit, QDialog,
-    QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
+    QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QWidget,
 )
 
 from app.localization import tr
@@ -14,6 +14,14 @@ from ui.presentation_labels import domain_message
 from ui.widgets.design_system import (
     ChevronDoubleSpinBox, configure_standard_dialog, create_form_section,
     set_button_role, standard_dialog_actions,
+)
+
+
+GEOMETRY_FILE_FILTER = (
+    "Geometry files (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"
+)
+DRILLHOLE_FILE_FILTER = (
+    "Drillhole files (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"
 )
 
 
@@ -59,6 +67,20 @@ class BlastEventDialog(QDialog):
         file_row.setContentsMargins(0, 0, 0, 0)
         file_row.addWidget(self.csv, 1)
         file_row.addWidget(self.browse_button)
+
+        self.design_drillholes = QLineEdit()
+        self.design_drillholes.setPlaceholderText(tr("Optional — can be imported later"))
+        self.design_drillholes.setReadOnly(True)
+        self.design_drillholes_browse = set_button_role(
+            QPushButton(tr("Browse...")), "secondary"
+        )
+        self.design_drillholes_browse.clicked.connect(self._choose_design_drillholes)
+        self.design_drillholes_host = QWidget()
+        drillhole_row = QHBoxLayout(self.design_drillholes_host)
+        drillhole_row.setContentsMargins(0, 0, 0, 0)
+        drillhole_row.addWidget(self.design_drillholes, 1)
+        drillhole_row.addWidget(self.design_drillholes_browse)
+
         self.elevation = ChevronDoubleSpinBox()
         self.elevation.setRange(-10000, 10000)
         self.elevation.setDecimals(0)
@@ -71,7 +93,9 @@ class BlastEventDialog(QDialog):
         elevation_row.addWidget(self.elevation, 1)
         elevation_row.addWidget(self.detect_button)
         geometry_form.addRow(tr("Geometry file *"), file_row)
+        geometry_form.addRow(tr("Design drillholes"), self.design_drillholes_host)
         geometry_form.addRow(tr("Horizon, m *"), elevation_row)
+        self.geometry_form = geometry_form
         self.auto_status = QLabel(tr("Select a geometry file to detect the horizon automatically"))
         self.auto_status.setObjectName("FormHelperText")
         self.auto_status.setWordWrap(True)
@@ -83,6 +107,7 @@ class BlastEventDialog(QDialog):
         self.buttons = actions
         layout.addWidget(actions)
         self.kind.currentIndexChanged.connect(self._event_type_changed)
+        self._sync_drillhole_row()
         self.name.setFocus()
 
     def _choose_csv(self):
@@ -90,7 +115,7 @@ class BlastEventDialog(QDialog):
             self,
             tr("Select geometry file"),
             "",
-            tr("Geometry files (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"),
+            tr(GEOMETRY_FILE_FILTER),
         )
         if not path:
             return
@@ -99,13 +124,30 @@ class BlastEventDialog(QDialog):
             self._applying_name = True; self.name.setText(Path(path).stem); self._applying_name = False
         self._inspect(force_override=True)
 
+    def _choose_design_drillholes(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("Select design drillholes"),
+            "",
+            tr(DRILLHOLE_FILE_FILTER),
+        )
+        if path:
+            self.design_drillholes.setText(path)
+
     def _name_edited(self, _text):
         if not self._applying_name:
             self.name_is_manual = True
 
     def _event_type_changed(self, _event_type):
+        self._sync_drillhole_row()
         if self.csv.text().strip():
             self._inspect(force_override=True)
+
+    def _sync_drillhole_row(self):
+        is_production = self.kind.currentData() == "production"
+        self.geometry_form.setRowVisible(self.design_drillholes_host, is_production)
+        if not is_production:
+            self.design_drillholes.clear()
 
     def _auto_detect(self):
         self._inspect(force_override=True)
@@ -157,6 +199,11 @@ class BlastEventDialog(QDialog):
         self.accept()
 
     def values(self):
-        return {"name": self.name.text(), "event_type": self.kind.currentData(),
-                "event_date": self.date.date().toPython() if self.has_date.isChecked() else None, "elevation": self.elevation.value(),
-                "csv_path": self.csv.text()}
+        return {
+            "name": self.name.text(),
+            "event_type": self.kind.currentData(),
+            "event_date": self.date.date().toPython() if self.has_date.isChecked() else None,
+            "elevation": self.elevation.value(),
+            "csv_path": self.csv.text(),
+            "design_drillhole_path": self.design_drillholes.text().strip() or None,
+        }
