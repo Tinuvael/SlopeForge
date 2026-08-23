@@ -15,7 +15,7 @@ from ui.pages.drillhole_dataset_widgets import DrillholeDatasetCard
 from ui.presentation_labels import domain_message
 
 
-DRILLHOLE_FILE_FILTER = tr(
+DRILLHOLE_FILE_FILTER = (
     "Drillhole files (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"
 )
 
@@ -100,6 +100,8 @@ class TechnicalCardEditorWidget(QWidget):
                 self.tabs.removeTab(index)
                 page.setProperty("blastEventType", self.editor.blast_event.event_type)
                 page.setVisible(True)
+                if self._drillhole_service is None:
+                    return page
                 if title in {tr("Drilling and charging"), tr("Contour drilling")}:
                     return _DrillholeEngineeringPage(self, page, "design")
                 if title == tr("Execution fact"):
@@ -145,7 +147,7 @@ class TechnicalCardEditorWidget(QWidget):
         if self.editor.read_only or self._drillhole_service is None or self._controller is None:
             return
         title = tr("Import design drillholes") if dataset_kind == "design" else tr("Import as-drilled holes")
-        path, _ = QFileDialog.getOpenFileName(self, title, "", DRILLHOLE_FILE_FILTER)
+        path, _ = QFileDialog.getOpenFileName(self, title, "", tr(DRILLHOLE_FILE_FILTER))
         if not path:
             return
         try:
