@@ -195,12 +195,17 @@ def test_metadata_and_indexes_compile_with_postgresql():
         for index in table(name).indexes: assert "CREATE" in str(CreateIndex(index).compile(dialect=dialect))
 
 
-
-def test_current_schema_has_one_self_contained_mvp_baseline():
+def test_current_schema_keeps_immutable_mvp_baseline_and_appends_migrations():
     versions = sorted(Path("alembic/versions").glob("*.py"))
-    assert [path.name for path in versions] == ["0001_mvp_baseline.py"]
+    assert [path.name for path in versions] == [
+        "0001_mvp_baseline.py",
+        "0002_project_surface_datasets.py",
+    ]
     baseline = versions[0].read_text()
     assert 'revision = "0001_mvp_baseline"' in baseline
     assert "down_revision = None" in baseline
     assert "mines" not in baseline
     assert "blast_blocks" not in baseline
+    surface_revision = versions[1].read_text()
+    assert 'revision = "0002_project_surface_datasets"' in surface_revision
+    assert 'down_revision = "0001_mvp_baseline"' in surface_revision
