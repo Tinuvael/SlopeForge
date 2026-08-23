@@ -8,6 +8,10 @@ import database.startup as startup
 from database.settings import Settings
 
 
+CURRENT_HEAD = "0002_project_surface_datasets"
+BASELINE = "0001_mvp_baseline"
+
+
 class FakeInspector:
     def __init__(self, tables=()): self.tables = tables
     def get_table_names(self): return list(self.tables)
@@ -16,23 +20,23 @@ class FakeInspector:
 def test_expected_alembic_head_resolves_real_repository_graph():
     """Exercise the production path/config rather than a mocked head helper."""
     repository_heads = ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
-    assert repository_heads == ["0001_mvp_baseline"]
+    assert repository_heads == [CURRENT_HEAD]
     assert startup._expected_alembic_head() == repository_heads[0]
 
 
 class FakeScript:
     def get_revision(self, revision):
-        return object() if revision == "0001_mvp_baseline" else None
+        return object() if revision in {BASELINE, CURRENT_HEAD} else None
 
 
-def arrange_startup(monkeypatch, *, revision="0001_mvp_baseline", tables=None):
+def arrange_startup(monkeypatch, *, revision=CURRENT_HEAD, tables=None):
     settings = Settings("postgresql+psycopg://u:secret@db.example:5432/slopeforge", Path("/tmp/storage"))
     engine = object()
     monkeypatch.setattr(startup.Settings, "from_env", lambda: settings)
     monkeypatch.setattr(startup, "create_database_engine", lambda value: engine)
     monkeypatch.setattr(startup, "create_session_factory", lambda value: "sessions")
     monkeypatch.setattr(startup, "check_connection", lambda value: None)
-    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "0001_mvp_baseline")
+    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: CURRENT_HEAD)
     monkeypatch.setattr(startup, "_alembic_script", lambda: FakeScript())
     state = {
         "revision": revision,
@@ -43,7 +47,7 @@ def arrange_startup(monkeypatch, *, revision="0001_mvp_baseline", tables=None):
         lambda value: (() if state["revision"] is None else (state["revision"],)),
     )
     def upgrade(_settings):
-        state["revision"] = "0001_mvp_baseline"
+        state["revision"] = CURRENT_HEAD
         state["tables"] = startup.Base.metadata.tables
     monkeypatch.setattr(startup, "upgrade_to_head", upgrade)
     monkeypatch.setattr(startup, "configure_mappers", lambda: None)
@@ -69,6 +73,16 @@ def test_startup_accepts_database_at_the_single_current_head(monkeypatch):
     assert startup.initialize_database_runtime() == (settings, engine, "sessions")
 
 
+def test_startup_known_older_revision_requires_migration(monkeypatch):
+    arrange_startup(monkeypatch, revision=BASELINE)
+    with pytest.raises(startup.StartupError) as caught:
+        startup.initialize_database_runtime()
+    assert caught.value.reason == "database_migration_required"
+    rendered = caught.value.presentation()
+    assert BASELINE in rendered
+    assert CURRENT_HEAD in rendered
+
+
 def test_startup_removed_revision_requires_reset_not_migrate(monkeypatch):
     arrange_startup(monkeypatch, revision="20260809_0008")
     with pytest.raises(startup.StartupError) as caught:
@@ -76,14 +90,13 @@ def test_startup_removed_revision_requires_reset_not_migrate(monkeypatch):
     rendered = caught.value.presentation()
     assert caught.value.reason == "database_revision_obsolete"
     assert "20260809_0008" in rendered
-    assert "0001_mvp_baseline" in rendered
+    assert CURRENT_HEAD in rendered
     assert "reset-dev-db" in rendered
     assert "database.cli migrate" not in rendered
 
 
 def test_real_script_directory_classifies_removed_revision(monkeypatch):
-    monkeypatch.setattr(startup, "_expected_alembic_head",
-                        lambda: "0001_mvp_baseline")
+    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: CURRENT_HEAD)
     monkeypatch.setattr(startup, "_database_alembic_heads",
                         lambda _engine: ("20260809_0008",))
     with pytest.raises(startup.StartupError) as caught:
