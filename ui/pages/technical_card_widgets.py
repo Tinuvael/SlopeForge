@@ -233,6 +233,12 @@ class TechnicalCardEditorWidget(QWidget):
             )
             return
         selected = {hole.hole_id for hole in holes if hole.engineering_group_id == group.id}
+        if (
+            self.editor.blast_event.event_type == "contour"
+            and not selected
+            and not any(hole.engineering_group_id for hole in holes)
+        ):
+            selected = {hole.hole_id for hole in holes}
         geometry = self.editor.blast_event.active_geometry_revision()
         dialog = DrillholeGroupAssignmentDialog(
             group.name or group.group_type,
@@ -316,21 +322,9 @@ class TechnicalCardEditorWidget(QWidget):
         if not holes:
             return
         group = self._primary_contour_group()
-        # A Contour Blast's initial geometry file is the contour drillhole set,
-        # so it is unambiguous to seed the primary contour group automatically.
-        if self._drillhole_service is not None and self._controller is not None:
-            self._drillhole_service.assign_design_holes(
-                self._controller.domain_id,
-                self.editor.blast_event.id,
-                group.id,
-                {hole.hole_id for hole in holes},
-            )
-            holes = self._drillhole_service.assigned_holes(
-                self._controller.domain_id,
-                self.editor.blast_event.id,
-                group.id,
-            )
-        self._apply_design_group_metrics(group, holes)
+        assigned = tuple(hole for hole in holes if hole.engineering_group_id == group.id)
+        effective_holes = assigned or tuple(holes)
+        self._apply_design_group_metrics(group, effective_holes)
         self.editor._render_groups()
 
     @staticmethod
