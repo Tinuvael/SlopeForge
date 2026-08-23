@@ -11,13 +11,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import CreateIndex, CreateTable
 
 from database.base import Base
-from database import assessment_models, models  # assessment import registers its metadata
+from database import assessment_models, drillhole_models, models  # noqa: F401
 
 EXPECTED = {
     "project_lines_datasets", "blast_events",
     "blast_event_geometry_revisions", "blast_event_technical_cards",
-    "blast_event_technical_card_revisions", "assessment_areas",
-    "assessment_area_geometry_revisions", "assessment_event_links",
+    "blast_event_technical_card_revisions", "blast_event_drillhole_datasets",
+    "assessment_areas", "assessment_area_geometry_revisions", "assessment_event_links",
     "assessment_area_evaluations", "assessment_area_evaluation_revisions",
     "assessment_entity_attachments",
 }
@@ -43,10 +43,12 @@ sqlalchemy.engine.create_engine = forbidden
 sqlalchemy.engine.Engine.connect = forbidden
 import database.models
 import database.assessment_models as module
+import database.drillhole_models
 assert "assessment_workspaces" not in module.Base.metadata.tables
 assert "mines" not in module.Base.metadata.tables
 assert "blast_blocks" not in module.Base.metadata.tables
 assert module.Base.metadata.tables["blast_events"].c.domain_id is not None
+assert "blast_event_drillhole_datasets" in module.Base.metadata.tables
 for prefix in ("PySide6", "PyQt6", "ui", "widgets"):
     assert not any(name == prefix or name.startswith(prefix + ".") for name in sys.modules), prefix
 '''
@@ -66,6 +68,7 @@ def test_canonical_tables_exist_and_legacy_persistence_cannot_return():
     assert retired.isdisjoint(Base.metadata.tables)
     assert "assessment_entity_attachments" in Base.metadata.tables
     assert "blast_event_technical_card_revisions" in Base.metadata.tables
+    assert "blast_event_drillhole_datasets" in Base.metadata.tables
     assert "project_lines_datasets" in Base.metadata.tables
     assert not hasattr(models, "Mine")
     assert not hasattr(models, "BlastBlock")
@@ -84,6 +87,19 @@ def test_direct_project_domain_ownership_and_logical_identity():
         assert fk(name, "domain_id").target_fullname == "domains.id"
     assert "domain_id" not in table("project_lines_datasets").c
     assert fk("project_lines_datasets", "site_id").target_fullname == "sites.id"
+
+
+def test_blast_event_drillhole_dataset_is_event_owned_and_revisioned():
+    dataset = table("blast_event_drillhole_datasets")
+    assert fk("blast_event_drillhole_datasets", "blast_event_id").target_fullname == "blast_events.id"
+    assert fk("blast_event_drillhole_datasets", "blast_event_id").ondelete == "CASCADE"
+    assert ("blast_event_id", "logical_id") in uniques("blast_event_drillhole_datasets")
+    assert ("blast_event_id", "dataset_kind", "revision_number") in uniques("blast_event_drillhole_datasets")
+    sql = checks("blast_event_drillhole_datasets")
+    assert "design" in sql and "actual" in sql
+    assert "revision_number > 0" in sql
+    for name in ("source_files_json", "holes_json", "summary_json", "matches_json"):
+        assert isinstance(dataset.c[name].type, JSONB)
 
 
 def test_optional_frozen_link_geometry_uses_sql_null():
@@ -149,6 +165,7 @@ def test_required_domain_fields_are_not_nullable():
     required = {
         "blast_events": ("elevation_m",),
         "blast_event_geometry_revisions": ("elevation_m",),
+        "blast_event_drillhole_datasets": ("dataset_kind", "revision_number", "hole_count", "total_drilling_length_m"),
         "assessment_areas": ("assessment_date",),
         "assessment_entity_attachments": (
             "subtype", "custom_subtype", "title", "file_date", "description", "mime_type", "file_size_bytes"),
@@ -175,6 +192,8 @@ def test_all_foreign_key_delete_actions():
         ("blast_event_technical_cards", "blast_event_id"): "CASCADE",
         ("blast_event_technical_card_revisions", "technical_card_id"): "CASCADE",
         ("blast_event_technical_card_revisions", "blast_event_geometry_revision_id"): "RESTRICT",
+        ("blast_event_drillhole_datasets", "blast_event_id"): "CASCADE",
+        ("blast_event_drillhole_datasets", "imported_by_user_id"): "SET NULL",
         ("assessment_areas", "domain_id"): "RESTRICT",
         ("assessment_area_geometry_revisions", "assessment_area_id"): "CASCADE",
         ("assessment_event_links", "assessment_area_geometry_revision_id"): "CASCADE",
@@ -200,6 +219,7 @@ def test_current_schema_keeps_immutable_mvp_baseline_and_appends_migrations():
     assert [path.name for path in versions] == [
         "0001_mvp_baseline.py",
         "0002_project_surface_datasets.py",
+        "0003_blast_event_drillhole_datasets.py",
     ]
     baseline = versions[0].read_text()
     assert 'revision = "0001_mvp_baseline"' in baseline
@@ -209,3 +229,6 @@ def test_current_schema_keeps_immutable_mvp_baseline_and_appends_migrations():
     surface_revision = versions[1].read_text()
     assert 'revision = "0002_project_surface_datasets"' in surface_revision
     assert 'down_revision = "0001_mvp_baseline"' in surface_revision
+    drillhole_revision = versions[2].read_text()
+    assert 'revision = "0003_blast_event_drillhole_datasets"' in drillhole_revision
+    assert 'down_revision = "0002_project_surface_datasets"' in drillhole_revision
