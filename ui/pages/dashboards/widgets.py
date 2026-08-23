@@ -127,6 +127,10 @@ class EmptyStateWidget(QWidget):
 
 
 class DashboardCard(CardFrame):
+    """Shared dashboard card shell with a fixed header band."""
+
+    HEADER_HEIGHT = 26
+
     def __init__(self, title: str, parent=None):
         super().__init__()
         if parent is not None:
@@ -134,19 +138,42 @@ class DashboardCard(CardFrame):
         self.setObjectName("DashboardCard")
         self.layout.setContentsMargins(12, 10, 12, 10)
         self.layout.setSpacing(7)
-        self.header = QHBoxLayout()
+
+        # Header actions are QPushButtons with a global 26 px minimum height.
+        # Keep every card header at exactly that height so cards without an
+        # action do not start their body several pixels above cards with one.
+        self.header_host = QWidget()
+        self.header_host.setFixedHeight(self.HEADER_HEIGHT)
+        self.header_host.setMinimumWidth(0)
+        self.header_host.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.header = QHBoxLayout(self.header_host)
+        self.header.setContentsMargins(0, 0, 0, 0)
         self.header.setSpacing(6)
         self.heading = QLabel(tr(title))
         self.heading.setObjectName("CardTitle")
         self.heading.setStyleSheet("font-weight:600;color:#1f2937;")
+        self.heading.setMinimumWidth(0)
+        self.heading.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
         self.subtitle = QLabel()
         self.subtitle.setObjectName("MutedText")
         self.subtitle.setMinimumWidth(0)
-        self.header.addWidget(self.heading)
+        self.subtitle.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
+        self.subtitle.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.header.addWidget(self.heading, 0, Qt.AlignmentFlag.AlignVCenter)
         self.header.addSpacing(6)
-        self.header.addWidget(self.subtitle)
+        self.header.addWidget(self.subtitle, 1, Qt.AlignmentFlag.AlignVCenter)
         self.header.addStretch()
-        self.layout.addLayout(self.header)
+        self.layout.addWidget(self.header_host)
 
     def set_subtitle(self, text: str | None):
         value = str(text or "")
@@ -155,7 +182,12 @@ class DashboardCard(CardFrame):
 
     def add_header_action(self, text: str) -> OverviewLinkButton:
         button = OverviewLinkButton(text)
-        self.header.addWidget(button)
+        button.setFixedHeight(self.HEADER_HEIGHT)
+        button.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.header.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
         return button
 
 
@@ -198,29 +230,41 @@ class CompactSummaryList(DashboardCard):
         visible_rows: int = 3,
         show_go_to: bool = False,
         fill_available: bool = False,
+        row_height: int | None = None,
+        row_spacing: int = 4,
     ):
         super().__init__(title, parent)
         self.visible_rows = max(1, int(visible_rows))
         self.show_go_to = bool(show_go_to)
         self.fill_available = bool(fill_available)
+        self.row_height = max(28, int(row_height or self.ROW_HEIGHT))
+        self.row_spacing = max(0, int(row_spacing))
         self._selected_key: str | None = None
         self._row_widgets: dict[str, SummaryRowWidget] = {}
         self._selection_markers: dict[str, QLabel] = {}
         self.list = QListWidget()
+        self.list.setMinimumWidth(0)
         self.list.setFrameShape(QFrame.Shape.NoFrame)
-        self.list.setSpacing(4)
+        self.list.setSpacing(self.row_spacing)
         self.list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setStyleSheet(
-            "QListWidget{background:transparent;border:0;}"
-            "QListWidget::item{background:transparent;border:0;outline:0;}"
+            "QListWidget{background:transparent;border:0;margin:0;padding:0;}"
+            "QListWidget::item{background:transparent;border:0;outline:0;margin:0;padding:0;}"
         )
         if self.fill_available:
-            self.list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            self.list.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Expanding,
+            )
             self.layout.addWidget(self.list, 1)
         else:
+            self.list.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Preferred,
+            )
             self.layout.addWidget(self.list, 0, Qt.AlignmentFlag.AlignTop)
             self.layout.addStretch(1)
         self.set_rows([])
@@ -256,29 +300,37 @@ class CompactSummaryList(DashboardCard):
         self._selection_markers = {}
         rows = list(rows)
         if self.fill_available:
-            self.list.setMinimumHeight(self.ROW_HEIGHT + 4)
+            self.list.setMinimumHeight(self.row_height + 4)
             self.list.setMaximumHeight(16777215)
         else:
-            visible_height = self.ROW_HEIGHT * min(max(1, len(rows)), self.visible_rows) + 4
+            visible_height = (
+                self.row_height * min(max(1, len(rows)), self.visible_rows) + 4
+            )
             self.list.setMinimumHeight(visible_height)
-            self.list.setMaximumHeight(self.ROW_HEIGHT * self.visible_rows + 4)
+            self.list.setMaximumHeight(self.row_height * self.visible_rows + 4)
         if not rows:
             item = QListWidgetItem(tr(empty_text))
             item.setFlags(Qt.ItemFlag.NoItemFlags)
-            item.setSizeHint(QSize(0, self.ROW_HEIGHT))
+            item.setSizeHint(QSize(0, self.row_height))
             self.list.addItem(item)
             return
         for row in rows:
             key = str(row.key)
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, key)
-            item.setSizeHint(QSize(0, self.ROW_HEIGHT))
+            item.setSizeHint(QSize(0, self.row_height))
             holder = SummaryRowWidget()
             holder.setObjectName("DashboardSummaryRow")
-            holder.setFixedHeight(self.ROW_HEIGHT - 2)
-            holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            holder.setMinimumWidth(0)
+            holder.setFixedHeight(self.row_height - 2)
+            holder.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Fixed,
+            )
             holder.setCursor(Qt.CursorShape.PointingHandCursor)
-            holder.clicked.connect(lambda current_key=key: self._activate_row(current_key))
+            holder.clicked.connect(
+                lambda current_key=key: self._activate_row(current_key)
+            )
             self._row_widgets[key] = holder
             layout = QHBoxLayout(holder)
             layout.setContentsMargins(6, 4, 8, 4)
@@ -302,7 +354,9 @@ class CompactSummaryList(DashboardCard):
                 accent.setSizePolicy(
                     QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
                 )
-                accent.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+                accent.setAttribute(
+                    Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+                )
                 accent.setStyleSheet(
                     f"background:{row.accent};border:0;border-radius:2px;"
                 )
@@ -313,25 +367,55 @@ class CompactSummaryList(DashboardCard):
             title = QLabel(row.title)
             title.setObjectName("RelatedEntityTitle")
             title.setMinimumWidth(0)
-            title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            title.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Preferred,
+            )
+            title.setToolTip(row.title)
+            title.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+            )
             detail = QLabel(row.detail)
             detail.setObjectName("MutedText")
             detail.setMinimumWidth(0)
-            detail.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            detail.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Preferred,
+            )
+            detail.setToolTip(row.detail)
+            detail.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+            )
             text.addWidget(title)
             text.addWidget(detail)
             layout.addLayout(text, 1)
             if row.trailing:
                 trailing = QLabel(row.trailing)
                 trailing.setObjectName("SummaryValue")
-                trailing.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                trailing.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+                trailing.setMinimumWidth(0)
+                trailing.setSizePolicy(
+                    QSizePolicy.Policy.Ignored,
+                    QSizePolicy.Policy.Preferred,
+                )
+                trailing.setToolTip(row.trailing)
+                trailing.setAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
+                trailing.setAttribute(
+                    Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+                )
                 layout.addWidget(trailing)
             if self.show_go_to:
                 go_to = OverviewLinkButton(tr("Go to ›"))
                 go_to.setToolTip(tr("Open"))
+                go_to.setSizePolicy(
+                    QSizePolicy.Policy.Fixed,
+                    QSizePolicy.Policy.Fixed,
+                )
                 go_to.clicked.connect(
-                    lambda _checked=False, current_key=key: self.go_to_requested.emit(current_key)
+                    lambda _checked=False, current_key=key: self.go_to_requested.emit(
+                        current_key
+                    )
                 )
                 layout.addWidget(go_to)
             self.list.addItem(item)
@@ -348,7 +432,9 @@ class AssessmentProgressCard(DashboardCard):
         self.counts.setStyleSheet("font-weight:600;color:#334155;")
         self.percent = QLabel("0%")
         self.percent.setStyleSheet("font-size:18px;font-weight:700;color:#1f4f7a;")
-        self.percent.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.percent.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
         summary.addWidget(self.counts, 1)
         summary.addWidget(self.percent)
         self.layout.addLayout(summary)
@@ -397,7 +483,9 @@ class BlastActivityCard(DashboardCard):
             .replace("%1", str(production))
             .replace("%2", str(contour))
         )
-        dated = [item for item in blasts if getattr(item, "event_date", None) is not None]
+        dated = [
+            item for item in blasts if getattr(item, "event_date", None) is not None
+        ]
         latest = max(dated, key=lambda item: item.event_date) if dated else None
         if latest is None:
             self.latest.setText(tr("No dated Blast Events yet"))
@@ -410,17 +498,27 @@ class BlastActivityCard(DashboardCard):
 
 class ProjectLinesCard(DashboardCard):
     VISIBLE_ROWS = 3
-    ROW_HEIGHT = 42
+    ROW_HEIGHT = 44
 
     def __init__(self, parent=None):
         super().__init__("Project Lines", parent)
         self.setMinimumHeight(118)
         self.list = QListWidget()
+        self.list.setMinimumWidth(0)
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(3)
-        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.list.setStyleSheet("QListWidget{background:transparent;border:0;}")
+        self.list.setStyleSheet(
+            "QListWidget{background:transparent;border:0;margin:0;padding:0;}"
+            "QListWidget::item{margin:0;padding:0;}"
+        )
+        self.list.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Expanding,
+        )
         self.list.setMinimumHeight(self.ROW_HEIGHT + 4)
         self.list.setMaximumHeight(self.ROW_HEIGHT * self.VISIBLE_ROWS + 5)
         self.layout.addWidget(self.list, 1)
@@ -439,28 +537,53 @@ class ProjectLinesCard(DashboardCard):
             item.setSizeHint(QSize(0, self.ROW_HEIGHT))
             holder = QWidget()
             holder.setObjectName("ProjectLinesDatasetRow")
+            holder.setMinimumWidth(0)
             holder.setFixedHeight(self.ROW_HEIGHT - 2)
-            holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            holder.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Fixed,
+            )
             layout = QHBoxLayout(holder)
             layout.setContentsMargins(8, 4, 9, 4)
             layout.setSpacing(8)
             text = QVBoxLayout()
             text.setContentsMargins(0, 0, 0, 0)
             text.setSpacing(0)
-            title = QLabel(str(dataset.name))
+            title_text = str(dataset.name)
+            title = QLabel(title_text)
             title.setObjectName("RelatedEntityTitle")
             title.setMinimumWidth(0)
-            stamp = getattr(dataset, "imported_at", None)
-            detail = QLabel(
-                f"{format_dashboard_datetime(stamp)}  ·  {getattr(dataset, 'source_file_name', '') or '—'}"
+            title.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Preferred,
             )
+            title.setToolTip(title_text)
+            stamp = getattr(dataset, "imported_at", None)
+            detail_text = (
+                f"{format_dashboard_datetime(stamp)}  ·  "
+                f"{getattr(dataset, 'source_file_name', '') or '—'}"
+            )
+            detail = QLabel(detail_text)
             detail.setObjectName("MutedText")
             detail.setMinimumWidth(0)
+            detail.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Preferred,
+            )
+            detail.setToolTip(detail_text)
             text.addWidget(title)
             text.addWidget(detail)
             layout.addLayout(text, 1)
-            state = QLabel(tr("Active") if getattr(dataset, "is_active", False) else tr("Inactive"))
+            state = QLabel(
+                tr("Active")
+                if getattr(dataset, "is_active", False)
+                else tr("Inactive")
+            )
             state.setObjectName("StatusBadge")
+            state.setSizePolicy(
+                QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Fixed,
+            )
             if getattr(dataset, "is_active", False):
                 state.setStyleSheet(
                     "background:#edf8f0;color:#2f6f3e;border:1px solid #9bcaa6;"
@@ -486,7 +609,9 @@ class DashboardRecentActivityCard(DashboardCard):
         self.list = QListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(0)
-        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.list.setStyleSheet(
             "QListWidget{background:transparent;border:0;}"
@@ -503,7 +628,11 @@ class DashboardRecentActivityCard(DashboardCard):
             title = " ".join(part for part in (entity_type, entity_name) if part)
             if action:
                 title = f"{title}  ·  {action}" if title else action
-            return title, getattr(entry, "changed_at", None), str(getattr(entry, "actor", "") or "")
+            return (
+                title,
+                getattr(entry, "changed_at", None),
+                str(getattr(entry, "actor", "") or ""),
+            )
         name, changed = entry[:2]
         author = str(entry[2] or "") if len(entry) > 2 else ""
         return str(name), changed, author
@@ -535,14 +664,19 @@ class DashboardRecentActivityCard(DashboardCard):
             title.setObjectName("ActivityTitle")
             title.setStyleSheet("font-weight:500;color:#334155;")
             title.setMinimumWidth(0)
-            title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            title.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Preferred,
+            )
             title.setToolTip(title_text)
             stamp_text = format_dashboard_datetime(changed)
             meta_text = f"{author}  ·  {stamp_text}" if author else stamp_text
             meta = QLabel(meta_text)
             meta.setObjectName("MutedText")
             meta.setFixedWidth(self.META_WIDTH)
-            meta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            meta.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
             meta.setToolTip(meta_text)
             layout.addWidget(title, 1)
             layout.addWidget(meta)
