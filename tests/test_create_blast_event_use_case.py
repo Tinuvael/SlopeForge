@@ -27,10 +27,21 @@ class MemoryPersistence:
         return expected_version + 1
 
 
-def geometry_file(tmp_path):
-    path = tmp_path / "blast.csv"
-    path.write_text("SID,PTN,X,Y,Z\nA,1,0,0,100\nA,2,10,0,100\nA,3,10,10,100\nA,4,0,10,100\nA,5,0,0,100\n")
+def write_dxf(path, lines):
+    ezdxf = pytest.importorskip("ezdxf")
+    doc = ezdxf.new()
+    modelspace = doc.modelspace()
+    for points in lines:
+        modelspace.add_polyline3d(points)
+    doc.saveas(path)
     return str(path)
+
+
+def geometry_file(tmp_path):
+    return write_dxf(
+        tmp_path / "blast.dxf",
+        [[(0, 0, 100), (10, 0, 100), (10, 10, 100), (0, 10, 100), (0, 0, 100)]],
+    )
 
 
 def command(path, event_type="production", can_edit=True):
@@ -38,9 +49,10 @@ def command(path, event_type="production", can_edit=True):
 
 
 def contour_geometry_file(tmp_path):
-    path = tmp_path / "contour.csv"
-    path.write_text("SID,PTN,X,Y,Z\nA,1,0,0,100\nA,2,0,0,90\nB,1,10,0,102\nB,2,10,0,90\n")
-    return str(path)
+    return write_dxf(
+        tmp_path / "contour.dxf",
+        [[(0, 0, 100), (0, 0, 90)], [(10, 0, 102), (10, 0, 90)]],
+    )
 
 
 def test_contour_success_creates_exactly_one_contour_event(tmp_path):
@@ -81,7 +93,7 @@ def test_permission_rejection_does_not_load_or_persist(tmp_path):
 def test_geometry_failure_does_not_persist(tmp_path):
     persistence = MemoryPersistence()
     with pytest.raises(ValueError):
-        CreateBlastEvent(persistence).execute(command(str(tmp_path / "missing.csv")))
+        CreateBlastEvent(persistence).execute(command(str(tmp_path / "missing.dxf")))
     assert persistence.persisted.blast_events == [] and persistence.calls == []
 
 
