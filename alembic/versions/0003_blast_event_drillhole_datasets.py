@@ -5,7 +5,10 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "0003_blast_event_drillhole_datasets"
+# Alembic's default alembic_version.version_num is VARCHAR(32). Keep revision
+# identifiers comfortably below that limit so a clean PostgreSQL upgrade can
+# actually persist the new head.
+revision = "0003_drillhole_datasets"
 down_revision = "0002_project_surface_datasets"
 branch_labels = None
 depends_on = None
