@@ -17,3 +17,14 @@ def test_all_active_line_geometry_pickers_offer_dxf_dm_and_dmx_only():
     assert 'QPushButton(tr("Select CSV"))' not in dialog
     catalogue = (root / "translations/slopeforge_ru.ts").read_text(encoding="utf-8")
     assert "Выбрать файл геометрии" in catalogue and "Файл геометрии *" in catalogue
+
+
+def test_retired_csv_line_import_code_is_absent():
+    root = Path(__file__).parents[1]
+    retired = (
+        "infrastructure/geometry_import/csv.py",
+        "ui/dialogs/geometry_import_dialogs.py",
+        "tests/test_datamine_csv_importer.py",
+        "tests/fixtures/datamine_lines_sample.csv",
+    )
+    assert [relative for relative in retired if (root / relative).exists()] == []
