@@ -124,7 +124,9 @@ def test_first_run_setup_is_resolved_before_authentication():
     source = Path("main.py").read_text(encoding="utf-8")
     assert "resolve_runtime_settings(connection_store)" in source
     assert "ConnectionSetupDialog" in source
-    assert source.index("resolve_runtime_settings(connection_store)") < source.index("AuthService(session_factory)")
+    assert source.index("resolve_runtime_settings(connection_store)") < source.index(
+        "AuthService(session_factory)"
+    )
     assert "initialize_database_runtime(runtime_settings)" in source
 
 
@@ -138,3 +140,17 @@ def test_database_startup_accepts_explicit_settings():
     source = Path("database/startup.py").read_text(encoding="utf-8")
     assert "def initialize_database_runtime(settings: Settings | None = None):" in source
     assert "runtime_settings = runtime_settings or Settings.from_env()" in source
+
+
+def test_alembic_uses_same_saved_connection_resolver_as_desktop():
+    source = Path("alembic/env.py").read_text(encoding="utf-8")
+    assert "from app.connection_settings import resolve_runtime_settings" in source
+    assert "settings, _source = resolve_runtime_settings()" in source
+    assert "Settings.from_env()" not in source
+
+
+def test_database_cli_uses_saved_connection_resolver_without_requiring_env():
+    source = Path("database/cli.py").read_text(encoding="utf-8")
+    assert "from app.connection_settings import ConnectionSettingsError, resolve_runtime_settings" in source
+    assert "settings, _source = resolve_runtime_settings()" in source
+    assert "Settings.from_env()" not in source
