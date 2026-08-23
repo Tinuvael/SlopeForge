@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 from uuid import uuid4
 
 from domain.blasting.drillholes import (
@@ -12,7 +12,6 @@ from domain.blasting.drillholes import (
     match_actual_to_design,
     summarize_drillholes,
 )
-from infrastructure.geometry_import.lines import import_line_geometry
 
 
 class DrillholeRepositoryPort(Protocol):
@@ -33,9 +32,15 @@ class DrillholeStoragePort(Protocol):
 
 
 class BlastEventDrillholeDatasetService:
-    def __init__(self, repository: DrillholeRepositoryPort, storage: DrillholeStoragePort):
+    def __init__(
+        self,
+        repository: DrillholeRepositoryPort,
+        storage: DrillholeStoragePort,
+        line_importer: Callable[[Path], Any],
+    ):
         self.repository = repository
         self.storage = storage
+        self.line_importer = line_importer
 
     @staticmethod
     def _logical_id() -> str:
@@ -61,7 +66,7 @@ class BlastEventDrillholeDatasetService:
         if dataset_kind not in {"design", "actual"}:
             raise ValueError(f"Unsupported drillhole dataset kind: {dataset_kind!r}")
         path = Path(source_path)
-        imported = import_line_geometry(path)
+        imported = self.line_importer(path)
         # Geometry sources used in Studio can contain flat marker/reference
         # strings alongside real hole traces. Existing contour import already
         # excludes those rows; keep the same product semantics here.
