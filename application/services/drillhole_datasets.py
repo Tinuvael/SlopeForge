@@ -16,6 +16,7 @@ from domain.blasting.drillholes import (
 
 class DrillholeRepositoryPort(Protocol):
     def add_dataset(self, domain_id: int, event_logical_id: str, **values: Any) -> Any: ...
+    def update_holes(self, row_id: int, holes: list[dict[str, object]]) -> Any: ...
     def get_current(self, domain_id: int, event_logical_id: str, dataset_kind: str) -> Any | None: ...
     def list_for_event(self, domain_id: int, event_logical_id: str, *, dataset_kind: str | None = None) -> list[Any]: ...
 
@@ -121,6 +122,44 @@ class BlastEventDrillholeDatasetService:
     ) -> tuple[Drillhole, ...]:
         row = self.current(domain_id, event_logical_id, dataset_kind)
         return () if row is None else self._holes_from_row(row)
+
+    def assigned_holes(
+        self,
+        domain_id: int,
+        event_logical_id: str,
+        group_id: str,
+    ) -> tuple[Drillhole, ...]:
+        return tuple(
+            hole
+            for hole in self.current_holes(domain_id, event_logical_id, "design")
+            if hole.engineering_group_id == group_id
+        )
+
+    def assign_design_holes(
+        self,
+        domain_id: int,
+        event_logical_id: str,
+        group_id: str,
+        hole_ids: set[str] | list[str] | tuple[str, ...],
+    ):
+        row = self.current(domain_id, event_logical_id, "design")
+        if row is None:
+            raise ValueError("Import design drillholes before assigning engineering groups")
+        group_id = str(group_id).strip()
+        if not group_id:
+            raise ValueError("Engineering group ID is required")
+        selected = {str(value) for value in hole_ids}
+        holes = list(self._holes_from_row(row))
+        known = {hole.hole_id for hole in holes}
+        unknown = sorted(selected - known)
+        if unknown:
+            raise ValueError(f"Unknown design drillhole ID(s): {', '.join(unknown)}")
+        for hole in holes:
+            if hole.hole_id in selected:
+                hole.engineering_group_id = group_id
+            elif hole.engineering_group_id == group_id:
+                hole.engineering_group_id = None
+        return self.repository.update_holes(row.id, [hole.to_dict() for hole in holes])
 
     def history(self, domain_id: int, event_logical_id: str):
         return self.repository.list_for_event(domain_id, event_logical_id)
