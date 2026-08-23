@@ -21,6 +21,7 @@ from domain.blasting.technical_card import ActualDrillingGroup, BlastDrillingGro
 from ui.dialogs.drillhole_group_assignment_dialog import DrillholeSelectionView
 from ui.pages.technical_card_widgets import (
     ENGINEERING_FIELD_DECIMALS,
+    TechnicalCardEditorWidget,
     _clear_copied_charge_beyond_depth,
 )
 
@@ -67,6 +68,24 @@ def test_copied_design_charge_is_cleared_when_imported_fact_is_shallower() -> No
     assert design.charge_components[0].end_depth_m == 21.8
 
 
+def test_geometry_guard_cleared_charge_is_restored_on_next_group_refresh() -> None:
+    design = BlastDrillingGroup(
+        name="Contour",
+        average_depth_m=21.8,
+        charge_components=[
+            ChargeComponent("design", ChargeComponentKind.STEMMING, 0.0, 21.8)
+        ],
+    )
+    actual = ActualDrillingGroup.from_design(design, "TC-R1")
+    _clear_copied_charge_beyond_depth(actual, design, 21.75)
+
+    TechnicalCardEditorWidget._restore_charge_cleared_by_geometry_guard(actual, design)
+
+    assert len(actual.charge_components) == 1
+    assert actual.charge_components[0].end_depth_m == 21.8
+    assert actual.copied_from_design is True
+
+
 def test_manual_factual_charge_is_never_silently_cleared() -> None:
     design = BlastDrillingGroup(
         name="Contour",
@@ -86,7 +105,7 @@ def test_manual_factual_charge_is_never_silently_cleared() -> None:
     assert actual.charge_components[0].end_depth_m == 21.9
 
 
-def test_assignment_view_excludes_holes_owned_by_other_groups() -> None:
+def test_assignment_view_starts_clean_and_excludes_holes_owned_by_other_groups() -> None:
     _app()
     holes = (
         _hole("CURRENT", 0.0, "DG-CURRENT"),
@@ -99,6 +118,7 @@ def test_assignment_view_excludes_holes_owned_by_other_groups() -> None:
         target_group_id="DG-CURRENT",
     )
 
+    assert view.selected_ids == set()
     assert view._available_hole_ids() == {"CURRENT", "FREE"}
     view.select_all()
     assert view.selected_ids == {"CURRENT", "FREE"}
