@@ -211,6 +211,7 @@ class MainWindow(QMainWindow):
                 event_date=values["event_date"], elevation=values["elevation"],
                 geometry_file_path=values["csv_path"], actor_id=user.id,
                 can_edit=user.can_edit,
+                design_drillhole_file_path=values.get("design_drillhole_path"),
             ))
         except Exception as exc:
             QMessageBox.warning(self,tr("Could not create blast event"),domain_message(str(exc)))
@@ -223,6 +224,8 @@ class MainWindow(QMainWindow):
                 opened=self.open_block_from_tree(result.event_id,self.selected_domain_id,self.selected_site_id)
             if not opened:
                 raise RuntimeError("The created Blast Event page could not be opened")
+            if getattr(result,"warning_text",None):
+                QMessageBox.warning(self,tr("Blast event created"),domain_message(result.warning_text))
         except Exception as exc:
             QMessageBox.warning(self,tr("Blast event created"),
                 tr("The Blast Event was created successfully, but its page could not be opened. Refresh the project tree and open it again.")
