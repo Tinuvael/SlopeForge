@@ -1,6 +1,15 @@
 from __future__ import annotations
 
 import os
+import sys
+
+import pytest
+
+# The PostgreSQL job runs on a minimal Ubuntu image without libEGL. These are
+# Qt interaction regressions and are covered by the Windows job; skip the module
+# before importing PySide6 so pytest collection itself remains portable.
+if sys.platform != "win32":
+    pytest.skip("Qt drillhole UI regressions run in Windows CI", allow_module_level=True)
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
