@@ -9,6 +9,7 @@ import pytest
 pytestmark = pytest.mark.postgres
 from sqlalchemy import create_engine
 from tests.postgres_test_database import is_disposable_test_database
+from tests.geometry_test_files import write_dxf_lines
 from sqlalchemy.orm import sessionmaker
 
 URL = os.environ.get("TEST_DATABASE_URL")
@@ -50,7 +51,7 @@ def context():
 
 def dataset(dataset_id: str) -> ProjectLinesDataset:
     return ProjectLinesDataset(dataset_id, dataset_id, datetime.now(timezone.utc),
-                               f"{dataset_id}.csv", True, [])
+                               f"{dataset_id}.dxf", True, [])
 
 
 def test_add_list_activate_archive_restore_and_stable_pk(context):
@@ -101,7 +102,7 @@ def test_repeated_dashboard_style_import_allocates_new_site_dataset_id(context):
     rows = repo.list_for_site(ids[0])
     assert [row.logical_id for row in rows] == ["D-001", "D-002"]
     assert first.id == "D-001" and second.id == "D-002"
-    assert [row.source_file_name for row in rows] == ["D-001.csv", "D-001.csv"]
+    assert [row.source_file_name for row in rows] == ["D-001.dxf", "D-001.dxf"]
     assert sum(row.is_active for row in rows) == 1
     assert not rows[0].is_active and rows[1].is_active
 
@@ -140,19 +141,19 @@ def test_degenerate_dxf_does_not_change_persisted_active_dataset(context, tmp_pa
     assert len(rows) == 1 and rows[0].logical_id == "D-001" and rows[0].is_active
 
 
-def test_csv_to_dxf_and_same_file_reimports_create_history(context, tmp_path):
+def test_supported_dxf_reimports_create_history(context, tmp_path):
     factory, ids = context
     repo = ProjectLinesRepository(factory)
-    csv_path = tmp_path / "project.csv"
-    csv_path.write_text("X,Y,Z,SID\n0,0,600,L1\n1,0,600,L1\n", encoding="utf-8")
-    document = ezdxf.new()
-    document.modelspace().add_lwpolyline(
-        [(0, 0), (2, 0)], dxfattribs={"elevation": 610}
+    first_path = write_dxf_lines(
+        tmp_path / "project-r1.dxf",
+        [("L1", [(0,0,600),(1,0,600)])],
     )
-    dxf_path = tmp_path / "project.dxf"
-    document.saveas(dxf_path)
+    second_path = write_dxf_lines(
+        tmp_path / "project-r2.dxf",
+        [("L1", [(0,0,610),(2,0,610)])],
+    )
 
-    sources = (csv_path, dxf_path, dxf_path)
+    sources = (first_path, second_path, second_path)
     datasets = []
     for source in sources:
         imported, _ = ProjectLinesDatasetService(
@@ -165,7 +166,7 @@ def test_csv_to_dxf_and_same_file_reimports_create_history(context, tmp_path):
     assert [row.logical_id for row in rows] == ["D-001", "D-002", "D-003"]
     assert [item.id for item in datasets] == ["D-001", "D-002", "D-003"]
     assert [row.source_file_name for row in rows] == [
-        "project.csv", "project.dxf", "project.dxf"
+        "project-r1.dxf", "project-r2.dxf", "project-r2.dxf"
     ]
     assert [row.is_active for row in rows] == [False, False, True]
 
