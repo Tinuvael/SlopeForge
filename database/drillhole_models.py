@@ -30,6 +30,11 @@ class BlastEventDrillholeDataset(Base):
             name="ck_blast_event_drillhole_datasets_kind",
         ),
         CheckConstraint(
+            "((dataset_kind = 'design' AND matched_design_dataset_id IS NULL) "
+            "OR (dataset_kind = 'actual' AND matched_design_dataset_id IS NOT NULL))",
+            name="ck_blast_event_drillhole_datasets_design_provenance",
+        ),
+        CheckConstraint(
             "source_format IN ('dxf', 'datamine')",
             name="ck_blast_event_drillhole_datasets_format",
         ),
@@ -80,6 +85,9 @@ class BlastEventDrillholeDataset(Base):
     logical_id: Mapped[str] = mapped_column(String(255), nullable=False)
     dataset_kind: Mapped[str] = mapped_column(String(20), nullable=False)
     revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    matched_design_dataset_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("blast_event_drillhole_datasets.id", ondelete="RESTRICT"), nullable=True
+    )
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     imported_by_user_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
