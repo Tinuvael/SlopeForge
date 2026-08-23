@@ -139,6 +139,8 @@ def test_actual_import_matches_current_design_revision_and_persists_qa(tmp_path)
     row = service.import_dataset(7, "BE-1", "actual", actual)
 
     assert row.matched_design_dataset_id == current_design.id
+    assert service.actual_uses_current_design(7, "BE-1")
+    assert len(service.current_holes(7, "BE-1", "actual")) == 2
     paired = [item for item in row.matches_json if item["actual_hole_id"]]
     assert len(paired) == 2
     assert {item["match_method"] for item in paired} == {"matched_geometry_high_confidence"}
@@ -146,6 +148,11 @@ def test_actual_import_matches_current_design_revision_and_persists_qa(tmp_path)
     assert all(item["collar_distance_xy_m"] is not None for item in paired)
     assert all(item["toe_deviation_3d_m"] is not None for item in paired)
     assert all(item["length_deviation_percent"] is not None for item in paired)
+
+    service.import_dataset(7, "BE-1", "design", design)
+    assert not service.actual_uses_current_design(7, "BE-1")
+    assert service.current_holes(7, "BE-1", "actual") == ()
+    assert service.current(7, "BE-1", "actual").design_revision_current is False
 
 
 def test_actual_import_requires_design_dataset(tmp_path):
