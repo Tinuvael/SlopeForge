@@ -62,7 +62,11 @@ class BlastEventDrillholeDatasetService:
             raise ValueError(f"Unsupported drillhole dataset kind: {dataset_kind!r}")
         path = Path(source_path)
         imported = import_line_geometry(path)
-        holes = drillholes_from_lines(imported.lines)
+        # Geometry sources used in Studio can contain flat marker/reference
+        # strings alongside real hole traces. Existing contour import already
+        # excludes those rows; keep the same product semantics here.
+        candidate_lines = [line for line in imported.lines if not line.is_horizontal]
+        holes = drillholes_from_lines(candidate_lines)
         summary = summarize_drillholes(holes)
 
         matches = []
