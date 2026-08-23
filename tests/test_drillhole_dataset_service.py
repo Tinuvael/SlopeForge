@@ -136,10 +136,11 @@ def test_actual_import_matches_design_and_persists_qa(tmp_path):
 
     paired = [item for item in row.matches_json if item["actual_hole_id"]]
     assert len(paired) == 2
-    assert {item["match_method"] for item in paired} == {"matched_nearest_collar"}
+    assert {item["match_method"] for item in paired} == {"matched_geometry_high_confidence"}
     assert {item["design_hole_id"] for item in paired} == {"D1", "D2"}
     assert all(item["collar_distance_xy_m"] is not None for item in paired)
     assert all(item["toe_deviation_3d_m"] is not None for item in paired)
+    assert all(item["length_deviation_percent"] is not None for item in paired)
 
 
 def test_actual_import_requires_design_dataset(tmp_path):
