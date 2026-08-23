@@ -15,6 +15,7 @@ from alembic.util.exc import CommandError
 from .base import Base
 from . import assessment_models  # noqa: F401  Ensure Assessment tables are validated.
 from . import project_surface_models  # noqa: F401  Ensure Project surface metadata is validated.
+from . import drillhole_models  # noqa: F401  Ensure BlastEvent drillhole tables are validated.
 from .connection import (DatabaseConnectionError, check_connection,
                          create_database_engine, create_session_factory)
 from .models import User  # noqa: F401
