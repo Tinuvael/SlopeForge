@@ -14,6 +14,7 @@ from alembic.util.exc import CommandError
 
 from .base import Base
 from . import assessment_models  # noqa: F401  Ensure Assessment tables are validated.
+from . import project_surface_models  # noqa: F401  Ensure Project surface metadata is validated.
 from .connection import (DatabaseConnectionError, check_connection,
                          create_database_engine, create_session_factory)
 from .models import User  # noqa: F401
@@ -97,7 +98,7 @@ def _verify_alembic_revision(engine, server: str | None) -> None:
 
 
 def _initialize_empty_database(engine, settings: Settings, server: str | None) -> None:
-    """Apply the baseline only when no Alembic head and no user tables exist."""
+    """Apply the migration graph only when no Alembic head and no user tables exist."""
     if _database_alembic_heads(engine):
         return
     existing = set(inspect(engine).get_table_names())
