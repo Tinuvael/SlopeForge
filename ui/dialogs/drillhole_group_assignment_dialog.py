@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPointF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QDialog,
     QGraphicsEllipseItem,
@@ -36,7 +36,7 @@ class DrillholeSelectionView(QGraphicsView):
         self._hole_items: dict[str, QGraphicsEllipseItem] = {}
         self._polygon_preview: QGraphicsPathItem | None = None
         self.setScene(QGraphicsScene(self))
-        self.setRenderHint(self.renderHints().Antialiasing, True)
+        self.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self._render(plan_geometry)
