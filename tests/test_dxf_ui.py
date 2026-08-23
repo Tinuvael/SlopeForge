@@ -5,6 +5,7 @@ def test_all_active_line_geometry_pickers_offer_dxf_dm_and_dmx_only():
     root = Path(__file__).parents[1]
     picker_files = [
         "ui/project_dialog.py", "ui/pages/dashboards/site_dashboard.py",
+        "ui/pages/dashboards/domain_dashboard.py",
         "ui/dialogs/blast_event_dialog.py", "ui/pages/block_page.py",
         "ui/pages/contour_event_page.py",
     ]
