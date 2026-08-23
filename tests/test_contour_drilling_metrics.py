@@ -23,7 +23,11 @@ def test_straight_contour_is_ordered_by_geometry_not_input_order():
     assert summary.median_spacing_m == pytest.approx(5)
     assert summary.min_spacing_m == pytest.approx(5)
     assert summary.max_spacing_m == pytest.approx(5)
-    assert summary.alignment_azimuth_deg in pytest.approx((90.0, 270.0))
+    assert summary.alignment_azimuth_deg is not None
+    assert min(
+        abs(summary.alignment_azimuth_deg - 90.0),
+        abs(summary.alignment_azimuth_deg - 270.0),
+    ) <= 1e-9
 
 
 def test_curved_contour_uses_local_chain_length_for_spacing():
