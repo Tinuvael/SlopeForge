@@ -11,9 +11,11 @@ from PySide6.QtWidgets import (
 )
 
 from app.localization import tr
-from app.use_case_factory import create_rename_project_use_case
+from app.use_case_factory import (
+    create_project_surface_dataset_service,
+    create_rename_project_use_case,
+)
 from application.services.project_lines import ProjectLinesDatasetService
-from application.services.project_surfaces import ProjectSurfaceDatasetService
 from application.state.assessment_domain_state import AssessmentDomainState
 from application.use_cases.rename_project import RenameProjectCommand
 from repositories.dashboard_repository import DashboardRepository
@@ -58,9 +60,7 @@ class SiteDashboardPage(QWidget):
         self.site_id = site_id
         self.repo = DashboardRepository(context.session_factory)
         self.lines_repo = ProjectLinesRepository(context.session_factory)
-        self.surface_service = ProjectSurfaceDatasetService(
-            context.session_factory, context.storage_root
-        )
+        self.surface_service = create_project_surface_dataset_service(context)
         self.rename_project = create_rename_project_use_case(context)
         self.snapshot = self.repo.site_snapshot(site_id)
 
