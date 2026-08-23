@@ -40,6 +40,12 @@ def test_imported_line_is_normalized_collar_to_toe_without_losing_intermediate_p
     assert hole.points[1] == DrillholePoint(1, 1, 610)
 
 
+def test_canonical_drillhole_points_reject_non_finite_coordinates():
+    for value in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="must be finite"):
+            DrillholePoint(value, 0.0, 630.0)
+
+
 def test_drillhole_metrics_use_full_polyline_length_and_endpoint_orientation():
     hole = Drillhole(
         "H-1",
