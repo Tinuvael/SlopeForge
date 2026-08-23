@@ -32,8 +32,18 @@ from repositories.project_surface_repository import ProjectSurfaceDatasetReposit
 from repositories.drillhole_dataset_repository import BlastEventDrillholeDatasetRepository
 
 
+def create_drillhole_dataset_service(context):
+    return BlastEventDrillholeDatasetService(
+        BlastEventDrillholeDatasetRepository(context.session_factory),
+        BlastEventDrillholeFileStorage(context.storage_root),
+    )
+
+
 def create_blast_event_use_case(context):
-    return CreateBlastEvent(SqlAlchemyBlastEventCreationPersistence(context.session_factory))
+    return CreateBlastEvent(
+        SqlAlchemyBlastEventCreationPersistence(context.session_factory),
+        create_drillhole_dataset_service(context),
+    )
 
 
 def create_entity_editing_session(context, domain_id):
@@ -66,13 +76,6 @@ def create_project_surface_dataset_service(context):
         ProjectSurfaceDatasetRepository(context.session_factory),
         ProjectGeometryFileStorage(context.storage_root),
         import_surface_geometry,
-    )
-
-
-def create_drillhole_dataset_service(context):
-    return BlastEventDrillholeDatasetService(
-        BlastEventDrillholeDatasetRepository(context.session_factory),
-        BlastEventDrillholeFileStorage(context.storage_root),
     )
 
 
