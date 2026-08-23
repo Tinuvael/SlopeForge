@@ -9,6 +9,7 @@ from application.services.entity_editing import AssessmentEditingSession
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.assessment.entities import AssessmentArea, AssessmentEventLink
 from tests.assessment_boundary_fixtures import boundary_from_polygon, geometry_revision
+from tests.geometry_test_files import test_line as _line, write_dxf_lines
 from domain.assessment.evaluation import AssessmentAreaEvaluationService
 from domain.blasting.entities import BlastEvent, BlastEventGeometryRevision
 from domain.geometry.types import PlanPoint, PlanPolygon
@@ -39,7 +40,7 @@ def entities():
                            PlanPoint(0, 5), PlanPoint(0, 0)))
     event = BlastEvent("BE-1", "Block", "production", date.today(), 100)
     event.geometry_revisions.append(BlastEventGeometryRevision(
-        "BEG-1", event.id, 1, datetime.now(timezone.utc), "event.csv", [], polygon, 100, True))
+        "BEG-1", event.id, 1, datetime.now(timezone.utc), "event.dxf", [], polygon, 100, True))
     event.active_geometry_revision_id = "BEG-1"
     geometry = geometry_revision(
         "AAG-1", "AA-1", 1, datetime.now(timezone.utc), polygon,
@@ -95,7 +96,7 @@ def test_first_card_save_failure_leaves_reusable_empty_card_without_phantom_revi
     assert card.revisions == [] and card.active_revision_id is None
     reused, retry = editing.technical_card_draft(event)
     assert reused is card and retry.technical_card_id == card.id
-    assert draft.common_parameters is not None  # the editor-owned input remains usable
+    assert draft.common_parameters is not None
 
 
 def test_evaluation_open_is_transient_then_first_save_persists_owner_and_revision():
@@ -130,8 +131,6 @@ def test_historical_completed_evaluation_draft_reads_separate_stored_indices_wit
     evaluation, draft = editing.evaluation_draft(area)
     editing.save_evaluation(evaluation, draft, "draft")
     stored = evaluation.active_revision()
-    # Deliberately use distinct persisted values. Opening history must not run the
-    # current matrix or linked-event calculation over them.
     stored.status = "completed"
     stored.design_achievement_index = 0.23
     stored.face_condition_index = 0.87
@@ -221,16 +220,19 @@ def test_archive_and_reimport_permissions_and_contour_type_are_enforced(tmp_path
     with pytest.raises(PermissionError):
         viewer.set_assessment_area_archived(area, True)
     with pytest.raises(PermissionError):
-        viewer.reimport_blast_event_geometry(event, tmp_path / "unused.csv")
+        viewer.reimport_blast_event_geometry(event, tmp_path / "unused.dxf")
     assert persistence.saves == 0 and not area.is_archived
     editing, _, production, _ = session()
     with pytest.raises(ValueError, match="contour"):
         editing.set_contour_event_archived(production, True)
 
 
-def test_reimport_success_and_persistence_failure_restore_live_geometry():
+def test_reimport_success_and_persistence_failure_restore_live_geometry(tmp_path):
     editing, persistence, event, _ = session()
-    path = "tests/fixtures/production_two_closed_levels.csv"
+    path = write_dxf_lines(tmp_path / "production.dxf", [
+        ("LOWER", [(0,0,90),(10,0,90),(10,10,90),(0,0,90)]),
+        ("UPPER", [(0,0,100),(10,0,100),(10,10,100),(0,0,100)]),
+    ])
     original = event.geometry_revisions[0]
     added = editing.reimport_blast_event_geometry(event, path)
     assert persistence.saves == 1 and added.revision_number == 2
@@ -266,9 +268,14 @@ def test_link_commands_save_once_and_restore_exact_objects_on_failure():
 def geometry_session(tmp_path, *, fail=False, can_edit=True):
     from application.services.project_lines import ProjectLinesDatasetService
     state = AssessmentDomainState()
-    source = tmp_path / "lines.csv"
-    source.write_text("XP,YP,ZP,SID,PTN\n0,2,90,lo,1\n10,2,90,lo,2\n0,8,110,hi,1\n10,8,110,hi,2\n", encoding="utf-8")
-    ProjectLinesDatasetService(state).import_dataset(source)
+    ProjectLinesDatasetService(state).create_dataset(
+        name="lines",
+        source_file_name="lines.dxf",
+        lines=[
+            _line("lo", [(0,2,90),(10,2,90)], order=0),
+            _line("hi", [(0,8,110),(10,8,110)], order=1),
+        ],
+    )
     persistence = MemoryPersistence(state, fail=fail)
     editing = AssessmentEditingSession(persistence, 3, actor_id=11, can_edit=can_edit, writes=persistence)
     polygon = PlanPolygon((PlanPoint(0, 0), PlanPoint(10, 0), PlanPoint(10, 10), PlanPoint(0, 10), PlanPoint(0, 0)))
@@ -324,7 +331,6 @@ def test_geometry_commit_new_failure_and_viewer_do_not_mutate(tmp_path):
 
 
 def test_geometry_link_scan_failure_after_real_partial_mutation_restores_links(tmp_path, monkeypatch):
-    """refresh_suggestions cleans links before evaluation; that partial edit must not leak."""
     from domain.assessment.entities import AssessmentEventLink
     editing, persistence, polygon, boundary = geometry_session(tmp_path)
     event, _unused = entities()
