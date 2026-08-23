@@ -14,6 +14,7 @@ from application.state.assessment_domain_state import AssessmentDomainState
 from domain.assessment.geometry import ProjectLineSpan, SpatialPoint, StraightConnector, extract_project_line_span
 from domain.geometry.types import PlanPoint, PlanPolygon
 from tests.assessment_boundary_fixtures import boundary_from_polygon
+from tests.geometry_test_files import test_line as _line
 from ui.editors.assessment_geometry_editor import (ASSESSMENT_CONTEXT_ROLE, PROJECT_LINE_ROLE, SNAP_MARKER_ROLE,
                                                     AssessmentGeometryEditorWidget)
 
@@ -24,13 +25,16 @@ def app():
 
 
 @pytest.fixture
-def state(tmp_path):
-    source = tmp_path / "project.csv"
-    source.write_text(
-        "XP,YP,ZP,SID,PTN\n0,10,110,A,1\n5,12,115,A,2\n10,10,120,A,3\n"
-        "0,0,90,B,1\n5,-2,95,B,2\n10,0,100,B,3\n", encoding="utf-8")
+def state():
     result = AssessmentDomainState()
-    ProjectLinesDatasetService(result).import_dataset(source)
+    ProjectLinesDatasetService(result).create_dataset(
+        name="project",
+        source_file_name="project.dxf",
+        lines=[
+            _line("A", [(0, 10, 110), (5, 12, 115), (10, 10, 120)], order=0),
+            _line("B", [(0, 0, 90), (5, -2, 95), (10, 0, 100)], order=1),
+        ],
+    )
     return result
 
 
@@ -232,13 +236,17 @@ def test_page_owns_name_and_date_fields_and_grid_is_not_exposed():
     assert 'tr("Grid")' not in source and '"Grid size"' not in source
 
 
-def test_dense_parallel_lines_use_active_line_hysteresis(tmp_path, app):
-    source=tmp_path/"dense.csv"
-    source.write_text(
-        "XP,YP,ZP,SID,PTN\n0,0,700.1234567,A,1\n5,1,704.8765432,A,2\n10,0,711.3337777,A,3\n"
-        "0,1,701.1234567,B,1\n5,2,705.8765432,B,2\n10,1,712.3337777,B,3\n"
-        "0,2,702.1234567,C,1\n5,3,706.8765432,C,2\n10,2,713.3337777,C,3\n",encoding="utf-8")
-    state=AssessmentDomainState(); ProjectLinesDatasetService(state).import_dataset(source)
+def test_dense_parallel_lines_use_active_line_hysteresis(app):
+    state=AssessmentDomainState()
+    ProjectLinesDatasetService(state).create_dataset(
+        name="dense",
+        source_file_name="dense.dxf",
+        lines=[
+            _line("A", [(0,0,700.1234567),(5,1,704.8765432),(10,0,711.3337777)], order=0),
+            _line("B", [(0,1,701.1234567),(5,2,705.8765432),(10,1,712.3337777)], order=1),
+            _line("C", [(0,2,702.1234567),(5,3,706.8765432),(10,2,713.3337777)], order=2),
+        ],
+    )
     editor=AssessmentGeometryEditorWidget(state,committer(state)); editor.plan_view.scale(10,10); editor.start_new_area()
     editor._drawing_click(0,0); assert editor._last_anchor.source_line_id=="A"
     editor._drawing_move(5,1.51); assert editor._candidate.anchor.source_line_id=="A"
@@ -251,12 +259,13 @@ def test_dense_parallel_lines_use_active_line_hysteresis(tmp_path, app):
     editor._drawing_click(10,1); assert isinstance(editor._segments[-1],ProjectLineSpan)
 
 
-def test_closed_contour_active_trace_crosses_source_seam(tmp_path, app):
-    source=tmp_path/"closed.csv"
-    source.write_text(
-        "XP,YP,ZP,SID,PTN\n0,0,100,C,1\n10,0,101,C,2\n10,10,102,C,3\n"
-        "0,10,103,C,4\n0,0,100,C,5\n",encoding="utf-8")
-    state=AssessmentDomainState(); ProjectLinesDatasetService(state).import_dataset(source)
+def test_closed_contour_active_trace_crosses_source_seam(app):
+    state=AssessmentDomainState()
+    ProjectLinesDatasetService(state).create_dataset(
+        name="closed",
+        source_file_name="closed.dxf",
+        lines=[_line("C", [(0,0,100),(10,0,101),(10,10,102),(0,10,103),(0,0,100)], order=0)],
+    )
     editor=AssessmentGeometryEditorWidget(state,committer(state)); editor.plan_view.scale(10,10); editor.start_new_area()
     editor._drawing_click(0,5)
     assert editor._last_anchor.source_segment_index==3
