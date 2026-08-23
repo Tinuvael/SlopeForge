@@ -38,6 +38,34 @@ def test_automatic_values_are_marked_and_read_only_in_existing_group_forms():
     assert 'widget.setReadOnly(True)' in source
 
 
+def test_contour_fact_uses_same_design_hole_matches_as_production_when_grouped():
+    source = Path("ui/pages/technical_card_widgets.py").read_text(encoding="utf-8")
+    start = source.index("    def _apply_contour_actual")
+    end = source.index("    def _apply_actual_group_matches", start)
+    method = source[start:end]
+    assert 'design_holes = self._current_holes("design")' in method
+    assert "if any(hole.engineering_group_id for hole in design_holes):" in method
+    assert "self._apply_actual_group_matches(" in method
+    assert "group_ids_to_refresh" in method
+
+
+def test_contour_fact_auto_fields_follow_any_explicit_design_group():
+    source = Path("ui/pages/technical_card_widgets.py").read_text(encoding="utf-8")
+    start = source.index("    def _actual_auto_fields")
+    end = source.index("    def refresh_drillhole_page", start)
+    method = source[start:end]
+    assert "hole.engineering_group_id == group.design_group_id" in method
+    assert "not any_assigned" in method
+
+
+def test_drillhole_dataset_card_has_small_gap_below_tabs():
+    source = Path("ui/pages/technical_card_widgets.py").read_text(encoding="utf-8")
+    start = source.index("class _DrillholeEngineeringPage")
+    end = source.index("class TechnicalCardEditorWidget", start)
+    page = source[start:end]
+    assert "layout.setContentsMargins(0, 8, 0, 0)" in page
+
+
 def test_successful_import_uses_inline_feedback_instead_of_modal_confirmation():
     source = Path("ui/pages/technical_card_widgets.py").read_text(encoding="utf-8")
     assert "Imported successfully. Automatic values were updated" in source
