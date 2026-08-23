@@ -234,6 +234,18 @@ class BlastEventDrillholeDatasetService:
         unknown = sorted(selected - known)
         if unknown:
             raise ValueError(f"Unknown design drillhole ID(s): {', '.join(unknown)}")
+        conflicts = sorted(
+            hole.hole_id
+            for hole in holes
+            if hole.hole_id in selected
+            and hole.engineering_group_id
+            and hole.engineering_group_id != group_id
+        )
+        if conflicts:
+            raise ValueError(
+                "Design drillhole(s) are already assigned to another drilling group: "
+                + ", ".join(conflicts)
+            )
         for hole in holes:
             if hole.hole_id in selected:
                 hole.engineering_group_id = group_id
