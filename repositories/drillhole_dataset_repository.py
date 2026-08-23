@@ -15,6 +15,10 @@ class DrillholeDatasetNotFoundError(LookupError):
     pass
 
 
+class DrillholeDatasetConflictError(RuntimeError):
+    pass
+
+
 class BlastEventDrillholeDatasetRepository:
     def __init__(self, session_factory: Callable[[], Session]):
         self._session_factory = session_factory
@@ -89,18 +93,46 @@ class BlastEventDrillholeDatasetRepository:
         return self._get_row(row_id)
 
     def update_holes(self, row_id: int, holes: list[dict[str, object]]) -> BlastEventDrillholeDataset:
-        """Persist semantic group assignment on the current source revision.
+        """Persist semantic group assignment on the current design revision only.
 
-        File re-import creates revisions. Group assignment is editable design
-        classification of that revision and therefore does not duplicate the
-        physical source file or increment the geometry revision number.
+        Re-import creates a newer immutable source revision. A user who had an
+        assignment dialog open while another session re-imported the design must
+        not silently write classifications back into the now-historical row.
         """
         with self._session_factory.begin() as session:
-            row = session.get(BlastEventDrillholeDataset, int(row_id), with_for_update=True)
+            row = session.get(BlastEventDrillholeDataset, int(row_id))
             if row is None:
                 raise DrillholeDatasetNotFoundError(str(row_id))
             if row.dataset_kind != "design":
                 raise ValueError("Only design drillholes can be assigned to design groups")
+
+            # Match add_dataset's lock order at the BlastEvent aggregate boundary.
+            event = session.scalar(
+                select(BlastEvent)
+                .where(BlastEvent.id == row.blast_event_id)
+                .with_for_update()
+            )
+            if event is None:
+                raise DrillholeDatasetNotFoundError(str(row_id))
+            row = session.get(
+                BlastEventDrillholeDataset,
+                int(row_id),
+                with_for_update=True,
+                populate_existing=True,
+            )
+            current_id = session.scalar(
+                select(BlastEventDrillholeDataset.id)
+                .where(
+                    BlastEventDrillholeDataset.blast_event_id == event.id,
+                    BlastEventDrillholeDataset.dataset_kind == "design",
+                )
+                .order_by(BlastEventDrillholeDataset.revision_number.desc())
+                .limit(1)
+            )
+            if current_id != row.id:
+                raise DrillholeDatasetConflictError(
+                    "Design drillhole dataset changed while group assignments were being edited. Refresh and retry."
+                )
             row.holes_json = list(holes)
             session.flush()
         return self._get_row(row_id)
