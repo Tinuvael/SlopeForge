@@ -60,6 +60,7 @@ class MemoryRepository:
         row = SimpleNamespace(
             id=self.next_id,
             revision_number=revision,
+            matched_design_dataset_id=values["matched_design_dataset_id"],
             holes_json=values["holes"],
             summary_json=values["summary"],
             matches_json=values["matches"],
@@ -110,12 +111,14 @@ def test_design_import_ignores_flat_marker_strings_and_reimport_increments_revis
     second = service.import_dataset(7, "BE-1", "design", source)
 
     assert first.revision_number == 1 and second.revision_number == 2
+    assert first.matched_design_dataset_id is None
+    assert second.matched_design_dataset_id is None
     assert first.summary_json["hole_count"] == 2
     assert [item["hole_id"] for item in first.holes_json] == ["H1", "H2"]
     assert len(storage.copied) == 2
 
 
-def test_actual_import_matches_design_and_persists_qa(tmp_path):
+def test_actual_import_matches_current_design_revision_and_persists_qa(tmp_path):
     mapping = {
         "design.dxf": [
             line("D1", [(0,0,630),(0,0,620)]),
@@ -132,8 +135,10 @@ def test_actual_import_matches_design_and_persists_qa(tmp_path):
     actual = tmp_path / "actual.dxf"; actual.write_text("a")
 
     service.import_dataset(7, "BE-1", "design", design)
+    current_design = service.import_dataset(7, "BE-1", "design", design)
     row = service.import_dataset(7, "BE-1", "actual", actual)
 
+    assert row.matched_design_dataset_id == current_design.id
     paired = [item for item in row.matches_json if item["actual_hole_id"]]
     assert len(paired) == 2
     assert {item["match_method"] for item in paired} == {"matched_geometry_high_confidence"}
