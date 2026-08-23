@@ -19,6 +19,7 @@ def upgrade() -> None:
         sa.Column("logical_id", sa.String(length=255), nullable=False),
         sa.Column("dataset_kind", sa.String(length=20), nullable=False),
         sa.Column("revision_number", sa.Integer(), nullable=False),
+        sa.Column("matched_design_dataset_id", sa.Integer(), nullable=True),
         sa.Column("imported_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("imported_by_user_id", sa.Integer(), nullable=True),
         sa.Column("source_format", sa.String(length=20), nullable=False),
@@ -31,6 +32,11 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "dataset_kind IN ('design', 'actual')",
             name="ck_blast_event_drillhole_datasets_kind",
+        ),
+        sa.CheckConstraint(
+            "((dataset_kind = 'design' AND matched_design_dataset_id IS NULL) "
+            "OR (dataset_kind = 'actual' AND matched_design_dataset_id IS NOT NULL))",
+            name="ck_blast_event_drillhole_datasets_design_provenance",
         ),
         sa.CheckConstraint(
             "source_format IN ('dxf', 'datamine')",
@@ -65,6 +71,11 @@ def upgrade() -> None:
             name="ck_blast_event_drillhole_datasets_matches_array",
         ),
         sa.ForeignKeyConstraint(["blast_event_id"], ["blast_events.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["matched_design_dataset_id"],
+            ["blast_event_drillhole_datasets.id"],
+            ondelete="RESTRICT",
+        ),
         sa.ForeignKeyConstraint(["imported_by_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
