@@ -9,10 +9,16 @@ from application.services.drillhole_datasets import BlastEventDrillholeDatasetSe
 from domain.geometry.types import DatamineLine, DataminePoint
 
 
-def line(source_id, points):
+def line(source_id, points, *, line_id_field=None):
+    attributes = (
+        {"datamine_line_id_field": line_id_field}
+        if line_id_field is not None
+        else {}
+    )
     return DatamineLine(
         source_id,
         [DataminePoint(x, y, z, index + 1) for index, (x, y, z) in enumerate(points)],
+        source_attributes=attributes,
     )
 
 
@@ -168,7 +174,7 @@ def test_actual_import_requires_design_dataset(tmp_path):
         service.import_dataset(7, "BE-1", "actual", source)
 
 
-def test_group_assignment_is_exclusive_and_stable_datamine_ids_carry_across_reimport(tmp_path):
+def test_group_assignment_is_exclusive_and_explicit_datamine_sid_carries_across_reimport(tmp_path):
     source = tmp_path / "design.dmx"; source.write_text("d")
     repo = MemoryRepository(); storage = MemoryStorage()
     service = BlastEventDrillholeDatasetService(
@@ -176,9 +182,9 @@ def test_group_assignment_is_exclusive_and_stable_datamine_ids_carry_across_reim
         storage,
         importer_for({
             "design.dmx": [
-                line("H1", [(0,0,630),(0,0,620)]),
-                line("H2", [(5,0,630),(5,0,620)]),
-                line("H3", [(10,0,630),(10,0,620)]),
+                line("H1", [(0,0,630),(0,0,620)], line_id_field="SID"),
+                line("H2", [(5,0,630),(5,0,620)], line_id_field="SID"),
+                line("H3", [(10,0,630),(10,0,620)], line_id_field="SID"),
             ]
         }),
     )
@@ -199,6 +205,34 @@ def test_group_assignment_is_exclusive_and_stable_datamine_ids_carry_across_reim
     assert {hole.hole_id for hole in service.assigned_holes(7, "BE-1", "MAIN")} == {"H1"}
     assert {hole.hole_id for hole in service.assigned_holes(7, "BE-1", "BUFFER")} == {"H3"}
     assert next(hole for hole in service.current_holes(7, "BE-1", "design") if hole.hole_id == "H2").engineering_group_id is None
+
+
+def test_datamine_pvalue_is_not_assumed_stable_across_reimport(tmp_path):
+    source = tmp_path / "design.dmx"; source.write_text("d")
+    service = BlastEventDrillholeDatasetService(
+        MemoryRepository(),
+        MemoryStorage(),
+        importer_for({
+            "design.dmx": [
+                line("1", [(0,0,630),(0,0,620)], line_id_field="PVALUE"),
+                line("2", [(10,0,630),(10,0,620)], line_id_field="PVALUE"),
+            ]
+        }),
+    )
+    first = service.import_dataset(7, "BE-1", "design", source)
+    assert all(
+        item["source_attributes"]["source_identity_kind"] == "datamine_pvalue"
+        and item["source_attributes"]["stable_hole_id"] is False
+        for item in first.holes_json
+    )
+    service.assign_design_holes(7, "BE-1", "MAIN", {"1"})
+
+    service.import_dataset(7, "BE-1", "design", source)
+
+    assert all(
+        hole.engineering_group_id is None
+        for hole in service.current_holes(7, "BE-1", "design")
+    )
 
 
 def test_dxf_document_local_ids_do_not_carry_group_assignment_to_new_revision(tmp_path):
