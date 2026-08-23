@@ -9,6 +9,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, func, select
 from tests.postgres_test_database import is_disposable_test_database
+from tests.geometry_test_files import write_production_dxf
 from sqlalchemy.orm import sessionmaker
 
 URL = os.getenv("TEST_DATABASE_URL")
@@ -108,11 +109,11 @@ def test_two_stale_focused_assessment_sessions(factory, domains):
 
 def test_production_event_version_and_children_commit_or_roll_back(factory, domains, tmp_path):
     domain_id, *_ = domains
-    csv = tmp_path / "blast.csv"
-    csv.write_text("SID,PTN,X,Y,Z\nA,1,0,0,100\nA,2,10,0,100\nA,3,10,10,100\nA,4,0,10,100\nA,5,0,0,100\n")
+    geometry = write_production_dxf(tmp_path / "blast.dxf", elevation=100,
+                                    ring=((0,0),(10,0),(10,10),(0,10),(0,0)))
     use_case = CreateBlastEvent(SqlAlchemyBlastEventCreationPersistence(factory))
     result = use_case.execute(CreateBlastEventCommand(
-        domain_id, "P-1", "production", date.today(), 100, str(csv), None, True))
+        domain_id, "P-1", "production", date.today(), 100, str(geometry), None, True))
     assert result.event_type == "production" and versions(factory, domain_id) == (1,)
     with factory() as session:
         persisted = session.scalar(select(orm.BlastEvent).where(
@@ -130,7 +131,7 @@ def test_production_event_version_and_children_commit_or_roll_back(factory, doma
         if stage == "after_event_flush" else None))
     with pytest.raises(RuntimeError):
         failing.execute(CreateBlastEventCommand(
-            domain_id, "P-2", "production", date.today(), 100, str(csv), None, True))
+            domain_id, "P-2", "production", date.today(), 100, str(geometry), None, True))
     assert versions(factory, domain_id) == (1,)
     with factory() as session:
         assert session.scalar(select(func.count()).select_from(orm.BlastEvent)) == 1
