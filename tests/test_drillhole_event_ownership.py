@@ -16,7 +16,7 @@ def test_actual_dataset_references_exact_design_dataset_revision():
     table = Base.metadata.tables["blast_event_drillhole_datasets"]
     provenance_fk = next(iter(table.c.matched_design_dataset_id.foreign_keys))
     assert provenance_fk.target_fullname == "blast_event_drillhole_datasets.id"
-    assert provenance_fk.ondelete == "RESTRICT"
+    assert provenance_fk.ondelete == "CASCADE"
     checks = " ".join(
         str(constraint.sqltext)
         for constraint in table.constraints
