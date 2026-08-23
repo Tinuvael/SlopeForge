@@ -7,6 +7,7 @@ from typing import Callable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from database import assessment_models as _assessment_models  # noqa: F401
 from database.models import Site
 from database.project_surface_models import ProjectSurfaceDataset
 
