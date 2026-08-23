@@ -188,7 +188,7 @@ class _DrillholeEngineeringPage(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(8)
         self.dataset_card = DrillholeDatasetCard(
             dataset_kind,
@@ -352,22 +352,22 @@ class TechnicalCardEditorWidget(QWidget):
             return set()
         if not group.design_group_id:
             return set()
-        if self.editor.blast_event.event_type == "contour":
-            primary = self._primary_contour_group_candidate()
-            return (
-                set(self._ACTUAL_AUTO_FIELDS)
-                if primary is not None and group.design_group_id == primary.id
-                else set()
-            )
         design_holes = self._current_holes("design")
-        return (
-            set(self._ACTUAL_AUTO_FIELDS)
-            if any(
-                hole.engineering_group_id == group.design_group_id
-                for hole in design_holes
-            )
-            else set()
-        )
+        if any(
+            hole.engineering_group_id == group.design_group_id
+            for hole in design_holes
+        ):
+            return set(self._ACTUAL_AUTO_FIELDS)
+        if self.editor.blast_event.event_type == "contour":
+            any_assigned = any(hole.engineering_group_id for hole in design_holes)
+            primary = self._primary_contour_group_candidate()
+            if (
+                not any_assigned
+                and primary is not None
+                and group.design_group_id == primary.id
+            ):
+                return set(self._ACTUAL_AUTO_FIELDS)
+        return set()
 
     def refresh_drillhole_page(self, dataset_kind: str, *, apply_to_draft: bool = False):
         page = self._drillhole_pages.get(dataset_kind)
@@ -510,7 +510,10 @@ class TechnicalCardEditorWidget(QWidget):
             actual_row = self._current_row("actual")
             if actual_row is not None and bool(getattr(actual_row, "design_revision_current", True)):
                 if self.editor.blast_event.event_type == "contour":
-                    self._apply_contour_actual(actual_row)
+                    self._apply_contour_actual(
+                        actual_row,
+                        changed_group_ids=affected_group_ids,
+                    )
                 else:
                     self._apply_actual_group_matches(
                         actual_row,
@@ -669,9 +672,20 @@ class TechnicalCardEditorWidget(QWidget):
         self.editor._render_actual_groups()
         self.editor._refresh_actual_summary()
 
-    def _apply_contour_actual(self, row) -> None:
+    def _apply_contour_actual(self, row, *, changed_group_ids=()) -> None:
+        design_holes = self._current_holes("design")
         holes = self._current_holes("actual")
         if not holes:
+            return
+        if any(hole.engineering_group_id for hole in design_holes):
+            group_ids_to_refresh = {
+                group.id for group in self.editor.revision.drilling_groups
+            }
+            group_ids_to_refresh.update(changed_group_ids)
+            self._apply_actual_group_matches(
+                row,
+                changed_group_ids=group_ids_to_refresh,
+            )
             return
         design = self._primary_contour_group()
         actual = self._ensure_actual_group(design)
