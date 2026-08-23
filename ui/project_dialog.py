@@ -52,7 +52,7 @@ class ProjectDialog(QDialog):
     def _browse(self):
         path, _ = QFileDialog.getOpenFileName(
             self, tr("Select Project Lines file"), "",
-            tr("Project Lines (*.csv *.dxf);;Datamine CSV (*.csv);;AutoCAD DXF (*.dxf)"),
+            tr("Project Lines (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"),
         )
         if path:
             self.csv_path.setText(path)

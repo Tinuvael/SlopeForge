@@ -8,6 +8,7 @@ from statistics import median
 
 from domain.entity_ids import generate_entity_id
 from domain.geometry.blast import BlastGeometryError, build_contour_geometry, build_production_geometry
+from infrastructure.datamine.dmfile import DatamineUnavailableError
 from infrastructure.geometry_import.lines import import_line_geometry
 from domain.blasting.entities import BlastEvent, BlastEventGeometryRevision
 from application.state.assessment_domain_state import AssessmentDomainState
@@ -59,7 +60,7 @@ class BlastEventService:
         path = Path(csv_path)
         try:
             result = import_line_geometry(path)
-        except ValueError as exc:
+        except (ValueError, DatamineUnavailableError) as exc:
             raise BlastEventValidationError(f"Could not import geometry file: {exc}") from exc
         if not result.lines:
             message = ("Geometry file contains no valid contour drillholes" if event_type == "contour"
@@ -90,7 +91,7 @@ class BlastEventService:
         path = Path(csv_path)
         try:
             result = import_line_geometry(path)
-        except ValueError as exc:
+        except (ValueError, DatamineUnavailableError) as exc:
             raise BlastEventValidationError(f"Could not import geometry file: {exc}") from exc
         if not result.lines:
             message = ("Geometry file contains no valid contour drillholes" if event.event_type == "contour"

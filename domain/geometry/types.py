@@ -39,6 +39,7 @@ class DatamineLine:
     z_median: float | None = None
     is_horizontal: bool = False
     semantic_role: str = "normal"
+    source_attributes: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.semantic_role not in SEMANTIC_ROLES:
@@ -157,4 +158,3 @@ def plan_geometry_from_dict(data: dict[str, Any]) -> PlanGeometry:
         return factories[geometry_type](data)
     except KeyError as exc:
         raise ValueError(f"Unsupported plan geometry type: {geometry_type!r}") from exc
-

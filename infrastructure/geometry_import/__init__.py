@@ -1,1 +1,1 @@
-"""CSV and DXF geometry import adapters."""
+"""DXF and native Datamine geometry import adapters."""
