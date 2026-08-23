@@ -3,22 +3,68 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 from uuid import uuid4
 
-from infrastructure.files.project_geometry import ProjectGeometryFileStorage
-from infrastructure.geometry_import.surfaces import SurfaceImportResult, import_surface_geometry
-from repositories.project_surface_repository import ProjectSurfaceDatasetRepository
+
+class SurfaceImportResultPort(Protocol):
+    source_format: str
+    source_paths: tuple[Path, ...]
+
+    @property
+    def vertex_count(self) -> int: ...
+
+    @property
+    def triangle_count(self) -> int: ...
+
+
+class StoredGeometryFilePort(Protocol):
+    def to_dict(self) -> dict[str, object]: ...
+
+
+class ProjectGeometryStoragePort(Protocol):
+    def copy_dataset(
+        self,
+        site_id: int,
+        kind: str,
+        logical_id: str,
+        source_paths: tuple[Path, ...],
+    ) -> list[StoredGeometryFilePort]: ...
+
+    def verify(
+        self,
+        relative_path: str,
+        *,
+        expected_size: int,
+        expected_sha256: str,
+    ) -> Path: ...
+
+    def remove_dataset(self, site_id: int, kind: str, logical_id: str) -> None: ...
+
+
+class ProjectSurfaceRepositoryPort(Protocol):
+    def add_dataset(self, site_id: int, **values: Any) -> Any: ...
+
+    def list_for_site(self, site_id: int, *, dataset_kind: str | None = None) -> list[Any]: ...
+
+    def get_current(self, site_id: int, dataset_kind: str) -> Any | None: ...
+
+    def get_by_logical_id(self, site_id: int, logical_id: str) -> Any: ...
+
+
+SurfaceImporter = Callable[[str | Path], SurfaceImportResultPort]
 
 
 class ProjectSurfaceDatasetService:
     def __init__(
         self,
-        session_factory: Callable[[], Any],
-        storage_root: Path,
+        repository: ProjectSurfaceRepositoryPort,
+        storage: ProjectGeometryStoragePort,
+        importer: SurfaceImporter,
     ):
-        self.repository = ProjectSurfaceDatasetRepository(session_factory)
-        self.storage = ProjectGeometryFileStorage(storage_root)
+        self.repository = repository
+        self.storage = storage
+        self.importer = importer
 
     @staticmethod
     def _logical_id() -> str:
@@ -35,7 +81,7 @@ class ProjectSurfaceDatasetService:
         if dataset_kind not in {"design", "actual"}:
             raise ValueError(f"Unsupported Project surface kind: {dataset_kind!r}")
 
-        imported = import_surface_geometry(source_path)
+        imported = self.importer(source_path)
         logical_id = self._logical_id()
         stored_files = self.storage.copy_dataset(
             site_id,
@@ -66,9 +112,7 @@ class ProjectSurfaceDatasetService:
     def current(self, site_id: int, dataset_kind: str):
         return self.repository.get_current(site_id, dataset_kind)
 
-    def load_dataset(
-        self, site_id: int, logical_id: str
-    ) -> tuple[object, SurfaceImportResult]:
+    def load_dataset(self, site_id: int, logical_id: str) -> tuple[object, object]:
         row = self.repository.get_by_logical_id(site_id, logical_id)
         paths = [
             self.storage.verify(
@@ -80,12 +124,12 @@ class ProjectSurfaceDatasetService:
         ]
         if not paths:
             raise ValueError("Project surface dataset has no stored source files")
-        result = import_surface_geometry(paths[0])
+        result = self.importer(paths[0])
         return row, result
 
     def load_current(
         self, site_id: int, dataset_kind: str
-    ) -> tuple[object, SurfaceImportResult] | None:
+    ) -> tuple[object, object] | None:
         row = self.repository.get_current(site_id, dataset_kind)
         if row is None:
             return None
