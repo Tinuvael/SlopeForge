@@ -45,6 +45,8 @@ SURFACE_FILE_FILTER = (
     "Datamine wireframe files (*.dm *.dmx)"
 )
 PROJECT_DATA_CARD_HEIGHT = 192
+PROJECT_DATA_ROW_HEIGHT = 44
+PROJECT_DATA_ROW_SPACING = 3
 
 
 class SiteDashboardPage(QWidget):
@@ -129,6 +131,7 @@ class SiteDashboardPage(QWidget):
         workspace.addWidget(right_top, 0, 1)
 
         data_row = QWidget()
+        data_row.setMinimumWidth(0)
         data_row.setFixedHeight(PROJECT_DATA_CARD_HEIGHT)
         data_row.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -140,9 +143,14 @@ class SiteDashboardPage(QWidget):
         data_layout.setRowStretch(0, 1)
         for column in range(3):
             data_layout.setColumnStretch(column, 1)
+            data_layout.setColumnMinimumWidth(column, 0)
 
         self.domain_summary = CompactSummaryList(
-            "Domain summary", visible_rows=3, show_go_to=True
+            "Domain summary",
+            visible_rows=3,
+            show_go_to=True,
+            row_height=PROJECT_DATA_ROW_HEIGHT,
+            row_spacing=PROJECT_DATA_ROW_SPACING,
         )
         self.domain_summary.activated.connect(self._filter_domain)
         self.domain_summary.go_to_requested.connect(
@@ -159,10 +167,14 @@ class SiteDashboardPage(QWidget):
         for column, card in enumerate(
             (self.domain_summary, self.lines_card, self.geometry_card)
         ):
+            card.setMinimumWidth(0)
             card.setMinimumHeight(PROJECT_DATA_CARD_HEIGHT)
             card.setMaximumHeight(PROJECT_DATA_CARD_HEIGHT)
+            # Ignore content width hints. The three cards must divide the
+            # available dashboard width evenly instead of allowing a long
+            # filename/status/action row to push the rightmost card outside.
             card.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Ignored,
                 QSizePolicy.Policy.Expanding,
             )
             data_layout.addWidget(card, 0, column)
