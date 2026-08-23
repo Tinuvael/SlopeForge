@@ -37,8 +37,7 @@ def test_map_geometry_decoder_supports_persisted_plan_types():
         {"type": "Polygon", "coordinates": [[[1, 2], [3, 4], [1, 2]]]}
     ) == ((1.0, 2.0), (3.0, 4.0), (1.0, 2.0))
     assert _geometry_points(
-        {"type": "MultiPoint", "coordinates": [[5, 6], [7, 8]]
-        }
+        {"type": "MultiPoint", "coordinates": [[5, 6], [7, 8]]}
     ) == ((5.0, 6.0), (7.0, 8.0))
     assert _geometry_points({}) == ()
 
@@ -79,19 +78,18 @@ def test_project_dashboard_data_cards_keep_one_bounded_aligned_row():
     assert "card.setMinimumWidth(0)" in project
     assert "QSizePolicy.Policy.Ignored" in project
 
-    # A header action such as Project Lines -> Add must not increase the header
-    # band and shift only that card's title/body downward.
     assert "HEADER_HEIGHT = 26" in widgets
     assert "self.header_host.setFixedHeight(self.HEADER_HEIGHT)" in widgets
     assert "button.setFixedHeight(self.HEADER_HEIGHT)" in widgets
-    assert "ROW_HEIGHT = 44" in widgets
+    assert "class ViewportBoundListWidget" in widgets
+    assert "def resizeEvent" in widgets
+    assert "self.list.refresh_item_widgets()" in widgets
 
-    # Design occupies the first body row and Actual survey the bottom row with
-    # one flexible row-sized gap between them.
     assert "ROW_HEIGHT = 44" in geometry
+    assert "DATASET_GAP = 22" in geometry
     assert "host.setFixedHeight(self.ROW_HEIGHT)" in geometry
     assert 'self._add_dataset_row("design"' in geometry
-    assert "self.body.addStretch(1)" in geometry
+    assert "self.body.addSpacing(self.DATASET_GAP)" in geometry
     assert 'self._add_dataset_row("actual"' in geometry
     assert "QSizePolicy.Policy.Ignored" in geometry
 
