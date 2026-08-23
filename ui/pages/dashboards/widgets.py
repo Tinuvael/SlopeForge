@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QMouseEvent, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -139,9 +139,6 @@ class DashboardCard(CardFrame):
         self.layout.setContentsMargins(12, 10, 12, 10)
         self.layout.setSpacing(7)
 
-        # Header actions are QPushButtons with a global 26 px minimum height.
-        # Keep every card header at exactly that height so cards without an
-        # action do not start their body several pixels above cards with one.
         self.header_host = QWidget()
         self.header_host.setFixedHeight(self.HEADER_HEIGHT)
         self.header_host.setMinimumWidth(0)
@@ -213,6 +210,48 @@ class SummaryRowWidget(QFrame):
         super().mousePressEvent(event)
 
 
+class ViewportBoundListWidget(QListWidget):
+    """Keep persistent item widgets bound to the current viewport geometry.
+
+    Project dashboard lists are populated while their page is still outside the
+    final QStackedWidget layout. On Windows, QListWidget can therefore assign a
+    persistent item widget the pre-layout viewport width and keep that stale
+    geometry until the model is changed again. A later import repopulates the
+    list and incidentally fixes it. Relayout on show/resize instead so the first
+    render is correct as well.
+    """
+
+    def _sync_item_widget_geometries(self) -> None:
+        if self.count() <= 0:
+            return
+        self.doItemsLayout()
+        viewport_rect = self.viewport().rect()
+        for index in range(self.count()):
+            item = self.item(index)
+            widget = self.itemWidget(item)
+            if widget is None:
+                continue
+            rect = self.visualItemRect(item)
+            if rect.isValid() and rect.width() > 0:
+                # Item widgets are children of the viewport, so visualItemRect
+                # is already expressed in the correct coordinate system.
+                rect.setLeft(max(rect.left(), viewport_rect.left()))
+                rect.setRight(min(rect.right(), viewport_rect.right()))
+                widget.setGeometry(rect)
+
+    def refresh_item_widgets(self) -> None:
+        self._sync_item_widget_geometries()
+        QTimer.singleShot(0, self._sync_item_widget_geometries)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.refresh_item_widgets()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.refresh_item_widgets()
+
+
 class CompactSummaryList(DashboardCard):
     """Bounded dashboard rows: row click filters, optional Go to navigates."""
 
@@ -242,7 +281,7 @@ class CompactSummaryList(DashboardCard):
         self._selected_key: str | None = None
         self._row_widgets: dict[str, SummaryRowWidget] = {}
         self._selection_markers: dict[str, QLabel] = {}
-        self.list = QListWidget()
+        self.list = ViewportBoundListWidget()
         self.list.setMinimumWidth(0)
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(self.row_spacing)
@@ -313,6 +352,7 @@ class CompactSummaryList(DashboardCard):
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             item.setSizeHint(QSize(0, self.row_height))
             self.list.addItem(item)
+            self.list.refresh_item_widgets()
             return
         for row in rows:
             key = str(row.key)
@@ -420,6 +460,7 @@ class CompactSummaryList(DashboardCard):
                 layout.addWidget(go_to)
             self.list.addItem(item)
             self.list.setItemWidget(item, holder)
+        self.list.refresh_item_widgets()
 
 
 class AssessmentProgressCard(DashboardCard):
@@ -503,7 +544,7 @@ class ProjectLinesCard(DashboardCard):
     def __init__(self, parent=None):
         super().__init__("Project Lines", parent)
         self.setMinimumHeight(118)
-        self.list = QListWidget()
+        self.list = ViewportBoundListWidget()
         self.list.setMinimumWidth(0)
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(3)
@@ -531,6 +572,7 @@ class ProjectLinesCard(DashboardCard):
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             item.setSizeHint(QSize(0, self.ROW_HEIGHT))
             self.list.addItem(item)
+            self.list.refresh_item_widgets()
             return
         for dataset in datasets:
             item = QListWidgetItem()
@@ -597,6 +639,7 @@ class ProjectLinesCard(DashboardCard):
             layout.addWidget(state)
             self.list.addItem(item)
             self.list.setItemWidget(item, holder)
+        self.list.refresh_item_widgets()
 
 
 class DashboardRecentActivityCard(DashboardCard):
@@ -606,7 +649,7 @@ class DashboardRecentActivityCard(DashboardCard):
     def __init__(self, parent=None):
         super().__init__("Recent activity", parent)
         self.setMinimumHeight(142)
-        self.list = QListWidget()
+        self.list = ViewportBoundListWidget()
         self.list.setFrameShape(QFrame.Shape.NoFrame)
         self.list.setSpacing(0)
         self.list.setHorizontalScrollBarPolicy(
@@ -645,6 +688,7 @@ class DashboardRecentActivityCard(DashboardCard):
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             item.setSizeHint(QSize(0, self.ROW_HEIGHT))
             self.list.addItem(item)
+            self.list.refresh_item_widgets()
             return
         for entry in visible:
             title_text, changed, author = self._entry_parts(entry)
@@ -682,6 +726,7 @@ class DashboardRecentActivityCard(DashboardCard):
             layout.addWidget(meta)
             self.list.addItem(item)
             self.list.setItemWidget(item, holder)
+        self.list.refresh_item_widgets()
 
 
 def section(title, child):
