@@ -74,7 +74,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["matched_design_dataset_id"],
             ["blast_event_drillhole_datasets.id"],
-            ondelete="RESTRICT",
+            ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(["imported_by_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
