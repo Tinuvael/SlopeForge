@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPointF, QTimer, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -36,13 +36,19 @@ class DrillholeSelectionView(QGraphicsView):
         selected_ids=(),
         plan_geometry=None,
         *,
+        target_group_id=None,
         group_labels=None,
         parent=None,
     ):
         super().__init__(parent)
         self.holes = tuple(holes)
-        self.selected_ids = set(selected_ids)
+        self.target_group_id = str(target_group_id) if target_group_id else None
         self.group_labels = dict(group_labels or {})
+        self.selected_ids = {
+            str(hole_id)
+            for hole_id in selected_ids
+            if self._hole_is_available(str(hole_id))
+        }
         self.mode = "individual"
         self._polygon_points: list[tuple[float, float]] = []
         self._hole_items: dict[str, QGraphicsEllipseItem] = {}
@@ -58,6 +64,16 @@ class DrillholeSelectionView(QGraphicsView):
     @staticmethod
     def _scene_point(x: float, y: float) -> QPointF:
         return QPointF(float(x), -float(y))
+
+    def _hole_is_available(self, hole_id: str) -> bool:
+        hole = next((item for item in self.holes if item.hole_id == hole_id), None)
+        if hole is None:
+            return False
+        assigned = hole.engineering_group_id
+        return not assigned or str(assigned) == self.target_group_id
+
+    def _available_hole_ids(self) -> set[str]:
+        return {hole.hole_id for hole in self.holes if self._hole_is_available(hole.hole_id)}
 
     def _extent(self, plan_geometry):
         points = [(hole.collar.x, hole.collar.y) for hole in self.holes]
@@ -79,7 +95,9 @@ class DrillholeSelectionView(QGraphicsView):
             path.moveTo(first)
             for point in ring[1:]:
                 path.lineTo(self._scene_point(point.x, point.y))
-            outline = self.scene().addPath(path, QPen(QColor(Color.TEXT_MUTED), 1.4))
+            plan_pen = QPen(QColor(Color.TEXT_MUTED), 1.4)
+            plan_pen.setCosmetic(True)
+            outline = self.scene().addPath(path, plan_pen)
             outline.setZValue(0)
 
         radius = min(max(self._extent(plan_geometry) * 0.008, 0.35), 4.0)
@@ -112,22 +130,30 @@ class DrillholeSelectionView(QGraphicsView):
         if not bounds.isNull():
             margin = max(bounds.width(), bounds.height()) * 0.05
             self.scene().setSceneRect(bounds.adjusted(-margin, -margin, margin, margin))
-            self.fit_all()
 
     def _refresh_hole_styles(self):
         for hole in self.holes:
             item = self._hole_items.get(hole.hole_id)
             if item is None:
                 continue
+            pen = None
             if hole.hole_id in self.selected_ids:
-                item.setPen(QPen(QColor(Color.ACCENT), 1.8))
+                pen = QPen(QColor(Color.ACCENT), 1.8)
                 item.setBrush(QBrush(QColor(Color.SELECTED)))
-            elif hole.engineering_group_id:
-                item.setPen(QPen(QColor(Color.WARNING), 1.6))
+            elif not self._hole_is_available(hole.hole_id):
+                pen = QPen(QColor(Color.WARNING), 1.6)
                 item.setBrush(QBrush(QColor(Color.SURFACE)))
             else:
-                item.setPen(QPen(QColor(Color.TEXT_MUTED), 1.2))
+                pen = QPen(QColor(Color.TEXT_MUTED), 1.2)
                 item.setBrush(QBrush(QColor(Color.SURFACE)))
+            pen.setCosmetic(True)
+            item.setPen(pen)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # The view receives its final dialog geometry only after it is shown.
+        # Fit on the next event-loop turn so the first frame is already centered.
+        QTimer.singleShot(0, self.fit_all)
 
     def fit_all(self):
         rect = self.scene().sceneRect()
@@ -157,7 +183,7 @@ class DrillholeSelectionView(QGraphicsView):
         self.selection_changed.emit()
 
     def select_all(self):
-        self.selected_ids = {hole.hole_id for hole in self.holes}
+        self.selected_ids = self._available_hole_ids()
         self._refresh_hole_styles()
         self.selection_changed.emit()
 
@@ -167,6 +193,8 @@ class DrillholeSelectionView(QGraphicsView):
         if not hole_id:
             return False
         hole_id = str(hole_id)
+        if not self._hole_is_available(hole_id):
+            return True
         if hole_id in self.selected_ids:
             self.selected_ids.remove(hole_id)
         else:
@@ -219,16 +247,16 @@ class DrillholeSelectionView(QGraphicsView):
             path.lineTo(self._scene_point(x, y))
         if len(self._polygon_points) >= 3:
             path.lineTo(first)
-        self._polygon_preview = self.scene().addPath(
-            path,
-            QPen(QColor(Color.ACCENT), 1.5, Qt.PenStyle.DashLine),
-        )
+        polygon_pen = QPen(QColor(Color.ACCENT), 1.0, Qt.PenStyle.DashLine)
+        polygon_pen.setCosmetic(True)
+        self._polygon_preview = self.scene().addPath(path, polygon_pen)
         self._polygon_preview.setZValue(10)
 
     def complete_polygon(self):
         if len(self._polygon_points) < 3:
             return
-        self.selected_ids.update(hole_ids_in_polygon(self.holes, self._polygon_points))
+        selected = hole_ids_in_polygon(self.holes, self._polygon_points)
+        self.selected_ids.update(selected & self._available_hole_ids())
         self.cancel_polygon()
         self._refresh_hole_styles()
         self.selection_changed.emit()
@@ -244,6 +272,7 @@ class DrillholeGroupAssignmentDialog(QDialog):
         group_name,
         holes,
         *,
+        group_id=None,
         selected_ids=(),
         plan_geometry=None,
         group_labels=None,
@@ -271,6 +300,7 @@ class DrillholeGroupAssignmentDialog(QDialog):
             holes,
             selected_ids=selected_ids,
             plan_geometry=plan_geometry,
+            target_group_id=group_id,
             group_labels=group_labels,
             parent=self,
         )
@@ -317,7 +347,7 @@ class DrillholeGroupAssignmentDialog(QDialog):
         controls.addWidget(self.count)
 
         help_text = QLabel(
-            tr("Blue: selected. Amber outline: assigned to another group. Selecting an assigned hole moves it to this group when you apply the change.")
+            tr("Blue: selected. Amber outline: assigned to another group and unavailable here.")
         )
         help_text.setObjectName("MutedText")
         help_text.setWordWrap(True)
@@ -368,7 +398,7 @@ class DrillholeGroupAssignmentDialog(QDialog):
         self.count.setText(
             tr("Selected: %1 / %2")
             .replace("%1", str(len(self.view.selected_ids)))
-            .replace("%2", str(len(self.view.holes)))
+            .replace("%2", str(len(self.view._available_hole_ids())))
         )
 
     @property
