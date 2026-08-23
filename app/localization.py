@@ -24,14 +24,18 @@ _STANDARD_BUTTON_SOURCES = {
     "No": "No", "Close": "Close", "Discard": "Discard", "Restore": "Restore",
 }
 
+_RUSSIAN_CATALOG_RESOURCES = (
+    "translations/slopeforge_ru.ts",
+    "translations/slopeforge_ru_drillholes.ts",
+)
+
 
 class TsTranslator(QTranslator):
     def __init__(self, parent: QCoreApplication | None = None):
         super().__init__(parent)
         self._messages: dict[tuple[str, str], str] = {}
 
-    def load(self, filename: str | Path, *args, **kwargs) -> bool:  # noqa: ARG002
-        self._messages.clear()
+    def _merge_catalog(self, filename: str | Path) -> bool:
         try:
             root = ET.parse(filename).getroot()
             if root.tag != "TS":
@@ -51,9 +55,19 @@ class TsTranslator(QTranslator):
                     if text:
                         self._messages[(context, source)] = text
         except (OSError, ET.ParseError, ValueError):
-            self._messages.clear()
             return False
         return True
+
+    def load(self, filename: str | Path, *args, **kwargs) -> bool:  # noqa: ARG002
+        self._messages.clear()
+        if self._merge_catalog(filename):
+            return True
+        self._messages.clear()
+        return False
+
+    def merge(self, filename: str | Path) -> bool:
+        """Merge another TS catalogue without discarding already loaded messages."""
+        return self._merge_catalog(filename)
 
     def translate(
         self,
@@ -103,12 +117,22 @@ def install_selected_translator(app: QCoreApplication, store: QSettings | None =
     if language == "en":
         _translator = None
         return "en"
-    path = resource_path("translations/slopeforge_ru.ts")
+
+    base_path = resource_path(_RUSSIAN_CATALOG_RESOURCES[0])
     translator = TsTranslator(app)
-    if path is None or not translator.load(str(path)):
+    if base_path is None or not translator.load(str(base_path)):
         logger.warning("Could not load Russian TS translation; falling back to English")
         _translator = None
         return "en"
+
+    for resource in _RUSSIAN_CATALOG_RESOURCES[1:]:
+        path = resource_path(resource)
+        if path is None:
+            logger.warning("Optional Russian translation catalogue is missing: %s", resource)
+            continue
+        if not translator.merge(str(path)):
+            logger.warning("Could not load optional Russian translation catalogue: %s", resource)
+
     app.installTranslator(translator)
     _translator = translator
     return "ru"
