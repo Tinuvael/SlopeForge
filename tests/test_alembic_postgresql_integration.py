@@ -109,15 +109,17 @@ def test_destructive_migration_guard_rejects_non_test_database() -> None:
         )
 
 
-def test_mvp_baseline_is_the_only_alembic_revision() -> None:
+def test_alembic_history_appends_after_immutable_mvp_baseline() -> None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0001_mvp_baseline"]
+    assert script.get_heads() == ["0002_project_surface_datasets"]
     assert [revision.revision for revision in script.walk_revisions()] == [
-        "0001_mvp_baseline"
+        "0002_project_surface_datasets",
+        "0001_mvp_baseline",
     ]
+
 
 def test_every_alembic_revision_fits_standard_version_column() -> None:
     from alembic.config import Config
@@ -292,7 +294,7 @@ def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
         assert rebuilt.state.assessment_areas == []
         assert set(inspect(engine).get_table_names()) >= {
             "users", "sites", "domains", "blast_events",
-            "project_lines_datasets", "assessment_areas",
+            "project_lines_datasets", "project_surface_datasets", "assessment_areas",
         }
         assert "mines" not in inspect(engine).get_table_names()
         assert "blast_blocks" not in inspect(engine).get_table_names()
