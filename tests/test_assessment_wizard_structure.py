@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QPushButton, QScrollArea
 
 from application.services.project_lines import ProjectLinesDatasetService
 from application.state.assessment_domain_state import AssessmentDomainState
+from tests.geometry_test_files import test_line as _line
 
 
 @pytest.fixture
@@ -18,13 +19,16 @@ def app():
 
 
 @pytest.fixture
-def state(tmp_path):
-    source = tmp_path / "project.csv"
-    source.write_text(
-        "XP,YP,ZP,SID,PTN\n0,10,630,A,1\n10,10,630,A,2\n"
-        "0,0,600,B,1\n10,0,600,B,2\n", encoding="utf-8")
+def state():
     value = AssessmentDomainState()
-    ProjectLinesDatasetService(value).import_dataset(source)
+    ProjectLinesDatasetService(value).create_dataset(
+        name="project",
+        source_file_name="project.dxf",
+        lines=[
+            _line("A", [(0, 10, 630), (10, 10, 630)], order=0),
+            _line("B", [(0, 0, 600), (10, 0, 600)], order=1),
+        ],
+    )
     return value
 
 

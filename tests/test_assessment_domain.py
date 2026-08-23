@@ -11,6 +11,8 @@ from tests.assessment_boundary_fixtures import geometry_revision
 from domain.project.project_lines import ProjectLinesDataset
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.types import DatamineLine, DataminePoint
+from infrastructure.geometry_import.lines import import_line_geometry
+from tests.geometry_test_files import write_dxf_lines
 
 
 def point(x, y, z, row=1):
@@ -74,7 +76,7 @@ def test_reimport_creates_new_active_revision_without_mutating_old():
     event = BlastEvent("BE-001", "Block 620", "production", date(2026, 7, 21), 620)
     first_result = build_production_geometry([square(620, source_id="v1")])
     revision_1 = event.add_geometry_revision(
-        source_file_name="v1.csv",
+        source_file_name="v1.dxf",
         source_geometry=[first_result.source_line],
         plan_geometry=first_result.plan_geometry,
         elevation=first_result.elevation,
@@ -82,7 +84,7 @@ def test_reimport_creates_new_active_revision_without_mutating_old():
     )
     second_result = build_production_geometry([square(621, source_id="v2")])
     revision_2 = event.add_geometry_revision(
-        source_file_name="v2.csv",
+        source_file_name="v2.dxf",
         source_geometry=[second_result.source_line],
         plan_geometry=second_result.plan_geometry,
         elevation=second_result.elevation,
@@ -96,8 +98,8 @@ def test_reimport_creates_new_active_revision_without_mutating_old():
 
 def test_new_dataset_deactivates_previous_and_keeps_history():
     state = AssessmentDomainState()
-    first = ProjectLinesDataset("D-001", "First", datetime.now(timezone.utc), "first.csv", False, [])
-    second = ProjectLinesDataset("D-002", "Second", datetime.now(timezone.utc), "second.csv", False, [])
+    first = ProjectLinesDataset("D-001", "First", datetime.now(timezone.utc), "first.dxf", False, [])
+    second = ProjectLinesDataset("D-002", "Second", datetime.now(timezone.utc), "second.dxf", False, [])
     state.add_dataset(first)
     state.add_dataset(second)
     assert len(state.datasets) == 2
@@ -111,7 +113,7 @@ def test_archive_filters_active_blast_events_without_deleting_revisions():
     event = BlastEvent("BE-001", "Block", "production", None, 620)
     result = build_production_geometry([square(620)])
     event.add_geometry_revision(
-        source_file_name="block.csv",
+        source_file_name="block.dxf",
         source_geometry=[result.source_line],
         plan_geometry=result.plan_geometry,
         elevation=result.elevation,
@@ -136,13 +138,19 @@ def test_domain_state_round_trip_includes_assessment_area_boundary():
     assert restored.to_dict() == state.to_dict()
 
 
-def test_real_format_contour_filters_flat_marker_strings():
-    from pathlib import Path
-    from infrastructure.geometry_import.csv import import_datamine_csv
-
-    imported = import_datamine_csv(Path("tests/fixtures/contour_drillholes_with_markers.csv"))
-    assert imported.summary.column_mapping["LINE_ID"] == "SID"
-    assert imported.summary.column_mapping["POINT_ORDER"] == "PID"
+def test_supported_format_contour_filters_flat_marker_strings(tmp_path):
+    source = write_dxf_lines(
+        tmp_path / "contour.dxf",
+        [
+            ("DH-1", [(0, 0, 620), (0.2, 0.2, 630.5), (0.4, 0.4, 610)]),
+            ("MARKER-1", [(0, 1, 625), (1, 1, 625)]),
+            ("DH-2", [(2, 0, 615), (2.2, 0.2, 630.3), (2.4, 0.4, 605)]),
+            ("MARKER-2", [(2, 1, 624.8), (3, 1, 624.8)]),
+            ("DH-3", [(4, 0, 612), (4.2, 0.2, 630.4), (4.4, 0.4, 602)]),
+            ("MARKER-3", [(4, 1, 624.9), (5, 1, 624.9)]),
+        ],
+    )
+    imported = import_line_geometry(source)
     assert imported.summary.line_count == 6
 
     result = build_contour_geometry(imported.lines)
@@ -150,7 +158,6 @@ def test_real_format_contour_filters_flat_marker_strings():
     assert result.accepted_drillhole_count == 3
     assert result.ignored_flat_line_count == 3
     assert len(result.plan_geometry.points) == 3
-    assert [line.source_id for line in result.source_lines] == ["1", "3", "5"]
     assert [point.z for point in result.collar_points] == [630.5, 630.3, 630.4]
     assert all(point.z > 624.7 for point in result.collar_points)
 
@@ -164,31 +171,32 @@ def test_contour_equal_maximum_uses_earliest_source_row():
     assert result.plan_geometry.points == (PlanPoint(3, 3),)
 
 
-def test_production_fixture_keeps_highest_closed_line():
-    from pathlib import Path
-    from infrastructure.geometry_import.csv import import_datamine_csv
-
-    imported = import_datamine_csv(Path("tests/fixtures/production_two_closed_levels.csv"))
+def test_supported_production_fixture_keeps_highest_closed_line(tmp_path):
+    source = write_dxf_lines(
+        tmp_path / "production.dxf",
+        [
+            ("LOWER", [(0,0,620),(10,0,620),(10,10,620),(0,10,620),(0,0,620)]),
+            ("UPPER", [(0,0,630),(10,0,630),(10,10,630),(0,10,630),(0,0,630)]),
+        ],
+    )
+    imported = import_line_geometry(source)
     result = build_production_geometry(imported.lines)
     assert imported.summary.line_count == 2
-    assert result.source_line.source_id == "2"
     assert result.elevation == 630
     assert len(result.plan_geometry.ring) == 5
 
 
-def test_unsorted_contour_rows_select_same_collars(tmp_path):
-    from pathlib import Path
-    from infrastructure.geometry_import.csv import import_datamine_csv
-
-    fixture = Path("tests/fixtures/contour_drillholes_with_markers.csv")
-    rows = fixture.read_text(encoding="utf-8").splitlines()
-    sorted_csv = tmp_path / "sorted.csv"
-    sorted_csv.write_text(rows[0] + "\n" + "\n".join(sorted(rows[1:], key=lambda row: int(row.split(",")[0]))) + "\n")
-    unsorted_result = build_contour_geometry(import_datamine_csv(fixture).lines)
-    sorted_result = build_contour_geometry(import_datamine_csv(sorted_csv).lines)
-    collars = lambda result: {
-        line.source_id: (collar.x, collar.y, collar.z)
-        for line, collar in zip(result.source_lines, result.collar_points)
-    }
-    assert collars(unsorted_result) == collars(sorted_result)
-    assert unsorted_result.accepted_drillhole_count == len(unsorted_result.collar_points)
+def test_contour_entity_order_selects_same_collars(tmp_path):
+    lines = [
+        ("DH-A", [(0,0,610),(1,1,630),(2,2,600)]),
+        ("DH-B", [(10,0,605),(11,1,625),(12,2,590)]),
+        ("MARKER", [(20,0,620),(21,0,620)]),
+    ]
+    first = import_line_geometry(write_dxf_lines(tmp_path / "first.dxf", lines))
+    second = import_line_geometry(write_dxf_lines(tmp_path / "second.dxf", reversed(lines)))
+    first_result = build_contour_geometry(first.lines)
+    second_result = build_contour_geometry(second.lines)
+    collars = lambda result: sorted((collar.x, collar.y, collar.z) for collar in result.collar_points)
+    assert collars(first_result) == collars(second_result)
+    assert first_result.accepted_drillhole_count == len(first_result.collar_points)
+    assert second_result.accepted_drillhole_count == len(second_result.collar_points)

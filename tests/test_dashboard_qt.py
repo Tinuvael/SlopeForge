@@ -1,5 +1,4 @@
 from datetime import date, datetime, timezone
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -7,6 +6,7 @@ import pytest
 from application.services.project_lines import ProjectLinesDatasetService
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.project.project_lines import ProjectLinesDataset
+from tests.geometry_test_files import test_line as _line
 
 try:
     from PySide6.QtCore import Qt
@@ -31,8 +31,6 @@ try:
     from ui.pages.dashboards.widgets import DashboardRecentActivityCard
 except ImportError as exc:
     pytest.skip(f"Qt runtime unavailable: {exc}", allow_module_level=True)
-
-SEPARATED_PARTS = Path(__file__).parent / "fixtures" / "project_lines_separated_parts.csv"
 
 
 @pytest.fixture(scope="module")
@@ -77,6 +75,14 @@ def _stub_domain_version(monkeypatch):
     )
 
 
+def _stub_project_surfaces(monkeypatch):
+    service = SimpleNamespace(current=lambda *_args: None)
+    monkeypatch.setattr(
+        "ui.pages.dashboards.site_dashboard.create_project_surface_dataset_service",
+        lambda _context: service,
+    )
+
+
 def test_native_charts_construct_with_and_without_data(app):
     assert CompactChart({"North": 2}).data
     assert CompactChart({}).data == {}
@@ -107,6 +113,7 @@ def test_trends_group_same_date_and_activity_shows_entity_actor_and_time(app):
     assert any("Engineer One" in text and "20.08.2026 08:24" in text for text in texts)
     trend.close()
     recent.close()
+    app.processEvents()
 
 
 def test_project_domain_summary_filters_first_and_go_to_emits_real_domain_id(app, monkeypatch):
@@ -116,6 +123,7 @@ def test_project_domain_summary_filters_first_and_go_to_emits_real_domain_id(app
         "ui.pages.dashboards.site_dashboard.DashboardRepository.site_snapshot",
         lambda *_: site_snap,
     )
+    _stub_project_surfaces(monkeypatch)
     context = SimpleNamespace(
         session_factory=lambda: None,
         current_user=SimpleNamespace(can_edit=False, id=1),
@@ -134,6 +142,7 @@ def test_project_domain_summary_filters_first_and_go_to_emits_real_domain_id(app
     page.domain_summary.go_to_requested.emit("7")
     assert received == [7]
     page.close()
+    app.processEvents()
 
 
 def test_domain_interval_summary_filters_plan_without_virtual_navigation(app, monkeypatch):
@@ -159,6 +168,7 @@ def test_domain_interval_summary_filters_plan_without_virtual_navigation(app, mo
     assert page.attention_card.fill_available is True
     assert not hasattr(page, "tabs")
     page.close()
+    app.processEvents()
 
 
 @pytest.mark.parametrize("can_edit", [False, True])
@@ -174,6 +184,7 @@ def test_dashboard_rename_headers_are_real_widgets_and_refresh(app, monkeypatch,
         lambda *_: site_snap,
     )
     _stub_domain_version(monkeypatch)
+    _stub_project_surfaces(monkeypatch)
     context = SimpleNamespace(
         session_factory=lambda: None,
         current_user=SimpleNamespace(can_edit=can_edit, id=1),
@@ -188,6 +199,7 @@ def test_dashboard_rename_headers_are_real_widgets_and_refresh(app, monkeypatch,
     assert domain.title_label.text() == "East Wall"
     site.close()
     domain.close()
+    app.processEvents()
 
 
 def test_read_only_map_constructs_empty_and_populated(app):
@@ -221,11 +233,19 @@ def test_read_only_map_constructs_empty_and_populated(app):
     empty_map.close()
     plan.close()
     card.close()
+    app.processEvents()
 
 
-def test_project_line_parts_survive_import_serialization_projection_and_render(app):
-    imported, _ = ProjectLinesDatasetService(AssessmentDomainState()).import_dataset(
-        SEPARATED_PARTS, imported_at=datetime(2026, 1, 1, tzinfo=timezone.utc)
+def test_project_line_parts_survive_serialization_projection_and_render(app):
+    service = ProjectLinesDatasetService(AssessmentDomainState())
+    imported = service.create_dataset(
+        name="Separated parts",
+        source_file_name="separated_parts.dxf",
+        lines=[
+            _line("WEST", [(0,0,0),(10,0,0),(10,10,0)], order=0),
+            _line("EAST", [(1000,1000,0),(1010,1000,0),(1010,1010,0)], order=1),
+        ],
+        imported_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
     reloaded = ProjectLinesDataset.from_dict(imported.to_dict())
     persisted_row = SimpleNamespace(lines_json=[line.to_dict() for line in reloaded.lines])
@@ -248,3 +268,4 @@ def test_project_line_parts_survive_import_serialization_projection_and_render(a
         last = path.elementAt(path.elementCount() - 1)
         assert (first.x, first.y) != (last.x, last.y)
     plan.close()
+    app.processEvents()

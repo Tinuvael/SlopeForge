@@ -2,6 +2,7 @@
 from application.use_cases.create_blast_event import CreateBlastEvent
 from infrastructure.db.blast_event_creation import SqlAlchemyBlastEventCreationPersistence
 from application.services.entity_editing import AssessmentEditingSession
+from application.services.project_surfaces import ProjectSurfaceDatasetService
 from infrastructure.db.assessment_state import SqlAlchemyAssessmentStatePersistence
 from infrastructure.db.assessment_writes import SqlAlchemyAssessmentWrites
 from application.use_cases.create_project import CreateProject
@@ -12,6 +13,8 @@ from infrastructure.db.project_lines_creation import SqlAlchemyProjectLinesCreat
 from infrastructure.db.domain_creation import SqlAlchemyDomainCreation
 from infrastructure.db.project_navigation import SqlAlchemyProjectNavigationQueries
 from infrastructure.db.project_report import SqlAlchemyProjectReportQuery
+from infrastructure.files.project_geometry import ProjectGeometryFileStorage
+from infrastructure.geometry_import.surfaces import import_surface_geometry
 from infrastructure.reports.excel_project_report import OpenPyxlProjectReportWriter
 from application.use_cases.rename_project import RenameProject
 from application.use_cases.rename_domain import RenameDomain
@@ -23,6 +26,7 @@ from infrastructure.db.explosive_catalogue import SqlAlchemyExplosiveCatalogue
 from application.use_cases.charge_presets import ChargePresets
 from infrastructure.db.charge_presets import SqlAlchemyChargePresetPersistence
 from repositories.assessment_area_context_repository import AssessmentAreaContextRepository
+from repositories.project_surface_repository import ProjectSurfaceDatasetRepository
 
 
 def create_blast_event_use_case(context):
@@ -52,6 +56,14 @@ def create_assessment_area_context_queries(context):
 def create_project_use_case(context):
     return CreateProject(SqlAlchemyProjectCreation(context.session_factory),
                          SqlAlchemyProjectLinesCreationSupport(context.session_factory))
+
+
+def create_project_surface_dataset_service(context):
+    return ProjectSurfaceDatasetService(
+        ProjectSurfaceDatasetRepository(context.session_factory),
+        ProjectGeometryFileStorage(context.storage_root),
+        import_surface_geometry,
+    )
 
 
 def create_domain_use_case(context):

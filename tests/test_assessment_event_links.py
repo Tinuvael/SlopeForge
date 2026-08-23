@@ -8,6 +8,7 @@ from domain.geometry.types import PlanMultiPoint, PlanPoint, PlanPolygon
 from domain.blasting.entities import BlastEvent
 from domain.assessment.entities import AssessmentArea, AssessmentAreaGeometryRevision
 from tests.assessment_boundary_fixtures import geometry_revision
+from tests.geometry_test_files import write_production_dxf
 from application.state.assessment_domain_state import AssessmentDomainState
 from domain.geometry.operations import (points_from_multipoint_inside_polygon,
     polygon_intersects_polygon)
@@ -27,7 +28,7 @@ def area(selection=None):
     return AssessmentArea("AA-1", "Area", date(2026, 1, 1), [revision], revision.id)
 
 
-def event(event_id, elevation, geometry, event_type="production", name=None, source="x.csv"):
+def event(event_id, elevation, geometry, event_type="production", name=None, source="x.dxf"):
     value = BlastEvent(event_id, name or event_id, event_type, None, elevation)
     value.add_geometry_revision(source_file_name=source, source_geometry=[],
                                 plan_geometry=geometry, elevation=elevation)
@@ -100,7 +101,7 @@ def test_refresh_is_revision_safe_preserves_decisions_and_replaces_suggestion():
     service.refresh_suggestions(assessment); old = assessment.event_links[0]
     assert old.assessment_area_geometry_revision_id == assessment.active_geometry_revision_id
     service.confirm_link(assessment, old.id); old_revision = old.geometry_revision_id
-    blast.add_geometry_revision(source_file_name="new.csv", source_geometry=[], plan_geometry=blast.active_geometry_revision().plan_geometry, elevation=610)
+    blast.add_geometry_revision(source_file_name="new.dxf", source_geometry=[], plan_geometry=blast.active_geometry_revision().plan_geometry, elevation=610)
     service.refresh_suggestions(assessment)
     assert old in assessment.event_links and old.geometry_revision_id == old_revision and service.is_stale(old)
 
@@ -117,14 +118,14 @@ def test_manual_outside_criteria_duplicate_archive_guards():
 
 def matching_events(production=0, contour=0):
     events = [event(f"BE-P-{index:03}", 610, polygon((1, 1), (4, 1), (4, 4), (1, 4)),
-                    name="Одинаковое имя", source="same.csv") for index in range(production)]
+                    name="Одинаковое имя", source="same.dxf") for index in range(production)]
     events += [event(f"BE-C-{index:03}", 610, PlanMultiPoint((PlanPoint(2, 2), PlanPoint(20, 20))),
-                     "contour", name="Одинаковое имя", source="same.csv") for index in range(contour)]
+                     "contour", name="Одинаковое имя", source="same.dxf") for index in range(contour)]
     return events
 
 
 @pytest.mark.parametrize("production,contour", [(10, 0), (0, 6), (10, 6)])
-def test_all_distinct_event_ids_link_even_with_same_elevation_name_and_csv(production, contour):
+def test_all_distinct_event_ids_link_even_with_same_elevation_name_and_source(production, contour):
     assessment = area(); events = matching_events(production, contour)
     result = AssessmentEventLinkService(AssessmentDomainState(blast_events=events)).refresh_suggestions(assessment)
     assert (result.production_matches, result.contour_matches) == (production, contour)
@@ -167,8 +168,6 @@ def test_linking_is_independent_of_visual_layer_state():
     events = matching_events(10, 6)
     ids_by_visual_state = []
     for blast_layers_visible in (True, False):
-        # The flag deliberately belongs to the presentation scenario and is never passed
-        # to the pure service: visible QGraphics layers cannot affect domain matching.
         assert isinstance(blast_layers_visible, bool)
         assessment = area(); service = AssessmentEventLinkService(AssessmentDomainState(blast_events=events))
         service.refresh_suggestions(assessment)
@@ -179,10 +178,7 @@ def test_linking_is_independent_of_visual_layer_state():
 def test_multiple_auto_suggested_event_elevations_link_to_same_area(tmp_path):
     state = AssessmentDomainState(); import_service = BlastEventService(state)
     for index, elevation in enumerate((610, 620, 630)):
-        source = tmp_path / f"block-{index}.csv"
-        source.write_text("XP,YP,ZP,SID,PTN\n" + "\n".join(
-            f"{x},{y},{elevation},top,{number}" for number, (x, y) in enumerate(
-                ((1, 1), (4, 1), (4, 4), (1, 1)), 1)), encoding="utf-8")
+        source = write_production_dxf(tmp_path / f"block-{index}.dxf", elevation=elevation)
         preview = import_service.inspect_event_geometry("production", source)
         import_service.create_event(name=f"Block {index}", event_type="production", event_date=None,
                                     elevation=preview.suggested_elevation, csv_path=source)

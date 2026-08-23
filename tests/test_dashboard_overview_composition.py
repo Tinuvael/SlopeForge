@@ -38,7 +38,9 @@ def test_project_and_domain_dashboards_are_single_non_scrolling_overviews():
     assert 'DashboardEntityHeader(name, "Project overview")' in project
     assert "ProjectLinesCard" in project
     assert 'primary_action_label="Project Lines"' in project
-    assert '"Domain summary", visible_rows=3, show_go_to=True' in project
+    assert '"Domain summary"' in project
+    assert "visible_rows=3" in project
+    assert "show_go_to=True" in project
     assert "AssessmentProgressCard" not in project
     assert "lines_card.add_header_action(\"Add\")" in project
     assert "assessment_area_requested = Signal(str, int)" in project

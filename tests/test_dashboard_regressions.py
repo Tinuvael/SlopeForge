@@ -63,6 +63,37 @@ def test_plan_overview_is_read_only_and_actions_live_in_single_card_header():
         assert forbidden not in plan
 
 
+def test_project_dashboard_data_cards_keep_one_bounded_aligned_row():
+    project = source("ui/pages/dashboards/site_dashboard.py")
+    geometry = source("ui/pages/dashboards/project_geometry_card.py")
+    widgets = source("ui/pages/dashboards/widgets.py")
+
+    assert "PROJECT_DATA_CARD_HEIGHT = 192" in project
+    assert "PROJECT_DATA_ROW_HEIGHT = 44" in project
+    assert "PROJECT_DATA_ROW_SPACING = 3" in project
+    assert "data_row.setFixedHeight(PROJECT_DATA_CARD_HEIGHT)" in project
+    assert "(self.domain_summary, self.lines_card, self.geometry_card)" in project
+    assert "row_height=PROJECT_DATA_ROW_HEIGHT" in project
+    assert "row_spacing=PROJECT_DATA_ROW_SPACING" in project
+    assert "card.setMinimumWidth(0)" in project
+    assert "QSizePolicy.Policy.Ignored" in project
+
+    assert "HEADER_HEIGHT = 26" in widgets
+    assert "self.header_host.setFixedHeight(self.HEADER_HEIGHT)" in widgets
+    assert "button.setFixedHeight(self.HEADER_HEIGHT)" in widgets
+    assert "class ViewportBoundListWidget" in widgets
+    assert "def resizeEvent" in widgets
+    assert "self.list.refresh_item_widgets()" in widgets
+
+    assert "ROW_HEIGHT = 44" in geometry
+    assert "DATASET_GAP = 22" in geometry
+    assert "host.setFixedHeight(self.ROW_HEIGHT)" in geometry
+    assert 'self._add_dataset_row("design"' in geometry
+    assert "self.body.addSpacing(self.DATASET_GAP)" in geometry
+    assert 'self._add_dataset_row("actual"' in geometry
+    assert "QSizePolicy.Policy.Ignored" in geometry
+
+
 def test_dashboard_trends_use_stored_completed_revision_history_only():
     repository = source("repositories/dashboard_repository.py")
     assert "class TrendRow" in repository
