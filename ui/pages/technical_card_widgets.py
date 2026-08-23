@@ -5,6 +5,7 @@ from statistics import mean
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QDoubleSpinBox,
     QFileDialog,
     QLabel,
     QMessageBox,
@@ -31,6 +32,48 @@ DRILLHOLE_FILE_FILTER = (
     "Drillhole files (*.dxf *.dm *.dmx);;AutoCAD DXF (*.dxf);;Datamine files (*.dm *.dmx)"
 )
 
+ENGINEERING_FIELD_DECIMALS = {
+    "hole_count": 0,
+    "diameter_mm": 0,
+    "subdrill_m": 1,
+    "inclination_deg": 1,
+    "azimuth_deg": 0,
+    "spacing_m": 1,
+    "line_offset_m": 1,
+    "row_count": 0,
+}
+
+
+def _clear_copied_charge_beyond_depth(
+    actual: ActualDrillingGroup,
+    design: BlastDrillingGroup | None,
+    hole_depth_m: float | None,
+) -> bool:
+    """Drop only an unchanged design copy that cannot fit factual hole depth.
+
+    As-drilled geometry changes factual depth but does not provide factual charge
+    evidence. Keeping an impossible copied design charge makes the existing
+    charge builder reject the whole fact import. Never trim charge components;
+    if the charge is still exactly the design copy, clear that unsupported fact
+    and leave the design construction available in the comparison column. A
+    manually changed factual charge remains untouched so a real inconsistency is
+    still surfaced to the user instead of being silently altered.
+    """
+    if design is None or hole_depth_m is None or not actual.charge_components:
+        return False
+    if not actual.charge_matches(design):
+        return False
+    deepest = max(component.end_depth_m for component in actual.charge_components)
+    if deepest <= float(hole_depth_m) + 1e-9:
+        return False
+    actual.charge_components = []
+    actual.stemming_length_m = 0.0
+    actual.charge_mass_per_hole_kg = None
+    actual.total_charge_mass_kg = None
+    actual.explosive_type = ""
+    actual.copied_from_design = False
+    return True
+
 
 class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
     """The proven Technical Card editor with drillhole-specific presentation hooks."""
@@ -47,6 +90,16 @@ class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
             return None
         item = layout.itemAt(0)
         return item.layout() if item is not None else None
+
+    @staticmethod
+    def _apply_field_precision(box) -> None:
+        for field_name, decimals in ENGINEERING_FIELD_DECIMALS.items():
+            widget = box.findChild(QDoubleSpinBox, field_name)
+            if widget is None:
+                continue
+            previous = widget.blockSignals(True)
+            widget.setDecimals(decimals)
+            widget.blockSignals(previous)
 
     def _decorate_auto_fields(self, box, group, callback, badge_text):
         if not callable(callback):
@@ -82,6 +135,7 @@ class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
             box = item.widget() if item is not None else None
             if box is None or box.layout() is None:
                 continue
+            self._apply_field_precision(box)
             self._decorate_auto_fields(
                 box,
                 group,
@@ -107,19 +161,19 @@ class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
     def _render_actual_groups(self):
         super()._render_actual_groups()
         callback = getattr(self, "actual_auto_fields_callback", None)
-        if not callable(callback):
-            return
         for index, group in enumerate(self.revision.actual_execution.actual_drilling_groups):
             item = self.actual_cards_layout.itemAt(index)
             box = item.widget() if item is not None else None
             if box is None or box.layout() is None:
                 continue
-            self._decorate_auto_fields(
-                box,
-                group,
-                callback,
-                "Auto from as-drilled",
-            )
+            self._apply_field_precision(box)
+            if callable(callback):
+                self._decorate_auto_fields(
+                    box,
+                    group,
+                    callback,
+                    "Auto from as-drilled",
+                )
 
 
 class _DrillholeEngineeringPage(QWidget):
@@ -419,6 +473,7 @@ class TechnicalCardEditorWidget(QWidget):
         dialog = DrillholeGroupAssignmentDialog(
             technical_group_label(group.group_type, group.name),
             holes,
+            group_id=group.id,
             selected_ids=selected,
             plan_geometry=geometry.plan_geometry if geometry else None,
             group_labels=group_labels,
@@ -426,14 +481,7 @@ class TechnicalCardEditorWidget(QWidget):
         )
         if dialog.exec() != dialog.DialogCode.Accepted:
             return
-        previous_groups = {
-            hole.engineering_group_id
-            for hole in holes
-            if hole.hole_id in dialog.selected_hole_ids
-            and hole.engineering_group_id
-            and hole.engineering_group_id != group.id
-        }
-        affected_group_ids = {group.id, *previous_groups}
+        affected_group_ids = {group.id}
         try:
             self._drillhole_service.assign_design_holes(
                 self._controller.domain_id,
@@ -579,12 +627,13 @@ class TechnicalCardEditorWidget(QWidget):
         actual.mean_toe_deviation_m = None
         actual.max_toe_deviation_m = None
 
-    def _set_actual_group_geometry(self, actual, holes, matches) -> None:
+    def _set_actual_group_geometry(self, actual, holes, matches, *, design=None) -> None:
         holes = tuple(holes)
         if not holes:
             self._clear_actual_group_geometry(actual)
             return
         summary = summarize_drillholes(holes)
+        _clear_copied_charge_beyond_depth(actual, design, summary.mean_length_m)
         actual.hole_count = summary.hole_count
         actual.average_depth_m = summary.mean_length_m
         actual.drilling_length_m = summary.total_drilling_length_m
@@ -630,7 +679,7 @@ class TechnicalCardEditorWidget(QWidget):
             item for item in list(row.matches_json or [])
             if item.get("design_hole_id") and item.get("actual_hole_id")
         ]
-        self._set_actual_group_geometry(actual, holes, paired)
+        self._set_actual_group_geometry(actual, holes, paired, design=design)
         self._recalculate_actual()
 
     def _apply_actual_group_matches(self, row, *, changed_group_ids=()) -> None:
@@ -676,7 +725,12 @@ class TechnicalCardEditorWidget(QWidget):
                 if str(item["actual_hole_id"]) in actual_by_id
             )
             actual_group = self._ensure_actual_group(design_group)
-            self._set_actual_group_geometry(actual_group, actual_subset, group_matches)
+            self._set_actual_group_geometry(
+                actual_group,
+                actual_subset,
+                group_matches,
+                design=design_group,
+            )
             changed = True
         if changed:
             self._recalculate_actual()
