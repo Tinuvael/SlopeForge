@@ -1,8 +1,8 @@
 """Low-level, lazy access to Datamine DmFile tables.
 
-This module intentionally does not map Datamine fields to SlopeForge geometry.
-It only exposes enough schema and row data to inspect real .dm/.dmx files and
-build verified adapters from observed file structures.
+This module deliberately does not assign engineering meaning to Datamine
+fields. It exposes schema/row data so format-specific infrastructure adapters
+can map verified source fields into SlopeForge canonical geometry.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ class DatamineUnavailableError(RuntimeError):
 
 
 class DatamineReadError(ValueError):
-    """Raised when a Datamine file cannot be inspected through DmFile."""
+    """Raised when a Datamine file cannot be read through DmFile."""
 
 
 @dataclass(frozen=True)
@@ -61,19 +61,7 @@ def _is_absent(value: Any, absent_value: Any) -> bool:
         return False
 
 
-def read_datamine_table_preview(
-    path: str | Path,
-    *,
-    row_limit: int = 5,
-    dispatch_factory: DispatchFactory | None = None,
-) -> DatamineTablePreview:
-    """Read field names and a bounded row preview from a Datamine table.
-
-    The Datamine DmFile API is accessed through the registered COM ProgID
-    ``DmFile.DmTable``. The function deliberately performs no semantic field
-    mapping: callers can inspect real files first and build geometry mappings
-    from observed schemas rather than undocumented assumptions.
-    """
+def _validate_source_path(path: str | Path) -> Path:
     source_path = Path(path)
     if source_path.suffix.lower() not in _SUPPORTED_EXTENSIONS:
         raise DatamineReadError(
@@ -81,7 +69,22 @@ def read_datamine_table_preview(
         )
     if not source_path.is_file():
         raise DatamineReadError(f"Datamine file does not exist: {source_path}")
-    if row_limit < 0:
+    return source_path
+
+
+def read_datamine_table(
+    path: str | Path,
+    *,
+    row_limit: int | None = None,
+    dispatch_factory: DispatchFactory | None = None,
+) -> DatamineTablePreview:
+    """Read schema and rows from a Datamine table through ``DmFile.DmTable``.
+
+    ``row_limit=None`` reads the complete table. A non-negative limit is useful
+    for diagnostics/probes. No semantic field mapping is performed here.
+    """
+    source_path = _validate_source_path(path)
+    if row_limit is not None and row_limit < 0:
         raise DatamineReadError("row_limit must be zero or greater")
 
     dispatch = dispatch_factory or _default_dispatch
@@ -103,20 +106,30 @@ def read_datamine_table_preview(
         row_count = int(table.GetRowCount())
         absent_value = getattr(schema, "SpecialValueAbsent", None)
 
-        preview_count = min(row_count, row_limit)
+        read_count = row_count if row_limit is None else min(row_count, row_limit)
         rows: list[tuple[Any, ...]] = []
-        for row_index in range(preview_count):
+        for row_index in range(read_count):
             values = []
             for column_index in range(1, field_count + 1):
                 value = table.GetColumn(column_index)
                 values.append(None if _is_absent(value, absent_value) else value)
             rows.append(tuple(values))
-            if row_index + 1 < preview_count:
+            if row_index + 1 < read_count:
                 table.GetNextRow()
     except DatamineUnavailableError:
         raise
     except Exception as exc:
         raise DatamineReadError(f"Could not read Datamine file {source_path.name!r}: {exc}") from exc
+    finally:
+        close = getattr(table, "Close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                # Closing is best-effort; a successfully read table should not
+                # be reported as unreadable because a COM implementation has a
+                # different/unsupported Close contract.
+                pass
 
     return DatamineTablePreview(
         file_name=source_path.name,
@@ -124,4 +137,18 @@ def read_datamine_table_preview(
         row_count=row_count,
         rows=tuple(rows),
         default_datamine_format=str(default_format) if default_format is not None else None,
+    )
+
+
+def read_datamine_table_preview(
+    path: str | Path,
+    *,
+    row_limit: int = 5,
+    dispatch_factory: DispatchFactory | None = None,
+) -> DatamineTablePreview:
+    """Read a bounded schema/row preview from a Datamine table."""
+    return read_datamine_table(
+        path,
+        row_limit=row_limit,
+        dispatch_factory=dispatch_factory,
     )
