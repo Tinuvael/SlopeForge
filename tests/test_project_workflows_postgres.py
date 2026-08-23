@@ -64,25 +64,26 @@ def cleanup_project(factory, site_id):
             orm.BlastEventTechnicalCard.blast_event_id.in_(event_ids)
         )
 
-        # Area geometry owns AssessmentEventLink rows. Remove it before the
-        # referenced BlastEvent geometry.
         session.execute(delete(orm.AssessmentArea).where(
             orm.AssessmentArea.domain_id.in_(domain_ids)))
-
-        # Technical-card revisions also reference BlastEvent geometry with
-        # RESTRICT. Delete that branch explicitly instead of relying on two
-        # simultaneous CASCADE paths from BlastEvent.
         session.execute(delete(orm.BlastEventTechnicalCardRevision).where(
             orm.BlastEventTechnicalCardRevision.technical_card_id.in_(card_ids)))
         session.execute(delete(orm.BlastEventTechnicalCard).where(
             orm.BlastEventTechnicalCard.blast_event_id.in_(event_ids)))
         session.execute(delete(orm.BlastEvent).where(
             orm.BlastEvent.domain_id.in_(domain_ids)))
-
         session.execute(delete(orm.ProjectLinesDataset).where(
             orm.ProjectLinesDataset.site_id == site_id))
         session.execute(delete(Domain).where(Domain.site_id == site_id))
         session.delete(site)
+
+
+def _write_lines_dxf(path):
+    ezdxf = pytest.importorskip("ezdxf")
+    doc = ezdxf.new()
+    doc.modelspace().add_polyline3d([(0, 0, 600), (10, 0, 600)])
+    doc.saveas(path)
+    return path
 
 
 def test_concrete_project_creation_is_direct_site_transaction(factory):
@@ -126,8 +127,7 @@ def test_concrete_project_lines_prepare_partial_success_and_site_scope(factory, 
     with factory() as session:
         assert before == session.scalar(select(func.count()).select_from(Site))
 
-    good = tmp_path / "lines.csv"
-    good.write_text("X,Y,Z,SID\n0,0,600,L1\n10,0,600,L1\n", encoding="utf-8")
+    good = _write_lines_dxf(tmp_path / "lines.dxf")
     original = support._repository.import_dataset
     monkeypatch.setattr(support._repository, "import_dataset", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("lines DB failed")))
     result = use_case.execute(command_for(good))
