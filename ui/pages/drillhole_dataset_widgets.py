@@ -216,8 +216,19 @@ class DrillholeDatasetCard(CardFrame):
             item.get("match_method") == "matched_geometry_low_confidence"
             for item in matches
         )
-        collar = [float(item["collar_distance_xy_m"]) for item in paired if item.get("collar_distance_xy_m") is not None]
-        toe = [float(item["toe_deviation_3d_m"]) for item in paired if item.get("toe_deviation_3d_m") is not None]
+        # Use the same 3D aggregate distances that populate the existing
+        # Execution fact deviation fields. Horizontal/vertical components remain
+        # available in the persisted per-hole QA evidence.
+        collar = [
+            float(item["collar_deviation_3d_m"])
+            for item in paired
+            if item.get("collar_deviation_3d_m") is not None
+        ]
+        toe = [
+            float(item["toe_deviation_3d_m"])
+            for item in paired
+            if item.get("toe_deviation_3d_m") is not None
+        ]
         if not design_revision_current:
             self.button.setText(tr("Re-import"))
             self.show_status(
