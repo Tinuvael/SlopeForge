@@ -86,7 +86,7 @@ class BlastEventDrillholeDataset(Base):
     dataset_kind: Mapped[str] = mapped_column(String(20), nullable=False)
     revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
     matched_design_dataset_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("blast_event_drillhole_datasets.id", ondelete="RESTRICT"), nullable=True
+        ForeignKey("blast_event_drillhole_datasets.id", ondelete="CASCADE"), nullable=True
     )
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     imported_by_user_id: Mapped[Optional[int]] = mapped_column(
