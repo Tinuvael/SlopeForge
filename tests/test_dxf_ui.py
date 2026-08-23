@@ -26,5 +26,8 @@ def test_retired_csv_line_import_code_is_absent():
         "ui/dialogs/geometry_import_dialogs.py",
         "tests/test_datamine_csv_importer.py",
         "tests/fixtures/datamine_lines_sample.csv",
+        "tests/fixtures/contour_drillholes_with_markers.csv",
+        "tests/fixtures/production_two_closed_levels.csv",
+        "tests/fixtures/project_lines_separated_parts.csv",
     )
     assert [relative for relative in retired if (root / relative).exists()] == []
