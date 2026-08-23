@@ -40,9 +40,6 @@ def test_lwpolyline_wcs_metadata_elevation_and_closed_normalization(tmp_path):
 
 def test_2d_and_3d_polyline_wcs_order_and_varying_z(tmp_path):
     def build(msp):
-        # POLYLINE elevation is a DXF point (group codes 10/20/30), not a
-        # scalar.  ezdxf 1.4 validates that representation when constructing
-        # the test entity.
         msp.add_polyline2d([(1,2),(3,4)], dxfattribs={"layer":"2D", "elevation": (0, 0, 610)})
         msp.add_polyline3d([(5,6,630),(7,8,614)], dxfattribs={"layer":"HOLES"})
     result = import_dxf_polylines(save(tmp_path, build))
@@ -203,26 +200,28 @@ def test_existing_builders_accept_normalized_dxf(tmp_path):
     assert result.ignored_flat_line_count == 1
 
 
-def test_csv_and_dxf_production_geometry_are_equivalent(tmp_path):
-    csv_path = tmp_path / "block.csv"
-    csv_path.write_text(
-        "X,Y,Z,SID,PTN\n0,0,630,BLOCK,1\n10,0,630,BLOCK,2\n"
-        "10,10,630,BLOCK,3\n0,0,630,BLOCK,4\n",
-        encoding="utf-8",
-    )
-    def build(msp):
+def test_lwpolyline_and_3d_polyline_production_geometry_are_equivalent(tmp_path):
+    def build_lw(msp):
         line = msp.add_lwpolyline([(0, 0), (10, 0), (10, 10)], dxfattribs={"elevation": 630})
         line.closed = True
-    dxf_path = save(tmp_path, build, "block.dxf")
-    csv_geometry = build_production_geometry(import_line_geometry(csv_path).lines)
-    dxf_geometry = build_production_geometry(import_line_geometry(dxf_path).lines)
-    csv_xy = [(point.x, point.y) for point in csv_geometry.plan_geometry.ring]
-    dxf_xy = [(point.x, point.y) for point in dxf_geometry.plan_geometry.ring]
-    assert dxf_xy == csv_xy
-    assert dxf_geometry.elevation == csv_geometry.elevation == 630
-    assert dxf_xy[0] == dxf_xy[-1] and len(dxf_xy) == len(csv_xy) == 4
+
+    def build_3d(msp):
+        line = msp.add_polyline3d([(0,0,630),(10,0,630),(10,10,630)])
+        line.close()
+
+    lw_geometry = build_production_geometry(
+        import_line_geometry(save(tmp_path, build_lw, "block-lw.dxf")).lines
+    )
+    poly3d_geometry = build_production_geometry(
+        import_line_geometry(save(tmp_path, build_3d, "block-3d.dxf")).lines
+    )
+    lw_xy = [(point.x, point.y) for point in lw_geometry.plan_geometry.ring]
+    poly3d_xy = [(point.x, point.y) for point in poly3d_geometry.plan_geometry.ring]
+    assert lw_xy == poly3d_xy
+    assert lw_geometry.elevation == poly3d_geometry.elevation == 630
+    assert lw_xy[0] == lw_xy[-1] and len(lw_xy) == 4
 
 
 def test_unsupported_extension():
-    with pytest.raises(LineGeometryImportError, match="Use .csv or .dxf"):
+    with pytest.raises(LineGeometryImportError, match=r"Use \.dxf, \.dm or \.dmx"):
         import_line_geometry(Path("geometry.txt"))
