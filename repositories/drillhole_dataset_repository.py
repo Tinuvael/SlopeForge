@@ -42,6 +42,11 @@ class BlastEventDrillholeDatasetRepository:
             .limit(1)
         )
 
+    @staticmethod
+    def _require_event_editable(event: BlastEvent) -> None:
+        if bool(event.is_archived):
+            raise ValueError("Archived Blast Events are read-only")
+
     def add_dataset(
         self,
         domain_id: int,
@@ -66,6 +71,7 @@ class BlastEventDrillholeDatasetRepository:
             event = session.scalar(self._event_statement(domain_id, event_logical_id).with_for_update())
             if event is None:
                 raise ValueError(f"BlastEvent {event_logical_id!r} does not exist in Domain {domain_id}")
+            self._require_event_editable(event)
             if dataset_kind == "design":
                 if matched_design_dataset_id is not None:
                     raise ValueError("Design drillhole datasets cannot reference another design dataset")
@@ -131,6 +137,7 @@ class BlastEventDrillholeDatasetRepository:
             )
             if event is None:
                 raise DrillholeDatasetNotFoundError(str(row_id))
+            self._require_event_editable(event)
             row = session.get(
                 BlastEventDrillholeDataset,
                 int(row_id),
