@@ -60,13 +60,13 @@ class BlastEventDialog(QDialog):
 
         geometry, geometry_form = create_form_section("Geometry", self)
         self.csv = QLineEdit()
-        self.csv.setPlaceholderText(tr("No file selected"))
         self.browse_button = set_button_role(QPushButton(tr("Browse...")), "secondary")
         self.browse_button.clicked.connect(self._choose_csv)
         file_row = QHBoxLayout()
         file_row.setContentsMargins(0, 0, 0, 0)
         file_row.addWidget(self.csv, 1)
         file_row.addWidget(self.browse_button)
+        self.geometry_file_label = QLabel()
 
         self.design_drillholes = QLineEdit()
         self.design_drillholes.setPlaceholderText(tr("Optional — can be imported later"))
@@ -92,7 +92,7 @@ class BlastEventDialog(QDialog):
         elevation_row.setContentsMargins(0, 0, 0, 0)
         elevation_row.addWidget(self.elevation, 1)
         elevation_row.addWidget(self.detect_button)
-        geometry_form.addRow(tr("Geometry file *"), file_row)
+        geometry_form.addRow(self.geometry_file_label, file_row)
         geometry_form.addRow(tr("Design drillholes"), self.design_drillholes_host)
         geometry_form.addRow(tr("Horizon, m *"), elevation_row)
         self.geometry_form = geometry_form
@@ -120,6 +120,7 @@ class BlastEventDialog(QDialog):
         if not path:
             return
         self.csv.setText(path)
+        self.csv.setToolTip(path)
         if not self.name_is_manual:
             self._applying_name = True; self.name.setText(Path(path).stem); self._applying_name = False
         self._inspect(force_override=True)
@@ -133,6 +134,7 @@ class BlastEventDialog(QDialog):
         )
         if path:
             self.design_drillholes.setText(path)
+            self.design_drillholes.setToolTip(path)
 
     def _name_edited(self, _text):
         if not self._applying_name:
@@ -146,8 +148,14 @@ class BlastEventDialog(QDialog):
     def _sync_drillhole_row(self):
         is_production = self.kind.currentData() == "production"
         self.geometry_form.setRowVisible(self.design_drillholes_host, is_production)
-        if not is_production:
+        if is_production:
+            self.geometry_file_label.setText(tr("Block upper contour *"))
+            self.csv.setPlaceholderText(tr("Select the block upper contour"))
+        else:
+            self.geometry_file_label.setText(tr("Contour drillholes *"))
+            self.csv.setPlaceholderText(tr("Select contour drillholes"))
             self.design_drillholes.clear()
+            self.design_drillholes.setToolTip("")
 
     def _auto_detect(self):
         self._inspect(force_override=True)
