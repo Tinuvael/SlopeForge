@@ -83,12 +83,13 @@ def _verify_alembic_revision(engine, server: str | None) -> None:
             unknown.append(revision)
     if unknown:
         raise StartupError(
-            "This database uses obsolete pre-MVP migration history.\n\n"
+            "This database uses unsupported pre-1.0 development migration history.\n\n"
             f"Database revision:\n{current}\n\n"
             f"Current application revision:\n{required}\n\n"
-            "This database cannot be upgraded because its old migration history was "
-            "intentionally replaced by the MVP baseline.\n\n"
-            "The current development database is disposable and must be recreated.",
+            "The pre-release migration history was intentionally consolidated into "
+            "the SlopeForge 1.0 database baseline (revision 1).\n\n"
+            "Pre-1.0 development databases must be recreated; do not stamp an old "
+            "physical schema as revision 1.",
             server, reason="database_revision_obsolete",
             actions=("Run:\npython -m database.cli reset-dev-db",),
         )
