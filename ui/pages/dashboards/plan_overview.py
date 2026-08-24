@@ -1,7 +1,7 @@
 """Read-only Project/Domain plan used by compact dashboard overviews."""
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -10,6 +10,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QPainter,
     QPainterPath,
+    QPalette,
     QPen,
     QShortcut,
     QWheelEvent,
@@ -86,14 +87,12 @@ class DashboardPlanOverviewWidget(QWidget):
         self.snapshot = snapshot
         self.scene = QGraphicsScene(self)
         self.view = DashboardGraphicsView(self.scene, self)
+        self.view.setObjectName("DashboardPlanView")
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.view.setFrameShape(QFrame.Shape.NoFrame)
-        self.view.setStyleSheet(
-            "QGraphicsView{border:1px solid #e4e8ee;border-radius:5px;background:#fbfcfd;}"
-        )
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.view.setMinimumHeight(320)
         self.view.clear_filter_requested.connect(self.clear_filter)
@@ -105,7 +104,7 @@ class DashboardPlanOverviewWidget(QWidget):
 
         self.empty_label = QLabel(tr("No plan geometry yet"), self.view.viewport())
         self.empty_label.setObjectName("MutedText")
-        self.empty_label.setStyleSheet("background:transparent;")
+        self.empty_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.empty_label.hide()
 
         self._project_items: list[QGraphicsPathItem] = []
@@ -115,6 +114,9 @@ class DashboardPlanOverviewWidget(QWidget):
         self._filter_state: tuple[str, str] | None = None
         self._initial_fit_pending = True
         self._render()
+
+    def _is_dark(self) -> bool:
+        return self.palette().color(QPalette.ColorRole.Window).lightness() < 128
 
     @staticmethod
     def _path(points, *, close=False):
@@ -136,37 +138,56 @@ class DashboardPlanOverviewWidget(QWidget):
         if self.isVisible():
             QTimer.singleShot(0, self._fit_initial_view)
 
-    @staticmethod
-    def _normal_assessment_style(item, geometry):
+    def _normal_assessment_style(self, item, geometry):
         presentation = assessment_result_presentation(geometry.quadrant)
         border = QColor(presentation.color)
         fill = QColor(presentation.color)
-        fill.setAlpha(44 if geometry.quadrant else 24)
+        fill.setAlpha(68 if self._is_dark() else 44 if geometry.quadrant else 24)
         item.setPen(QPen(border, 2.8))
         item.setBrush(QBrush(fill))
         item.setZValue(20)
 
-    @staticmethod
-    def _dim_assessment_style(item):
-        border = QColor("#aeb8c5")
-        border.setAlpha(125)
-        fill = QColor("#dbe1e8")
-        fill.setAlpha(18)
+    def _dim_assessment_style(self, item):
+        if self._is_dark():
+            border = QColor("#697789")
+            border.setAlpha(165)
+            fill = QColor("#536171")
+            fill.setAlpha(28)
+        else:
+            border = QColor("#aeb8c5")
+            border.setAlpha(125)
+            fill = QColor("#dbe1e8")
+            fill.setAlpha(18)
         item.setPen(QPen(border, 1.0))
         item.setBrush(QBrush(fill))
         item.setZValue(10)
 
     def _render(self):
+        filter_state = self._filter_state
         self.scene.clear()
         self._project_items = []
         self._domain_items = []
         self._assessment_items = []
         self._assessment_entries = []
+        dark = self._is_dark()
 
         for geometry in getattr(self.snapshot, "domain_geometries", ()):
             path = self._path(geometry.points, close=True)
             item = QGraphicsPathItem(path)
-            if geometry.is_current:
+            if dark:
+                if geometry.is_current:
+                    pen = QColor("#8b9aae")
+                    fill = QColor("#607086")
+                    pen.setAlpha(185)
+                    fill.setAlpha(42)
+                    width = 1.7
+                else:
+                    pen = QColor("#647286")
+                    fill = QColor("#4d5968")
+                    pen.setAlpha(125)
+                    fill.setAlpha(22)
+                    width = 1.0
+            elif geometry.is_current:
                 pen = QColor("#94a3b8")
                 fill = QColor("#cbd5e1")
                 pen.setAlpha(125)
@@ -185,9 +206,10 @@ class DashboardPlanOverviewWidget(QWidget):
             self.scene.addItem(item)
             self._domain_items.append(item)
 
+        line_color = QColor("#8392a6" if dark else "#c5ccd5")
         for geometry in getattr(self.snapshot, "project_lines", ()):
             item = QGraphicsPathItem(self._path(geometry.points, close=False))
-            item.setPen(QPen(QColor("#c5ccd5"), 1.0))
+            item.setPen(QPen(line_color, 1.0))
             item.setZValue(-10)
             self.scene.addItem(item)
             self._project_items.append(item)
@@ -204,6 +226,14 @@ class DashboardPlanOverviewWidget(QWidget):
         self.empty_label.setVisible(not bool(self.scene.items()))
         self.empty_label.adjustSize()
         self.empty_label.move(16, 16)
+        if filter_state is not None:
+            self._filter_state = None
+            self.set_filter(*filter_state)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            self._render()
 
     def showEvent(self, event):
         super().showEvent(event)
