@@ -45,7 +45,11 @@ def main():
     startup_stage = "application bootstrap"
     set_windows_app_user_model_id()
     app = QApplication(sys.argv)
-    initialize_application_theme(app)
+    # Real QApplication always exposes styleHints(). Startup smoke tests use a
+    # deliberately tiny QApplication stand-in, so only skip presentation setup
+    # for that non-Qt test double; production startup always initializes theme.
+    if callable(getattr(app, "styleHints", None)):
+        initialize_application_theme(app)
     install_selected_translator(app)
     apply_application_icon(app)
 
