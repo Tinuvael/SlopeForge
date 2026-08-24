@@ -89,6 +89,14 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
                     frame.setStyleSheet(frame_style)
                     frame.setProperty("slopeforgeThemeSync", False)
 
+        def _sync_score_frame(self, frame: QFrame) -> None:
+            if frame.objectName() != "ScoreStateFrame":
+                return
+            spin = frame.findChild(QAbstractSpinBox)
+            editor = spin.findChild(QLineEdit) if spin is not None else None
+            if editor is not None:
+                self._sync_score_state(editor)
+
         @staticmethod
         def _list_for_item_widget(widget):
             current = widget.parentWidget()
@@ -183,6 +191,7 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
                     if isinstance(watched, QLineEdit):
                         self._sync_score_state(watched)
                     if isinstance(watched, QFrame):
+                        self._sync_score_frame(watched)
                         self._sync_assessment_link_item(watched)
                     if isinstance(watched, QLabel):
                         self._sync_inline_link_badges(watched)
