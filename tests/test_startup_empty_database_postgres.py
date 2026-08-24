@@ -47,7 +47,7 @@ def test_explicit_settings_initialize_empty_database_without_environment(
         assert first_settings is settings
         assert set(Base.metadata.tables) <= set(inspect(first_engine).get_table_names())
         with first_engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0003_drillhole_datasets"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "1"
         with first_sessions() as session:
             assert session.scalar(text("SELECT 1")) == 1
 
@@ -76,7 +76,7 @@ def test_nonempty_unversioned_database_is_not_initialized(
     try:
         with pytest.raises(StartupError) as caught:
             initialize_database_runtime(settings)
-        assert caught.value.reason == "database_migration_required"
+        assert caught.value.reason == "database_version_incompatible"
         assert set(inspect(engine).get_table_names()) == {"existing_user_data"}
     finally:
         with engine.begin() as connection:
@@ -86,7 +86,7 @@ def test_nonempty_unversioned_database_is_not_initialized(
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
-def test_obsolete_revision_is_not_initialized_or_stamped(tmp_path: Path) -> None:
+def test_pre_1_0_revision_is_not_initialized_or_stamped(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     _make_completely_empty(settings)
     engine = create_engine(settings.database_url)
@@ -98,7 +98,8 @@ def test_obsolete_revision_is_not_initialized_or_stamped(tmp_path: Path) -> None
     try:
         with pytest.raises(StartupError) as caught:
             initialize_database_runtime(settings)
-        assert caught.value.reason == "database_revision_obsolete"
+        assert caught.value.reason == "database_upgrade_required"
+        assert "python -m" not in caught.value.presentation()
         with engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0007_remove_mine_blastblock"
         assert set(inspect(engine).get_table_names()) == {"alembic_version"}
