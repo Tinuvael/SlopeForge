@@ -160,6 +160,7 @@ def test_dark_numeric_spinbox_right_side_remains_clickable() -> None:
 
 
 def test_custom_chevron_spinbox_buttons_survive_dark_repolish() -> None:
+    QtCore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     QtTest = pytest.importorskip("PySide6.QtTest", exc_type=ImportError)
     QtWidgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from ui.application_theme import apply_application_theme
@@ -175,9 +176,9 @@ def test_custom_chevron_spinbox_buttons_survive_dark_repolish() -> None:
     apply_application_theme(app, "dark")
     app.processEvents()
 
-    QtTest.QTest.mouseClick(spin.up_button, spin.up_button.palette().currentColorGroup() and __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.MouseButton.LeftButton)
+    QtTest.QTest.mouseClick(spin.up_button, QtCore.Qt.MouseButton.LeftButton)
     assert spin.value() == pytest.approx(3.0)
-    QtTest.QTest.mouseClick(spin.down_button, __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.MouseButton.LeftButton)
+    QtTest.QTest.mouseClick(spin.down_button, QtCore.Qt.MouseButton.LeftButton)
     assert spin.value() == pytest.approx(2.0)
     spin.close()
 
