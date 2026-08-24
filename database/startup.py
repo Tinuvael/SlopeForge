@@ -23,6 +23,13 @@ from .migrations import upgrade_to_head
 from .settings import ConfigurationError, Settings, safe_database_location
 
 
+PRE_1_0_DEVELOPMENT_REVISIONS = frozenset({
+    "0001_mvp_baseline",
+    "0002_project_surface_datasets",
+    "0003_drillhole_datasets",
+})
+
+
 class StartupError(RuntimeError):
     def __init__(self, message: str, server: str | None = None, *,
                  reason: str = "database_error", actions: tuple[str, ...] = ()):
@@ -67,35 +74,46 @@ def _verify_alembic_revision(engine, server: str | None) -> None:
         current_heads = _database_alembic_heads(engine)
     except SQLAlchemyError as exc:
         raise StartupError(
-            f"Could not read the database Alembic revision. Current application revision: {required}.",
+            "Could not read the database schema version.",
             server, reason="database_revision_unreadable",
         ) from exc
+
     if current_heads == (required,):
         return
-    current = ", ".join(current_heads) if current_heads else "missing"
-    script = _alembic_script()
-    unknown = []
-    for revision in current_heads:
-        try:
-            if script.get_revision(revision) is None:
-                unknown.append(revision)
-        except (CommandError, ResolutionError):
-            unknown.append(revision)
-    if unknown:
+
+    if len(current_heads) != 1:
         raise StartupError(
-            "This database uses unsupported pre-1.0 development migration history.\n\n"
-            f"Database revision:\n{current}\n\n"
-            f"Current application revision:\n{required}\n\n"
-            "The pre-release migration history was intentionally consolidated into "
-            "the SlopeForge 1.0 database baseline (revision 1).\n\n"
-            "Pre-1.0 development databases must be recreated; do not stamp an old "
-            "physical schema as revision 1.",
-            server, reason="database_revision_obsolete",
-            actions=("Run:\npython -m database.cli reset-dev-db",),
+            "The selected database has an incompatible schema state.",
+            server, reason="database_version_incompatible",
         )
+
+    current = current_heads[0]
+    if current in PRE_1_0_DEVELOPMENT_REVISIONS:
+        raise StartupError(
+            "The selected database uses an older SlopeForge schema.",
+            server, reason="database_upgrade_required",
+        )
+
+    script = _alembic_script()
+    try:
+        known_revision = script.get_revision(current)
+    except (CommandError, ResolutionError):
+        known_revision = None
+
+    if known_revision is not None:
+        # With the single-head migration policy, a recognized non-head revision is
+        # an older schema that can only be opened after the database is upgraded.
+        raise StartupError(
+            "The selected database uses an older SlopeForge schema.",
+            server, reason="database_upgrade_required",
+        )
+
+    # An installed application cannot inspect a migration that was introduced by
+    # a later release. Treat an unknown post-1.0 revision as requiring a newer
+    # SlopeForge build rather than attempting to modify an unfamiliar schema.
     raise StartupError(
-        f"Database revision: {current}. Current application revision: {required}.",
-        server, reason="database_migration_required",
+        "The selected database requires a newer or otherwise unsupported SlopeForge schema.",
+        server, reason="application_upgrade_required",
     )
 
 
@@ -106,9 +124,8 @@ def _initialize_empty_database(engine, settings: Settings, server: str | None) -
     existing = set(inspect(engine).get_table_names())
     if existing:
         raise StartupError(
-            "The database has no Alembic revision but is not empty. Automatic "
-            "schema initialization was refused to protect existing data.",
-            server, reason="database_migration_required",
+            "The selected database contains data but has no recognized SlopeForge schema version.",
+            server, reason="database_version_incompatible",
         )
     upgrade_to_head(settings)
 
