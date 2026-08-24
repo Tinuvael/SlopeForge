@@ -49,6 +49,8 @@
         <message><source>Max collar deviation</source><translation>Максимальное отклонение устья</translation></message>
         <message><source>Mean toe deviation</source><translation>Среднее отклонение забоя</translation></message>
         <message><source>Max toe deviation</source><translation>Максимальное отклонение забоя</translation></message>
+        <message><source>Mean azimuth deviation, °</source><translation>Среднее отклонение азимута, °</translation></message>
+        <message><source>Mean inclination deviation, °</source><translation>Среднее отклонение наклона, °</translation></message>
         <message><source>Maximum collar deviation match</source><translation>Пара с максимальным отклонением устья</translation></message>
         <message><source>Maximum toe deviation match</source><translation>Пара с максимальным отклонением забоя</translation></message>
         <message><source>Design hole</source><translation>Проектная скважина</translation></message>
