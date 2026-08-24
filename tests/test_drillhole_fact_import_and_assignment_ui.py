@@ -140,6 +140,20 @@ def test_assignment_polygon_pen_is_cosmetic_and_thin() -> None:
     assert pen.widthF() == 1.0
 
 
+def test_mean_angular_deviation_uses_absolute_values() -> None:
+    matches = [
+        {"azimuth_deviation_deg": -2.0, "inclination_deviation_deg": 1.0},
+        {"azimuth_deviation_deg": 4.0, "inclination_deviation_deg": -3.0},
+    ]
+
+    assert TechnicalCardEditorWidget._mean_absolute_deviation(
+        matches, "azimuth_deviation_deg"
+    ) == pytest.approx(3.0)
+    assert TechnicalCardEditorWidget._mean_absolute_deviation(
+        matches, "inclination_deviation_deg"
+    ) == pytest.approx(2.0)
+
+
 def test_requested_engineering_precision_is_explicit() -> None:
     assert ENGINEERING_FIELD_DECIMALS == {
         "hole_count": 0,
