@@ -37,6 +37,52 @@ _ICON_ROOT = Path(__file__).resolve().parent.parent / "app" / "icons" / "ui" / "
 _DARK_COMBO_CHEVRON = (_ICON_ROOT / "chevron-down-white.svg").as_posix()
 
 
+LIGHT_STYLESHEET = f"""
+/* Theme-aware surfaces that are not part of the older shared light QSS. */
+QGraphicsView#DashboardPlanView, QGraphicsView#BoreholeView {{
+    background: {Color.SURFACE_SUBTLE}; border: 1px solid {Color.BORDER}; border-radius: 5px;
+}}
+QLabel#DashboardMetricValue {{ color: {Color.TEXT_PRIMARY}; font-size: 18px; font-weight: 700; }}
+QLabel#DashboardStrongText {{ color: {Color.TEXT_SECONDARY}; font-weight: 600; }}
+QLabel#DashboardPercentValue {{ color: #1f4f7a; font-size: 18px; font-weight: 700; }}
+QProgressBar#DashboardProgressBar {{
+    border: 1px solid {Color.BORDER}; border-radius: 8px; background: #eef2f6;
+}}
+QProgressBar#DashboardProgressBar::chunk {{ background: #4f78a8; border-radius: 7px; }}
+QWidget#DashboardActivityRow {{ border-bottom: 1px solid #eef1f5; }}
+
+QFrame#DocumentBatchBulk, QFrame#PhotoMetadataCard {{
+    background: #f8fafc; border: 1px solid {Color.BORDER}; border-radius: 7px;
+}}
+QLabel#AttachmentBatchTitle {{ color: {Color.TEXT_PRIMARY}; font-size: 16px; font-weight: 600; }}
+QLabel#PhotoImportPreview {{
+    background: {Color.SURFACE_SUBTLE}; color: {Color.TEXT_SECONDARY};
+    border: 1px solid {Color.BORDER}; border-radius: 6px;
+}}
+QLabel#PhotoViewerTitle {{ color: {Color.TEXT_PRIMARY}; font-size: 16px; font-weight: 600; }}
+QLabel#PhotoMetadataLabel, QLabel#AttachmentFilename {{ color: {Color.TEXT_MUTED}; font-size: 11px; }}
+QLabel#PhotoMetadataValue {{ color: {Color.TEXT_PRIMARY}; font-weight: 500; }}
+QToolButton#AttachmentPreviewTile {{
+    padding: 0; margin: 0; border: 1px solid {Color.BORDER}; border-radius: 6px;
+    background: {Color.SURFACE_SUBTLE};
+}}
+QToolButton#AttachmentPreviewTile:hover {{ border-color: #8fb4dc; background: #eef4fb; }}
+QToolButton#AttachmentPreviewTile:pressed {{ border-color: {Color.ACCENT}; }}
+QToolButton#PhotoTile {{ background: transparent; border: 0; padding: 0; margin: 0; }}
+QToolButton#PhotoTile:hover {{ background: #eef4fb; border: 2px solid #9bc2ea; border-radius: 11px; }}
+QToolButton#AttachmentThumbnail {{ border: 1px solid transparent; border-radius: 10px; padding: 2px; background: transparent; }}
+QToolButton#AttachmentThumbnail[selected="true"] {{ border: 2px solid {Color.ACCENT}; }}
+
+QLabel#ConnectionStatus[statusState="info"] {{ color: {Color.TEXT_MUTED}; }}
+QLabel#ConnectionStatus[statusState="success"] {{ color: {Color.SUCCESS}; }}
+QLabel#ConnectionStatus[statusState="error"] {{ color: {Color.ERROR}; }}
+QLabel#ConnectionEnvironmentWarning {{
+    background: #fff7e6; color: #725514; border: 1px solid #e8c77d;
+    border-radius: 5px; padding: 6px;
+}}
+"""
+
+
 DARK_STYLESHEET = f"""
 /* Dark theme overrides. The base stylesheet still owns geometry/spacing. */
 QMainWindow, QDialog,
@@ -60,6 +106,7 @@ QFrame#CriterionCard, QFrame#ResultCard,
 QFrame#assessmentInfoCard, QFrame#assessmentPlanCard, QFrame#assessmentContextCard,
 QFrame#assessmentFooter, QFrame#PlanCard, QFrame#InspectorCard, QFrame#DialogFooter,
 QFrame#DashboardSummaryRow, QWidget#ProjectLinesDatasetRow, QWidget#StandardRow,
+QFrame#DocumentBatchBulk, QFrame#PhotoMetadataCard,
 QWidget#geomechanicsWorkspace QWidget#rockMassSection,
 QWidget#geomechanicsWorkspace QWidget#jointSetsSection,
 QWidget#geomechanicsWorkspace QWidget#qSystemSection,
@@ -70,20 +117,30 @@ QWidget#geomechanicsWorkspace QWidget#geomechanicsNotes {{
 QWidget#assessmentLinkEventRow {{ background: {DarkColor.SURFACE_SUBTLE}; border-bottom-color: {DarkColor.BORDER}; }}
 QFrame#OverviewDivider, QFrame#assessmentStepConnector {{ background: {DarkColor.BORDER}; color: {DarkColor.BORDER}; }}
 QFrame#assessmentStepConnector[complete="true"] {{ background: {DarkColor.ACCENT}; }}
+QWidget#DashboardActivityRow {{ border-bottom: 1px solid #303946; }}
 
 QLabel#EntityTitle, QLabel#BlockTitle,
 QLabel#SummaryValue, QLabel#ActivityTitle,
 QLabel#InspectorValue, QLabel#assessmentFieldValue,
-QLabel#assessmentStepLabel[stepState="active"] {{ color: {DarkColor.TEXT_PRIMARY}; }}
+QLabel#assessmentStepLabel[stepState="active"],
+QLabel#DashboardMetricValue {{ color: {DarkColor.TEXT_PRIMARY}; }}
+QLabel#DashboardMetricValue {{ font-size: 18px; font-weight: 700; }}
+QLabel#DashboardStrongText {{ color: {DarkColor.TEXT_SECONDARY}; font-weight: 600; }}
+QLabel#DashboardPercentValue {{ color: {DarkColor.ACCENT_HOVER}; font-size: 18px; font-weight: 700; }}
 QLabel#CardTitle, QLabel#EngineeringSectionTitle, QLabel#RelatedEntityTitle,
 QLabel#SectionTitle, QLabel#EngineeringGroupTitle,
 QLabel#assessmentCardTitle {{ color: {DarkColor.TEXT_SECONDARY}; }}
 QLabel#MutedText, QLabel#EntityContextLine, QLabel#CalculatedCaption,
 QLabel#FormHelperText, QLabel#DialogStatus,
 QLabel#assessmentSectionTitle, QLabel#assessmentFieldLabel,
-QLabel#assessmentPlanStatus, QLabel#assessmentStepLabel[stepState="future"] {{ color: {DarkColor.TEXT_MUTED}; }}
+QLabel#assessmentPlanStatus, QLabel#assessmentStepLabel[stepState="future"],
+QLabel#AttachmentFilename, QLabel#PhotoMetadataLabel {{ color: {DarkColor.TEXT_MUTED}; }}
+QLabel#AttachmentFilename, QLabel#PhotoMetadataLabel {{ font-size: 11px; }}
 QLabel#EngineeringSummaryText {{ color: {DarkColor.TEXT_SECONDARY}; }}
 QLabel#FormValidationText, QLabel#assessmentValidation {{ color: {DarkColor.ERROR}; }}
+QLabel#AttachmentBatchTitle {{ color: {DarkColor.TEXT_PRIMARY}; font-size: 16px; font-weight: 600; }}
+QLabel#PhotoViewerTitle {{ color: {DarkColor.TEXT_PRIMARY}; font-size: 16px; font-weight: 600; }}
+QLabel#PhotoMetadataValue {{ color: {DarkColor.TEXT_PRIMARY}; font-weight: 500; }}
 QLabel#assessmentStepCircle[stepState="active"], QLabel#assessmentStepCircle[stepState="complete"] {{
     background: {DarkColor.ACCENT}; color: #ffffff;
 }}
@@ -153,6 +210,36 @@ QTableWidget#StandardTable::item {{ border-bottom-color: #303946; }}
 QTableWidget#StandardTable::item:hover {{ background: {DarkColor.SURFACE_ELEVATED}; }}
 QTableWidget#StandardTable::item:selected {{ background: {DarkColor.SELECTED}; color: {DarkColor.TEXT_PRIMARY}; }}
 QLabel#EmptyState {{ color: {DarkColor.TEXT_MUTED}; background: {DarkColor.SURFACE_SUBTLE}; border-color: {DarkColor.SEPARATOR}; }}
+
+QGraphicsView#DashboardPlanView, QGraphicsView#BoreholeView {{
+    background: {DarkColor.SURFACE_SUBTLE}; border: 1px solid {DarkColor.BORDER}; border-radius: 5px;
+}}
+QProgressBar#DashboardProgressBar {{
+    border: 1px solid {DarkColor.SEPARATOR}; border-radius: 8px; background: {DarkColor.SURFACE_SUBTLE};
+}}
+QProgressBar#DashboardProgressBar::chunk {{ background: {DarkColor.ACCENT}; border-radius: 7px; }}
+QLabel#PhotoImportPreview {{
+    background: {DarkColor.SURFACE_SUBTLE}; color: {DarkColor.TEXT_SECONDARY};
+    border: 1px solid {DarkColor.BORDER}; border-radius: 6px;
+}}
+QToolButton#AttachmentPreviewTile {{
+    padding: 0; margin: 0; border: 1px solid {DarkColor.BORDER}; border-radius: 6px;
+    background: {DarkColor.SURFACE_SUBTLE};
+}}
+QToolButton#AttachmentPreviewTile:hover {{ border-color: {DarkColor.ACCENT}; background: {DarkColor.SELECTED}; }}
+QToolButton#AttachmentPreviewTile:pressed {{ border-color: {DarkColor.ACCENT_HOVER}; }}
+QToolButton#PhotoTile {{ background: transparent; border: 0; padding: 0; margin: 0; }}
+QToolButton#PhotoTile:hover {{ background: {DarkColor.SELECTED}; border: 2px solid {DarkColor.ACCENT}; border-radius: 11px; }}
+QToolButton#AttachmentThumbnail {{ border: 1px solid transparent; border-radius: 10px; padding: 2px; background: transparent; }}
+QToolButton#AttachmentThumbnail[selected="true"] {{ border: 2px solid {DarkColor.ACCENT}; }}
+
+QLabel#ConnectionStatus[statusState="info"] {{ color: {DarkColor.TEXT_MUTED}; }}
+QLabel#ConnectionStatus[statusState="success"] {{ color: {DarkColor.SUCCESS}; }}
+QLabel#ConnectionStatus[statusState="error"] {{ color: {DarkColor.ERROR}; }}
+QLabel#ConnectionEnvironmentWarning {{
+    background: #493b21; color: {DarkColor.WARNING}; border: 1px solid #725c2e;
+    border-radius: 5px; padding: 6px;
+}}
 
 QWidget#EngineeringWorkspace QGroupBox#drillingGroupCard,
 QWidget#EngineeringWorkspace QGroupBox#actualDrillingGroupCard,
@@ -328,7 +415,9 @@ def _resolved_dark(app: QApplication, theme: str) -> bool:
 
 def _apply_resolved(app: QApplication, *, dark: bool) -> None:
     app.setPalette(build_palette(dark=dark))
-    app.setStyleSheet(APPLICATION_STYLESHEET + (DARK_STYLESHEET if dark else ""))
+    app.setStyleSheet(
+        APPLICATION_STYLESHEET + (DARK_STYLESHEET if dark else LIGHT_STYLESHEET)
+    )
     app.setProperty("slopeforgeTheme", "dark" if dark else "light")
 
 
