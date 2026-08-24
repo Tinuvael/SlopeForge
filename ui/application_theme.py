@@ -159,18 +159,21 @@ QPushButton[role="link"]:hover {{ color: {DarkColor.ACCENT_HOVER}; }}
 QPushButton[role="danger"] {{ color: {DarkColor.ERROR}; background: {DarkColor.SURFACE}; border-color: #754247; }}
 QPushButton:disabled {{ color: {DarkColor.DISABLED}; }}
 
-QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox,
+/* Keep spin boxes on the native Qt/Windows complex-control path. Partial QSS
+   styling changes their subcontrol hit geometry on Windows; the application
+   palette already supplies the correct dark Base/Text/Button colours. */
+QLineEdit, QTextEdit, QPlainTextEdit,
 QDateEdit, QTimeEdit, QDateTimeEdit, QComboBox {{
     background: {DarkColor.SURFACE}; color: {DarkColor.TEXT_PRIMARY};
     border: 1px solid {DarkColor.BORDER};
     selection-background-color: {DarkColor.SELECTED}; selection-color: {DarkColor.TEXT_PRIMARY};
 }}
 QLineEdit:hover, QTextEdit:hover, QPlainTextEdit:hover,
-QSpinBox:hover, QDoubleSpinBox:hover, QDateEdit:hover, QComboBox:hover {{ border-color: {DarkColor.SEPARATOR}; }}
+QDateEdit:hover, QComboBox:hover {{ border-color: {DarkColor.SEPARATOR}; }}
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
-QSpinBox:focus, QDoubleSpinBox:focus, QDateEdit:focus, QComboBox:focus {{ border-color: {DarkColor.FOCUS}; }}
+QDateEdit:focus, QComboBox:focus {{ border-color: {DarkColor.FOCUS}; }}
 QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled,
-QSpinBox:disabled, QDoubleSpinBox:disabled, QDateEdit:disabled, QComboBox:disabled {{
+QDateEdit:disabled, QComboBox:disabled {{
     background: {DarkColor.SURFACE_SUBTLE}; color: {DarkColor.DISABLED}; border-color: {DarkColor.BORDER};
 }}
 QComboBox QAbstractItemView {{
@@ -180,6 +183,44 @@ QComboBox QAbstractItemView {{
 }}
 QComboBox::drop-down, QDateEdit::drop-down {{ background: {DarkColor.SURFACE_SUBTLE}; border-left-color: {DarkColor.BORDER}; }}
 QComboBox::down-arrow, QDateEdit::down-arrow {{ image: url("{_DARK_COMBO_CHEVRON}"); width: 12px; height: 12px; }}
+
+/* The light baseline has high-specificity StandardEntityDialog rules. Match
+   that specificity in Dark so create/edit dialogs do not retain white fields. */
+QDialog#StandardEntityDialog QLineEdit,
+QDialog#StandardEntityDialog QTextEdit,
+QDialog#StandardEntityDialog QDateEdit,
+QDialog#StandardEntityDialog QComboBox {{
+    background: {DarkColor.SURFACE}; color: {DarkColor.TEXT_PRIMARY};
+    border-color: {DarkColor.BORDER};
+    selection-background-color: {DarkColor.SELECTED}; selection-color: {DarkColor.TEXT_PRIMARY};
+}}
+QDialog#StandardEntityDialog QLineEdit:disabled,
+QDialog#StandardEntityDialog QTextEdit:disabled,
+QDialog#StandardEntityDialog QDateEdit:disabled,
+QDialog#StandardEntityDialog QComboBox:disabled {{
+    background: {DarkColor.SURFACE_SUBTLE}; color: {DarkColor.DISABLED}; border-color: {DarkColor.BORDER};
+}}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox {{
+    background: {DarkColor.SURFACE}; color: {DarkColor.TEXT_PRIMARY}; border-color: {DarkColor.BORDER};
+}}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox:disabled {{
+    background: {DarkColor.SURFACE_SUBTLE}; color: {DarkColor.DISABLED}; border-color: {DarkColor.BORDER};
+}}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton {{
+    background: {DarkColor.SURFACE_SUBTLE}; border: 0; border-left: 1px solid {DarkColor.BORDER};
+    border-radius: 0; padding: 0; margin: 0;
+}}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton#ChevronSpinUpButton {{
+    border-top-right-radius: 5px; border-bottom: 1px solid {DarkColor.BORDER};
+}}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton#ChevronSpinDownButton {{
+    border-bottom-right-radius: 5px;
+}}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton:hover {{ background: {DarkColor.SELECTED}; }}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton:pressed {{ background: {DarkColor.SURFACE_ELEVATED}; }}
+QDialog#StandardEntityDialog QDoubleSpinBox#ChevronDoubleSpinBox QToolButton:disabled {{
+    background: {DarkColor.SURFACE_SUBTLE}; border-color: {DarkColor.BORDER};
+}}
 
 QLineEdit#GlobalSearch {{
     background: {DarkColor.SURFACE}; color: {DarkColor.TEXT_PRIMARY}; border-color: {DarkColor.BORDER};
@@ -414,11 +455,13 @@ def _resolved_dark(app: QApplication, theme: str) -> bool:
 
 
 def _apply_resolved(app: QApplication, *, dark: bool) -> None:
+    # Publish the target theme before palette/style repolish events are emitted so
+    # compatibility widgets can react to the *new* theme during those callbacks.
+    app.setProperty("slopeforgeTheme", "dark" if dark else "light")
     app.setPalette(build_palette(dark=dark))
     app.setStyleSheet(
         APPLICATION_STYLESHEET + (DARK_STYLESHEET if dark else LIGHT_STYLESHEET)
     )
-    app.setProperty("slopeforgeTheme", "dark" if dark else "light")
 
 
 def apply_application_theme(
