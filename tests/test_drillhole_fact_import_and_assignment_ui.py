@@ -15,17 +15,29 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-from domain.blasting.charge_design import ChargeComponent, ChargeComponentKind
+from domain.blasting.charge_design import (
+    ChargeComponent,
+    ChargeComponentKind,
+    ExplosiveProductKind,
+    ExplosiveProductSnapshot,
+)
 from domain.blasting.drillholes import Drillhole, DrillholePoint
 from domain.blasting.technical_card import ActualDrillingGroup, BlastDrillingGroup
 from ui.dialogs.drillhole_group_assignment_dialog import DrillholeSelectionView
 from ui.pages.technical_card_widgets import (
     ENGINEERING_FIELD_DECIMALS,
     TechnicalCardEditorWidget,
-    _clear_copied_charge_beyond_depth,
+    _fit_copied_charge_to_fact_depth,
 )
 
 _APP = None
+_BULK = ExplosiveProductSnapshot(
+    source_product_id=1,
+    name="Emulsion",
+    kind=ExplosiveProductKind.BULK,
+    display_color="#336699",
+    density_kg_m3=1200.0,
+)
 
 
 def _app():
@@ -45,64 +57,85 @@ def _hole(hole_id: str, x: float, group_id: str | None = None) -> Drillhole:
     )
 
 
-def test_copied_design_charge_is_cleared_when_imported_fact_is_shallower() -> None:
-    design = BlastDrillingGroup(
+def _design_with_charge() -> BlastDrillingGroup:
+    return BlastDrillingGroup(
         name="Contour",
-        average_depth_m=21.8,
+        average_depth_m=20.0,
         charge_components=[
+            ChargeComponent("stem", ChargeComponentKind.STEMMING, 0.0, 5.0),
             ChargeComponent(
-                "stem",
-                ChargeComponentKind.STEMMING,
-                0.0,
-                21.8,
-            )
+                "charge",
+                ChargeComponentKind.BULK_EXPLOSIVE,
+                5.0,
+                20.0,
+                _BULK,
+            ),
         ],
     )
+
+
+def test_copied_design_charge_is_fitted_instead_of_cleared_for_shallower_fact() -> None:
+    design = _design_with_charge()
     actual = ActualDrillingGroup.from_design(design, "TC-R1")
 
-    changed = _clear_copied_charge_beyond_depth(actual, design, 21.75)
+    changed = _fit_copied_charge_to_fact_depth(actual, design, 19.0)
 
     assert changed is True
-    assert actual.charge_components == []
-    assert actual.copied_from_design is False
-    assert design.charge_components[0].end_depth_m == 21.8
+    assert len(actual.charge_components) == 2
+    assert actual.charge_components[-1].start_depth_m == pytest.approx(5.0)
+    assert actual.charge_components[-1].end_depth_m == pytest.approx(19.0)
+    assert actual.copied_from_design is True
+    assert actual.explosive_type == "Emulsion"
+
+
+def test_auto_fitted_charge_can_follow_a_later_fact_depth_revision() -> None:
+    design = _design_with_charge()
+    actual = ActualDrillingGroup.from_design(design, "TC-R1")
+    _fit_copied_charge_to_fact_depth(actual, design, 19.0)
+    actual.average_depth_m = 19.0
+
+    changed = _fit_copied_charge_to_fact_depth(actual, design, 18.0)
+
+    assert changed is True
+    assert actual.charge_components[-1].end_depth_m == pytest.approx(18.0)
 
 
 def test_geometry_guard_cleared_charge_is_restored_on_next_group_refresh() -> None:
-    design = BlastDrillingGroup(
-        name="Contour",
-        average_depth_m=21.8,
-        charge_components=[
-            ChargeComponent("design", ChargeComponentKind.STEMMING, 0.0, 21.8)
-        ],
-    )
+    design = _design_with_charge()
     actual = ActualDrillingGroup.from_design(design, "TC-R1")
-    _clear_copied_charge_beyond_depth(actual, design, 21.75)
+    # Exact signature left by the earlier geometry guard implementation.
+    actual.charge_components = []
+    actual.stemming_length_m = 0.0
+    actual.explosive_type = ""
+    actual.copied_from_design = False
 
     TechnicalCardEditorWidget._restore_charge_cleared_by_geometry_guard(actual, design)
 
-    assert len(actual.charge_components) == 1
-    assert actual.charge_components[0].end_depth_m == 21.8
+    assert len(actual.charge_components) == 2
+    assert actual.charge_components[-1].end_depth_m == 20.0
     assert actual.copied_from_design is True
 
 
-def test_manual_factual_charge_is_never_silently_cleared() -> None:
-    design = BlastDrillingGroup(
-        name="Contour",
-        average_depth_m=21.8,
-        charge_components=[
-            ChargeComponent("design", ChargeComponentKind.STEMMING, 0.0, 21.8)
-        ],
-    )
+def test_manual_factual_charge_is_never_silently_refitted() -> None:
+    design = _design_with_charge()
     actual = ActualDrillingGroup.from_design(design, "TC-R1")
     actual.charge_components = [
-        ChargeComponent("manual", ChargeComponentKind.STEMMING, 0.0, 21.9)
+        ChargeComponent("manual-stem", ChargeComponentKind.STEMMING, 0.0, 4.0),
+        ChargeComponent(
+            "manual-charge",
+            ChargeComponentKind.BULK_EXPLOSIVE,
+            4.0,
+            18.0,
+            _BULK,
+        ),
     ]
 
-    changed = _clear_copied_charge_beyond_depth(actual, design, 21.75)
+    changed = _fit_copied_charge_to_fact_depth(actual, design, 19.0)
 
     assert changed is False
-    assert actual.charge_components[0].end_depth_m == 21.9
+    assert actual.charge_components[0].end_depth_m == 4.0
+    assert actual.charge_components[1].start_depth_m == 4.0
+    assert actual.charge_components[1].end_depth_m == 18.0
 
 
 def test_assignment_view_starts_clean_and_excludes_holes_owned_by_other_groups() -> None:
