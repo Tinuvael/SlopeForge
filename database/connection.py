@@ -37,9 +37,8 @@ def check_connection(engine: Engine | None = None) -> None:
             connection.execute(text("SELECT 1"))
     except OperationalError as exc:
         raise DatabaseConnectionError(
-            "Cannot connect to PostgreSQL. Check DATABASE_URL, network access, credentials, "
-            "and that the target database exists. If the database does not exist, run "
-            "`python -m database.cli prepare-db` or ask your PostgreSQL administrator to create it."
+            "Cannot connect to PostgreSQL. Check the server address, network, credentials, "
+            "and that the target database exists. If necessary, contact your PostgreSQL administrator."
         ) from exc
     except SQLAlchemyError as exc:
         raise DatabaseConnectionError(f"PostgreSQL connection check failed: {exc}") from exc
