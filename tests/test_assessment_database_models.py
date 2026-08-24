@@ -216,21 +216,15 @@ def test_metadata_and_indexes_compile_with_postgresql():
         for index in table(name).indexes: assert "CREATE" in str(CreateIndex(index).compile(dialect=dialect))
 
 
-def test_current_schema_keeps_immutable_mvp_baseline_and_appends_migrations():
+def test_current_schema_is_single_release_1_baseline():
     versions = sorted(Path("alembic/versions").glob("*.py"))
-    assert [path.name for path in versions] == [
-        "0001_mvp_baseline.py",
-        "0002_project_surface_datasets.py",
-        "0003_blast_event_drillhole_datasets.py",
-    ]
+    assert [path.name for path in versions] == ["0001_slopeforge_1.py"]
     baseline = versions[0].read_text()
-    assert 'revision = "0001_mvp_baseline"' in baseline
+    assert 'revision = "1"' in baseline
     assert "down_revision = None" in baseline
-    assert "mines" not in baseline
-    assert "blast_blocks" not in baseline
-    surface_revision = versions[1].read_text()
-    assert 'revision = "0002_project_surface_datasets"' in surface_revision
-    assert 'down_revision = "0001_mvp_baseline"' in surface_revision
-    drillhole_revision = versions[2].read_text()
-    assert 'revision = "0003_drillhole_datasets"' in drillhole_revision
-    assert 'down_revision = "0002_project_surface_datasets"' in drillhole_revision
+    assert '_run_component("core", "upgrade")' in baseline
+    assert '_run_component("project_surfaces", "upgrade")' in baseline
+    assert '_run_component("drillhole_datasets", "upgrade")' in baseline
+    assert sorted(path.name for path in Path("alembic/schema_v1").glob("*.py")) == [
+        "core.py", "drillhole_datasets.py", "project_surfaces.py",
+    ]
