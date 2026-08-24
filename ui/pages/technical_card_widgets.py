@@ -102,6 +102,19 @@ class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
             widget.setDecimals(decimals)
             widget.blockSignals(previous)
 
+    @staticmethod
+    def _label_collar_deviation_as_plan(box) -> None:
+        replacements = {
+            "Mean collar deviation, m": "Mean collar plan deviation, m",
+            "Max collar deviation, m": "Max collar plan deviation, m",
+            tr("Mean collar deviation, m"): tr("Mean collar plan deviation, m"),
+            tr("Max collar deviation, m"): tr("Max collar plan deviation, m"),
+        }
+        for label in box.findChildren(QLabel):
+            replacement = replacements.get(label.text())
+            if replacement:
+                label.setText(replacement)
+
     def _decorate_auto_fields(self, box, group, callback, badge_text):
         if not callable(callback):
             return
@@ -193,6 +206,7 @@ class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
             if box is None or box.layout() is None:
                 continue
             self._apply_field_precision(box)
+            self._label_collar_deviation_as_plan(box)
             if callable(callback):
                 self._decorate_auto_fields(
                     box,
@@ -688,7 +702,7 @@ class TechnicalCardEditorWidget(QWidget):
         actual.drilling_length_m = summary.total_drilling_length_m
         actual.inclination_deg = summary.mean_inclination_deg
         actual.azimuth_deg = summary.mean_azimuth_deg
-        collar = self._deviation_values(matches, "collar_deviation_3d_m")
+        collar = self._deviation_values(matches, "collar_distance_xy_m")
         toe = self._deviation_values(matches, "toe_deviation_3d_m")
         actual.mean_collar_deviation_m = mean(collar) if collar else None
         actual.max_collar_deviation_m = max(collar) if collar else None
