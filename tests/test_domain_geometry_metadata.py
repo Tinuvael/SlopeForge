@@ -29,6 +29,7 @@ def test_domain_geometry_remains_in_immutable_mvp_baseline_with_appended_migrati
     assert sorted(item.name for item in Path("alembic/versions").glob("*.py")) == [
         "0001_mvp_baseline.py",
         "0002_project_surface_datasets.py",
+        "0003_blast_event_drillhole_datasets.py",
     ]
 
 

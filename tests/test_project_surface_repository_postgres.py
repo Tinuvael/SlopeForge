@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import os
+from pathlib import Path
 
 import pytest
 
 pytestmark = pytest.mark.postgres
 from alembic import command
-from alembic.config import Config
 from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import sessionmaker
 
@@ -25,22 +25,20 @@ if not is_disposable_test_database(URL):
         pytrace=False,
     )
 
+from database.migrations import alembic_config
 from database.models import Site
 from database.project_surface_models import ProjectSurfaceDataset
+from database.settings import Settings
 from repositories.project_surface_repository import ProjectSurfaceDatasetRepository
 
 
 @pytest.fixture(scope="module")
-def factory():
-    old_database = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = URL
-    try:
-        command.upgrade(Config("alembic.ini"), "head")
-    finally:
-        if old_database is None:
-            os.environ.pop("DATABASE_URL", None)
-        else:
-            os.environ["DATABASE_URL"] = old_database
+def factory(tmp_path_factory):
+    settings = Settings(
+        URL,
+        Path(tmp_path_factory.mktemp("project-surface-repository-storage")),
+    )
+    command.upgrade(alembic_config(settings), "head")
     engine = create_engine(URL)
     yield sessionmaker(engine, expire_on_commit=False)
     engine.dispose()

@@ -24,6 +24,7 @@ class CreateBlastEventCommand:
     geometry_file_path: str
     actor_id: int | None
     can_edit: bool
+    design_drillhole_file_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -43,9 +44,31 @@ class BlastEventCreationPersistence(Protocol):
     ) -> int: ...
 
 
+class DrillholeDatasetWriter(Protocol):
+    def import_dataset(
+        self,
+        domain_id: int,
+        event_logical_id: str,
+        dataset_kind: str,
+        source_path: str,
+        *,
+        imported_by_user_id: int | None = None,
+    ): ...
+
+
 class CreateBlastEvent:
-    def __init__(self, persistence: BlastEventCreationPersistence):
+    def __init__(
+        self,
+        persistence: BlastEventCreationPersistence,
+        drillhole_datasets: DrillholeDatasetWriter | None = None,
+    ):
         self._persistence = persistence
+        self._drillhole_datasets = drillhole_datasets
+
+    @staticmethod
+    def _combine_warnings(*values: str | None) -> str | None:
+        usable = [str(value).strip() for value in values if value and str(value).strip()]
+        return "\n".join(usable) if usable else None
 
     def execute(self, command: CreateBlastEventCommand) -> CreateBlastEventResult:
         if not command.can_edit:
@@ -63,4 +86,33 @@ class CreateBlastEvent:
         event.created_by_user_id = command.actor_id
         self._persistence.persist_event(
             command.domain_id, snapshot.expected_version, event, command.actor_id)
-        return CreateBlastEventResult(event.id, event.event_type, service.last_import_warning)
+
+        drillhole_warning = None
+        if self._drillhole_datasets is not None:
+            # A contour BlastEvent's existing geometry source already consists of
+            # drillhole strings, so that same file is its initial design dataset.
+            # Production keeps the block outline and drillholes as separate files.
+            design_drillholes = (
+                command.geometry_file_path
+                if command.event_type == "contour"
+                else command.design_drillhole_file_path
+            )
+            if design_drillholes:
+                try:
+                    self._drillhole_datasets.import_dataset(
+                        command.domain_id,
+                        event.id,
+                        "design",
+                        design_drillholes,
+                        imported_by_user_id=command.actor_id,
+                    )
+                except Exception as exc:
+                    # The BlastEvent itself is already valid and persisted. Keep
+                    # creation successful and surface a retryable secondary warning.
+                    drillhole_warning = f"Design drillholes were not saved: {exc}"
+
+        return CreateBlastEventResult(
+            event.id,
+            event.event_type,
+            self._combine_warnings(service.last_import_warning, drillhole_warning),
+        )

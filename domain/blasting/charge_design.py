@@ -5,7 +5,7 @@ absence of a component and is therefore never stored as a component.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, ROUND_FLOOR
 from enum import Enum
 import math
@@ -235,6 +235,70 @@ def available_air_intervals(
     if _greater_than(hole_depth_m, cursor):
         gaps.append((cursor, hole_depth_m))
     return gaps
+
+
+def fit_charge_components_to_hole_depth(
+        components: Iterable[ChargeComponent], hole_depth_m: float) -> list[ChargeComponent]:
+    """Fit a copied charge construction to a factual average hole depth.
+
+    The design construction is interpreted collar-down. If the factual hole is
+    longer, components are left unchanged and the added toe interval is air. If
+    the factual toe cuts into the construction, the deepest contiguous component
+    block is first shifted upward into the immediately preceding air gap. Any
+    remaining shortage is taken from the toe-most component, preserving the
+    upper construction and component order. Air is implicit, so no synthetic air
+    component is created.
+    """
+    _positive(hole_depth_m, "Hole depth")
+    result = sorted(
+        list(components),
+        key=lambda item: (item.start_depth_m, item.end_depth_m),
+    )
+    if not result:
+        return []
+
+    deepest_end = result[-1].end_depth_m
+    if not _greater_than(deepest_end, hole_depth_m):
+        validate_components(result, hole_depth_m)
+        return result
+
+    overhang = deepest_end - hole_depth_m
+
+    # Move the deepest contiguous block upward only as far as existing air
+    # allows. A positive gap before the block is the air reserve that can absorb
+    # part (or all) of the factual shortening without changing charge lengths.
+    tail_start = len(result) - 1
+    while tail_start > 0:
+        previous = result[tail_start - 1]
+        current = result[tail_start]
+        if _greater_than(current.start_depth_m, previous.end_depth_m):
+            break
+        tail_start -= 1
+    previous_end = result[tail_start - 1].end_depth_m if tail_start > 0 else 0.0
+    air_before_tail = max(result[tail_start].start_depth_m - previous_end, 0.0)
+    shift = min(overhang, air_before_tail)
+    if shift > DEPTH_EPSILON:
+        for index in range(tail_start, len(result)):
+            component = result[index]
+            result[index] = replace(
+                component,
+                start_depth_m=component.start_depth_m - shift,
+                end_depth_m=component.end_depth_m - shift,
+            )
+
+    # If air was insufficient, shorten only from the factual toe upward. The
+    # normal case trims the lower explosive deck by exactly the remaining depth
+    # deficit. Extremely short factual holes may consume a complete toe-most
+    # component, in which case the rule continues to the next component.
+    while result and _greater_than(result[-1].end_depth_m, hole_depth_m):
+        component = result[-1]
+        if _greater_than(hole_depth_m, component.start_depth_m):
+            result[-1] = replace(component, end_depth_m=hole_depth_m)
+            break
+        result.pop()
+
+    validate_components(result, hole_depth_m)
+    return result
 
 
 def cartridge_depths(component: ChargeComponent) -> tuple[float, ...]:

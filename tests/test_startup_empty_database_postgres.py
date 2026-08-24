@@ -47,7 +47,7 @@ def test_explicit_settings_initialize_empty_database_without_environment(
         assert first_settings is settings
         assert set(Base.metadata.tables) <= set(inspect(first_engine).get_table_names())
         with first_engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0002_project_surface_datasets"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0003_drillhole_datasets"
         with first_sessions() as session:
             assert session.scalar(text("SELECT 1")) == 1
 

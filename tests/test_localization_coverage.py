@@ -36,15 +36,16 @@ def literal_tr_sources():
 
 
 def russian_catalog():
-    root = ET.parse(ROOT / "translations" / "slopeforge_ru.ts").getroot()
     messages = {}
-    for context in root.findall("context"):
-        if context.findtext("name") != "SlopeForge":
-            continue
-        for message in context.findall("message"):
-            translation = message.find("translation")
-            if translation is not None and translation.get("type") not in {"unfinished", "obsolete", "vanished"}:
-                messages[message.findtext("source", "")] = "".join(translation.itertext())
+    for catalog_path in sorted((ROOT / "translations").glob("slopeforge_ru*.ts")):
+        root = ET.parse(catalog_path).getroot()
+        for context in root.findall("context"):
+            if context.findtext("name") != "SlopeForge":
+                continue
+            for message in context.findall("message"):
+                translation = message.find("translation")
+                if translation is not None and translation.get("type") not in {"unfinished", "obsolete", "vanished"}:
+                    messages[message.findtext("source", "")] = "".join(translation.itertext())
     return messages
 
 
@@ -111,6 +112,17 @@ def test_important_indirect_presentation_sources_are_in_catalogue():
         "Mean backbreak, m", "Maximum backbreak, m", "Mean overbreak, m",
         "Mean underbreak, m", "Contour RMS deviation, m", "Measurement method",
         "Survey", "Photogrammetry", "Laser scan", "Manual measurement", "Visual estimate",
+        # Drillhole dataset cards pass these labels through translating helpers
+        # rather than literal tr(...) calls, so keep them in explicit coverage.
+        "Actual holes", "Matched", "Low-confidence matches", "Missing design holes",
+        "Additional holes", "Mean collar deviation", "Max collar deviation",
+        "Mean toe deviation", "Max toe deviation", "Total drilling",
+        "Min / max depth", "Mean inclination", "Mean hole azimuth",
+        "Contour length", "Mean spacing", "Spacing min / max", "Alignment azimuth",
+        "Import design drillholes to calculate drilling values automatically.",
+        "Optional. Import as-drilled holes to populate Execution fact automatically.",
+        "Design drillholes changed after this fact was imported. Re-import the fact to refresh automatic comparison values.",
+        "Auto from design holes", "Auto from as-drilled",
     }
     # Category labels are stable presentation text paired with canonical userData.
     from domain.attachments.policy import ATTACHMENT_CATEGORIES

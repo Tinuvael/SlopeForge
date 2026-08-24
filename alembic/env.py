@@ -10,6 +10,7 @@ from database.base import Base
 from database import models  # noqa: F401
 from database import assessment_models  # noqa: F401
 from database import project_surface_models  # noqa: F401
+from database import drillhole_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
