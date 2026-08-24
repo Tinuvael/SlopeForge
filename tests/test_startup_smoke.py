@@ -32,11 +32,78 @@ class FakeQApplication:
         self.stylesheet = stylesheet
 
 
+class FakeButton:
+    def __init__(self, text):
+        self.text = text
+
+
 class FakeMessageBox:
+    class Icon:
+        Warning = 1
+
+    class ButtonRole:
+        AcceptRole = 1
+        ActionRole = 2
+        RejectRole = 3
+
     critical_calls = []
+    warning_calls = []
+    boxes = []
+    next_click_text = None
+
+    def __init__(self):
+        self.window_title = ""
+        self.text = ""
+        self.informative_text = ""
+        self.buttons = []
+        self.default_button = None
+        self.escape_button = None
+        self._clicked = None
+        type(self).boxes.append(self)
+
     @classmethod
     def critical(cls, *args):
         cls.critical_calls.append(args)
+
+    @classmethod
+    def warning(cls, *args):
+        cls.warning_calls.append(args)
+
+    def setIcon(self, icon):
+        self.icon = icon
+
+    def setWindowTitle(self, title):
+        self.window_title = title
+
+    def setText(self, text):
+        self.text = text
+
+    def setInformativeText(self, text):
+        self.informative_text = text
+
+    def addButton(self, text, role):
+        button = FakeButton(text)
+        self.buttons.append((button, role))
+        return button
+
+    def setDefaultButton(self, button):
+        self.default_button = button
+
+    def setEscapeButton(self, button):
+        self.escape_button = button
+
+    def exec(self):
+        requested = type(self).next_click_text
+        if requested is not None:
+            self._clicked = next(
+                button for button, _role in self.buttons if button.text == requested
+            )
+        else:
+            self._clicked = self.escape_button or self.default_button
+        return 0
+
+    def clickedButton(self):
+        return self._clicked
 
 
 class FakeSplash:
@@ -46,6 +113,8 @@ class FakeSplash:
     def show_status(self, status):
         type(self).statuses.append(status)
     def close_with_fade(self):
+        self.closed = True
+    def close(self):
         self.closed = True
     def isVisible(self):
         return False
@@ -78,7 +147,7 @@ class FakeDialog:
         Accepted = 1
     current_user = None
     remember_requested = False
-    def __init__(self, *args):
+    def __init__(self, *args, **kwargs):
         raise AssertionError("dialog should not open for remembered-session path")
 
 
@@ -128,6 +197,9 @@ def load_main_with_fakes(monkeypatch):
 
     FakeMainWindow.constructed_contexts = []
     FakeMessageBox.critical_calls = []
+    FakeMessageBox.warning_calls = []
+    FakeMessageBox.boxes = []
+    FakeMessageBox.next_click_text = None
     spec = importlib.util.spec_from_file_location("tested_main_startup", Path("main.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -160,8 +232,8 @@ def test_startup_mapper_errors_are_reported_as_startup_error(monkeypatch):
     monkeypatch.setattr(startup.Settings, "from_env", lambda: settings)
     monkeypatch.setattr(startup, "create_database_engine", lambda value: object())
     monkeypatch.setattr(startup, "check_connection", lambda engine: None)
-    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "0001_mvp_baseline")
-    monkeypatch.setattr(startup, "_database_alembic_heads", lambda engine: ("0001_mvp_baseline",))
+    monkeypatch.setattr(startup, "_expected_alembic_head", lambda: "1")
+    monkeypatch.setattr(startup, "_database_alembic_heads", lambda engine: ("1",))
     monkeypatch.setattr(startup, "configure_mappers", lambda: (_ for _ in ()).throw(SQLAlchemyError("mapper boom")))
 
     with pytest.raises(startup.StartupError) as caught:
@@ -195,25 +267,70 @@ def test_connection_error_becomes_startup_error_with_safe_context(monkeypatch):
     assert "top-secret" not in caught.value.server
 
 
-def test_main_uses_postgresql_dialog_for_startup_error(monkeypatch):
-    module = load_main_with_fakes(monkeypatch)
-
+def _specialized_error(message, *, reason, server="db.example:5432/slopeforge"):
     class SpecializedStartupError(RuntimeError):
-        def __init__(self, message, server=None):
-            super().__init__(message); self.server = server
-        def presentation(self):
-            return f"{self}\n\nServer/database: {self.server}"
+        def __init__(self):
+            super().__init__(message)
+            self.reason = reason
+            self.server = server
+    return SpecializedStartupError()
 
-    FakeMessageBox.critical_calls = []
-    module.StartupError = SpecializedStartupError
-    module.initialize_database_runtime = lambda _settings=None: (_ for _ in ()).throw(
-        SpecializedStartupError("Cannot connect to PostgreSQL. Check DATABASE_URL.",
-                                "db.example:5432/slopeforge_test"))
 
-    assert module.main() == 1
-    assert len(FakeMessageBox.critical_calls) == 1
-    _parent, title, message = FakeMessageBox.critical_calls[0]
-    assert title == "PostgreSQL unavailable"
-    assert "Cannot connect to PostgreSQL" in message
-    assert "db.example:5432/slopeforge_test" in message
-    assert "Unexpected startup error" not in message
+def test_database_upgrade_dialog_hides_migration_internals(monkeypatch):
+    module = load_main_with_fakes(monkeypatch)
+    FakeMessageBox.next_click_text = "Close"
+    error = _specialized_error(
+        "internal revision 0003_drillhole_datasets python -m database.cli reset-dev-db",
+        reason="database_upgrade_required",
+    )
+
+    assert module.show_startup_error(error) == module._CLOSE
+    box = FakeMessageBox.boxes[-1]
+    rendered = f"{box.window_title}\n{box.text}\n{box.informative_text}"
+    assert "Database update required" in rendered
+    assert "database administrator" in rendered
+    assert "0003_drillhole_datasets" not in rendered
+    assert "python -m" not in rendered
+    assert "Alembic" not in rendered
+    assert any(button.text == "Change connection" for button, _role in box.buttons)
+
+
+def test_newer_database_dialog_links_to_latest_release(monkeypatch):
+    module = load_main_with_fakes(monkeypatch)
+    FakeMessageBox.next_click_text = "Get latest release"
+    opened = []
+    monkeypatch.setattr(module.webbrowser, "open", opened.append)
+    error = _specialized_error(
+        "internal unknown revision 2",
+        reason="application_upgrade_required",
+    )
+
+    assert module.show_startup_error(error) == module._CLOSE
+    box = FakeMessageBox.boxes[-1]
+    assert "requires a newer version of SlopeForge" in box.text
+    assert opened == [module.APP_RELEASES_URL]
+    assert any(button.text == "Change connection" for button, _role in box.buttons)
+
+
+def test_startup_version_mismatch_can_switch_connection_and_retry(monkeypatch):
+    module = load_main_with_fakes(monkeypatch)
+    replacement = FakeSettings(Path("/tmp/replacement-storage"))
+    attempts = []
+
+    def initialize(settings):
+        attempts.append(settings)
+        if len(attempts) == 1:
+            raise _specialized_error(
+                "old database",
+                reason="database_upgrade_required",
+            )
+        return replacement, object(), lambda: None
+
+    module.initialize_database_runtime = initialize
+    module._connection_setup = lambda _store, _current=None: replacement
+    FakeMessageBox.next_click_text = "Change connection"
+
+    assert module.main() == 0
+    assert len(attempts) == 2
+    assert attempts[1] is replacement
+    assert FakeMainWindow.constructed_contexts[-1].storage_root == Path("/tmp/replacement-storage")
