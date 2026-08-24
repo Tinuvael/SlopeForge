@@ -72,6 +72,10 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
             }
         """
 
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self._application_refresh_pending = False
+
         @staticmethod
         def _dark_theme() -> bool:
             return app.property("slopeforgeTheme") == "dark"
@@ -94,10 +98,6 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
             if widget.objectName() == "geomechanicsWorkspace" and (
                 "background:white" in compact or "background:#ffffff" in compact
             ):
-                # The Geomechanics page still owns a small light-only style for
-                # labels and text editors. Neutralise it regardless of whether
-                # its own StyleChange event was observed before the page was lent
-                # from the hidden TechnicalCardDialog into the entity page.
                 widget.setProperty("slopeforgeThemeSync", True)
                 widget.setStyleSheet("")
                 widget.setProperty("slopeforgeThemeSync", False)
@@ -324,18 +324,17 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
             if isinstance(widget, QLabel):
                 self._sync_inline_link_badges(widget)
 
-        def _defer_widget_theme_sync(self, widget: QWidget) -> None:
-            if widget.property("slopeforgeThemeSyncPending"):
+        def _sync_all_widgets(self) -> None:
+            self._application_refresh_pending = False
+            for widget in tuple(app.allWidgets()):
+                if isinstance(widget, QWidget) and isValid(widget):
+                    self._sync_widget_theme(widget)
+
+        def _defer_application_theme_sync(self) -> None:
+            if self._application_refresh_pending:
                 return
-            widget.setProperty("slopeforgeThemeSyncPending", True)
-
-            def apply_pending(target=widget):
-                if not isValid(target):
-                    return
-                target.setProperty("slopeforgeThemeSyncPending", False)
-                self._sync_widget_theme(target)
-
-            QTimer.singleShot(0, apply_pending)
+            self._application_refresh_pending = True
+            QTimer.singleShot(0, self._sync_all_widgets)
 
         @staticmethod
         def _spin_mouse_target(watched, event):
@@ -355,14 +354,11 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
                     self._sync_widget_theme(watched)
                 elif event_type in (QEvent.Type.StyleChange, QEvent.Type.PaletteChange):
                     # QApplication.setPalette()/setStyleSheet() walks the native
-                    # widget tree synchronously. Mutating descendant styles inside
-                    # that traversal can crash the Windows QStyle engine, so apply
-                    # compatibility overrides on the next event-loop turn instead.
-                    self._defer_widget_theme_sync(watched)
+                    # widget tree synchronously. Never mutate descendant styles
+                    # inside that traversal; coalesce the whole wave into one
+                    # post-repolish pass over the widgets that still exist.
+                    self._defer_application_theme_sync()
 
-            # Rich-text status pills are rebuilt by AssessmentAreaPage.setText()
-            # when the selected link changes, which does not emit StyleChange.
-            # Normalize just those known legacy labels immediately before paint.
             if (
                 isinstance(watched, QLabel)
                 and event_type == QEvent.Type.Paint
@@ -370,10 +366,6 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
             ):
                 self._sync_inline_link_badges(watched)
 
-            # If a Windows style routes the painted upper-arrow region to the
-            # embedded line edit, intercept that child event as well. This keeps
-            # the visible dark controls behaving exactly like their Light/native
-            # counterparts instead of selecting the editor when Up is clicked.
             if self._dark_theme() and event_type == QEvent.Type.MouseButtonPress:
                 spin, point = self._spin_mouse_target(watched, event)
                 if (
