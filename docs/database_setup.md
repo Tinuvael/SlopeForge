@@ -60,12 +60,17 @@ python -m database.cli migration-status
 
 Do not use `alembic stamp` to hide a physical schema mismatch.
 
-### MVP baseline reset
+### SlopeForge 1 baseline reset
 
-The pre-production migration history was consolidated into the single canonical
-`0001_mvp_baseline` revision. Existing development databases must be dropped and
-recreated; revisions from the former development chain are not supported upgrade
-origins. For the one-time transition on Windows, close SlopeForge and recreate the disposable databases from PowerShell (replace the database owner if needed):
+Immediately before the SlopeForge 1.0 release, the disposable development
+migration chain was consolidated into one production baseline. Alembic revision
+`1` is therefore the complete SlopeForge 1.0 database schema.
+
+Databases carrying any former pre-1.0 development revision are **not** supported
+upgrade origins. They must be recreated before release; do not stamp them to
+revision `1`. For the one-time transition on Windows, close SlopeForge and
+recreate only disposable development/test databases from PowerShell (replace the
+database owner if needed):
 
 ```powershell
 dropdb --if-exists --username postgres slopeforge
@@ -73,9 +78,15 @@ createdb --username postgres --owner slopeforge_user slopeforge
 dropdb --if-exists --username postgres slopeforge_test
 createdb --username postgres --owner slopeforge_user slopeforge_test
 python -m alembic upgrade head
+python -m database.cli migration-status
 ```
 
-The final command reads `DATABASE_URL` from `.env`. Recreate only databases that are disposable, and never use `alembic stamp` for this transition.
+The final commands read `DATABASE_URL` from `.env`. `migration-status` should
+report Alembic head/revision `1`.
+
+After SlopeForge 1.0 is released, revision `1` and its frozen schema snapshot are
+immutable. Every later physical schema change must append a normal Alembic
+migration after the current head and must preserve production data as required.
 
 ### GUI first-run initialization
 
@@ -91,12 +102,8 @@ Manual Windows smoke check:
 1. Remove `.env` and `%APPDATA%\SlopeForge\connection.ini`.
 2. Drop and recreate `slopeforge` as an empty PostgreSQL database.
 3. Launch SlopeForge and enter the connection and storage paths in the connection dialog.
-4. Confirm that the baseline is applied and the first-administrator dialog appears.
+4. Confirm that baseline revision `1` is applied and the first-administrator dialog appears.
 5. Restart SlopeForge; the saved connection should open normally without showing the connection dialog again.
-
-After this baseline is accepted and databases may contain real data, **never
-rewrite the baseline again**. Every later schema change must use a normal appended
-migration (`0002_...`, `0003_...`, and so on).
 
 ## First administrator
 
@@ -174,9 +181,9 @@ For schema/architecture release checks:
 1. Use a new disposable PostgreSQL database.
 2. Set `DATABASE_URL` to that database.
 3. Run `python -m database.cli migrate`.
-4. Run `python -m database.cli migration-status` and confirm the expected head.
+4. Run `python -m database.cli migration-status` and confirm revision `1`.
 5. Launch `python main.py` and create the first administrator.
-6. Exercise a minimal Project → Domain → Blast Event / Assessment Area flow appropriate to the current MVP.
+6. Exercise a minimal Project → Domain → Blast Event / Assessment Area flow appropriate to the current release.
 7. Restart and confirm persisted data remains available.
 
 For the complete release-candidate manual pass, see `docs/release_checklist.md`.
