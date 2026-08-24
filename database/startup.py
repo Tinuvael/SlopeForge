@@ -23,13 +23,6 @@ from .migrations import upgrade_to_head
 from .settings import ConfigurationError, Settings, safe_database_location
 
 
-PRE_1_0_DEVELOPMENT_REVISIONS = frozenset({
-    "0001_mvp_baseline",
-    "0002_project_surface_datasets",
-    "0003_drillhole_datasets",
-})
-
-
 class StartupError(RuntimeError):
     def __init__(self, message: str, server: str | None = None, *,
                  reason: str = "database_error", actions: tuple[str, ...] = ()):
@@ -68,6 +61,11 @@ def _database_alembic_heads(engine) -> tuple[str, ...]:
         return tuple(MigrationContext.configure(connection).get_current_heads())
 
 
+def _release_schema_version(revision: str) -> int | None:
+    """Return the comparable production schema version for release-era revisions."""
+    return int(revision) if revision.isdecimal() else None
+
+
 def _verify_alembic_revision(engine, server: str | None) -> None:
     required = _expected_alembic_head()
     try:
@@ -88,11 +86,19 @@ def _verify_alembic_revision(engine, server: str | None) -> None:
         )
 
     current = current_heads[0]
-    if current in PRE_1_0_DEVELOPMENT_REVISIONS:
-        raise StartupError(
-            "The selected database uses an older SlopeForge schema.",
-            server, reason="database_upgrade_required",
-        )
+    current_version = _release_schema_version(current)
+    required_version = _release_schema_version(required)
+    if current_version is not None and required_version is not None:
+        if current_version > required_version:
+            raise StartupError(
+                "The selected database requires a newer version of SlopeForge.",
+                server, reason="application_upgrade_required",
+            )
+        if current_version < required_version:
+            raise StartupError(
+                "The selected database uses an older SlopeForge schema.",
+                server, reason="database_upgrade_required",
+            )
 
     script = _alembic_script()
     try:
@@ -101,19 +107,25 @@ def _verify_alembic_revision(engine, server: str | None) -> None:
         known_revision = None
 
     if known_revision is not None:
-        # With the single-head migration policy, a recognized non-head revision is
-        # an older schema that can only be opened after the database is upgraded.
+        # A recognized non-head revision belongs to this application's migration
+        # history and therefore represents an older database schema.
         raise StartupError(
             "The selected database uses an older SlopeForge schema.",
             server, reason="database_upgrade_required",
         )
 
-    # An installed application cannot inspect a migration that was introduced by
-    # a later release. Treat an unknown post-1.0 revision as requiring a newer
-    # SlopeForge build rather than attempting to modify an unfamiliar schema.
+    # All production schema revisions from SlopeForge 1 onward use monotonically
+    # increasing integer identifiers. Unknown non-numeric revisions are therefore
+    # legacy pre-1.0 development history, not evidence of a newer application.
+    if current_version is None:
+        raise StartupError(
+            "The selected database uses an older SlopeForge schema.",
+            server, reason="database_upgrade_required",
+        )
+
     raise StartupError(
-        "The selected database requires a newer or otherwise unsupported SlopeForge schema.",
-        server, reason="application_upgrade_required",
+        "The selected database has an incompatible schema version.",
+        server, reason="database_version_incompatible",
     )
 
 
