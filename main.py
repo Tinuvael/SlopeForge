@@ -20,6 +20,7 @@ from database.settings import ConfigurationError
 from database.startup import StartupError, initialize_database_runtime
 from infrastructure.services.auth_service import AuthService
 from infrastructure.services.session_service import RememberTokenService
+from ui.application_theme import enforce_light_application_appearance
 from ui.auth_dialogs import FirstAdminDialog, LoginDialog
 from ui.connection_dialog import ConnectionSetupDialog
 from ui.main_window import MainWindow
@@ -46,6 +47,7 @@ def main():
     startup_stage = "application bootstrap"
     set_windows_app_user_model_id()
     app = QApplication(sys.argv)
+    enforce_light_application_appearance(app)
     apply_theme(app)
     install_selected_translator(app)
     apply_application_icon(app)
