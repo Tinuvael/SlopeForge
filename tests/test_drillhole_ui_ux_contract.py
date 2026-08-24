@@ -52,10 +52,21 @@ def test_contour_fact_uses_same_design_hole_matches_as_production_when_grouped()
 def test_contour_fact_auto_fields_follow_any_explicit_design_group():
     source = Path("ui/pages/technical_card_widgets.py").read_text(encoding="utf-8")
     start = source.index("    def _actual_auto_fields")
-    end = source.index("    def refresh_drillhole_page", start)
+    end = source.index("    def _actual_angle_metrics", start)
     method = source[start:end]
     assert "hole.engineering_group_id == group.design_group_id" in method
     assert "not any_assigned" in method
+
+
+def test_angular_qa_is_shown_globally_and_per_actual_group():
+    page = Path("ui/pages/technical_card_widgets.py").read_text(encoding="utf-8")
+    card = Path("ui/pages/drillhole_dataset_widgets.py").read_text(encoding="utf-8")
+    for label in ("Mean azimuth deviation, °", "Mean inclination deviation, °"):
+        assert label in page
+        assert label in card
+    assert 'abs(float(item[key]))' in page
+    assert 'abs(float(item["azimuth_deviation_deg"]))' in card
+    assert 'abs(float(item["inclination_deviation_deg"]))' in card
 
 
 def test_drillhole_dataset_card_has_small_gap_below_tabs():
