@@ -47,12 +47,18 @@
         <message><source>Additional holes</source><translation>Дополнительные скважины</translation></message>
         <message><source>Mean collar deviation</source><translation>Среднее отклонение устья</translation></message>
         <message><source>Max collar deviation</source><translation>Максимальное отклонение устья</translation></message>
+        <message><source>Mean collar plan deviation</source><translation>Среднее отклонение устья в плане</translation></message>
+        <message><source>Max collar plan deviation</source><translation>Максимальное отклонение устья в плане</translation></message>
+        <message><source>Mean collar plan deviation, m</source><translation>Среднее отклонение устья в плане, м</translation></message>
+        <message><source>Max collar plan deviation, m</source><translation>Максимальное отклонение устья в плане, м</translation></message>
         <message><source>Mean toe deviation</source><translation>Среднее отклонение забоя</translation></message>
         <message><source>Max toe deviation</source><translation>Максимальное отклонение забоя</translation></message>
         <message><source>Mean azimuth deviation, °</source><translation>Среднее отклонение азимута, °</translation></message>
         <message><source>Mean inclination deviation, °</source><translation>Среднее отклонение наклона, °</translation></message>
         <message><source>Maximum collar deviation match</source><translation>Пара с максимальным отклонением устья</translation></message>
+        <message><source>Maximum collar plan deviation match</source><translation>Пара с максимальным отклонением устья в плане</translation></message>
         <message><source>Maximum toe deviation match</source><translation>Пара с максимальным отклонением забоя</translation></message>
+        <message><source>Plan XY</source><translation>В плане XY</translation></message>
         <message><source>Design hole</source><translation>Проектная скважина</translation></message>
         <message><source>Actual hole</source><translation>Фактическая скважина</translation></message>
         <message><source>Total drilling</source><translation>Общий метраж бурения</translation></message>
