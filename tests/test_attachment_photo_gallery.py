@@ -85,7 +85,12 @@ def test_photo_manager_reviews_each_selected_file_and_uses_embedded_gallery(tmp_
     assert manager.table is None
 
     tiles = manager.findChildren(widgets.QToolButton, "PhotoTile")
-    titles = manager.findChildren(widgets.QLabel, "PhotoTileTitle")
+    titles = [
+        label
+        for label in manager.findChildren(widgets.QLabel, "RelatedEntityTitle")
+        if label.parentWidget() is not None
+        and label.parentWidget().findChild(widgets.QToolButton, "PhotoTile") is not None
+    ]
     assert len(tiles) == 2
     assert {label.text() for label in titles} == {"before", "after"}
     assert all(not tile.text() for tile in tiles)
