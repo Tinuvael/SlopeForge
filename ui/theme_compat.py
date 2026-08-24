@@ -187,6 +187,16 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
                     if isinstance(watched, QLabel):
                         self._sync_inline_link_badges(watched)
 
+            # Rich-text status pills are rebuilt by AssessmentAreaPage.setText()
+            # when the selected link changes, which does not emit StyleChange.
+            # Normalize just those known legacy labels immediately before paint.
+            if (
+                isinstance(watched, QLabel)
+                and event_type == QEvent.Type.Paint
+                and not watched.property("slopeforgeThemeSync")
+            ):
+                self._sync_inline_link_badges(watched)
+
             # If a Windows style routes the painted upper-arrow region to the
             # embedded line edit, intercept that child event as well. This keeps
             # the visible dark controls behaving exactly like their Light/native
