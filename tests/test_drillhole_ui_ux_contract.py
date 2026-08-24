@@ -69,6 +69,18 @@ def test_angular_qa_is_shown_globally_and_per_actual_group():
     assert 'abs(float(item["inclination_deviation_deg"]))' in card
 
 
+def test_collar_qa_is_plan_xy_and_is_labeled_explicitly():
+    page = Path("ui/pages/technical_card_widgets.py").read_text(encoding="utf-8")
+    card = Path("ui/pages/drillhole_dataset_widgets.py").read_text(encoding="utf-8")
+    assert 'collar = self._deviation_values(matches, "collar_distance_xy_m")' in page
+    assert 'float(item["collar_distance_xy_m"])' in card
+    assert '"Mean collar plan deviation"' in card
+    assert '"Max collar plan deviation"' in card
+    assert '"Mean collar plan deviation, m"' in page
+    assert '"Max collar plan deviation, m"' in page
+    assert 'collar = self._deviation_values(matches, "collar_deviation_3d_m")' not in page
+
+
 def test_drillhole_dataset_card_has_small_gap_below_tabs():
     source = Path("ui/pages/technical_card_widgets.py").read_text(encoding="utf-8")
     start = source.index("class _DrillholeEngineeringPage")
