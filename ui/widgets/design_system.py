@@ -121,7 +121,7 @@ class CardFrame(QFrame):
         text = palette.color(QPalette.ColorRole.Text).name()
         secondary = palette.color(QPalette.ColorRole.WindowText).name()
         muted = palette.color(QPalette.ColorRole.PlaceholderText).name()
-        self.setStyleSheet(f"""
+        desired = f"""
             QFrame#CardFrame {{ background:{surface}; border:1px solid {border}; border-radius:7px; }}
             QLabel#EntityTitle, QLabel#BlockTitle, QLabel#SummaryValue,
             QLabel#ActivityTitle {{ color:{text}; }}
@@ -132,7 +132,9 @@ class CardFrame(QFrame):
             QLabel#CalculatedCaption, QLabel#FormHelperText {{ color:{muted}; }}
             QLabel#EngineeringSummaryText {{ color:{secondary}; }}
             QFrame#OverviewDivider {{ color:{border}; background:{border}; max-height:1px; border:0; }}
-        """)
+        """
+        if self.styleSheet() != desired:
+            self.setStyleSheet(desired)
 
     def changeEvent(self, event):
         super().changeEvent(event)
