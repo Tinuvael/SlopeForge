@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -29,7 +30,7 @@ class BlockRelatedEntityList(RelatedEntityList):
     LIST_HEIGHT = 136
     ROW_HORIZONTAL_INSET = 8
     VISIBLE_BOTTOM_MARGIN = 4
-    STATE_COLORS = {
+    LIGHT_STATE_COLORS = {
         "completed": ("#edf8f0", "#58a66a"),
         "assessed": ("#edf8f0", "#58a66a"),
         "in_progress": ("#f4f8fd", "#9bc2e8"),
@@ -37,6 +38,15 @@ class BlockRelatedEntityList(RelatedEntityList):
         "draft": ("#f7f8fa", "#cfd7e2"),
         "in_preparation": ("#f7f8fa", "#cfd7e2"),
         "unknown": ("#ffffff", "#cfd7e2"),
+    }
+    DARK_STATE_COLORS = {
+        "completed": ("#213c2b", "#386449"),
+        "assessed": ("#213c2b", "#386449"),
+        "in_progress": ("#1f3346", "#315c79"),
+        "planned": ("#1f3346", "#315c79"),
+        "draft": ("#262d36", "#46515f"),
+        "in_preparation": ("#262d36", "#46515f"),
+        "unknown": ("#262d36", "#46515f"),
     }
 
     def __init__(self, title: str):
@@ -61,11 +71,19 @@ class BlockRelatedEntityList(RelatedEntityList):
         self.list.itemSelectionChanged.connect(self._sync_row_styles)
         self._refit_pending = False
 
+    def _dark_theme(self) -> bool:
+        return self.palette().color(QPalette.ColorRole.Window).lightness() < 128
+
     def eventFilter(self, watched, event):
         if watched is self.list.viewport() and event.type() == QEvent.Type.Resize:
             self._sync_row_widths()
             self._schedule_row_refit()
         return super().eventFilter(watched, event)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            self._sync_row_styles()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -216,18 +234,24 @@ class BlockRelatedEntityList(RelatedEntityList):
         return wrapper.findChild(QWidget, "BlockRelatedEntityItem")
 
     def _sync_row_styles(self):
+        colors = self.DARK_STATE_COLORS if self._dark_theme() else self.LIGHT_STATE_COLORS
         for index in range(self.list.count()):
             item = self.list.item(index)
             holder = self._row_card(item)
             if holder is None:
                 continue
             state = str(item.data(Qt.ItemDataRole.UserRole + 1) or "unknown")
-            background, accent = self.STATE_COLORS.get(state, self.STATE_COLORS["unknown"])
+            background, accent = colors.get(state, colors["unknown"])
             selected = item.isSelected()
-            border = "#2563a6" if selected else accent
+            if self._dark_theme():
+                border = "#5aa7e8" if selected else accent
+                if selected:
+                    background = "#243f57"
+            else:
+                border = "#2563a6" if selected else accent
+                if selected:
+                    background = "#f8fbff"
             width = 2 if selected else 1
-            if selected:
-                background = "#f8fbff"
             holder.setStyleSheet(
                 f"QWidget#BlockRelatedEntityItem{{background:{background};"
                 f"border:{width}px solid {border};border-radius:5px;}}"
