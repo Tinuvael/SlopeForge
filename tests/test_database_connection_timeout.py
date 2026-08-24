@@ -35,7 +35,7 @@ def test_explicit_url_connect_timeout_is_not_overridden(monkeypatch):
     assert "connect_timeout=12" in captured["url"]
 
 
-def test_operational_connection_failure_keeps_postgresql_guidance():
+def test_operational_connection_failure_keeps_user_facing_postgresql_guidance():
     class Engine:
         def connect(self):
             raise OperationalError("connect", {}, RuntimeError("timed out"))
@@ -45,7 +45,10 @@ def test_operational_connection_failure_keeps_postgresql_guidance():
 
     message = str(caught.value)
     assert "Cannot connect to PostgreSQL" in message
-    assert "DATABASE_URL" in message
-    assert "network access" in message
+    assert "server address" in message
+    assert "network" in message
     assert "credentials" in message
-    assert "prepare-db" in message
+    assert "PostgreSQL administrator" in message
+    assert "DATABASE_URL" not in message
+    assert "python -m" not in message
+    assert "prepare-db" not in message
