@@ -1,4 +1,4 @@
-from math import sqrt
+from math import cos, radians, sin, sqrt
 
 import pytest
 
@@ -28,6 +28,11 @@ def _hole(hole_id, collar, toe):
         hole_id,
         (DrillholePoint(*collar), DrillholePoint(*toe)),
     )
+
+
+def _toe_for_azimuth(azimuth_deg: float):
+    angle = radians(azimuth_deg)
+    return (10.0 * sin(angle), 10.0 * cos(angle), 0.0)
 
 
 def test_imported_line_is_normalized_collar_to_toe_without_losing_intermediate_points():
@@ -147,6 +152,17 @@ def test_geometric_matching_minimizes_total_collar_distance_instead_of_greedy_ed
     assert sum(item.match_method == "unmatched_actual" for item in matches) == 1
 
 
+def test_azimuth_deviation_uses_shortest_wrapped_angle_across_north():
+    design = (_hole("D", (0, 0, 0), _toe_for_azimuth(359.0)),)
+    actual = (_hole("A", (0, 0, 0), _toe_for_azimuth(1.0)),)
+
+    match = match_actual_to_design(design, actual)[0]
+
+    assert match.design_azimuth_deg == pytest.approx(359.0)
+    assert match.actual_azimuth_deg == pytest.approx(1.0)
+    assert match.azimuth_deviation_deg == pytest.approx(2.0)
+
+
 def test_matched_pair_exposes_complete_collar_toe_length_and_orientation_qa():
     design = (_hole("D", (0, 0, 630), (0, 0, 620)),)
     actual = (_hole("A", (3, 4, 632), (6, 8, 618)),)
@@ -158,6 +174,8 @@ def test_matched_pair_exposes_complete_collar_toe_length_and_orientation_qa():
     assert match.collar_deviation_3d_m == pytest.approx(sqrt(29))
     assert match.toe_distance_xy_m == pytest.approx(10)
     assert match.toe_deviation_z_m == pytest.approx(-2)
+    # Direct straight-line distance between the matched design and actual toe
+    # points, equivalent to measuring the endpoint-to-endpoint line in Datamine.
     assert match.toe_deviation_3d_m == pytest.approx(sqrt(104))
     assert match.design_length_m == pytest.approx(10)
     assert match.actual_length_m is not None
