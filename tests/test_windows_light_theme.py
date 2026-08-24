@@ -77,6 +77,25 @@ def test_explicit_theme_switch_updates_existing_application_immediately() -> Non
     assert DarkColor.APP_BACKGROUND not in app.styleSheet()
 
 
+def test_block_related_entity_list_constructs_and_survives_theme_switch() -> None:
+    QtWidgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.application_theme import apply_application_theme
+    from ui.pages.block_overview_widgets import BlockRelatedEntityList
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    apply_application_theme(app, "light")
+    widget = BlockRelatedEntityList("Related assessment areas")
+    assert widget.list is not None
+
+    apply_application_theme(app, "dark")
+    app.processEvents()
+    apply_application_theme(app, "light")
+    app.processEvents()
+
+    assert widget.list is not None
+    widget.close()
+
+
 def test_dark_qss_covers_high_risk_standard_and_engineering_surfaces() -> None:
     from ui.application_theme import DARK_STYLESHEET
 
@@ -124,8 +143,9 @@ def test_manual_smoke_regressions_do_not_reintroduce_light_only_local_surfaces()
     assert "QGraphicsView{border:1px solid #e4e8ee" not in dashboard_plan
     assert 'setObjectName("BoreholeView")' in borehole
     assert "background: #FAFBFC" not in borehole
-    assert "QPalette.ColorRole.Base" in borehole
-    assert "_sync_theme_override" in cards
+    assert "QPalette.ColorRole.AlternateBase" in borehole
+    assert "setStyleSheet(desired)" not in cards
+    assert "setStyleSheet(\"\")" not in cards
 
 
 def test_legacy_entity_page_light_qss_is_neutralized_until_page_cleanup() -> None:
@@ -133,6 +153,8 @@ def test_legacy_entity_page_light_qss_is_neutralized_until_page_cleanup() -> Non
     for class_name in ("BlockPage", "ContourEventPage", "AssessmentAreaPage"):
         assert class_name in source
     assert 'watched.setStyleSheet("")' in source
+    before_install = source.split("def install_legacy_entity_page_theme_cleanup", 1)[0]
+    assert "from PySide6" not in before_install
 
 
 def test_general_settings_exposes_system_light_dark_modes() -> None:
