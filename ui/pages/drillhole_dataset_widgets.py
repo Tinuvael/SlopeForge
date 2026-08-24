@@ -31,7 +31,7 @@ def _match_deviation_tooltip(item: dict, *, endpoint: str) -> str:
         xy_key = "collar_distance_xy_m"
         z_key = "collar_deviation_z_m"
         d3_key = "collar_deviation_3d_m"
-        title = tr("Maximum collar deviation match")
+        title = tr("Maximum collar plan deviation match")
     elif endpoint == "toe":
         xy_key = "toe_distance_xy_m"
         z_key = "toe_deviation_z_m"
@@ -39,13 +39,22 @@ def _match_deviation_tooltip(item: dict, *, endpoint: str) -> str:
         title = tr("Maximum toe deviation match")
     else:
         raise ValueError(endpoint)
+    components = (
+        f"{tr('Plan XY')}: {_value(item.get(xy_key), ' m', 3)}   "
+        f"ΔZ: {_value(item.get(z_key), ' m', 3)}   "
+        f"3D: {_value(item.get(d3_key), ' m', 3)}"
+        if endpoint == "collar"
+        else (
+            f"3D: {_value(item.get(d3_key), ' m', 3)}   "
+            f"XY: {_value(item.get(xy_key), ' m', 3)}   "
+            f"ΔZ: {_value(item.get(z_key), ' m', 3)}"
+        )
+    )
     return (
         f"{title}\n"
         f"{tr('Design hole')}: {item.get('design_hole_id') or '—'}  ↔  "
         f"{tr('Actual hole')}: {item.get('actual_hole_id') or '—'}\n"
-        f"3D: {_value(item.get(d3_key), ' m', 3)}   "
-        f"XY: {_value(item.get(xy_key), ' m', 3)}   "
-        f"ΔZ: {_value(item.get(z_key), ' m', 3)}"
+        f"{components}"
     )
 
 
@@ -239,13 +248,14 @@ class DrillholeDatasetCard(CardFrame):
             item.get("match_method") == "matched_geometry_low_confidence"
             for item in matches
         )
-        # Collar/toe deviations are straight-line 3D distances between the
-        # matched endpoint coordinates. XY and signed Z components remain in
+        # Collar deviation is the horizontal plan distance between matched
+        # collars. Toe deviation remains the straight-line 3D distance between
+        # matched toe endpoints. Signed Z and spatial collar distance remain in
         # the persisted per-hole evidence for diagnostics.
         collar = [
-            float(item["collar_deviation_3d_m"])
+            float(item["collar_distance_xy_m"])
             for item in paired
-            if item.get("collar_deviation_3d_m") is not None
+            if item.get("collar_distance_xy_m") is not None
         ]
         toe = [
             float(item["toe_deviation_3d_m"])
@@ -274,8 +284,8 @@ class DrillholeDatasetCard(CardFrame):
             ("Low-confidence matches", str(low_confidence)),
             ("Missing design holes", str(missing)),
             ("Additional holes", str(additional)),
-            ("Mean collar deviation", _value(mean(collar) if collar else None, " m")),
-            ("Max collar deviation", _value(max(collar) if collar else None, " m")),
+            ("Mean collar plan deviation", _value(mean(collar) if collar else None, " m")),
+            ("Max collar plan deviation", _value(max(collar) if collar else None, " m")),
             ("Mean toe deviation", _value(mean(toe) if toe else None, " m")),
             ("Max toe deviation", _value(max(toe) if toe else None, " m")),
             ("Mean azimuth deviation, °", _value(mean(azimuth) if azimuth else None, digits=1)),
@@ -284,7 +294,7 @@ class DrillholeDatasetCard(CardFrame):
         self._set_metrics(values)
 
         collar_pairs = [
-            item for item in paired if item.get("collar_deviation_3d_m") is not None
+            item for item in paired if item.get("collar_distance_xy_m") is not None
         ]
         toe_pairs = [
             item for item in paired if item.get("toe_deviation_3d_m") is not None
@@ -292,9 +302,9 @@ class DrillholeDatasetCard(CardFrame):
         if collar_pairs:
             worst_collar = max(
                 collar_pairs,
-                key=lambda item: float(item["collar_deviation_3d_m"]),
+                key=lambda item: float(item["collar_distance_xy_m"]),
             )
-            self._labels["Max collar deviation"].setToolTip(
+            self._labels["Max collar plan deviation"].setToolTip(
                 _match_deviation_tooltip(worst_collar, endpoint="collar")
             )
         if toe_pairs:
