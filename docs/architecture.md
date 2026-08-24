@@ -66,9 +66,11 @@ PostgreSQL is the only application database. Normal editing uses focused writes;
 which protect more than one Domain. The Assessment state repository is a reader,
 not a whole-state save API.
 
-The immutable pre-production Alembic baseline is `0001_mvp_baseline`. Future
-physical schema changes require an appended normal revision. Never use
-`alembic stamp` to conceal an incompatible schema.
+The immutable SlopeForge 1.0 production Alembic baseline is revision `1`. The
+former disposable pre-release migration chain was consolidated before the 1.0
+release. Future physical schema changes require appended normal revisions after
+the current head. Never edit revision `1` after release and never use
+`alembic stamp` to conceal an incompatible physical schema.
 
 Blast geometry, Assessment geometry, Technical Card, and evaluation revisions
 preserve the inputs and results needed to reproduce history. Event/Assessment
