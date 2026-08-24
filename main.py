@@ -4,7 +4,7 @@ import webbrowser
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from app.config import APP_RELEASES_URL, APP_VERSION_DISPLAY
+from app.config import APP_RELEASES_URL
 from app.connection_settings import (
     ConnectionProfile,
     ConnectionSettingsError,
