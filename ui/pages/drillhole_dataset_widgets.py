@@ -26,6 +26,29 @@ def _value(value, suffix="", digits=2):
     return f"{text}{suffix}"
 
 
+def _match_deviation_tooltip(item: dict, *, endpoint: str) -> str:
+    if endpoint == "collar":
+        xy_key = "collar_distance_xy_m"
+        z_key = "collar_deviation_z_m"
+        d3_key = "collar_deviation_3d_m"
+        title = tr("Maximum collar deviation match")
+    elif endpoint == "toe":
+        xy_key = "toe_distance_xy_m"
+        z_key = "toe_deviation_z_m"
+        d3_key = "toe_deviation_3d_m"
+        title = tr("Maximum toe deviation match")
+    else:
+        raise ValueError(endpoint)
+    return (
+        f"{title}\n"
+        f"{tr('Design hole')}: {item.get('design_hole_id') or '—'}  ↔  "
+        f"{tr('Actual hole')}: {item.get('actual_hole_id') or '—'}\n"
+        f"3D: {_value(item.get(d3_key), ' m', 3)}   "
+        f"XY: {_value(item.get(xy_key), ' m', 3)}   "
+        f"ΔZ: {_value(item.get(z_key), ' m', 3)}"
+    )
+
+
 class _ElidedLabel(QLabel):
     """Single-line metadata label that never pushes actions out of a card."""
 
@@ -247,3 +270,26 @@ class DrillholeDatasetCard(CardFrame):
             ("Max toe deviation", _value(max(toe) if toe else None, " m")),
         ]
         self._set_metrics(values)
+
+        collar_pairs = [
+            item for item in paired if item.get("collar_deviation_3d_m") is not None
+        ]
+        toe_pairs = [
+            item for item in paired if item.get("toe_deviation_3d_m") is not None
+        ]
+        if collar_pairs:
+            worst_collar = max(
+                collar_pairs,
+                key=lambda item: float(item["collar_deviation_3d_m"]),
+            )
+            self._labels["Max collar deviation"].setToolTip(
+                _match_deviation_tooltip(worst_collar, endpoint="collar")
+            )
+        if toe_pairs:
+            worst_toe = max(
+                toe_pairs,
+                key=lambda item: float(item["toe_deviation_3d_m"]),
+            )
+            self._labels["Max toe deviation"].setToolTip(
+                _match_deviation_tooltip(worst_toe, endpoint="toe")
+            )
