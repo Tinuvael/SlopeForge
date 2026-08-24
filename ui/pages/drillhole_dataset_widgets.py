@@ -239,9 +239,9 @@ class DrillholeDatasetCard(CardFrame):
             item.get("match_method") == "matched_geometry_low_confidence"
             for item in matches
         )
-        # Use the same 3D aggregate distances that populate the existing
-        # Execution fact deviation fields. Horizontal/vertical components remain
-        # available in the persisted per-hole QA evidence.
+        # Collar/toe deviations are straight-line 3D distances between the
+        # matched endpoint coordinates. XY and signed Z components remain in
+        # the persisted per-hole evidence for diagnostics.
         collar = [
             float(item["collar_deviation_3d_m"])
             for item in paired
@@ -251,6 +251,16 @@ class DrillholeDatasetCard(CardFrame):
             float(item["toe_deviation_3d_m"])
             for item in paired
             if item.get("toe_deviation_3d_m") is not None
+        ]
+        azimuth = [
+            abs(float(item["azimuth_deviation_deg"]))
+            for item in paired
+            if item.get("azimuth_deviation_deg") is not None
+        ]
+        inclination = [
+            abs(float(item["inclination_deviation_deg"]))
+            for item in paired
+            if item.get("inclination_deviation_deg") is not None
         ]
         if not design_revision_current:
             self.button.setText(tr("Re-import"))
@@ -268,6 +278,8 @@ class DrillholeDatasetCard(CardFrame):
             ("Max collar deviation", _value(max(collar) if collar else None, " m")),
             ("Mean toe deviation", _value(mean(toe) if toe else None, " m")),
             ("Max toe deviation", _value(max(toe) if toe else None, " m")),
+            ("Mean azimuth deviation, °", _value(mean(azimuth) if azimuth else None, digits=1)),
+            ("Mean inclination deviation, °", _value(mean(inclination) if inclination else None, digits=1)),
         ]
         self._set_metrics(values)
 
