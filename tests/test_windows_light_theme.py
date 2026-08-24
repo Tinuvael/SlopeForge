@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -96,6 +97,68 @@ def test_block_related_entity_list_constructs_and_survives_theme_switch() -> Non
     widget.close()
 
 
+def test_linked_entity_rows_use_dark_surfaces_and_readable_text() -> None:
+    QtWidgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.application_theme import apply_application_theme
+    from ui.pages.block_overview_widgets import BlockRelatedEntityList
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    apply_application_theme(app, "dark")
+    widget = BlockRelatedEntityList("Related events")
+    widget.set_rows([
+        SimpleNamespace(
+            entity_id="BE-1",
+            title="Contour blast",
+            subtitle="630 m · revision R1",
+            status_text="Completed",
+            status_state="completed",
+            stale=False,
+            action_text="Go to ›",
+        )
+    ])
+    holder = widget._row_card(widget.list.item(0))
+    style = holder.styleSheet()
+    assert "#1f3829" in style
+    assert "#f2f5f8" in style
+    assert "#c5ced8" in style
+    widget.close()
+
+
+def test_dark_numeric_spinbox_right_side_remains_clickable() -> None:
+    QtCore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    QtTest = pytest.importorskip("PySide6.QtTest", exc_type=ImportError)
+    QtWidgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.application_theme import apply_application_theme
+    from ui.theme_compat import install_legacy_entity_page_theme_cleanup
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    install_legacy_entity_page_theme_cleanup(app)
+    apply_application_theme(app, "dark")
+
+    spin = QtWidgets.QDoubleSpinBox()
+    spin.setRange(0, 10)
+    spin.setSingleStep(1)
+    spin.setValue(2)
+    spin.resize(120, 28)
+    spin.show()
+    app.processEvents()
+
+    QtTest.QTest.mouseClick(
+        spin,
+        QtCore.Qt.MouseButton.LeftButton,
+        pos=QtCore.QPoint(spin.width() - 6, 5),
+    )
+    assert spin.value() == pytest.approx(3.0)
+
+    QtTest.QTest.mouseClick(
+        spin,
+        QtCore.Qt.MouseButton.LeftButton,
+        pos=QtCore.QPoint(spin.width() - 6, spin.height() - 5),
+    )
+    assert spin.value() == pytest.approx(2.0)
+    spin.close()
+
+
 def test_dark_qss_covers_high_risk_standard_and_engineering_surfaces() -> None:
     from ui.application_theme import DARK_STYLESHEET
 
@@ -134,6 +197,9 @@ def test_manual_smoke_regressions_do_not_reintroduce_light_only_local_surfaces()
     dashboard_plan = Path("ui/pages/dashboards/plan_overview.py").read_text(encoding="utf-8")
     borehole = Path("ui/widgets/borehole_charge_builder.py").read_text(encoding="utf-8")
     cards = Path("ui/widgets/design_system.py").read_text(encoding="utf-8")
+    compat = Path("ui/theme_compat.py").read_text(encoding="utf-8")
+    plan = Path("ui/pages/plan_geometry_widget.py").read_text(encoding="utf-8")
+    assessment = Path("ui/pages/assessment_overview_widgets.py").read_text(encoding="utf-8")
 
     assert "ATTACHMENT_WORKSPACE_COLOR" not in attachment
     assert "QTableWidget{background:white" not in attachment
@@ -146,13 +212,18 @@ def test_manual_smoke_regressions_do_not_reintroduce_light_only_local_surfaces()
     assert "QPalette.ColorRole.AlternateBase" in borehole
     assert "setStyleSheet(desired)" not in cards
     assert "setStyleSheet(\"\")" not in cards
+    assert 'widget.objectName() == "geomechanicsWorkspace"' in compat
+    assert '"#38bdf8"' in plan
+    assert "_QUADRANT_COLORS" in assessment
+    assert "fill.setAlpha" not in assessment  # compact preview uses direct quadrant alpha assignment
+    assert "setAlpha(alpha)" in assessment
 
 
 def test_legacy_entity_page_light_qss_is_neutralized_until_page_cleanup() -> None:
     source = Path("ui/theme_compat.py").read_text(encoding="utf-8")
     for class_name in ("BlockPage", "ContourEventPage", "AssessmentAreaPage"):
         assert class_name in source
-    assert 'watched.setStyleSheet("")' in source
+    assert 'widget.setStyleSheet("")' in source
     before_install = source.split("def install_legacy_entity_page_theme_cleanup", 1)[0]
     assert "from PySide6" not in before_install
 
