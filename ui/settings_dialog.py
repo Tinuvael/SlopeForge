@@ -1,24 +1,27 @@
 from __future__ import annotations
 
+from app.appearance import selected_theme
+from app.config import APP_AUTHOR, APP_COPYRIGHT, APP_DESCRIPTION, APP_ICON_PATH, APP_NAME, APP_REPOSITORY_URL, APP_VERSION_DISPLAY
+from app.context import AppContext
 from app.localization import save_language, selected_language, tr
+from app.qt import apply_window_icon
+from app.resources import resource_path
+from app.use_case_factory import create_explosive_catalogue
+from infrastructure.services.session_service import RememberTokenService
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QStackedWidget, QVBoxLayout, QWidget
 
-from app.config import APP_AUTHOR, APP_COPYRIGHT, APP_DESCRIPTION, APP_ICON_PATH, APP_NAME, APP_REPOSITORY_URL, APP_VERSION
-from app.qt import apply_window_icon
-from app.resources import resource_path
-from app.context import AppContext
-from infrastructure.services.session_service import RememberTokenService
+from ui.application_theme import apply_application_theme
 from ui.connection_dialog import ConnectionSettingsPage
-from ui.user_admin_page import UserAdminPage
 from ui.engineering_catalogues_page import EngineeringCataloguesPage
-from app.use_case_factory import create_explosive_catalogue
+from ui.user_admin_page import UserAdminPage
 
 
 class SettingsDialog(QDialog):
     catalogue_changed = Signal()
+
     def __init__(self, context: AppContext | None = None, parent=None):
         super().__init__(parent)
         apply_window_icon(self)
@@ -59,20 +62,39 @@ class SettingsDialog(QDialog):
         return widget
 
     def general_page(self) -> QWidget:
-        widget = QWidget(); layout = QVBoxLayout(widget)
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
         layout.addWidget(QLabel(f"<b>{tr('General')}</b>"))
+
         form = QFormLayout()
         self.language_combo = QComboBox()
         self.language_combo.addItem("English", "en")
         self.language_combo.addItem("Русский", "ru")
         self.language_combo.setCurrentIndex(max(0, self.language_combo.findData(selected_language())))
         form.addRow(tr("Language"), self.language_combo)
+
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem(tr("System"), "system")
+        self.theme_combo.addItem(tr("Light"), "light")
+        self.theme_combo.addItem(tr("Dark"), "dark")
+        self.theme_combo.setCurrentIndex(max(0, self.theme_combo.findData(selected_theme())))
+        form.addRow(tr("Theme"), self.theme_combo)
         layout.addLayout(form)
+
+        self.theme_hint = QLabel(tr("System follows the Windows appearance setting."))
+        self.theme_hint.setObjectName("FormHelperText")
+        self.theme_hint.setWordWrap(True)
+        layout.addWidget(self.theme_hint)
+
         self.restart_note = QLabel(tr("Restart SlopeForge to apply the language change."))
+        self.restart_note.setObjectName("FormHelperText")
         self.restart_note.setWordWrap(True)
         self.restart_note.hide()
         layout.addWidget(self.restart_note)
+
         self.language_combo.currentIndexChanged.connect(self._language_changed)
+        self.theme_combo.currentIndexChanged.connect(self._theme_changed)
+
         if self.context:
             logout = QPushButton(tr("Sign out on this computer"))
             logout.clicked.connect(self.sign_out)
@@ -86,6 +108,11 @@ class SettingsDialog(QDialog):
     def _language_changed(self) -> None:
         save_language(self.language_combo.currentData())
         self.restart_note.show()
+
+    def _theme_changed(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            apply_application_theme(app, self.theme_combo.currentData(), persist=True)
 
     def sign_out(self) -> None:
         if self.context:
@@ -108,7 +135,7 @@ class SettingsDialog(QDialog):
                 icon_label.setPixmap(pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         layout.addWidget(icon_label)
         layout.addWidget(QLabel(f"<b>{APP_NAME}</b>"))
-        layout.addWidget(QLabel(f"{tr('Version')}: {APP_VERSION}"))
+        layout.addWidget(QLabel(f"{tr('Version')}: {APP_VERSION_DISPLAY}"))
         layout.addWidget(QLabel(f"{tr('Author')}: {APP_AUTHOR}"))
         description = QLabel(tr(APP_DESCRIPTION))
         description.setWordWrap(True)
