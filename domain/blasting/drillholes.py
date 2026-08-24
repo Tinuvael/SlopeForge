@@ -331,6 +331,46 @@ def _geometry_match_method(
     )
 
 
+def _minimum_total_collar_assignment(
+    design_holes: tuple[Drillhole, ...],
+    actual_holes: tuple[Drillhole, ...],
+) -> tuple[tuple[float, Drillhole, Drillhole], ...]:
+    """Return the globally minimum one-to-one assignment by collar XY distance.
+
+    A greedy nearest-edge walk can consume a locally attractive pair and force a
+    later hole onto a much worse neighbour. That is especially visible on dense
+    contour rows with one missing/additional hole. The rectangular linear-sum
+    assignment keeps the user's collar-based matching rule while minimizing the
+    total displacement across the complete remaining set. Toe geometry is not
+    part of the cost so the QA metric cannot influence its own pairing.
+    """
+    if not design_holes or not actual_holes:
+        return ()
+    from scipy.optimize import linear_sum_assignment
+
+    ordered_design = tuple(sorted(design_holes, key=lambda hole: hole.hole_id))
+    ordered_actual = tuple(sorted(actual_holes, key=lambda hole: hole.hole_id))
+    costs = [
+        [_distance_xy(design.collar, actual.collar) for actual in ordered_actual]
+        for design in ordered_design
+    ]
+    design_indices, actual_indices = linear_sum_assignment(costs)
+    assignments = [
+        (
+            float(costs[int(design_index)][int(actual_index)]),
+            ordered_design[int(design_index)],
+            ordered_actual[int(actual_index)],
+        )
+        for design_index, actual_index in zip(design_indices, actual_indices)
+    ]
+    return tuple(
+        sorted(
+            assignments,
+            key=lambda item: (item[1].hole_id, item[2].hole_id),
+        )
+    )
+
+
 def match_actual_to_design(
     design_holes: Iterable[Drillhole],
     actual_holes: Iterable[Drillhole],
@@ -338,9 +378,9 @@ def match_actual_to_design(
     """Deterministic one-to-one matching with explicit ambiguity state.
 
     Only explicitly stable source IDs are authoritative. Remaining holes are
-    proposed by nearest collar under one-to-one constraints. Dense or contested
-    geometric proposals are kept as low-confidence rather than being silently
-    presented as definitive matches.
+    assigned globally by minimum total collar XY distance under one-to-one
+    constraints. Dense or contested geometric proposals are kept as
+    low-confidence rather than being silently presented as definitive matches.
     """
     design = tuple(design_holes)
     actual = tuple(actual_holes)
@@ -362,20 +402,10 @@ def match_actual_to_design(
 
     remaining_design = tuple(hole for hole in design if hole.hole_id not in matched_design)
     remaining_actual = tuple(hole for hole in actual if hole.hole_id not in matched_actual)
-    candidates = sorted(
-        (
-            _distance_xy(design_hole.collar, actual_hole.collar),
-            design_hole.hole_id,
-            actual_hole.hole_id,
-            design_hole,
-            actual_hole,
-        )
-        for design_hole in remaining_design
-        for actual_hole in remaining_actual
-    )
-    for distance, _design_id, _actual_id, design_hole, actual_hole in candidates:
-        if design_hole.hole_id in matched_design or actual_hole.hole_id in matched_actual:
-            continue
+    for distance, design_hole, actual_hole in _minimum_total_collar_assignment(
+        remaining_design,
+        remaining_actual,
+    ):
         method = _geometry_match_method(distance, actual_hole, remaining_design)
         matches.append(_match_pair(design_hole, actual_hole, method))
         matched_design.add(design_hole.hole_id)
