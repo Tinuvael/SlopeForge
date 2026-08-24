@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QRect, QSize, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QAbstractSpinBox, QDialog, QDoubleSpinBox, QFormLayout,
     QFrame, QHeaderView, QHBoxLayout, QLabel, QMenu, QPushButton, QTableWidget,
@@ -85,6 +85,15 @@ class ChevronDoubleSpinBox(QDoubleSpinBox):
 
 
 class CardFrame(QFrame):
+    """Shared card shell that remains theme-correct inside legacy page QSS.
+
+    A few older entity pages still carry light-only descendant rules.  Because a
+    widget-local stylesheet has higher precedence than the application sheet,
+    those rules can otherwise turn reusable cards white after switching to Dark.
+    The shared card owns a very small semantic override in Dark mode only; Light
+    continues to use the canonical application stylesheet unchanged.
+    """
+
     def __init__(self, title: str | None = None, parent=None):
         super().__init__(parent)
         self.setObjectName("CardFrame")
@@ -98,6 +107,37 @@ class CardFrame(QFrame):
             label = QLabel(tr(title))
             label.setObjectName("CardTitle")
             self.layout.addWidget(label)
+        self._sync_theme_override()
+
+    def _sync_theme_override(self) -> None:
+        palette = self.palette()
+        dark = palette.color(QPalette.ColorRole.Window).lightness() < 128
+        if not dark:
+            if self.styleSheet():
+                self.setStyleSheet("")
+            return
+        surface = palette.color(QPalette.ColorRole.Base).name()
+        border = palette.color(QPalette.ColorRole.Mid).name()
+        text = palette.color(QPalette.ColorRole.Text).name()
+        secondary = palette.color(QPalette.ColorRole.WindowText).name()
+        muted = palette.color(QPalette.ColorRole.PlaceholderText).name()
+        self.setStyleSheet(f"""
+            QFrame#CardFrame {{ background:{surface}; border:1px solid {border}; border-radius:7px; }}
+            QLabel#EntityTitle, QLabel#BlockTitle, QLabel#SummaryValue,
+            QLabel#ActivityTitle {{ color:{text}; }}
+            QLabel#CardTitle, QLabel#EngineeringSectionTitle,
+            QLabel#RelatedEntityTitle, QLabel#SectionTitle,
+            QLabel#EngineeringGroupTitle {{ color:{secondary}; }}
+            QLabel#EntityContextLine, QLabel#MutedText,
+            QLabel#CalculatedCaption, QLabel#FormHelperText {{ color:{muted}; }}
+            QLabel#EngineeringSummaryText {{ color:{secondary}; }}
+            QFrame#OverviewDivider {{ color:{border}; background:{border}; max-height:1px; border:0; }}
+        """)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            self._sync_theme_override()
 
 
 def set_button_role(button: QPushButton, role: str) -> QPushButton:
