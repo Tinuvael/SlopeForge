@@ -159,6 +159,29 @@ def test_dark_numeric_spinbox_right_side_remains_clickable() -> None:
     spin.close()
 
 
+def test_custom_chevron_spinbox_buttons_survive_dark_repolish() -> None:
+    QtTest = pytest.importorskip("PySide6.QtTest", exc_type=ImportError)
+    QtWidgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from ui.application_theme import apply_application_theme
+    from ui.widgets.design_system import ChevronDoubleSpinBox
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    spin = ChevronDoubleSpinBox()
+    spin.setRange(0, 10)
+    spin.setSingleStep(1)
+    spin.setValue(2)
+    spin.resize(140, 30)
+    spin.show()
+    apply_application_theme(app, "dark")
+    app.processEvents()
+
+    QtTest.QTest.mouseClick(spin.up_button, spin.up_button.palette().currentColorGroup() and __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.MouseButton.LeftButton)
+    assert spin.value() == pytest.approx(3.0)
+    QtTest.QTest.mouseClick(spin.down_button, __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.MouseButton.LeftButton)
+    assert spin.value() == pytest.approx(2.0)
+    spin.close()
+
+
 def test_dark_qss_covers_high_risk_standard_and_engineering_surfaces() -> None:
     from ui.application_theme import DARK_STYLESHEET
 
