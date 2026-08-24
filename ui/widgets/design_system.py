@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QRect, QSize, Qt
+from PySide6.QtCore import QEvent, QRect, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QAbstractSpinBox, QDialog, QDoubleSpinBox, QFormLayout,
+    QAbstractItemView, QAbstractSpinBox, QApplication, QDialog, QDoubleSpinBox, QFormLayout,
     QFrame, QHeaderView, QHBoxLayout, QLabel, QMenu, QPushButton, QTableWidget,
     QToolButton, QVBoxLayout, QWidget,
 )
@@ -39,18 +39,22 @@ class ChevronDoubleSpinBox(QDoubleSpinBox):
         # and the cursor out of their dedicated strip.
         self.lineEdit().setTextMargins(7, 0, self._BUTTON_STRIP_WIDTH + 6, 0)
         self._sync_step_buttons()
+        self._sync_step_button_icons()
+        self._layout_step_buttons()
 
     def _step_button(self, name: str, icon_name: str) -> QToolButton:
         button = QToolButton(self)
         button.setObjectName(name)
+        button.setProperty("sourceIconName", icon_name)
         button.setIcon(QIcon(str(_NEUTRAL_ICON_ROOT / icon_name)))
         button.setIconSize(QSize(12, 12))
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.setAutoRepeat(True)
         return button
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
+    def _layout_step_buttons(self) -> None:
+        if not hasattr(self, "up_button") or not hasattr(self, "down_button"):
+            return
         strip_x = self.width() - self._BUTTON_STRIP_WIDTH - 1
         available_height = max(0, self.height() - 2)
         upper_height = (available_height + 1) // 2
@@ -65,9 +69,31 @@ class ChevronDoubleSpinBox(QDoubleSpinBox):
                 available_height - upper_height,
             )
         )
-        # Keep the real controls above the internal editor on every platform.
+        # Style changes can rebuild/repolish the internal editor. Always restore
+        # the intended stacking order after Qt has applied the new style.
         self.up_button.raise_()
         self.down_button.raise_()
+
+    def _sync_step_button_icons(self) -> None:
+        app = QApplication.instance()
+        dark = bool(app is not None and app.property("slopeforgeTheme") == "dark")
+        for button in (getattr(self, "up_button", None), getattr(self, "down_button", None)):
+            if button is None:
+                continue
+            source_name = str(button.property("sourceIconName") or "")
+            icon = QIcon(str(_NEUTRAL_ICON_ROOT / source_name))
+            if dark:
+                icon = high_contrast_icon(icon, "#d5dbe3", 12)
+            button.setIcon(icon)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._layout_step_buttons()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._layout_step_buttons()
+        QTimer.singleShot(0, self._layout_step_buttons)
 
     def setReadOnly(self, read_only: bool):
         super().setReadOnly(read_only)
@@ -77,6 +103,13 @@ class ChevronDoubleSpinBox(QDoubleSpinBox):
         super().changeEvent(event)
         if event.type() == QEvent.Type.EnabledChange:
             self._sync_step_buttons()
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            self._sync_step_button_icons()
+            # On Windows a stylesheet repolish can happen after this callback and
+            # bring the embedded line edit above the overlay buttons. Re-raise on
+            # the next event-loop turn so painted and clickable chevrons coincide.
+            self._layout_step_buttons()
+            QTimer.singleShot(0, self._layout_step_buttons)
 
     def _sync_step_buttons(self):
         can_step = self.isEnabled() and not self.isReadOnly()
@@ -85,6 +118,14 @@ class ChevronDoubleSpinBox(QDoubleSpinBox):
 
 
 class CardFrame(QFrame):
+    """Shared semantic card shell.
+
+    Theme colours are owned by the application palette/QSS.  Do not install a
+    widget-local stylesheet here: CardFrame is a base class and setStyleSheet()
+    can synchronously dispatch StyleChange to a subclass before that subclass has
+    finished constructing its own children.
+    """
+
     def __init__(self, title: str | None = None, parent=None):
         super().__init__(parent)
         self.setObjectName("CardFrame")
@@ -98,6 +139,10 @@ class CardFrame(QFrame):
             label = QLabel(tr(title))
             label.setObjectName("CardTitle")
             self.layout.addWidget(label)
+
+    def _sync_theme_override(self) -> None:
+        """Compatibility hook retained for callers; application QSS is authoritative."""
+        self.update()
 
 
 def set_button_role(button: QPushButton, role: str) -> QPushButton:
@@ -128,7 +173,7 @@ def configure_standard_dialog(dialog: QDialog, *, minimum_width: int = 520) -> Q
 
 
 def create_form_section(title: str, parent=None) -> tuple[QFrame, QFormLayout]:
-    """Create a standard white card and its aligned two-column form."""
+    """Create a standard card and its aligned two-column form."""
     card = CardFrame(title, parent)
     form = QFormLayout()
     form.setContentsMargins(0, 0, 0, 0)

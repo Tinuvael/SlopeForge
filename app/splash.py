@@ -6,7 +6,7 @@ from PySide6.QtCore import QElapsedTimer, QRect, QThread, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QSplashScreen
 
-from .config import APP_COPYRIGHT, APP_NAME, APP_SPLASH_PATH, APP_VERSION
+from .config import APP_COPYRIGHT, APP_NAME, APP_SPLASH_PATH, APP_VERSION_DISPLAY
 from .qt import apply_window_icon
 from .resources import resource_path
 
@@ -68,7 +68,7 @@ class SlopeForgeSplash(QSplashScreen):
         self._draw_overlay_text(
             painter,
             QRect(margin, rect.height() - 28, 150, 18),
-            f"version {APP_VERSION}",
+            f"version {APP_VERSION_DISPLAY}",
             alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             font=QFont("Segoe UI", 8),
         )

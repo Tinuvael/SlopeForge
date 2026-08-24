@@ -125,6 +125,8 @@ def test_dashboard_result_palette_matches_full_assessment_matrix():
 
 def test_dashboard_internal_lists_have_consistent_bordered_rows_and_actions():
     widgets = source("ui/pages/dashboards/widgets.py")
+    theme = source("ui/theme.py")
+    dark_theme = source("ui/application_theme.py")
     assert "show_go_to: bool = False" in widgets
     assert "fill_available: bool = False" in widgets
     assert "go_to_requested = Signal(str)" in widgets
@@ -133,14 +135,12 @@ def test_dashboard_internal_lists_have_consistent_bordered_rows_and_actions():
     assert "WA_TransparentForMouseEvents" in widgets
     assert "def clear_selection" in widgets
     assert "ProjectLinesDatasetRow" in widgets
-    assert "DASHBOARD_ROW_STYLE" in widgets
-    assert "STANDARD_ROW_STYLESHEET as DASHBOARD_ROW_STYLE" in widgets
-    theme = source("ui/theme.py")
-    assert 'background:#ffffff;border:1px solid #d7dde6;border-radius:5px' in theme
     assert 'holder.setObjectName("DashboardSummaryRow")' in widgets
     assert 'self.setObjectName("DashboardCard")' in widgets
     assert 'self.setObjectName("DashboardMetricCard")' in widgets
     assert 'self.setObjectName("DashboardHeaderCard")' in widgets
+    assert "QFrame#DashboardSummaryRow, QWidget#ProjectLinesDatasetRow, QWidget#StandardRow" in theme
+    assert "QFrame#DashboardSummaryRow, QWidget#ProjectLinesDatasetRow, QWidget#StandardRow" in dark_theme
     assert "QFrame#DashboardCard" in theme
     assert "QFrame#DashboardMetricCard" in theme
     assert "QFrame#DashboardHeaderCard" in theme
@@ -153,6 +153,7 @@ def test_donut_trends_and_activity_cards_are_compact_without_new_engineering_met
     widgets = source("ui/pages/dashboards/widgets.py")
     charts = source("ui/pages/dashboards/charts.py")
     repository = source("repositories/dashboard_repository.py")
+    application_theme = source("ui/application_theme.py")
     assert "self.setMinimumHeight(150 if kind == \"donut\" else 92)" in charts
     assert "shadow.setWidth(width + 4)" in charts
     assert "center_font.setBold(True)" in charts
@@ -166,7 +167,8 @@ def test_donut_trends_and_activity_cards_are_compact_without_new_engineering_met
     assert "grouped[when].append(float(value))" in charts
     assert "sum(values) / len(values)" in charts
     assert 'holder.setObjectName("DashboardActivityRow")' in widgets
-    assert "border-bottom:1px solid #eef1f5" in widgets
+    assert "QWidget#DashboardActivityRow" in application_theme
+    assert "border-bottom: 1px solid #eef1f5" in application_theme
     assert "META_WIDTH = 190" in widgets
     assert "meta.setFixedWidth(self.META_WIDTH)" in widgets
     assert "layout.setContentsMargins(2, 0, 12, 0)" in widgets

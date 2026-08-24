@@ -1,12 +1,12 @@
 """Reusable, read-only plan viewer with optional comparison and focus extents."""
 
 from app.localization import tr
-from PySide6.QtCore import QPointF, QTimer
+from PySide6.QtCore import QEvent, QPointF, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QPainterPath, QPen
 from PySide6.QtWidgets import (
-    QCheckBox, QGraphicsScene, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QGraphicsScene, QHBoxLayout, QLabel, QPushButton,
+    QVBoxLayout, QWidget,
 )
-from PySide6.QtCore import Signal
 
 from domain.geometry.types import PlanMultiPoint, PlanPolygon
 from ui.widgets.plan_view import PlanView
@@ -20,6 +20,8 @@ class PlanGeometryWidget(QWidget):
         self.scene = QGraphicsScene(self)
         self.view = PlanView(self.scene)
         self._project_items = []
+        self._primary_items = []
+        self._comparison_items = []
         self.comparison_geometries = (None, None)
         self.focus_geometry = None
         self.canonical_focus_rect = None
@@ -43,6 +45,33 @@ class PlanGeometryWidget(QWidget):
         layout.addLayout(bar)
         layout.addWidget(self.view)
 
+    @staticmethod
+    def _dark_theme() -> bool:
+        app = QApplication.instance()
+        return bool(app is not None and app.property("slopeforgeTheme") == "dark")
+
+    @classmethod
+    def _theme_colors(cls):
+        if cls._dark_theme():
+            return {
+                "project": QColor("#d8dee9"),
+                "primary": QColor("#38bdf8"),
+                "primary_fill": QColor(56, 189, 248, 34),
+                "comparison": QColor("#f59e0b"),
+                "comparison_fill": QColor(245, 158, 11, 46),
+                "primary_width": 3.2,
+                "comparison_width": 3.0,
+            }
+        return {
+            "project": QColor("#aeb7c2"),
+            "primary": QColor("#1261a0"),
+            "primary_fill": QColor(18, 97, 160, 25),
+            "comparison": QColor("#d97706"),
+            "comparison_fill": QColor(217, 119, 6, 38),
+            "primary_width": 2.0,
+            "comparison_width": 2.0,
+        }
+
     def set_reimport_enabled(self, enabled):
         self.reimport_button.setEnabled(enabled)
 
@@ -64,10 +93,12 @@ class PlanGeometryWidget(QWidget):
     def set_geometry(self, geometry, project_lines=(), context="", *, focus_geometry=None):
         self.scene.clear()
         self._project_items = []
+        self._primary_items = []
+        self._comparison_items = []
         self.comparison_geometries = (None, None)
         self.context.setText(context or "Plan geometry")
         self._add_project_lines(project_lines)
-        self._add_geometry(geometry, "#1261a0", 2)
+        self._add_geometry(geometry, "primary")
         self.focus_geometry = focus_geometry
         if focus_geometry is None:
             self.canonical_focus_rect = None
@@ -85,12 +116,14 @@ class PlanGeometryWidget(QWidget):
         center = self.view.mapToScene(self.view.viewport().rect().center())
         self.scene.clear()
         self._project_items = []
+        self._primary_items = []
+        self._comparison_items = []
         self.comparison_geometries = (primary_geometry, comparison_geometry)
         if context:
             self.context.setText(context)
         self._add_project_lines(project_lines)
-        self._add_geometry(primary_geometry, "#1261a0", 2, QColor(18, 97, 160, 25))
-        self._add_geometry(comparison_geometry, "#d97706", 2, QColor(217, 119, 6, 38))
+        self._add_geometry(primary_geometry, "primary")
+        self._add_geometry(comparison_geometry, "comparison")
         if focus_geometry is not None:
             self.focus_geometry = focus_geometry
             self._update_focus_rect()
@@ -132,8 +165,13 @@ class PlanGeometryWidget(QWidget):
             # canonical framing until Qt has completed the visible layout pass.
             QTimer.singleShot(0, self.center_on_focus)
 
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            self._apply_scene_theme()
+
     def _add_project_lines(self, project_lines):
-        pen = QPen(QColor("#aeb7c2"), 0)
+        pen = QPen(self._theme_colors()["project"], 0)
         for line in project_lines:
             points = getattr(line, "points", ())
             if not points:
@@ -157,11 +195,37 @@ class PlanGeometryWidget(QWidget):
                 path.addEllipse(point.x - 2, -point.y - 2, 4, 4)
         return path
 
-    def _add_geometry(self, geometry, color, width, fill=None):
+    def _add_geometry(self, geometry, role: str):
         path = self._geometry_path(geometry)
-        if not path.isEmpty():
-            brush = QBrush(fill) if fill is not None else QBrush()
-            self.scene.addPath(path, QPen(QColor(color), width), brush)
+        if path.isEmpty():
+            return
+        colors = self._theme_colors()
+        if role == "comparison":
+            item = self.scene.addPath(
+                path,
+                QPen(colors["comparison"], colors["comparison_width"]),
+                QBrush(colors["comparison_fill"]),
+            )
+            self._comparison_items.append(item)
+        else:
+            item = self.scene.addPath(
+                path,
+                QPen(colors["primary"], colors["primary_width"]),
+                QBrush(colors["primary_fill"]),
+            )
+            self._primary_items.append(item)
+
+    def _apply_scene_theme(self):
+        colors = self._theme_colors()
+        for item in self._project_items:
+            item.setPen(QPen(colors["project"], 0))
+        for item in self._primary_items:
+            item.setPen(QPen(colors["primary"], colors["primary_width"]))
+            item.setBrush(QBrush(colors["primary_fill"]))
+        for item in self._comparison_items:
+            item.setPen(QPen(colors["comparison"], colors["comparison_width"]))
+            item.setBrush(QBrush(colors["comparison_fill"]))
+        self.view.viewport().update()
 
     def _toggle_lines(self, shown):
         for item in self._project_items:

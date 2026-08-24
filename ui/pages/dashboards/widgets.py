@@ -25,8 +25,7 @@ from ui.assessment_result_presentation import (
     AssessmentResultPresentation,
     assessment_result_presentation,
 )
-from ui.widgets.design_system import CardFrame
-from ui.theme import STANDARD_ROW_STYLESHEET as DASHBOARD_ROW_STYLE
+from ui.widgets.design_system import CardFrame, set_status_role
 from ui.pages.entity_overview_widgets import OverviewLinkButton
 
 
@@ -66,7 +65,6 @@ class DashboardEntityHeader(CardFrame):
         row.setSpacing(8)
         self.title_label = QLabel(str(title))
         self.title_label.setObjectName("EntityTitle")
-        self.title_label.setStyleSheet("font-size:22px;font-weight:700;color:#0f172a;")
         self.edit_button = QPushButton(tr("Edit"))
         self.edit_button.setProperty("role", "secondary")
         self.edit_button.setIcon(ui_icon("edit", "blue"))
@@ -101,7 +99,6 @@ class MetricCard(CardFrame):
         title_label.setObjectName("MutedText")
         self.value_label = QLabel(str(value))
         self.value_label.setObjectName("DashboardMetricValue")
-        self.value_label.setStyleSheet("font-size:18px;font-weight:700;color:#0f172a;")
         detail_label = QLabel(str(detail))
         detail_label.setObjectName("MutedText")
         detail_label.setWordWrap(False)
@@ -151,7 +148,6 @@ class DashboardCard(CardFrame):
         self.header.setSpacing(6)
         self.heading = QLabel(tr(title))
         self.heading.setObjectName("CardTitle")
-        self.heading.setStyleSheet("font-weight:600;color:#1f2937;")
         self.heading.setMinimumWidth(0)
         self.heading.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
@@ -233,8 +229,6 @@ class ViewportBoundListWidget(QListWidget):
                 continue
             rect = self.visualItemRect(item)
             if rect.isValid() and rect.width() > 0:
-                # Item widgets are children of the viewport, so visualItemRect
-                # is already expressed in the correct coordinate system.
                 rect.setLeft(max(rect.left(), viewport_rect.left()))
                 rect.setRight(min(rect.right(), viewport_rect.right()))
                 widget.setGeometry(rect)
@@ -313,7 +307,7 @@ class CompactSummaryList(DashboardCard):
         if selected:
             color = marker.palette().color(QPalette.ColorRole.Highlight).name()
         else:
-            color = "#ffffff"
+            color = "transparent"
         marker.setStyleSheet(
             f"background-color:{color};border:none;border-radius:1px;"
         )
@@ -470,9 +464,9 @@ class AssessmentProgressCard(DashboardCard):
         summary = QHBoxLayout()
         summary.setContentsMargins(0, 2, 0, 3)
         self.counts = QLabel()
-        self.counts.setStyleSheet("font-weight:600;color:#334155;")
+        self.counts.setObjectName("DashboardStrongText")
         self.percent = QLabel("0%")
-        self.percent.setStyleSheet("font-size:18px;font-weight:700;color:#1f4f7a;")
+        self.percent.setObjectName("DashboardPercentValue")
         self.percent.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
@@ -480,13 +474,10 @@ class AssessmentProgressCard(DashboardCard):
         summary.addWidget(self.percent)
         self.layout.addLayout(summary)
         self.progress = QProgressBar()
+        self.progress.setObjectName("DashboardProgressBar")
         self.progress.setTextVisible(False)
         self.progress.setRange(0, 100)
         self.progress.setFixedHeight(17)
-        self.progress.setStyleSheet(
-            "QProgressBar{border:1px solid #ccd5e1;border-radius:8px;background:#eef2f6;}"
-            "QProgressBar::chunk{background:#4f78a8;border-radius:7px;}"
-        )
         self.layout.addWidget(self.progress)
         self.layout.addStretch()
 
@@ -511,7 +502,7 @@ class BlastActivityCard(DashboardCard):
         super().__init__("Blast activity", parent)
         self.setMinimumHeight(118)
         self.counts = QLabel()
-        self.counts.setStyleSheet("font-weight:600;color:#334155;")
+        self.counts.setObjectName("DashboardStrongText")
         self.latest = QLabel()
         self.latest.setObjectName("MutedText")
         self.layout.addWidget(self.counts)
@@ -621,21 +612,14 @@ class ProjectLinesCard(DashboardCard):
                 if getattr(dataset, "is_active", False)
                 else tr("Inactive")
             )
-            state.setObjectName("StatusBadge")
             state.setSizePolicy(
                 QSizePolicy.Policy.Fixed,
                 QSizePolicy.Policy.Fixed,
             )
-            if getattr(dataset, "is_active", False):
-                state.setStyleSheet(
-                    "background:#edf8f0;color:#2f6f3e;border:1px solid #9bcaa6;"
-                    "border-radius:5px;padding:3px 7px;font-weight:600;"
-                )
-            else:
-                state.setStyleSheet(
-                    "background:#f3f4f6;color:#4b5563;border:1px solid #d1d5db;"
-                    "border-radius:5px;padding:3px 7px;font-weight:600;"
-                )
+            set_status_role(
+                state,
+                "success" if getattr(dataset, "is_active", False) else "neutral",
+            )
             layout.addWidget(state)
             self.list.addItem(item)
             self.list.setItemWidget(item, holder)
@@ -698,15 +682,11 @@ class DashboardRecentActivityCard(DashboardCard):
             holder = QWidget()
             holder.setObjectName("DashboardActivityRow")
             holder.setFixedHeight(self.ROW_HEIGHT - 1)
-            holder.setStyleSheet(
-                "QWidget#DashboardActivityRow{border-bottom:1px solid #eef1f5;}"
-            )
             layout = QHBoxLayout(holder)
             layout.setContentsMargins(2, 0, 12, 0)
             layout.setSpacing(8)
             title = QLabel(title_text)
             title.setObjectName("ActivityTitle")
-            title.setStyleSheet("font-weight:500;color:#334155;")
             title.setMinimumWidth(0)
             title.setSizePolicy(
                 QSizePolicy.Policy.Expanding,

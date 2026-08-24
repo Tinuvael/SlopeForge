@@ -5,11 +5,16 @@ from collections import defaultdict
 from datetime import date
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPalette, QPen
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
 from app.localization import tr
 from .widgets import DashboardCard, quadrant_presentation
+
+
+def _palette_color(widget: QWidget, role: QPalette.ColorRole) -> QColor:
+    """Resolve semantic chart colours from the current application palette."""
+    return widget.palette().color(QPalette.ColorGroup.Active, role)
 
 
 class CompactChart(QWidget):
@@ -39,7 +44,7 @@ class CompactChart(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         if not self.data:
-            painter.setPen(QColor("#64748b"))
+            painter.setPen(_palette_color(self, QPalette.ColorRole.PlaceholderText))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, tr("No data yet"))
             return
         if self.kind == "donut":
@@ -55,9 +60,12 @@ class CompactChart(QWidget):
         )
         row_height = max(20, min(30, max(1, (self.height() - 8) // len(self.data))))
         maximum = max(self.data.values())
+        text = _palette_color(self, QPalette.ColorRole.Text)
+        secondary = _palette_color(self, QPalette.ColorRole.WindowText)
+        accent = _palette_color(self, QPalette.ColorRole.Link)
         for index, (label, value) in enumerate(self.data.items()):
             top = 4 + index * row_height
-            painter.setPen(QColor("#334155"))
+            painter.setPen(secondary)
             painter.drawText(
                 QRectF(2, top, label_width - 8, row_height - 3),
                 Qt.AlignmentFlag.AlignVCenter,
@@ -75,9 +83,9 @@ class CompactChart(QWidget):
                 max(5, row_height - 12),
             )
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#2563eb"))
+            painter.setBrush(accent)
             painter.drawRoundedRect(bar, 3, 3)
-            painter.setPen(QColor("#0f172a"))
+            painter.setPen(text)
             painter.drawText(
                 QRectF(bar.right() + 5, top, 28, row_height - 3),
                 Qt.AlignmentFlag.AlignVCenter,
@@ -91,13 +99,13 @@ class CompactChart(QWidget):
         width = max(18, int(size * 0.18))
         arc_rect = ring.adjusted(width / 2, width / 2, -width / 2, -width / 2)
 
-        shadow = QPen(QColor("#d8dee7"))
+        shadow = QPen(_palette_color(self, QPalette.ColorRole.Mid))
         shadow.setWidth(width + 4)
         shadow.setCapStyle(Qt.PenCapStyle.FlatCap)
         painter.setPen(shadow)
         painter.drawArc(arc_rect, 0, 360 * 16)
 
-        base = QPen(QColor("#eef2f6"))
+        base = QPen(_palette_color(self, QPalette.ColorRole.AlternateBase))
         base.setWidth(width)
         base.setCapStyle(Qt.PenCapStyle.FlatCap)
         painter.setPen(base)
@@ -118,7 +126,7 @@ class CompactChart(QWidget):
         center_font.setBold(True)
         center_font.setPointSize(max(13, min(18, int(size * 0.10))))
         painter.setFont(center_font)
-        painter.setPen(QColor("#0f172a"))
+        painter.setPen(_palette_color(self, QPalette.ColorRole.Text))
         painter.drawText(ring, Qt.AlignmentFlag.AlignCenter, str(total))
 
         legend_x = ring.right() + 16
@@ -133,18 +141,20 @@ class CompactChart(QWidget):
         text_flags |= int(Qt.TextFlag.TextWordWrap)
         marker_size = 14
         marker_gap = 8
+        marker_border = _palette_color(self, QPalette.ColorRole.Mid)
+        legend_text = _palette_color(self, QPalette.ColorRole.WindowText)
         for index, (key, value) in enumerate(self.data.items()):
             presentation = quadrant_presentation(key)
             y = top + index * row_height
             marker_y = y + (row_height - marker_size) / 2
-            painter.setPen(QPen(QColor("#d4dae3"), 1))
+            painter.setPen(QPen(marker_border, 1))
             painter.setBrush(QColor(presentation.color))
             painter.drawRoundedRect(
                 QRectF(legend_x, marker_y, marker_size, marker_size),
                 2,
                 2,
             )
-            painter.setPen(QColor("#334155"))
+            painter.setPen(legend_text)
             label = f"{presentation.label}  {value}"
             text_x = legend_x + marker_size + marker_gap
             painter.drawText(
@@ -182,19 +192,27 @@ class IndexTrendChart(QWidget):
     def paintEvent(self, _event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor("#fbfcfd"))
-        painter.setPen(QPen(QColor("#e2e6ec"), 1))
+        surface = _palette_color(self, QPalette.ColorRole.AlternateBase)
+        border = _palette_color(self, QPalette.ColorRole.Mid)
+        text = _palette_color(self, QPalette.ColorRole.Text)
+        secondary = _palette_color(self, QPalette.ColorRole.WindowText)
+        muted = _palette_color(self, QPalette.ColorRole.PlaceholderText)
+        accent = _palette_color(self, QPalette.ColorRole.Link)
+        base = _palette_color(self, QPalette.ColorRole.Base)
+
+        painter.fillRect(self.rect(), surface)
+        painter.setPen(QPen(border, 1))
         painter.drawRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), 5, 5)
 
         title_font = QFont(painter.font())
         title_font.setBold(True)
         painter.setFont(title_font)
-        painter.setPen(QColor("#334155"))
+        painter.setPen(secondary)
         painter.drawText(QRectF(10, 5, 50, 20), Qt.AlignmentFlag.AlignVCenter, self.label)
 
         if not self.points:
             painter.setFont(QFont())
-            painter.setPen(QColor("#64748b"))
+            painter.setPen(muted)
             painter.drawText(
                 QRectF(10, 25, self.width() - 20, self.height() - 35),
                 Qt.AlignmentFlag.AlignCenter,
@@ -204,7 +222,7 @@ class IndexTrendChart(QWidget):
 
         latest = self.points[-1][1]
         painter.setFont(QFont())
-        painter.setPen(QColor("#334155"))
+        painter.setPen(secondary)
         painter.drawText(
             QRectF(self.width() - 75, 5, 65, 20),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -216,11 +234,12 @@ class IndexTrendChart(QWidget):
         small.setPointSize(max(7, painter.font().pointSize() - 1))
         painter.setFont(small)
 
+        grid = _palette_color(self, QPalette.ColorRole.Midlight)
         for value in (0.0, 0.5, 1.0):
             y = plot.bottom() - value * plot.height()
-            painter.setPen(QPen(QColor("#e5e9ef"), 1))
+            painter.setPen(QPen(grid, 1))
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
-            painter.setPen(QColor("#7b8794"))
+            painter.setPen(muted)
             painter.drawText(
                 QRectF(1, y - 8, 27, 16),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -245,17 +264,17 @@ class IndexTrendChart(QWidget):
         for when, value in self.points[1:]:
             path.lineTo(point_for(when, value))
 
-        line_pen = QPen(QColor("#3f6f9f"), 2)
+        line_pen = QPen(accent, 2)
         painter.setPen(line_pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
-        painter.setBrush(QColor("#3f6f9f"))
-        painter.setPen(QPen(QColor("#ffffff"), 1))
+        painter.setBrush(accent)
+        painter.setPen(QPen(base, 1))
         for when, value in self.points:
             point = point_for(when, value)
             painter.drawEllipse(point, 3.2, 3.2)
 
-        painter.setPen(QColor("#7b8794"))
+        painter.setPen(muted)
         first_label = first_date.strftime("%d.%m.%y")
         last_label = last_date.strftime("%d.%m.%y")
         if first_date == last_date:

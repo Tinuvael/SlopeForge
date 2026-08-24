@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtCore import QFileInfo, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileIconProvider,
@@ -481,30 +481,39 @@ class AssessmentMatrixPreview(QWidget):
     def paintEvent(self, event):  # noqa: ARG002
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        palette = self.palette()
+        surface = palette.color(QPalette.ColorRole.AlternateBase)
+        border = palette.color(QPalette.ColorRole.Mid)
+        grid = palette.color(QPalette.ColorRole.Midlight)
+        text = palette.color(QPalette.ColorRole.WindowText)
+        muted = palette.color(QPalette.ColorRole.PlaceholderText)
+        accent = palette.color(QPalette.ColorRole.Link)
+        point_border = palette.color(QPalette.ColorRole.Base)
+
         side = max(40, min(self.width() - 64, self.height() - 48))
         left = (self.width() - side) / 2
         rect = QRectF(left, 12, side, side)
-        painter.fillRect(rect, QColor("#fbfcfd"))
-        painter.setPen(QPen(QColor("#cfd6de"), 1))
+        painter.fillRect(rect, surface)
+        painter.setPen(QPen(border, 1))
         painter.drawRect(rect)
         x = rect.left() + rect.width() * self.fci_threshold
         y = rect.bottom() - rect.height() * self.dai_threshold
-        painter.setPen(QPen(QColor("#c1c9d2"), 1, Qt.PenStyle.DashLine))
+        painter.setPen(QPen(grid, 1, Qt.PenStyle.DashLine))
         painter.drawLine(int(x), int(rect.top()), int(x), int(rect.bottom()))
         painter.drawLine(int(rect.left()), int(y), int(rect.right()), int(y))
-        painter.setPen(QColor("#667085"))
+        painter.setPen(text)
         painter.drawText(int(rect.left()) - 30, int(rect.center().y()), "DAI")
         painter.drawText(int(rect.center().x()) - 8, int(rect.bottom()) + 24, "FCI")
         if self.dai is None or self.fci is None:
-            painter.setPen(QColor("#8a94a3"))
+            painter.setPen(muted)
             painter.drawText(
                 rect, Qt.AlignmentFlag.AlignCenter, tr("No assessment result yet")
             )
             return
         px = rect.left() + rect.width() * self.fci
         py = rect.bottom() - rect.height() * self.dai
-        painter.setPen(QPen(QColor("#ffffff"), 2))
-        painter.setBrush(QColor("#1261a0"))
+        painter.setPen(QPen(point_border, 2))
+        painter.setBrush(accent)
         painter.drawEllipse(int(px) - 7, int(py) - 7, 14, 14)
 
 
@@ -606,16 +615,12 @@ class QuickAttachmentPreview(CardFrame):
             for index in range(row_start, min(row_start + self.PHOTO_COLUMNS, len(visible))):
                 attachment = visible[index]
                 button = QToolButton()
+                button.setObjectName("AttachmentPreviewTile")
                 button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
                 button.setText("")
                 button.setToolTip(attachment.title or attachment.original_filename)
                 button.setFixedSize(self.PHOTO_TILE_WIDTH, self.PHOTO_TILE_HEIGHT)
                 button.setIconSize(QSize(self.PHOTO_TILE_WIDTH, self.PHOTO_TILE_HEIGHT))
-                button.setStyleSheet(
-                    "QToolButton{padding:0;margin:0;border:1px solid #dfe3ea;border-radius:6px;background:#f3f4f6;}"
-                    "QToolButton:hover{border:1px solid #8fb4dc;}"
-                    "QToolButton:pressed{border:1px solid #1261a0;}"
-                )
                 pixmap = self._photo_pixmap(
                     attachment, self.PHOTO_TILE_WIDTH, self.PHOTO_TILE_HEIGHT
                 )

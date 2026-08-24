@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPalette, QPen
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from app.localization import tr
 from ui.pages.block_card_widgets import CardFrame
@@ -165,6 +166,13 @@ class AssessmentStateSummaryCard(CardFrame):
 class CompactAssessmentMatrixPreview(AssessmentMatrixPreview):
     """Stored DAI/FCI quadrant sized for the compact Assessment Overview row."""
 
+    _QUADRANT_COLORS = (
+        "#f6df72",  # geometry achieved, condition insufficient
+        "#8bd17c",  # good results
+        "#ef7770",  # unacceptable
+        "#f2b764",  # condition good, geometry unacceptable
+    )
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(190, 190)
@@ -172,6 +180,62 @@ class CompactAssessmentMatrixPreview(AssessmentMatrixPreview):
 
     def sizeHint(self):
         return QSize(220, 220)
+
+    def paintEvent(self, event):  # noqa: ARG002
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        palette = self.palette()
+        surface = palette.color(QPalette.ColorRole.AlternateBase)
+        border = palette.color(QPalette.ColorRole.Mid)
+        text = palette.color(QPalette.ColorRole.WindowText)
+        muted = palette.color(QPalette.ColorRole.PlaceholderText)
+        point_border = palette.color(QPalette.ColorRole.Base)
+        app = QApplication.instance()
+        dark = bool(app is not None and app.property("slopeforgeTheme") == "dark")
+        accent = QColor("#38bdf8") if dark else palette.color(QPalette.ColorRole.Link)
+
+        side = max(40, min(self.width() - 58, self.height() - 48))
+        left = (self.width() - side) / 2
+        rect = QRectF(left, 12, side, side)
+        painter.fillRect(rect, surface)
+
+        x = rect.left() + rect.width() * self.fci_threshold
+        y = rect.bottom() - rect.height() * self.dai_threshold
+        regions = (
+            QRectF(rect.left(), rect.top(), x - rect.left(), y - rect.top()),
+            QRectF(x, rect.top(), rect.right() - x, y - rect.top()),
+            QRectF(rect.left(), y, x - rect.left(), rect.bottom() - y),
+            QRectF(x, y, rect.right() - x, rect.bottom() - y),
+        )
+        alpha = 58 if dark else 40
+        for region, colour in zip(regions, self._QUADRANT_COLORS):
+            fill = QColor(colour)
+            fill.setAlpha(alpha)
+            painter.fillRect(region, fill)
+
+        painter.setPen(QPen(border, 1.2))
+        painter.drawRect(rect)
+        separator = QColor(border)
+        separator.setAlpha(210 if dark else 180)
+        painter.setPen(QPen(separator, 1, Qt.PenStyle.DashLine))
+        painter.drawLine(int(x), int(rect.top()), int(x), int(rect.bottom()))
+        painter.drawLine(int(rect.left()), int(y), int(rect.right()), int(y))
+
+        painter.setPen(text)
+        painter.drawText(int(rect.left()) - 28, int(rect.center().y()), "DAI")
+        painter.drawText(int(rect.center().x()) - 8, int(rect.bottom()) + 22, "FCI")
+        if self.dai is None or self.fci is None:
+            painter.setPen(muted)
+            painter.drawText(
+                rect, Qt.AlignmentFlag.AlignCenter, tr("No assessment result yet")
+            )
+            return
+
+        px = rect.left() + rect.width() * self.fci
+        py = rect.bottom() - rect.height() * self.dai
+        painter.setPen(QPen(point_border, 2.2))
+        painter.setBrush(accent)
+        painter.drawEllipse(int(px) - 7, int(py) - 7, 14, 14)
 
 
 class AssessmentMatrixCard(CardFrame):

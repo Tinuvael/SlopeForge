@@ -1,4 +1,3 @@
-from app.localization import tr
 import logging
 import sys
 
@@ -10,20 +9,21 @@ from app.connection_settings import (
     MissingConnectionConfiguration,
     resolve_runtime_settings,
 )
-from app.platform import set_windows_app_user_model_id
-from app.runtime_paths import runtime_log_path
-from app.qt import apply_application_icon
-from app.localization import install_selected_translator, tr
-from app.splash import SlopeForgeSplash
 from app.context import AppContext
+from app.localization import install_selected_translator, tr
+from app.platform import set_windows_app_user_model_id
+from app.qt import apply_application_icon
+from app.runtime_paths import runtime_log_path
+from app.splash import SlopeForgeSplash
 from database.settings import ConfigurationError
 from database.startup import StartupError, initialize_database_runtime
 from infrastructure.services.auth_service import AuthService
 from infrastructure.services.session_service import RememberTokenService
+from ui.application_theme import initialize_application_theme
 from ui.auth_dialogs import FirstAdminDialog, LoginDialog
 from ui.connection_dialog import ConnectionSetupDialog
 from ui.main_window import MainWindow
-from ui.theme import apply_theme
+from ui.theme_compat import install_legacy_entity_page_theme_cleanup
 
 LOG_PATH = runtime_log_path()
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -46,7 +46,12 @@ def main():
     startup_stage = "application bootstrap"
     set_windows_app_user_model_id()
     app = QApplication(sys.argv)
-    apply_theme(app)
+    # Real QApplication always exposes styleHints(). Startup smoke tests use a
+    # deliberately tiny QApplication stand-in, so only skip presentation setup
+    # for that non-Qt test double; production startup always initializes theme.
+    if callable(getattr(app, "styleHints", None)):
+        initialize_application_theme(app)
+        install_legacy_entity_page_theme_cleanup(app)
     install_selected_translator(app)
     apply_application_icon(app)
 

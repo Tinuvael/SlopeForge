@@ -33,15 +33,6 @@ from database.connection import DatabaseConnectionError, check_connection, creat
 from database.settings import ConfigurationError, Settings
 
 
-CARD_STYLE = (
-    "QFrame#ConnectionCard{background:#ffffff;border:1px solid #d7dde6;"
-    "border-radius:7px;}"
-)
-STATUS_OK_STYLE = "color:#2f6f3e;font-weight:600;"
-STATUS_ERROR_STYLE = "color:#a33a32;font-weight:600;"
-STATUS_INFO_STYLE = "color:#64748b;"
-
-
 class ConnectionForm(QWidget):
     def __init__(self, profile: ConnectionProfile | None = None, parent=None):
         super().__init__(parent)
@@ -52,12 +43,11 @@ class ConnectionForm(QWidget):
 
         database_card = QFrame()
         database_card.setObjectName("ConnectionCard")
-        database_card.setStyleSheet(CARD_STYLE)
         database_layout = QVBoxLayout(database_card)
         database_layout.setContentsMargins(14, 12, 14, 12)
         database_layout.setSpacing(8)
         database_title = QLabel(tr("PostgreSQL server"))
-        database_title.setStyleSheet("font-weight:600;color:#1f2937;")
+        database_title.setObjectName("CardTitle")
         database_layout.addWidget(database_title)
 
         database_form = QFormLayout()
@@ -82,16 +72,14 @@ class ConnectionForm(QWidget):
 
         storage_card = QFrame()
         storage_card.setObjectName("ConnectionCard")
-        storage_card.setStyleSheet(CARD_STYLE)
         storage_layout = QVBoxLayout(storage_card)
         storage_layout.setContentsMargins(14, 12, 14, 12)
         storage_layout.setSpacing(8)
         storage_title = QLabel(tr("File storage"))
-        storage_title.setStyleSheet("font-weight:600;color:#1f2937;")
+        storage_title.setObjectName("CardTitle")
         storage_layout.addWidget(storage_title)
         storage_hint = QLabel(tr("Use a folder that all SlopeForge users can access."))
         storage_hint.setObjectName("MutedText")
-        storage_hint.setStyleSheet("color:#64748b;")
         storage_layout.addWidget(storage_hint)
         storage_row = QHBoxLayout()
         storage_row.setSpacing(8)
@@ -105,8 +93,9 @@ class ConnectionForm(QWidget):
         root.addWidget(storage_card)
 
         self.status = QLabel("")
+        self.status.setObjectName("ConnectionStatus")
+        self.status.setProperty("statusState", "info")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet(STATUS_INFO_STYLE)
         self.status.setMinimumHeight(22)
         root.addWidget(self.status)
 
@@ -132,12 +121,10 @@ class ConnectionForm(QWidget):
 
     def set_status(self, text: str, *, error: bool = False, success: bool = False) -> None:
         self.status.setText(text)
-        if error:
-            self.status.setStyleSheet(STATUS_ERROR_STYLE)
-        elif success:
-            self.status.setStyleSheet(STATUS_OK_STYLE)
-        else:
-            self.status.setStyleSheet(STATUS_INFO_STYLE)
+        state = "error" if error else "success" if success else "info"
+        self.status.setProperty("statusState", state)
+        self.status.style().unpolish(self.status)
+        self.status.style().polish(self.status)
 
     def validate_and_test(self) -> tuple[ConnectionProfile, Settings] | None:
         profile = self.profile()
@@ -184,13 +171,13 @@ class ConnectionSetupDialog(QDialog):
         root.setContentsMargins(18, 16, 18, 16)
         root.setSpacing(12)
         title = QLabel(tr("Connect SlopeForge"))
-        title.setStyleSheet("font-size:20px;font-weight:700;color:#0f172a;")
+        title.setObjectName("EntityTitle")
         root.addWidget(title)
         description = QLabel(
             tr("Configure the PostgreSQL server and shared file storage before signing in.")
         )
         description.setWordWrap(True)
-        description.setStyleSheet("color:#64748b;")
+        description.setObjectName("MutedText")
         root.addWidget(description)
 
         self.form = ConnectionForm()
@@ -244,18 +231,15 @@ class ConnectionSettingsPage(QWidget):
             tr("Edit the PostgreSQL server and shared file storage used on the next SlopeForge start.")
         )
         description.setWordWrap(True)
-        description.setStyleSheet("color:#64748b;")
+        description.setObjectName("MutedText")
         root.addWidget(description)
 
         if source == "environment":
             override = QLabel(
                 tr("DATABASE_URL and STORAGE_ROOT currently override saved connection settings.")
             )
+            override.setObjectName("ConnectionEnvironmentWarning")
             override.setWordWrap(True)
-            override.setStyleSheet(
-                "background:#fff7e6;border:1px solid #e8c77d;border-radius:5px;"
-                "padding:7px;color:#725514;"
-            )
             root.addWidget(override)
 
         self.form = ConnectionForm(profile)

@@ -7,8 +7,8 @@ from html import escape
 import math
 from uuid import uuid4
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QBrush, QPen
+from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtGui import QColor, QBrush, QPalette, QPen
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
     QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel, QMenu, QPushButton, QSizePolicy,
@@ -62,11 +62,10 @@ class BoreholeView(QGraphicsView):
     def __init__(self, builder):
         super().__init__(builder)
         self.builder = builder
-        self.setObjectName("boreholeView")
+        self.setObjectName("BoreholeView")
         self.setScene(QGraphicsScene(self))
         self.setMinimumSize(280, 330)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.setStyleSheet("QGraphicsView { background: #FAFBFC; border: 1px solid #CCD3DB; }")
         self._drag = None
 
     def resizeEvent(self, event):
@@ -122,8 +121,7 @@ class CartridgePitchDialog(QDialog):
         self.pitch_spin.setValue(self.pitch_spin.minimum())
         form.addRow(tr("Pitch, m"), self.pitch_spin)
         self.feedback = QLabel()
-        self.feedback.setObjectName("newCartridgePitchFeedback")
-        self.feedback.setStyleSheet("color: #A33;")
+        self.feedback.setObjectName("FormValidationText")
         form.addRow(self.feedback)
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
@@ -182,7 +180,7 @@ class BoreholeChargeBuilder(QWidget):
         form.addRow(self.pitch_label, self.pitch_spin)
         self.count_title = QLabel(tr("Cartridge count")); self.count_label = QLabel("—"); self.count_label.setObjectName("cartridgeCountLabel")
         form.addRow(self.count_title, self.count_label)
-        self.feedback = QLabel(); self.feedback.setStyleSheet("color: #A33;"); self.feedback.setWordWrap(True); form.addRow(self.feedback)
+        self.feedback = QLabel(); self.feedback.setObjectName("FormValidationText"); self.feedback.setWordWrap(True); form.addRow(self.feedback)
         self.delete_button = QPushButton(tr("Delete component")); self.delete_button.setObjectName("deleteComponentButton")
         self.delete_button.clicked.connect(self.delete_selected_component); form.addRow(self.delete_button)
         body.addWidget(panel)
@@ -193,6 +191,11 @@ class BoreholeChargeBuilder(QWidget):
         self.length_spin.valueChanged.connect(lambda: self._numeric_edit("length"))
         self.pitch_spin.valueChanged.connect(self._pitch_edit)
         self.product_combo.currentIndexChanged.connect(self._product_changed)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            self._render()
 
     def _depth_spin(self, name):
         spin = QDoubleSpinBox(); spin.setObjectName(name); spin.setRange(0, 100000)
@@ -406,56 +409,66 @@ class BoreholeChargeBuilder(QWidget):
 
     def _render(self):
         scene = self.view.scene(); scene.clear()
+        palette = self.palette()
+        text_color = palette.color(QPalette.ColorRole.Text)
+        muted_color = palette.color(QPalette.ColorRole.PlaceholderText)
+        border_color = palette.color(QPalette.ColorRole.Mid)
+        surface_color = palette.color(QPalette.ColorRole.AlternateBase)
+        accent_color = palette.color(QPalette.ColorRole.Link)
+        selected_color = palette.color(QPalette.ColorRole.Highlight)
         width = max(260, self.view.viewport().width() - 8); height = max(300, self.view.viewport().height() - 12)
         self._scene_top, self._scene_height = 28.0, height - 56.0
         bore_x, bore_w = width * .46, max(48.0, min(90.0, width * .24))
         scene.setSceneRect(0, 0, width, height)
-        scene.addText(tr("Collar")).setPos(bore_x + bore_w + 8, 4)
-        toe = scene.addText(f"{tr('Toe')} · {self._hole_depth_m:.1f} m"); toe.setPos(bore_x + bore_w + 8, height - 27)
+        collar = scene.addText(tr("Collar")); collar.setDefaultTextColor(text_color); collar.setPos(bore_x + bore_w + 8, 4)
+        toe = scene.addText(f"{tr('Toe')} · {self._hole_depth_m:.1f} m"); toe.setDefaultTextColor(text_color); toe.setPos(bore_x + bore_w + 8, height - 27)
         tick_count = max(1, min(10, int(math.ceil(self._hole_depth_m))))
         for index in range(tick_count + 1):
             depth = self._hole_depth_m * index / tick_count; y = depth_to_scene_y(depth, self._hole_depth_m, self._scene_top, self._scene_height)
-            scene.addLine(bore_x - 7, y, bore_x, y, QPen(QColor("#65717E")))
-            label = scene.addText(f"{depth:.1f}"); label.setPos(bore_x - 45, y - 10)
+            scene.addLine(bore_x - 7, y, bore_x, y, QPen(muted_color))
+            label = scene.addText(f"{depth:.1f}"); label.setDefaultTextColor(muted_color); label.setPos(bore_x - 45, y - 10)
         for gap in self.air_intervals():
             y1 = depth_to_scene_y(gap[0], self._hole_depth_m, self._scene_top, self._scene_height); y2 = depth_to_scene_y(gap[1], self._hole_depth_m, self._scene_top, self._scene_height)
-            pen = QPen(QColor("#2F6FA5"), 2 if gap == self._selected_air else 1)
+            pen = QPen(accent_color, 2 if gap == self._selected_air else 1)
             item = scene.addRect(bore_x, y1, bore_w, y2-y1, pen, QBrush(QColor(AIR_COLOR)))
             item.setData(0, "air"); item.setData(1, list(gap)); item.setToolTip(f"{tr('Air')}: {gap[0]:.1f}–{gap[1]:.1f} m")
             if y2-y1 >= 18:
-                text = scene.addText(tr("Air")); text.setDefaultTextColor(QColor("#163A58")); text.setPos(bore_x+5, (y1+y2)/2-10)
-                text.setData(0, "air"); text.setData(1, list(gap))
-        for component in self._components: self._draw_component(scene, component, bore_x, bore_w)
+                air_text = scene.addText(tr("Air")); air_text.setDefaultTextColor(QColor("#163A58")); air_text.setPos(bore_x+5, (y1+y2)/2-10)
+                air_text.setData(0, "air"); air_text.setData(1, list(gap))
+        for component in self._components:
+            self._draw_component(scene, component, bore_x, bore_w, surface_color, border_color, accent_color, selected_color)
         outline = scene.addRect(
             bore_x, self._scene_top, bore_w, self._scene_height,
-            QPen(QColor("#222A33"), 2), QBrush(Qt.BrushStyle.NoBrush))
-        # Keep the outline behind all selectable content.  A QGraphicsRectItem's
-        # shape covers its interior even when its brush is NoBrush.
+            QPen(border_color, 2), QBrush(Qt.BrushStyle.NoBrush))
         outline.setZValue(-1)
 
-    def _draw_component(self, scene, component, x, width):
+    def _draw_component(self, scene, component, x, width, surface_color, border_color, accent_color, selected_color):
         y1 = depth_to_scene_y(component.start_depth_m, self._hole_depth_m, self._scene_top, self._scene_height)
         y2 = depth_to_scene_y(component.end_depth_m, self._hole_depth_m, self._scene_top, self._scene_height)
         name = tr("Stemming") if component.kind is ChargeComponentKind.STEMMING else component.product_snapshot.name
         color = STEMMING_COLOR if component.kind is ChargeComponentKind.STEMMING else component.product_snapshot.display_color
         selected = component.id == self._selected_component_id
-        pen = QPen(QColor("#1267A5") if selected else QColor("#343B44"), 3 if selected else 1)
+        pen = QPen(accent_color if selected else border_color, 3 if selected else 1)
         if component.kind is ChargeComponentKind.CARTRIDGE_EXPLOSIVE:
-            body = scene.addRect(x, y1, width, y2-y1, pen, QBrush(QColor("#F7F8FA")))
+            body = scene.addRect(x, y1, width, y2-y1, pen, QBrush(surface_color))
             ratio = component.product_snapshot.cartridge_diameter_mm / self._hole_diameter_mm if self._hole_diameter_mm else .55
             marker_w = width * max(.25, min(.85, ratio)); marker_h = max(4.0, min(12.0, self._scene_height / self._hole_depth_m * .08))
             for depth in cartridge_depths(component):
                 cy = depth_to_scene_y(depth, self._hole_depth_m, self._scene_top, self._scene_height)
                 marker = scene.addEllipse(x+(width-marker_w)/2, cy-marker_h/2, marker_w, marker_h, QPen(QColor(color)), QBrush(QColor(color)))
                 marker.setData(0, "component"); marker.setData(1, component.id); marker.setToolTip(name)
-        else: body = scene.addRect(x, y1, width, y2-y1, pen, QBrush(QColor(color)))
+        else:
+            body = scene.addRect(x, y1, width, y2-y1, pen, QBrush(QColor(color)))
         body.setData(0, "component"); body.setData(1, component.id); body.setToolTip(f"{name}: {component.start_depth_m:.1f}–{component.end_depth_m:.1f} m")
         if y2-y1 >= 18:
-            label = scene.addText(name); label.setDefaultTextColor(QColor("white") if component.kind is ChargeComponentKind.STEMMING else QColor("#16202A")); label.setPos(x+4, (y1+y2)/2-10)
+            label = scene.addText(name)
+            fill = QColor(color)
+            label.setDefaultTextColor(QColor("white") if fill.lightness() < 128 else QColor("#16202A"))
+            label.setPos(x+4, (y1+y2)/2-10)
             label.setData(0, "component"); label.setData(1, component.id); label.setToolTip(name)
         if selected:
             for role, y in (("start", y1), ("end", y2)):
-                handle = scene.addRect(x-6, y-4, width+12, 8, QPen(QColor("#1267A5")), QBrush(QColor("#D8EAF7")))
+                handle = scene.addRect(x-6, y-4, width+12, 8, QPen(accent_color), QBrush(selected_color))
                 handle.setData(0, role); handle.setData(1, component.id); handle.setToolTip(tr("Drag bound (0.1 m snap)"))
 
     def _render_legend(self):
