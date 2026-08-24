@@ -122,6 +122,31 @@ def test_geometric_matching_is_one_to_one_and_reports_missing_or_additional_hole
     assert sum(item.match_method == "unmatched_design" for item in matches) == 0
 
 
+def test_geometric_matching_minimizes_total_collar_distance_instead_of_greedy_edges():
+    design = (
+        _hole("D-1", (0.0, 0.0, 630), (0.0, 0.0, 620)),
+        _hole("D-2", (2.1, 0.0, 630), (2.1, 0.0, 620)),
+    )
+    actual = (
+        _hole("A-1", (1.0, 0.0, 630), (1.0, 0.0, 620)),
+        _hole("A-2", (-2.0, 0.0, 630), (-2.0, 0.0, 620)),
+        _hole("A-EXTRA", (100.0, 0.0, 630), (100.0, 0.0, 620)),
+    )
+
+    matches = match_actual_to_design(design, actual)
+    paired = {
+        item.design_hole_id: item.actual_hole_id
+        for item in matches
+        if item.design_hole_id and item.actual_hole_id
+    }
+
+    # A greedy shortest-edge walk would consume D-1/A-1 (1.0 m) first and
+    # leave D-2/A-2 (4.1 m), total 5.1 m. The global collar assignment chooses
+    # 2.0 + 1.1 = 3.1 m and leaves the true extra hole unmatched.
+    assert paired == {"D-1": "A-2", "D-2": "A-1"}
+    assert sum(item.match_method == "unmatched_actual" for item in matches) == 1
+
+
 def test_matched_pair_exposes_complete_collar_toe_length_and_orientation_qa():
     design = (_hole("D", (0, 0, 630), (0, 0, 620)),)
     actual = (_hole("A", (3, 4, 632), (6, 8, 618)),)
