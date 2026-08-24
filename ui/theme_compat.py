@@ -18,7 +18,7 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
     if _filter is not None:
         return
 
-    from PySide6.QtCore import QEvent, QObject, Qt
+    from PySide6.QtCore import QEvent, QObject, Qt, QTimer
     from PySide6.QtWidgets import (
         QAbstractSpinBox,
         QComboBox,
@@ -30,6 +30,7 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
         QTextEdit,
         QWidget,
     )
+    from shiboken6 import isValid
 
     class LegacyEntityPageThemeFilter(QObject):
         _DARK_INPUT_STYLE = """
@@ -226,10 +227,16 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
             )
 
         def _refresh_assessment_link_list(self, owner: QListWidget) -> None:
+            if not isValid(owner):
+                return
             for index in range(owner.count()):
                 item = owner.item(index)
                 widget = owner.itemWidget(item)
-                if isinstance(widget, QFrame) and widget.objectName() == "AssessmentLinkItem":
+                if (
+                    isinstance(widget, QFrame)
+                    and isValid(widget)
+                    and widget.objectName() == "AssessmentLinkItem"
+                ):
                     self._sync_assessment_link_item(widget, owner=owner)
 
         def _sync_assessment_link_item(
@@ -304,6 +311,32 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
                     label.setStyleSheet(desired)
                     label.setProperty("slopeforgeThemeSync", False)
 
+        def _sync_widget_theme(self, widget: QWidget) -> None:
+            if not isValid(widget) or widget.property("slopeforgeThemeSync"):
+                return
+            self._clear_light_only_ancestor_styles(widget)
+            self._sync_complex_input(widget)
+            if isinstance(widget, QLineEdit):
+                self._sync_score_state(widget)
+            if isinstance(widget, QFrame):
+                self._sync_score_frame(widget)
+                self._sync_assessment_link_item(widget)
+            if isinstance(widget, QLabel):
+                self._sync_inline_link_badges(widget)
+
+        def _defer_widget_theme_sync(self, widget: QWidget) -> None:
+            if widget.property("slopeforgeThemeSyncPending"):
+                return
+            widget.setProperty("slopeforgeThemeSyncPending", True)
+
+            def apply_pending(target=widget):
+                if not isValid(target):
+                    return
+                target.setProperty("slopeforgeThemeSyncPending", False)
+                self._sync_widget_theme(target)
+
+            QTimer.singleShot(0, apply_pending)
+
         @staticmethod
         def _spin_mouse_target(watched, event):
             if isinstance(watched, QAbstractSpinBox):
@@ -317,22 +350,15 @@ def install_legacy_entity_page_theme_cleanup(app) -> None:
         def eventFilter(self, watched, event):
             event_type = event.type()
 
-            if isinstance(watched, QWidget) and event_type in (
-                QEvent.Type.Polish,
-                QEvent.Type.Show,
-                QEvent.Type.StyleChange,
-                QEvent.Type.PaletteChange,
-            ):
-                if not watched.property("slopeforgeThemeSync"):
-                    self._clear_light_only_ancestor_styles(watched)
-                    self._sync_complex_input(watched)
-                    if isinstance(watched, QLineEdit):
-                        self._sync_score_state(watched)
-                    if isinstance(watched, QFrame):
-                        self._sync_score_frame(watched)
-                        self._sync_assessment_link_item(watched)
-                    if isinstance(watched, QLabel):
-                        self._sync_inline_link_badges(watched)
+            if isinstance(watched, QWidget) and not watched.property("slopeforgeThemeSync"):
+                if event_type in (QEvent.Type.Polish, QEvent.Type.Show):
+                    self._sync_widget_theme(watched)
+                elif event_type in (QEvent.Type.StyleChange, QEvent.Type.PaletteChange):
+                    # QApplication.setPalette()/setStyleSheet() walks the native
+                    # widget tree synchronously. Mutating descendant styles inside
+                    # that traversal can crash the Windows QStyle engine, so apply
+                    # compatibility overrides on the next event-loop turn instead.
+                    self._defer_widget_theme_sync(watched)
 
             # Rich-text status pills are rebuilt by AssessmentAreaPage.setText()
             # when the selected link changes, which does not emit StyleChange.
