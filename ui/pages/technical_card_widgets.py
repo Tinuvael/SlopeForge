@@ -17,9 +17,15 @@ from PySide6.QtWidgets import (
 
 from app.localization import tr
 from app.use_case_factory import create_drillhole_dataset_service
+from domain.blasting.charge_design import fit_charge_components_to_hole_depth
 from domain.blasting.contour_drilling import summarize_contour_drilling
 from domain.blasting.drillholes import summarize_drillholes
-from domain.blasting.technical_card import ActualDrillingGroup, BlastDrillingGroup, polygon_area_m2
+from domain.blasting.technical_card import (
+    ActualDrillingGroup,
+    BlastDrillingGroup,
+    charge_engineering_content,
+    polygon_area_m2,
+)
 from domain.geometry.types import PlanPolygon
 from ui.dialogs.drillhole_group_assignment_dialog import DrillholeGroupAssignmentDialog
 from ui.editors.technical_card_editor import TechnicalCardDialog
@@ -44,35 +50,64 @@ ENGINEERING_FIELD_DECIMALS = {
 }
 
 
-def _clear_copied_charge_beyond_depth(
+def _fit_copied_charge_to_fact_depth(
     actual: ActualDrillingGroup,
     design: BlastDrillingGroup | None,
     hole_depth_m: float | None,
 ) -> bool:
-    """Drop only an unchanged design copy that cannot fit factual hole depth.
+    """Keep an auto-copied design charge valid for factual average depth.
 
-    As-drilled geometry changes factual depth but does not provide factual charge
-    evidence. Keeping an impossible copied design charge makes the existing
-    charge builder reject the whole fact import. Never trim charge components;
-    if the charge is still exactly the design copy, clear that unsupported fact
-    and leave the design construction available in the comparison column. A
-    manually changed factual charge remains untouched so a real inconsistency is
-    still surfaced to the user instead of being silently altered.
+    A longer factual hole keeps the design components unchanged, which leaves
+    the added interval as implicit toe air. For a shorter factual hole the pure
+    charge-domain fitter first consumes an existing air gap by shifting the
+    deepest charge block toward the collar and then shortens only the toe-most
+    component if the available air is insufficient.
+
+    Re-fitting is limited to charge content that is still recognisably managed
+    from the design. A manually edited factual construction is never replaced.
     """
-    if design is None or hole_depth_m is None or not actual.charge_components:
+    if design is None or hole_depth_m is None or not design.charge_components:
         return False
-    if not actual.charge_matches(design):
+
+    auto_managed = actual.charge_matches(design)
+    previous_depth = actual.average_depth_m
+    if (
+        not auto_managed
+        and actual.copied_from_design
+        and previous_depth is not None
+    ):
+        previous_auto = fit_charge_components_to_hole_depth(
+            design.charge_components,
+            float(previous_depth),
+        )
+        auto_managed = (
+            charge_engineering_content(actual.charge_components)
+            == charge_engineering_content(previous_auto)
+        )
+    if not auto_managed:
         return False
-    deepest = max(component.end_depth_m for component in actual.charge_components)
-    if deepest <= float(hole_depth_m) + 1e-9:
-        return False
-    actual.charge_components = []
-    actual.stemming_length_m = 0.0
+
+    adapted = fit_charge_components_to_hole_depth(
+        design.charge_components,
+        float(hole_depth_m),
+    )
+    changed = (
+        charge_engineering_content(actual.charge_components)
+        != charge_engineering_content(adapted)
+    )
+    actual.charge_components = adapted
+    actual.stemming_length_m = actual.stemming_total_m()
     actual.charge_mass_per_hole_kg = None
     actual.total_charge_mass_kg = None
-    actual.explosive_type = ""
-    actual.copied_from_design = False
-    return True
+    actual.explosive_type = ", ".join(
+        dict.fromkeys(
+            component.product_snapshot.name
+            for component in actual.charge_components
+            if component.product_snapshot is not None
+        )
+    )
+    actual.copied_from_design = True
+    return changed
 
 
 class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
@@ -696,7 +731,7 @@ class TechnicalCardEditorWidget(QWidget):
             self._clear_actual_group_geometry(actual)
             return
         summary = summarize_drillholes(holes)
-        _clear_copied_charge_beyond_depth(actual, design, summary.mean_length_m)
+        _fit_copied_charge_to_fact_depth(actual, design, summary.mean_length_m)
         actual.hole_count = summary.hole_count
         actual.average_depth_m = summary.mean_length_m
         actual.drilling_length_m = summary.total_drilling_length_m
