@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
-from app.config import APP_AUTHOR, APP_COPYRIGHT, APP_DESCRIPTION, APP_ICON_PATH, APP_NAME, APP_REPOSITORY_URL, APP_VERSION
+from app.config import APP_AUTHOR, APP_COPYRIGHT, APP_DESCRIPTION, APP_ICON_PATH, APP_NAME, APP_REPOSITORY_URL, APP_VERSION_DISPLAY
 from app.qt import apply_window_icon
 from app.resources import resource_path
 
@@ -31,7 +31,7 @@ class AboutDialog(QDialog):
 
         text = QVBoxLayout()
         title = QLabel(f"<b>{APP_NAME}</b>")
-        version = QLabel(f"Version: {APP_VERSION}")
+        version = QLabel(f"Version: {APP_VERSION_DISPLAY}")
         author = QLabel(f"Author: {APP_AUTHOR}")
         description = QLabel(APP_DESCRIPTION)
         description.setWordWrap(True)
