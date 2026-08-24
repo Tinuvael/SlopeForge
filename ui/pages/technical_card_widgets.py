@@ -82,6 +82,7 @@ class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
     group_assign_available_callback = None
     design_auto_fields_callback = None
     actual_auto_fields_callback = None
+    actual_angle_metrics_callback = None
 
     @staticmethod
     def _header_layout(box):
@@ -125,6 +126,31 @@ class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
             widget.setToolTip(
                 tr("Calculated automatically from imported drillhole geometry.")
             )
+
+    def _append_angle_deviation_metrics(self, box, group) -> None:
+        callback = getattr(self, "actual_angle_metrics_callback", None)
+        if not callable(callback):
+            return
+        metrics = callback(group)
+        if metrics is None:
+            return
+        exceptions = box.findChild(QWidget, "actualExceptionArea")
+        grid = exceptions.layout() if exceptions is not None else None
+        if grid is None:
+            return
+        row = grid.rowCount()
+        for offset, (label, key) in enumerate((
+            ("Mean azimuth deviation, °", "mean_azimuth_deviation_deg"),
+            ("Mean inclination deviation, °", "mean_inclination_deviation_deg"),
+        )):
+            value = metrics.get(key)
+            caption = QLabel(tr(label))
+            output = QLabel("—" if value is None else f"{float(value):.1f}")
+            output.setObjectName(key)
+            output.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            output.setToolTip(tr("Calculated automatically from imported drillhole geometry."))
+            grid.addWidget(caption, row + offset, 2)
+            grid.addWidget(output, row + offset, 3)
 
     def _render_groups(self):
         super()._render_groups()
@@ -174,6 +200,7 @@ class _DrillholeTechnicalCardDialog(TechnicalCardDialog):
                     callback,
                     "Auto from as-drilled",
                 )
+            self._append_angle_deviation_metrics(box, group)
 
 
 class _DrillholeEngineeringPage(QWidget):
@@ -272,11 +299,13 @@ class TechnicalCardEditorWidget(QWidget):
             else None
         )
         self._drillhole_pages: dict[str, _DrillholeEngineeringPage] = {}
+        self._actual_angle_metrics_by_group: dict[str, dict[str, float | None]] = {}
         if self._drillhole_service is not None:
             self.editor.group_assign_callback = self.assign_holes_to_group
             self.editor.group_assign_available_callback = self._can_assign_design_holes
             self.editor.design_auto_fields_callback = self._design_auto_fields
             self.editor.actual_auto_fields_callback = self._actual_auto_fields
+            self.editor.actual_angle_metrics_callback = self._actual_angle_metrics
             self.editor._render_groups()
             if hasattr(self.editor, "actual_cards_layout"):
                 self.editor._render_actual_groups()
@@ -368,6 +397,30 @@ class TechnicalCardEditorWidget(QWidget):
             ):
                 return set(self._ACTUAL_AUTO_FIELDS)
         return set()
+
+    def _actual_angle_metrics(self, group: ActualDrillingGroup):
+        if not group.design_group_id:
+            return None
+        return self._actual_angle_metrics_by_group.get(str(group.design_group_id))
+
+    @staticmethod
+    def _mean_absolute_deviation(matches, key: str) -> float | None:
+        values = [
+            abs(float(item[key]))
+            for item in matches
+            if item.get(key) is not None
+        ]
+        return mean(values) if values else None
+
+    def _set_actual_angle_metrics(self, design_group_id: str, matches) -> None:
+        self._actual_angle_metrics_by_group[str(design_group_id)] = {
+            "mean_azimuth_deviation_deg": self._mean_absolute_deviation(
+                matches, "azimuth_deviation_deg"
+            ),
+            "mean_inclination_deviation_deg": self._mean_absolute_deviation(
+                matches, "inclination_deviation_deg"
+            ),
+        }
 
     def refresh_drillhole_page(self, dataset_kind: str, *, apply_to_draft: bool = False):
         page = self._drillhole_pages.get(dataset_kind)
@@ -720,6 +773,7 @@ class TechnicalCardEditorWidget(QWidget):
             item for item in list(row.matches_json or [])
             if item.get("design_hole_id") and item.get("actual_hole_id")
         ]
+        self._set_actual_angle_metrics(design.id, paired)
         self._set_actual_group_geometry(actual, holes, paired, design=design)
         self._recalculate_actual()
 
@@ -749,6 +803,7 @@ class TechnicalCardEditorWidget(QWidget):
                 if hole.engineering_group_id == design_group.id
             }
             if not assigned_design_ids:
+                self._set_actual_angle_metrics(design_group.id, ())
                 if design_group.id in changed_group_ids:
                     existing = actual_by_design_group.get(design_group.id)
                     if existing is not None:
@@ -760,6 +815,7 @@ class TechnicalCardEditorWidget(QWidget):
                 for hole_id in assigned_design_ids
                 if hole_id in matches_by_design
             ]
+            self._set_actual_angle_metrics(design_group.id, group_matches)
             actual_subset = tuple(
                 actual_by_id[str(item["actual_hole_id"])]
                 for item in group_matches
