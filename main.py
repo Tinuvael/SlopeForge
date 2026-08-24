@@ -23,6 +23,7 @@ from ui.application_theme import initialize_application_theme
 from ui.auth_dialogs import FirstAdminDialog, LoginDialog
 from ui.connection_dialog import ConnectionSetupDialog
 from ui.main_window import MainWindow
+from ui.theme_compat import install_legacy_entity_page_theme_cleanup
 
 LOG_PATH = runtime_log_path()
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -50,6 +51,7 @@ def main():
     # for that non-Qt test double; production startup always initializes theme.
     if callable(getattr(app, "styleHints", None)):
         initialize_application_theme(app)
+        install_legacy_entity_page_theme_cleanup(app)
     install_selected_translator(app)
     apply_application_icon(app)
 
