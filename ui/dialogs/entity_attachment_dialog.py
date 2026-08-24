@@ -8,7 +8,7 @@ from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QEvent, QFileInfo, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QImageReader, QKeySequence, QPainter, QPainterPath, QPalette, QPixmap, QShortcut
+from PySide6.QtGui import QIcon, QImageReader, QKeySequence, QPainter, QPainterPath, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -43,9 +43,6 @@ from shiboken6 import isValid
 from application.services.attachments import ATTACHMENT_CATEGORIES, PHOTO_EXTENSIONS
 
 
-ATTACHMENT_WORKSPACE_COLOR = QColor("#f3f4f6")
-
-
 def _load_photo_pixmap(path: str | Path) -> QPixmap:
     """Load a photo with EXIF orientation applied, matching normal Windows viewers."""
     reader = QImageReader(str(path))
@@ -55,11 +52,9 @@ def _load_photo_pixmap(path: str | Path) -> QPixmap:
 
 
 def _apply_workspace_palette(widget: QWidget) -> None:
-    """Give attachment workspaces one neutral background without styling native controls."""
-    palette = widget.palette()
-    palette.setColor(QPalette.ColorRole.Window, ATTACHMENT_WORKSPACE_COLOR)
-    palette.setColor(QPalette.ColorRole.Base, ATTACHMENT_WORKSPACE_COLOR)
-    widget.setPalette(palette)
+    """Let attachment workspaces follow the current application palette."""
+    # Do not copy a light palette onto the widget.  Auto-fill is enough and the
+    # inherited Window role then updates automatically when System/Light/Dark changes.
     widget.setAutoFillBackground(True)
 
 
@@ -79,7 +74,6 @@ class AttachmentMetadataDialog(QDialog):
             preview.setObjectName("PhotoImportPreview")
             preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
             preview.setMinimumHeight(260)
-            preview.setStyleSheet("background:#f3f4f6;border:1px solid #dfe3ea;border-radius:6px;")
             pixmap = _load_photo_pixmap(source_path)
             if not pixmap.isNull():
                 preview.setPixmap(pixmap.scaled(480, 300, Qt.AspectRatioMode.KeepAspectRatio,
@@ -146,13 +140,13 @@ class DocumentBatchDialog(QDialog):
 
         count = len(self.source_paths)
         heading = QLabel(f"{count} {tr('document') if count == 1 else tr('documents')} {tr('selected')}")
-        heading.setStyleSheet("font-size:16px;font-weight:600;color:#111827;")
+        heading.setObjectName("AttachmentBatchTitle")
         helper = QLabel(tr("Titles are filled automatically from file names. Review categories and dates before importing."))
-        helper.setWordWrap(True); helper.setStyleSheet("color:#6b7280;")
+        helper.setObjectName("MutedText")
+        helper.setWordWrap(True)
         root.addWidget(heading); root.addWidget(helper)
 
         bulk = QFrame(); bulk.setObjectName("DocumentBatchBulk")
-        bulk.setStyleSheet("QFrame#DocumentBatchBulk{background:#f8fafc;border:1px solid #dfe3ea;border-radius:8px;}")
         bulk_layout = QHBoxLayout(bulk); bulk_layout.setContentsMargins(10, 8, 10, 8)
         bulk_layout.addWidget(QLabel(tr("Apply to all:")))
         self.bulk_category = self._category_combo()
@@ -164,6 +158,7 @@ class DocumentBatchDialog(QDialog):
         root.addWidget(bulk)
 
         self.table = QTableWidget(len(self.source_paths), 4)
+        self.table.setObjectName("StandardTable")
         self.table.setHorizontalHeaderLabels([tr("File"), tr("Title"), tr("Category"), tr("Date")])
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
@@ -174,11 +169,11 @@ class DocumentBatchDialog(QDialog):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.setStyleSheet("QTableWidget{background:white;border:1px solid #dfe3ea;border-radius:7px;} QHeaderView::section{background:#f8fafc;border:0;border-bottom:1px solid #dfe3ea;padding:7px;font-weight:600;} QTableWidget::item{border-bottom:1px solid #edf0f4;}")
 
         for row, path in enumerate(self.source_paths):
             self.table.setRowHeight(row, 46)
-            file_label = QLabel(path.name); file_label.setToolTip(str(path)); file_label.setStyleSheet("padding-left:6px;color:#374151;")
+            file_label = QLabel(path.name); file_label.setToolTip(str(path)); file_label.setObjectName("EngineeringSummaryText")
+            file_label.setContentsMargins(6, 0, 0, 0)
             title = QLineEdit(path.stem)
             category = self._category_combo()
             file_date = QDateEdit(); file_date.setCalendarPopup(True); file_date.setDisplayFormat("dd.MM.yyyy")
@@ -186,7 +181,7 @@ class DocumentBatchDialog(QDialog):
                 value = date.fromtimestamp(path.stat().st_mtime)
             except OSError:
                 value = date.today()
-            file_date.setDate(QDate(value.year, value.month, value.day))
+            file_date.setDate(QDate(value.year, value.month(), value.day())) if False else file_date.setDate(QDate(value.year, value.month, value.day))
             self.table.setCellWidget(row, 0, file_label)
             self.table.setCellWidget(row, 1, title)
             self.table.setCellWidget(row, 2, category)
@@ -355,6 +350,7 @@ class EntityAttachmentManagerWidget(QWidget):
 
     def _build_document_table(self, root):
         self.table = QTableWidget(); self.table.setColumnCount(4)
+        self.table.setObjectName("StandardTable")
         self.table.setHorizontalHeaderLabels([tr("Document"), tr("Category"), tr("Date"), tr("Size")])
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
@@ -368,7 +364,6 @@ class EntityAttachmentManagerWidget(QWidget):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.setStyleSheet("QTableWidget{background:white;border:1px solid #dfe3ea;border-radius:7px;outline:0;} QHeaderView::section{background:#f8fafc;border:0;border-bottom:1px solid #dfe3ea;padding:8px;font-weight:600;color:#374151;} QTableWidget::item{border-bottom:1px solid #edf0f4;padding:8px;} QTableWidget::item:selected{background:#eef4fb;color:#111827;}")
         root.addWidget(self.table, 1)
 
     def _build_photo_pages(self, root):
@@ -377,9 +372,6 @@ class EntityAttachmentManagerWidget(QWidget):
         self.gallery_page = QWidget(); _apply_workspace_palette(self.gallery_page); gallery_root = QVBoxLayout(self.gallery_page)
         gallery_root.setContentsMargins(0, 0, 0, 0)
         self.gallery_scroll = QScrollArea(); self.gallery_scroll.setWidgetResizable(True); self.gallery_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        # Do not set a palette or stylesheet on QScrollArea itself. On Windows
-        # that can alter how its native scrollbars are drawn. Only the viewport
-        # and content need the neutral workspace background.
         self._gallery_viewport = self.gallery_scroll.viewport()
         _apply_workspace_palette(self._gallery_viewport)
         self.gallery_content = QWidget(); _apply_workspace_palette(self.gallery_content); self.gallery_grid = QGridLayout(self.gallery_content)
@@ -395,7 +387,6 @@ class EntityAttachmentManagerWidget(QWidget):
         viewer_header = QHBoxLayout()
         self.back_button = QPushButton(tr("Back")); self.back_button.clicked.connect(self._show_gallery)
         self.viewer_title = QLabel(); self.viewer_title.setObjectName("PhotoViewerTitle")
-        self.viewer_title.setStyleSheet("font-size:16px;font-weight:600;color:#111827;")
         fit_button = QPushButton(tr("Fit")); fit_button.clicked.connect(lambda: self.photo_view.fit_photo())
         viewer_header.addWidget(self.back_button); viewer_header.addWidget(self.viewer_title); viewer_header.addStretch(); viewer_header.addWidget(fit_button)
         viewer_root.addLayout(viewer_header)
@@ -404,7 +395,6 @@ class EntityAttachmentManagerWidget(QWidget):
         self.photo_view = PhotoGraphicsView(); viewer_body.addWidget(self.photo_view, 1)
         side = QWidget(); _apply_workspace_palette(side); side.setFixedWidth(235); side_layout = QVBoxLayout(side); side_layout.setContentsMargins(0, 0, 0, 0); side_layout.setSpacing(10)
         self.viewer_metadata = QFrame(); self.viewer_metadata.setObjectName("PhotoMetadataCard")
-        self.viewer_metadata.setStyleSheet("QFrame#PhotoMetadataCard{background:#f8fafc;border:1px solid #dfe3ea;border-radius:8px;} QLabel#PhotoMetadataLabel{color:#6b7280;font-size:11px;} QLabel#PhotoMetadataValue{color:#111827;font-weight:500;}")
         metadata = QGridLayout(self.viewer_metadata); metadata.setContentsMargins(10, 9, 10, 9); metadata.setHorizontalSpacing(8); metadata.setVerticalSpacing(5); metadata.setColumnStretch(1,1)
         self.viewer_category = QLabel(); self.viewer_category.setWordWrap(True)
         self.viewer_date = QLabel(); self.viewer_file = QLabel(); self.viewer_file.setWordWrap(True)
@@ -423,9 +413,6 @@ class EntityAttachmentManagerWidget(QWidget):
         self.escape_shortcut.activated.connect(self._show_gallery)
 
     def eventFilter(self, watched, event):
-        # Qt can deliver a final viewport resize while a transient page is being
-        # torn down. The Python wrapper may still exist after its C++ children
-        # have already been destroyed, so never dereference them blindly here.
         if not isValid(self):
             return False
         if (self.kind == "photo"
@@ -491,8 +478,8 @@ class EntityAttachmentManagerWidget(QWidget):
         icon = self._file_icon_provider.icon(QFileInfo(str(path if path.exists() else item.original_filename)))
         icon_label.setPixmap(icon.pixmap(32, 32))
         text = QVBoxLayout(); text.setContentsMargins(0, 0, 0, 0); text.setSpacing(1)
-        title = QLabel(item.title or Path(item.original_filename).stem); title.setStyleSheet("font-weight:600;color:#111827;")
-        filename = QLabel(item.original_filename); filename.setStyleSheet("color:#6b7280;font-size:11px;")
+        title = QLabel(item.title or Path(item.original_filename).stem); title.setObjectName("RelatedEntityTitle")
+        filename = QLabel(item.original_filename); filename.setObjectName("AttachmentFilename")
         text.addWidget(title); text.addWidget(filename); layout.addWidget(icon_label); layout.addLayout(text, 1)
         if item.description:
             wrapper.setToolTip(item.description)
@@ -550,14 +537,12 @@ class EntityAttachmentManagerWidget(QWidget):
         wrapper = QWidget(); wrapper.setFixedSize(tile_width, wrapper_height)
         layout = QVBoxLayout(wrapper); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(6)
         title = QLabel(item.title or Path(item.original_filename).stem)
-        title.setObjectName("PhotoTileTitle"); title.setToolTip(item.original_filename)
-        title.setStyleSheet("color:#374151;font-weight:500;")
+        title.setObjectName("RelatedEntityTitle"); title.setToolTip(item.original_filename)
         layout.addWidget(title)
         tile = QToolButton(); tile.setObjectName("PhotoTile"); tile.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         tile.setFixedSize(tile_width, image_height)
         icon_size = QSize(max(1, tile_width - 4), max(1, image_height - 4))
         tile.setIconSize(icon_size); tile.setIcon(self._thumbnail(item, icon_size, cover=True))
-        tile.setStyleSheet("QToolButton#PhotoTile{background:transparent;border:0;padding:0;margin:0;} QToolButton#PhotoTile:hover{background:#eef4fb;border:2px solid #9bc2ea;border-radius:11px;}")
         tile.setToolTip(item.original_filename)
         tile.clicked.connect(lambda _checked=False, ident=item.id: self._open_photo_id(ident))
         layout.addWidget(tile)
@@ -694,11 +679,11 @@ class EntityAttachmentManagerWidget(QWidget):
         self.photo_view.set_photo(_load_photo_pixmap(self.service.resolve_path(item)))
         self._clear_layout(self.thumb_layout)
         for photo in items:
-            thumb = QToolButton(); thumb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+            thumb = QToolButton(); thumb.setObjectName("AttachmentThumbnail")
+            thumb.setProperty("selected", photo.id == item.id)
+            thumb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             thumb.setIcon(self._thumbnail(photo, QSize(198, 118), cover=True)); thumb.setIconSize(QSize(198, 118)); thumb.setFixedSize(204, 124)
             thumb.setToolTip(photo.title or photo.original_filename)
-            border = "2px solid #0b63ce" if photo.id == item.id else "1px solid transparent"
-            thumb.setStyleSheet(f"border:{border};border-radius:10px;padding:2px;background:transparent;")
             thumb.clicked.connect(lambda _checked=False, ident=photo.id: self._show_photo(ident))
             self.thumb_layout.addWidget(thumb)
 
