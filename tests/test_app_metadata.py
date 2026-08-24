@@ -17,9 +17,9 @@ def qt_app():
     yield app
 
 
-def test_app_metadata_is_present_and_version_is_semver() -> None:
+def test_app_metadata_is_present_and_version_is_release_1() -> None:
     assert config.APP_NAME
-    assert config.APP_VERSION
+    assert config.APP_VERSION == "1.0.0"
     assert config.APP_VERSION_DISPLAY == "1.0"
     assert config.APP_AUTHOR
     assert config.APP_COPYRIGHT
