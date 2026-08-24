@@ -53,7 +53,7 @@ def _load_photo_pixmap(path: str | Path) -> QPixmap:
 
 def _apply_workspace_palette(widget: QWidget) -> None:
     """Let attachment workspaces follow the current application palette."""
-    # Do not copy a light palette onto the widget.  Auto-fill is enough and the
+    # Do not copy a light palette onto the widget. Auto-fill is enough and the
     # inherited Window role then updates automatically when System/Light/Dark changes.
     widget.setAutoFillBackground(True)
 
@@ -181,7 +181,7 @@ class DocumentBatchDialog(QDialog):
                 value = date.fromtimestamp(path.stat().st_mtime)
             except OSError:
                 value = date.today()
-            file_date.setDate(QDate(value.year, value.month(), value.day())) if False else file_date.setDate(QDate(value.year, value.month, value.day))
+            file_date.setDate(QDate(value.year, value.month, value.day))
             self.table.setCellWidget(row, 0, file_label)
             self.table.setCellWidget(row, 1, title)
             self.table.setCellWidget(row, 2, category)
