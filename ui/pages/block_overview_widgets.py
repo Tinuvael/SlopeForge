@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QLabel,
     QListWidgetItem,
@@ -40,13 +41,13 @@ class BlockRelatedEntityList(RelatedEntityList):
         "unknown": ("#ffffff", "#cfd7e2"),
     }
     DARK_STATE_COLORS = {
-        "completed": ("#213c2b", "#386449"),
-        "assessed": ("#213c2b", "#386449"),
-        "in_progress": ("#1f3346", "#315c79"),
-        "planned": ("#1f3346", "#315c79"),
-        "draft": ("#262d36", "#46515f"),
-        "in_preparation": ("#262d36", "#46515f"),
-        "unknown": ("#262d36", "#46515f"),
+        "completed": ("#1f3829", "#4e7d5d"),
+        "assessed": ("#1f3829", "#4e7d5d"),
+        "in_progress": ("#1d3347", "#497493"),
+        "planned": ("#1d3347", "#497493"),
+        "draft": ("#2a313b", "#566271"),
+        "in_preparation": ("#2a313b", "#566271"),
+        "unknown": ("#2a313b", "#566271"),
     }
 
     def __init__(self, title: str):
@@ -72,6 +73,9 @@ class BlockRelatedEntityList(RelatedEntityList):
         self._refit_pending = False
 
     def _dark_theme(self) -> bool:
+        app = QApplication.instance()
+        if app is not None and app.property("slopeforgeTheme") in {"light", "dark"}:
+            return app.property("slopeforgeTheme") == "dark"
         return self.palette().color(QPalette.ColorRole.Window).lightness() < 128
 
     def eventFilter(self, watched, event):
@@ -234,7 +238,8 @@ class BlockRelatedEntityList(RelatedEntityList):
         return wrapper.findChild(QWidget, "BlockRelatedEntityItem")
 
     def _sync_row_styles(self):
-        colors = self.DARK_STATE_COLORS if self._dark_theme() else self.LIGHT_STATE_COLORS
+        dark = self._dark_theme()
+        colors = self.DARK_STATE_COLORS if dark else self.LIGHT_STATE_COLORS
         for index in range(self.list.count()):
             item = self.list.item(index)
             holder = self._row_card(item)
@@ -243,18 +248,25 @@ class BlockRelatedEntityList(RelatedEntityList):
             state = str(item.data(Qt.ItemDataRole.UserRole + 1) or "unknown")
             background, accent = colors.get(state, colors["unknown"])
             selected = item.isSelected()
-            if self._dark_theme():
-                border = "#5aa7e8" if selected else accent
+            if dark:
+                border = "#79b9ee" if selected else accent
                 if selected:
                     background = "#243f57"
+                text_rules = (
+                    "QLabel#RelatedEntityTitle{color:#f2f5f8;}"
+                    "QLabel#MutedText{color:#c5ced8;}"
+                    "QPushButton[role=\"link\"]{color:#79b9ee;}"
+                )
             else:
                 border = "#2563a6" if selected else accent
                 if selected:
                     background = "#f8fbff"
+                text_rules = ""
             width = 2 if selected else 1
             holder.setStyleSheet(
                 f"QWidget#BlockRelatedEntityItem{{background:{background};"
                 f"border:{width}px solid {border};border-radius:5px;}}"
+                f"{text_rules}"
             )
 
 
