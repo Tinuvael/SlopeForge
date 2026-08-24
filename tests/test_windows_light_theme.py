@@ -215,8 +215,7 @@ def test_manual_smoke_regressions_do_not_reintroduce_light_only_local_surfaces()
     assert 'widget.objectName() == "geomechanicsWorkspace"' in compat
     assert '"#38bdf8"' in plan
     assert "_QUADRANT_COLORS" in assessment
-    assert "fill.setAlpha" not in assessment  # compact preview uses direct quadrant alpha assignment
-    assert "setAlpha(alpha)" in assessment
+    assert "fill.setAlpha(alpha)" in assessment
 
 
 def test_legacy_entity_page_light_qss_is_neutralized_until_page_cleanup() -> None:
