@@ -20,6 +20,7 @@
         <message><source>Edit connection</source><translation>Изменить подключение</translation></message>
         <message><source>End all my saved sessions on this server</source><translation>Завершить все мои сохранённые сеансы на этом сервере</translation></message>
         <message><source>File storage is unavailable for this connection.</source><translation>Файловое хранилище недоступно для этого подключения.</translation></message>
+        <message><source>File storage is unavailable for this connection. Attachment metadata remains available.</source><translation>Файловое хранилище недоступно для этого подключения. Метаданные вложений остаются доступными.</translation></message>
         <message><source>Forget sign-in on this server</source><translation>Забыть вход на этом сервере</translation></message>
         <message><source>Full</source><translation>Полный доступ</translation></message>
         <message><source>Full — database and shared files</source><translation>Полный доступ — база данных и общие файлы</translation></message>
