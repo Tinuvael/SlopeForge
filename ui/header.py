@@ -94,7 +94,7 @@ class Header(QWidget):
         self.server_button.setToolTip(
             f"{tr('Current server')}: {server_name}\n{tr('Switch server…')}"
         )
-        self.server_button.clicked.connect(self.switch_server_requested)
+        self.server_button.clicked.connect(self._switch_server)
         self.server_button.setEnabled(getattr(context, "runtime_control", None) is not None)
 
         self.settings = QPushButton(tr("Settings"))
@@ -123,6 +123,12 @@ class Header(QWidget):
         layout.addWidget(self.server_button)
         layout.addWidget(self.settings)
         self.update_add_availability(False, False, False)
+
+    def _switch_server(self):
+        control = getattr(self.context, "runtime_control", None)
+        if control is not None:
+            control.request_switch(parent=self.window())
+        self.switch_server_requested.emit()
 
     def update_add_availability(self, has_site, has_domain, has_active_dataset):
         self.report_button.setEnabled(has_site)
