@@ -4,6 +4,7 @@
         <name>SlopeForge</name>
         <message><source>Add connection</source><translation>Добавить подключение</translation></message>
         <message><source>All remembered sessions for your user on this server have been ended.</source><translation>Все сохранённые сеансы вашего пользователя на этом сервере завершены.</translation></message>
+        <message><source>Auto-connect at startup</source><translation>Автоподключение при запуске</translation></message>
         <message><source>Choose the PostgreSQL server used for this SlopeForge session.</source><translation>Выберите сервер PostgreSQL для текущего сеанса SlopeForge.</translation></message>
         <message><source>Connect</source><translation>Подключиться</translation></message>
         <message><source>Connect to this server automatically at startup</source><translation>Автоматически подключаться к этому серверу при запуске</translation></message>
