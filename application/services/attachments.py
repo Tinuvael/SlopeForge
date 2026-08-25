@@ -14,6 +14,7 @@ from domain.attachments.policy import (
     ATTACHMENT_CATEGORIES,
     KIND_FOLDERS,
     PHOTO_EXTENSIONS,
+    sanitize_filename,
     validate_attachment_owner,
 )
 from infrastructure.desktop.file_opener import open_local_path
