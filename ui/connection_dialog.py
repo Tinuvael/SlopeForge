@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -39,6 +39,11 @@ from app.qt import apply_window_icon
 from database.connection import DatabaseConnectionError, check_connection, create_database_engine
 from database.settings import ConfigurationError, Settings
 from ui.widgets.design_system import set_button_role, set_status_role
+
+
+PROFILE_ROW_HEIGHT = 62
+PROFILE_PANEL_MIN_HEIGHT = 142
+PROFILE_PANEL_MAX_ROWS = 4
 
 
 def _confirm_remove(parent) -> bool:
@@ -79,7 +84,86 @@ def _profile_list_text(
     if markers:
         title += "  ·  " + "  ·  ".join(markers)
     endpoint = f"{profile.host}:{profile.port} / {profile.database}"
-    return f"{title}\n{endpoint}  ·  {_mode_name(profile)}"
+    # Keep capability on its own line. Combining endpoint + mode caused a
+    # horizontal scrollbar on compact Windows dialogs, especially in Russian.
+    return f"{title}\n{endpoint}\n{_mode_name(profile)}"
+
+
+def _profile_list_item(
+    profile: ConnectionProfile,
+    *,
+    current: bool = False,
+    startup: bool = False,
+) -> QListWidgetItem:
+    item = QListWidgetItem(
+        _profile_list_text(profile, current=current, startup=startup)
+    )
+    item.setData(Qt.ItemDataRole.UserRole, profile.profile_id)
+    item.setToolTip(
+        f"{profile.username}@{profile.host}:{profile.port}/{profile.database}"
+    )
+    item.setSizeHint(QSize(0, PROFILE_ROW_HEIGHT))
+    return item
+
+
+def _prepare_profile_list(widget: QListWidget) -> None:
+    widget.setObjectName("ConnectionProfileList")
+    widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    widget.setTextElideMode(Qt.TextElideMode.ElideRight)
+    widget.setWordWrap(False)
+    widget.setSpacing(1)
+    widget.setUniformItemSizes(True)
+
+
+def _profile_panel_height(widget: QListWidget) -> int:
+    rows = min(max(widget.count(), 1), PROFILE_PANEL_MAX_ROWS)
+    content = (
+        rows * PROFILE_ROW_HEIGHT
+        + max(0, rows - 1) * widget.spacing()
+        + widget.frameWidth() * 2
+        + 4
+    )
+    return max(PROFILE_PANEL_MIN_HEIGHT, content)
+
+
+def _set_connection_status(label: QLabel, text: str, state: str = "info") -> None:
+    label.setText(text)
+    label.setProperty("statusState", state)
+    label.style().unpolish(label)
+    label.style().polish(label)
+    label.update()
+
+
+def _run_connection_test(
+    profile: ConnectionProfile,
+) -> tuple[Settings | None, str, str]:
+    engine = None
+    try:
+        profile.validate_required()
+        settings = profile.to_settings()
+        engine = create_database_engine(settings)
+        check_connection(engine)
+        if profile.mode == FULL_STORAGE:
+            validate_storage_root(profile.storage_root)
+    except (
+        ConnectionSettingsError,
+        ConfigurationError,
+        DatabaseConnectionError,
+        OSError,
+        ValueError,
+    ) as exc:
+        return None, f"{tr('Connection test failed')}: {exc}", "error"
+    finally:
+        if engine is not None:
+            engine.dispose()
+    return (
+        settings,
+        tr("Connection and file storage are available.")
+        if profile.mode == FULL_STORAGE
+        else tr("Database connection is available."),
+        "success",
+    )
 
 
 class ConnectionForm(QWidget):
@@ -214,11 +298,11 @@ class ConnectionForm(QWidget):
         )
 
     def set_status(self, text: str, *, error=False, success=False) -> None:
-        self.status.setText(text)
-        state = "error" if error else "success" if success else "info"
-        self.status.setProperty("statusState", state)
-        self.status.style().unpolish(self.status)
-        self.status.style().polish(self.status)
+        _set_connection_status(
+            self.status,
+            text,
+            "error" if error else "success" if success else "info",
+        )
 
     def validate_and_test(
         self, *, saved_password: str = ""
@@ -226,7 +310,6 @@ class ConnectionForm(QWidget):
         profile = self.profile()
         if not profile.password and saved_password:
             profile = replace(profile, password=saved_password)
-        engine = None
         self.set_status(
             tr("Testing PostgreSQL and file storage…")
             if profile.mode == FULL_STORAGE
@@ -235,31 +318,12 @@ class ConnectionForm(QWidget):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
         try:
-            profile.validate_required()
-            settings = profile.to_settings()
-            engine = create_database_engine(settings)
-            check_connection(engine)
-            if profile.mode == FULL_STORAGE:
-                validate_storage_root(profile.storage_root)
-        except (
-            ConnectionSettingsError,
-            ConfigurationError,
-            DatabaseConnectionError,
-            OSError,
-            ValueError,
-        ) as exc:
-            self.set_status(f"{tr('Connection test failed')}: {exc}", error=True)
-            return None
+            settings, message, state = _run_connection_test(profile)
         finally:
-            if engine is not None:
-                engine.dispose()
             QApplication.restoreOverrideCursor()
-        self.set_status(
-            tr("Connection and file storage are available.")
-            if profile.mode == FULL_STORAGE
-            else tr("Database connection is available."),
-            success=True,
-        )
+        self.set_status(message, error=state == "error", success=state == "success")
+        if settings is None:
+            return None
         return profile.normalized(), settings
 
 
@@ -365,8 +429,8 @@ class ServerSelectionDialog(QDialog):
         self.auto_connect_requested = False
         self.setWindowTitle(tr(title))
         self.setModal(True)
-        self.resize(680, 440)
-        self.setMinimumWidth(620)
+        self.resize(720, 350)
+        self.setMinimumWidth(700)
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 16, 18, 16)
         root.setSpacing(10)
@@ -381,15 +445,18 @@ class ServerSelectionDialog(QDialog):
         body = QHBoxLayout()
         body.setSpacing(12)
         self.list = QListWidget()
-        self.list.setObjectName("ConnectionProfileList")
-        self.list.setMinimumWidth(310)
+        _prepare_profile_list(self.list)
+        self.list.setMinimumWidth(340)
         self.list.currentItemChanged.connect(self._selection_changed)
         self.list.itemDoubleClicked.connect(lambda _item: self._connect())
         body.addWidget(self.list, 1)
-        details = QFrame()
-        details.setObjectName("ConnectionCard")
-        details_layout = QVBoxLayout(details)
+
+        self.details_card = QFrame()
+        self.details_card.setObjectName("ConnectionCard")
+        self.details_card.setMinimumWidth(310)
+        details_layout = QVBoxLayout(self.details_card)
         details_layout.setContentsMargins(14, 12, 14, 12)
+        details_layout.setSpacing(4)
         self.profile_name = QLabel(tr("No connection selected"))
         self.profile_name.setObjectName("CardTitle")
         self.profile_details = QLabel("")
@@ -397,17 +464,25 @@ class ServerSelectionDialog(QDialog):
         self.profile_details.setWordWrap(True)
         self.mode_label = QLabel("")
         self.mode_label.setObjectName("MutedText")
-        self.skip_selection = QCheckBox(
+        self.skip_selection = QCheckBox(tr("Auto-connect at startup"))
+        self.skip_selection.setToolTip(
             tr("Connect to this server automatically at startup")
         )
         details_layout.addWidget(self.profile_name)
         details_layout.addWidget(self.profile_details)
         details_layout.addWidget(self.mode_label)
-        details_layout.addSpacing(6)
+        details_layout.addSpacing(4)
         details_layout.addWidget(self.skip_selection)
         details_layout.addStretch()
-        body.addWidget(details, 1)
-        root.addLayout(body, 1)
+        body.addWidget(self.details_card, 1)
+        root.addLayout(body)
+
+        self.test_status = QLabel("")
+        self.test_status.setObjectName("ConnectionStatus")
+        self.test_status.setProperty("statusState", "info")
+        self.test_status.setWordWrap(True)
+        self.test_status.setMinimumHeight(22)
+        root.addWidget(self.test_status)
 
         manage = QHBoxLayout()
         self.add_button = set_button_role(QPushButton(tr("Add")), "secondary")
@@ -440,27 +515,29 @@ class ServerSelectionDialog(QDialog):
         root.addLayout(actions)
         self._reload()
 
+    def _sync_panel_height(self) -> None:
+        height = _profile_panel_height(self.list)
+        self.list.setFixedHeight(height)
+        self.details_card.setFixedHeight(height)
+        hint = self.sizeHint()
+        self.resize(max(720, hint.width()), hint.height())
+
     def _reload(self, select_id: str | None = None) -> None:
         selected = select_id or self.current_profile_id or self.store.last_profile_id()
         self.list.clear()
         auto_id = self.store.auto_connect_profile_id()
         for profile in self.store.list_profiles():
-            item = QListWidgetItem(
-                _profile_list_text(
-                    profile,
-                    current=profile.profile_id == self.current_profile_id,
-                    startup=profile.profile_id == auto_id,
-                )
-            )
-            item.setData(Qt.ItemDataRole.UserRole, profile.profile_id)
-            item.setToolTip(
-                f"{profile.username}@{profile.host}:{profile.port}/{profile.database}"
+            item = _profile_list_item(
+                profile,
+                current=profile.profile_id == self.current_profile_id,
+                startup=profile.profile_id == auto_id,
             )
             self.list.addItem(item)
             if selected and profile.profile_id == selected:
                 self.list.setCurrentItem(item)
         if self.list.currentRow() < 0 and self.list.count():
             self.list.setCurrentRow(0)
+        self._sync_panel_height()
         self._selection_changed(self.list.currentItem(), None)
 
     def _current_profile(self) -> ConnectionProfile | None:
@@ -473,15 +550,16 @@ class ServerSelectionDialog(QDialog):
             return None
 
     def _selection_changed(self, _current, _previous) -> None:
+        _set_connection_status(self.test_status, "", "info")
         profile = self._current_profile()
         enabled = profile is not None
-        for button in (
-            self.edit_button,
-            self.remove_button,
-            self.test_button,
-            self.connect_button,
-        ):
-            button.setEnabled(enabled)
+        current_id = self.current_profile_id or ""
+        self.edit_button.setEnabled(enabled)
+        self.remove_button.setEnabled(
+            enabled and profile.profile_id != current_id
+        )
+        self.test_button.setEnabled(enabled)
+        self.connect_button.setEnabled(enabled)
         self.skip_selection.setEnabled(enabled)
         if profile is None:
             self.profile_name.setText(tr("No connection selected"))
@@ -491,7 +569,8 @@ class ServerSelectionDialog(QDialog):
             return
         self.profile_name.setText(profile.display_name)
         self.profile_details.setText(
-            f"{profile.username}@{profile.host}:{profile.port}/{profile.database}"
+            f"{profile.host}:{profile.port} / {profile.database}\n"
+            f"{tr('User')}: {profile.username}"
         )
         self.mode_label.setText(
             tr("Database + shared files")
@@ -520,18 +599,13 @@ class ServerSelectionDialog(QDialog):
         if profile is None:
             return
         if profile.profile_id == self.current_profile_id:
-            QMessageBox.information(
-                self,
-                tr("Connection in use"),
-                tr("Switch to another server before removing the current connection."),
-            )
             return
         if not _confirm_remove(self):
             return
         try:
             self.store.remove(profile.profile_id)
         except ConnectionSettingsError as exc:
-            QMessageBox.warning(self, tr("Connection settings"), str(exc))
+            _set_connection_status(self.test_status, str(exc), "error")
             return
         self._reload()
 
@@ -539,19 +613,25 @@ class ServerSelectionDialog(QDialog):
         profile = self._current_profile()
         if profile is None:
             return
-        try:
-            runtime = self.store.runtime_profile(profile.profile_id)
-        except ConnectionSettingsError as exc:
-            QMessageBox.warning(self, tr("Connection settings"), str(exc))
-            return
-        probe = ConnectionForm(runtime)
-        result = probe.validate_and_test(saved_password=runtime.password)
-        QMessageBox.information(
-            self,
-            tr("Connection test") if result else tr("Connection test failed"),
-            probe.status.text(),
+        _set_connection_status(
+            self.test_status,
+            tr("Testing PostgreSQL and file storage…")
+            if profile.mode == FULL_STORAGE
+            else tr("Testing PostgreSQL…"),
+            "info",
         )
-        probe.deleteLater()
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
+        try:
+            try:
+                runtime = self.store.runtime_profile(profile.profile_id)
+            except ConnectionSettingsError as exc:
+                _set_connection_status(self.test_status, str(exc), "error")
+                return
+            _settings, message, state = _run_connection_test(runtime)
+            _set_connection_status(self.test_status, message, state)
+        finally:
+            QApplication.restoreOverrideCursor()
 
     def _connect(self) -> None:
         profile = self._current_profile()
@@ -561,7 +641,7 @@ class ServerSelectionDialog(QDialog):
             runtime = self.store.runtime_profile(profile.profile_id)
             self.runtime_settings = runtime.to_settings()
         except (ConnectionSettingsError, ConfigurationError, KeyError) as exc:
-            QMessageBox.warning(self, tr("Connection settings"), str(exc))
+            _set_connection_status(self.test_status, str(exc), "error")
             return
         self.auto_connect_requested = self.skip_selection.isChecked()
         self.selected_profile = runtime
@@ -610,13 +690,19 @@ class ConnectionSettingsPage(QWidget):
             root.addWidget(override)
 
         self.list = QListWidget()
-        self.list.setObjectName("ConnectionProfileList")
+        _prepare_profile_list(self.list)
         self.list.currentItemChanged.connect(self._sync_actions)
         root.addWidget(self.list, 1)
         self.details = QLabel("")
         self.details.setObjectName("MutedText")
         self.details.setWordWrap(True)
         root.addWidget(self.details)
+        self.test_status = QLabel("")
+        self.test_status.setObjectName("ConnectionStatus")
+        self.test_status.setProperty("statusState", "info")
+        self.test_status.setWordWrap(True)
+        self.test_status.setMinimumHeight(22)
+        root.addWidget(self.test_status)
         self.startup_checkbox = QCheckBox(
             tr("Connect to this server automatically at startup")
         )
@@ -663,14 +749,11 @@ class ConnectionSettingsPage(QWidget):
         auto_id = self.store.auto_connect_profile_id()
         current_id = getattr(self.context, "connection_profile_id", "")
         for profile in self.store.list_profiles():
-            item = QListWidgetItem(
-                _profile_list_text(
-                    profile,
-                    current=profile.profile_id == current_id,
-                    startup=profile.profile_id == auto_id,
-                )
+            item = _profile_list_item(
+                profile,
+                current=profile.profile_id == current_id,
+                startup=profile.profile_id == auto_id,
             )
-            item.setData(Qt.ItemDataRole.UserRole, profile.profile_id)
             self.list.addItem(item)
             if selected_id and profile.profile_id == selected_id:
                 self.list.setCurrentItem(item)
@@ -679,12 +762,15 @@ class ConnectionSettingsPage(QWidget):
         self._sync_actions(self.list.currentItem(), None)
 
     def _sync_actions(self, _current, _previous) -> None:
+        _set_connection_status(self.test_status, "", "info")
         profile = self._current()
         enabled = profile is not None
         current_id = getattr(self.context, "connection_profile_id", "")
         self.edit_button.setEnabled(enabled)
         self.test_button.setEnabled(enabled)
-        self.remove_button.setEnabled(enabled and profile.profile_id != current_id)
+        self.remove_button.setEnabled(
+            enabled and profile.profile_id != current_id
+        )
         self.switch_button.setEnabled(
             enabled
             and not self.environment_pinned
@@ -706,8 +792,9 @@ class ConnectionSettingsPage(QWidget):
             else tr("Shared file storage disabled")
         )
         self.details.setText(
-            f"{profile.username}@{profile.host}:{profile.port}/{profile.database}\n"
-            f"{tr('Mode')}: {_mode_name(profile)}  ·  "
+            f"{profile.host}:{profile.port} / {profile.database}\n"
+            f"{tr('User')}: {profile.username}\n"
+            f"{tr('Mode')}: {_mode_name(profile)}\n"
             f"{tr('File storage')}: {storage}"
         )
 
@@ -749,7 +836,7 @@ class ConnectionSettingsPage(QWidget):
         try:
             self.store.remove(profile.profile_id)
         except ConnectionSettingsError as exc:
-            QMessageBox.warning(self, tr("Connection settings"), str(exc))
+            _set_connection_status(self.test_status, str(exc), "error")
             return
         self._reload()
         self.connection_changed.emit()
@@ -758,19 +845,25 @@ class ConnectionSettingsPage(QWidget):
         profile = self._current()
         if profile is None:
             return
-        try:
-            runtime = self.store.runtime_profile(profile.profile_id)
-        except ConnectionSettingsError as exc:
-            QMessageBox.warning(self, tr("Connection settings"), str(exc))
-            return
-        probe = ConnectionForm(runtime)
-        result = probe.validate_and_test(saved_password=runtime.password)
-        QMessageBox.information(
-            self,
-            tr("Connection test") if result else tr("Connection test failed"),
-            probe.status.text(),
+        _set_connection_status(
+            self.test_status,
+            tr("Testing PostgreSQL and file storage…")
+            if profile.mode == FULL_STORAGE
+            else tr("Testing PostgreSQL…"),
+            "info",
         )
-        probe.deleteLater()
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
+        try:
+            try:
+                runtime = self.store.runtime_profile(profile.profile_id)
+            except ConnectionSettingsError as exc:
+                _set_connection_status(self.test_status, str(exc), "error")
+                return
+            _settings, message, state = _run_connection_test(runtime)
+            _set_connection_status(self.test_status, message, state)
+        finally:
+            QApplication.restoreOverrideCursor()
 
     def _switch(self) -> None:
         profile = self._current()
