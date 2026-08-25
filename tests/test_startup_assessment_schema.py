@@ -5,6 +5,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 
 import database.startup as startup
+from database.base import Base
 from database.settings import Settings
 
 
@@ -14,8 +15,11 @@ PRE_1_0_HEAD = "0003_drillhole_datasets"
 
 
 class FakeInspector:
-    def __init__(self, tables=()): self.tables = tables
-    def get_table_names(self): return list(self.tables)
+    def __init__(self, tables=()):
+        self.tables = tables
+
+    def get_table_names(self):
+        return list(self.tables)
 
 
 def test_expected_alembic_head_resolves_real_repository_graph():
@@ -25,34 +29,47 @@ def test_expected_alembic_head_resolves_real_repository_graph():
     assert startup._expected_alembic_head() == repository_heads[0]
 
 
-class FakeScript:
-    def get_revision(self, revision):
-        return object() if revision in {KNOWN_OLDER, CURRENT_HEAD} else None
-
-
 def arrange_startup(monkeypatch, *, revision=CURRENT_HEAD, tables=None):
-    settings = Settings("postgresql+psycopg://u:secret@db.example:5432/slopeforge", Path("/tmp/storage"))
+    settings = Settings(
+        "postgresql+psycopg://u:secret@db.example:5432/slopeforge",
+        Path("/tmp/storage"),
+    )
     engine = object()
+    state = {
+        "revision": revision,
+        "tables": Base.metadata.tables if tables is None else tables,
+    }
+
     monkeypatch.setattr(startup.Settings, "from_env", lambda: settings)
     monkeypatch.setattr(startup, "create_database_engine", lambda value: engine)
     monkeypatch.setattr(startup, "create_session_factory", lambda value: "sessions")
     monkeypatch.setattr(startup, "check_connection", lambda value: None)
     monkeypatch.setattr(startup, "_expected_alembic_head", lambda: CURRENT_HEAD)
-    monkeypatch.setattr(startup, "_alembic_script", lambda: FakeScript())
-    state = {
-        "revision": revision,
-        "tables": startup.Base.metadata.tables if tables is None else tables,
-    }
     monkeypatch.setattr(
-        startup, "_database_alembic_heads",
+        startup,
+        "known_alembic_revisions",
+        lambda: frozenset({KNOWN_OLDER, CURRENT_HEAD}),
+    )
+    monkeypatch.setattr(
+        startup,
+        "_database_alembic_heads",
         lambda value: (() if state["revision"] is None else (state["revision"],)),
     )
+
     def upgrade(_settings):
         state["revision"] = CURRENT_HEAD
-        state["tables"] = startup.Base.metadata.tables
+        state["tables"] = Base.metadata.tables
+
     monkeypatch.setattr(startup, "upgrade_to_head", upgrade)
     monkeypatch.setattr(startup, "configure_mappers", lambda: None)
     monkeypatch.setattr(startup, "inspect", lambda value: FakeInspector(state["tables"]))
+    monkeypatch.setattr(
+        startup,
+        "missing_required_tables",
+        lambda value: tuple(
+            sorted(set(Base.metadata.tables) - set(state["tables"]))
+        ),
+    )
     return settings, engine
 
 
@@ -64,10 +81,10 @@ def test_startup_requires_assessment_tables_and_does_not_run_migrations(monkeypa
 
     message = str(caught.value)
     assert "assessment_" in message or "blast_event_" in message
-    assert "assessment_workspaces" not in startup.Base.metadata.tables
-    assert "blast_events" in startup.Base.metadata.tables
-    assert "assessment_entity_attachments" in startup.Base.metadata.tables
-    assert "blast_event_drillhole_datasets" in startup.Base.metadata.tables
+    assert "assessment_workspaces" not in Base.metadata.tables
+    assert "blast_events" in Base.metadata.tables
+    assert "assessment_entity_attachments" in Base.metadata.tables
+    assert "blast_event_drillhole_datasets" in Base.metadata.tables
 
 
 def test_startup_accepts_database_at_the_single_current_head(monkeypatch):
@@ -84,11 +101,11 @@ def test_startup_known_older_revision_requires_database_upgrade(monkeypatch):
     assert "python -m" not in caught.value.presentation()
 
 
-def test_startup_pre_1_0_revision_requires_database_upgrade(monkeypatch):
+def test_startup_pre_1_0_revision_is_incompatible(monkeypatch):
     arrange_startup(monkeypatch, revision=PRE_1_0_HEAD)
     with pytest.raises(startup.StartupError) as caught:
         startup.initialize_database_runtime()
-    assert caught.value.reason == "database_upgrade_required"
+    assert caught.value.reason == "database_version_incompatible"
     assert "python -m" not in caught.value.presentation()
 
 
@@ -100,13 +117,16 @@ def test_startup_unknown_future_revision_requires_application_upgrade(monkeypatc
     assert "newer" in str(caught.value)
 
 
-def test_real_script_directory_classifies_pre_1_0_revision_as_database_upgrade(monkeypatch):
+def test_real_script_directory_classifies_pre_1_0_revision_as_incompatible(monkeypatch):
     monkeypatch.setattr(startup, "_expected_alembic_head", lambda: CURRENT_HEAD)
-    monkeypatch.setattr(startup, "_database_alembic_heads",
-                        lambda _engine: (PRE_1_0_HEAD,))
+    monkeypatch.setattr(
+        startup,
+        "_database_alembic_heads",
+        lambda _engine: (PRE_1_0_HEAD,),
+    )
     with pytest.raises(startup.StartupError) as caught:
         startup._verify_alembic_revision(object(), None)
-    assert caught.value.reason == "database_upgrade_required"
+    assert caught.value.reason == "database_version_incompatible"
 
 
 def test_startup_initializes_a_completely_empty_database(monkeypatch):
