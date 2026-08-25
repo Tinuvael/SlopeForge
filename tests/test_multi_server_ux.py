@@ -11,11 +11,18 @@ if sys.platform != "win32":
         allow_module_level=True,
     )
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from app.connection_settings import DATABASE_ONLY, FULL_STORAGE, ConnectionProfile, ConnectionSettingsStore
+from app.connection_settings import (
+    DATABASE_ONLY,
+    FULL_STORAGE,
+    ConnectionProfile,
+    ConnectionSettingsStore,
+)
 from app.credential_store import MemoryCredentialStore
 from ui.auth_dialogs import FirstAdminDialog, LoginDialog
+import ui.connection_dialog as connection_dialog
 from ui.connection_dialog import ConnectionForm, ServerSelectionDialog
 
 
@@ -106,7 +113,7 @@ def test_connection_form_uses_storage_capability_labels_and_progressive_disclosu
     full.deleteLater()
 
 
-def test_server_selector_rows_expose_endpoint_mode_and_auto_connect_intent(tmp_path):
+def test_server_selector_rows_fit_without_horizontal_scroll_and_use_compact_height(tmp_path):
     _app()
     store = _store(tmp_path)
     saved = store.upsert(
@@ -123,13 +130,83 @@ def test_server_selector_rows_expose_endpoint_mode_and_auto_connect_intent(tmp_p
     dialog = ServerSelectionDialog(store, current_profile_id=saved.profile_id)
 
     text = dialog.list.item(0).text()
-    assert "Management / Site A" in text
-    assert "Current" in text
-    assert "site-a.example:5432 / slopeforge" in text
-    assert "Database only" in text
-    assert dialog.skip_selection.text() == "Connect to this server automatically at startup"
+    lines = text.splitlines()
+    assert len(lines) == 3
+    assert "Management / Site A" in lines[0]
+    assert "Current" in lines[0]
+    assert lines[1] == "site-a.example:5432 / slopeforge"
+    assert lines[2] == "Database only"
+    assert dialog.list.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert dialog.list.height() <= 160
+    assert dialog.details_card.height() == dialog.list.height()
+    assert dialog.skip_selection.text() == "Auto-connect at startup"
+    assert dialog.skip_selection.toolTip() == "Connect to this server automatically at startup"
     assert dialog.connect_button.property("role") == "primary"
     assert dialog.remove_button.property("role") == "danger"
+    assert dialog.remove_button.isEnabled() is False
+
+    dialog.deleteLater()
+
+
+def test_server_selector_connection_test_reports_inline_success(monkeypatch, tmp_path):
+    _app()
+    store = _store(tmp_path)
+    saved = store.upsert(
+        ConnectionProfile(
+            name="Production",
+            host="db.example",
+            database="slopeforge",
+            username="engineer",
+            mode=FULL_STORAGE,
+            storage_root=tmp_path,
+        ),
+        password="secret",
+        force_new=True,
+    )
+    monkeypatch.setattr(
+        connection_dialog,
+        "_run_connection_test",
+        lambda _profile: (object(), "Connection and file storage are available.", "success"),
+    )
+    dialog = ServerSelectionDialog(store, current_profile_id="another-profile")
+    for row in range(dialog.list.count()):
+        if dialog.list.item(row).data(Qt.ItemDataRole.UserRole) == saved.profile_id:
+            dialog.list.setCurrentRow(row)
+            break
+
+    dialog._test()
+
+    assert dialog.test_status.text() == "Connection and file storage are available."
+    assert dialog.test_status.property("statusState") == "success"
+
+    dialog.deleteLater()
+
+
+def test_server_selector_connection_test_reports_inline_error(monkeypatch, tmp_path):
+    _app()
+    store = _store(tmp_path)
+    store.upsert(
+        ConnectionProfile(
+            name="Broken",
+            host="db.example",
+            database="slopeforge",
+            username="engineer",
+            mode=DATABASE_ONLY,
+        ),
+        password="secret",
+        force_new=True,
+    )
+    monkeypatch.setattr(
+        connection_dialog,
+        "_run_connection_test",
+        lambda _profile: (None, "Connection test failed: unreachable", "error"),
+    )
+    dialog = ServerSelectionDialog(store)
+
+    dialog._test()
+
+    assert dialog.test_status.text() == "Connection test failed: unreachable"
+    assert dialog.test_status.property("statusState") == "error"
 
     dialog.deleteLater()
 
