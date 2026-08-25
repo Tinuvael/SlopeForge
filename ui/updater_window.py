@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -40,15 +40,14 @@ from application.services.database_upgrade import (
     DatabaseUpgradeError,
     UpgradeResult,
 )
-from database.settings import safe_database_location
 from ui.connection_dialog import ConnectionProfileDialog
 from ui.theme import Spacing
 from ui.widgets.design_system import set_button_role, set_status_role
 
 
 class _WorkerSignals(QObject):
-    result = Signal(object)
-    error = Signal(object)
+    result = Signal(object, object)
+    error = Signal(object, object)
 
 
 class _Worker(QRunnable):
@@ -59,9 +58,9 @@ class _Worker(QRunnable):
 
     def run(self):
         try:
-            self.signals.result.emit(self.operation())
-        except Exception as exc:  # UI boundary: surface backend failures verbatim but safely.
-            self.signals.error.emit(exc)
+            self.signals.result.emit(self, self.operation())
+        except Exception as exc:
+            self.signals.error.emit(self, exc)
 
 
 _STATE_LABELS = {
@@ -81,6 +80,7 @@ class SlopeForgeUpdaterWindow(QMainWindow):
         self.store = store or ConnectionSettingsStore()
         self.thread_pool = QThreadPool.globalInstance()
         self._workers: set[_Worker] = set()
+        self._worker_callbacks: dict[_Worker, object] = {}
         self._profile: ConnectionProfile | None = None
         self._service = None
         self._inspection: DatabaseInspection | None = None
@@ -126,8 +126,12 @@ class SlopeForgeUpdaterWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("ConnectionCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(Spacing.CARD_HORIZONTAL, Spacing.CARD_VERTICAL,
-                                  Spacing.CARD_HORIZONTAL, Spacing.CARD_VERTICAL)
+        layout.setContentsMargins(
+            Spacing.CARD_HORIZONTAL,
+            Spacing.CARD_VERTICAL,
+            Spacing.CARD_HORIZONTAL,
+            Spacing.CARD_VERTICAL,
+        )
         layout.setSpacing(Spacing.SM)
         heading = QLabel("Target database")
         heading.setObjectName("CardTitle")
@@ -138,7 +142,9 @@ class SlopeForgeUpdaterWindow(QMainWindow):
         self.profile_combo = QComboBox()
         self.profile_combo.setMinimumWidth(300)
         self.profile_combo.currentIndexChanged.connect(self._profile_changed)
-        self.add_profile_button = set_button_role(QPushButton("Add connection…"), "secondary")
+        self.add_profile_button = set_button_role(
+            QPushButton("Add connection…"), "secondary"
+        )
         self.edit_profile_button = set_button_role(QPushButton("Edit…"), "secondary")
         self.add_profile_button.clicked.connect(self._add_profile)
         self.edit_profile_button.clicked.connect(self._edit_profile)
@@ -177,8 +183,12 @@ class SlopeForgeUpdaterWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("ConnectionCard")
         layout = QGridLayout(card)
-        layout.setContentsMargins(Spacing.CARD_HORIZONTAL, Spacing.CARD_VERTICAL,
-                                  Spacing.CARD_HORIZONTAL, Spacing.CARD_VERTICAL)
+        layout.setContentsMargins(
+            Spacing.CARD_HORIZONTAL,
+            Spacing.CARD_VERTICAL,
+            Spacing.CARD_HORIZONTAL,
+            Spacing.CARD_VERTICAL,
+        )
         layout.setHorizontalSpacing(Spacing.MD)
         layout.setVerticalSpacing(Spacing.SM)
         title = QLabel("Backup")
@@ -199,7 +209,9 @@ class SlopeForgeUpdaterWindow(QMainWindow):
         last_label.setObjectName("MutedText")
         self.last_backup_value = QLabel("—")
         self.last_backup_value.setObjectName("InspectorValue")
-        self.last_backup_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.last_backup_value.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         layout.addWidget(last_label, 2, 0)
         layout.addWidget(self.last_backup_value, 2, 1, 1, 2)
         layout.setColumnStretch(1, 1)
@@ -208,10 +220,16 @@ class SlopeForgeUpdaterWindow(QMainWindow):
     def _action_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(Spacing.SM)
-        self.test_button = set_button_role(QPushButton("Test connection"), "secondary")
+        self.test_button = set_button_role(
+            QPushButton("Test connection"), "secondary"
+        )
         self.backup_button = set_button_role(QPushButton("Create backup"), "secondary")
-        self.verify_button = set_button_role(QPushButton("Verify database"), "secondary")
-        self.upgrade_button = set_button_role(QPushButton("Backup & upgrade"), "primary")
+        self.verify_button = set_button_role(
+            QPushButton("Verify database"), "secondary"
+        )
+        self.upgrade_button = set_button_role(
+            QPushButton("Backup & upgrade"), "primary"
+        )
         self.test_button.clicked.connect(self._test_connection)
         self.backup_button.clicked.connect(self._create_backup)
         self.verify_button.clicked.connect(self._verify_database)
@@ -241,8 +259,15 @@ class SlopeForgeUpdaterWindow(QMainWindow):
             self._service = None
             self._inspection = None
             self._reset_database_details("No saved connection")
-            self._append_log("No saved server profiles. Add a connection to begin.")
+            self._append_log(
+                "No saved server profiles. Add a connection to begin.", persist=False
+            )
         self._sync_actions()
+
+    @staticmethod
+    def _profile_location(profile: ConnectionProfile) -> str:
+        username = f"{profile.username}@" if profile.username else ""
+        return f"{username}{profile.host}:{profile.port}/{profile.database}"
 
     def _profile_changed(self, _index: int = -1) -> None:
         profile_id = str(self.profile_combo.currentData() or "")
@@ -264,7 +289,7 @@ class SlopeForgeUpdaterWindow(QMainWindow):
             self._sync_actions()
             return
         self._service = create_database_upgrade_service(settings)
-        self.location_value.setText(safe_database_location(settings.database_url))
+        self.location_value.setText(self._profile_location(self._profile))
         self.current_value.setText("—")
         self.required_value.setText("—")
         self._set_compatibility("Not checked", "neutral")
@@ -340,7 +365,9 @@ class SlopeForgeUpdaterWindow(QMainWindow):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("Backup & upgrade database?")
-        box.setText("Close or disconnect SlopeForge engineering clients before continuing.")
+        box.setText(
+            "Close or disconnect SlopeForge engineering clients before continuing."
+        )
         box.setInformativeText(
             f"Target: {self.location_value.text()}\n"
             f"Current schema: {self.current_value.text()}\n"
@@ -348,7 +375,9 @@ class SlopeForgeUpdaterWindow(QMainWindow):
             f"Backup folder: {self.backup_folder.text()}\n\n"
             "A verified backup will be created before any schema migration."
         )
-        upgrade = box.addButton("Backup & upgrade", QMessageBox.ButtonRole.AcceptRole)
+        upgrade = box.addButton(
+            "Backup & upgrade", QMessageBox.ButtonRole.AcceptRole
+        )
         cancel = box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(cancel)
         box.setEscapeButton(cancel)
@@ -379,7 +408,9 @@ class SlopeForgeUpdaterWindow(QMainWindow):
                 + ", ".join(inspection.missing_tables[:8])
             )
         else:
-            self._append_log(f"Database verification result: {self.compatibility_value.text()}.")
+            self._append_log(
+                f"Database verification result: {self.compatibility_value.text()}."
+            )
 
     def _backup_finished(self, backup) -> None:
         self._set_last_backup(backup.path)
@@ -394,7 +425,8 @@ class SlopeForgeUpdaterWindow(QMainWindow):
             f"Backup created: {result.backup.path} ({result.backup.size_bytes} bytes)."
         )
         self._append_log(
-            f"Database upgrade completed successfully at schema {result.after.required_revision}."
+            "Database upgrade completed successfully at schema "
+            f"{result.after.required_revision}."
         )
 
     def _apply_inspection(self, inspection: DatabaseInspection) -> None:
@@ -402,12 +434,19 @@ class SlopeForgeUpdaterWindow(QMainWindow):
         current = (
             inspection.current_revision
             if inspection.current_revision is not None
-            else (", ".join(inspection.current_heads) if inspection.current_heads else "—")
+            else (
+                ", ".join(inspection.current_heads)
+                if inspection.current_heads
+                else "—"
+            )
         )
         self.current_value.setText(current)
         self.required_value.setText(inspection.required_revision)
         label, role = _STATE_LABELS[inspection.compatibility]
-        if inspection.missing_tables and inspection.compatibility == DatabaseCompatibility.UP_TO_DATE:
+        if (
+            inspection.missing_tables
+            and inspection.compatibility == DatabaseCompatibility.UP_TO_DATE
+        ):
             label = "Verification failed"
             role = "error"
         self._set_compatibility(label, role)
@@ -438,22 +477,27 @@ class SlopeForgeUpdaterWindow(QMainWindow):
         self._append_log(status, persist=False)
         worker = _Worker(operation)
         self._workers.add(worker)
-
-        def done(value):
-            self._workers.discard(worker)
-            self._busy = False
-            success(value)
-            self._sync_actions()
-
-        def failed(exc):
-            self._workers.discard(worker)
-            self._busy = False
-            self._operation_failed(exc)
-            self._sync_actions()
-
-        worker.signals.result.connect(done)
-        worker.signals.error.connect(failed)
+        self._worker_callbacks[worker] = success
+        worker.signals.result.connect(self._worker_result)
+        worker.signals.error.connect(self._worker_error)
         self.thread_pool.start(worker)
+
+    @Slot(object, object)
+    def _worker_result(self, worker: _Worker, value) -> None:
+        callback = self._worker_callbacks.pop(worker, None)
+        self._workers.discard(worker)
+        self._busy = False
+        if callback is not None:
+            callback(value)
+        self._sync_actions()
+
+    @Slot(object, object)
+    def _worker_error(self, worker: _Worker, exc: Exception) -> None:
+        self._worker_callbacks.pop(worker, None)
+        self._workers.discard(worker)
+        self._busy = False
+        self._operation_failed(exc)
+        self._sync_actions()
 
     def _operation_failed(self, exc: Exception) -> None:
         message = self._safe_text(str(exc)) or exc.__class__.__name__
@@ -478,22 +522,29 @@ class SlopeForgeUpdaterWindow(QMainWindow):
         self.log.appendPlainText(line)
         if not persist:
             return
-        folder_text = self.backup_folder.text().strip() if hasattr(self, "backup_folder") else ""
+        folder_text = (
+            self.backup_folder.text().strip()
+            if hasattr(self, "backup_folder")
+            else ""
+        )
         if not folder_text:
             return
         try:
             folder = Path(folder_text)
             folder.mkdir(parents=True, exist_ok=True)
-            with (folder / "SlopeForge_updater.log").open("a", encoding="utf-8") as handle:
+            with (folder / "SlopeForge_updater.log").open(
+                "a", encoding="utf-8"
+            ) as handle:
                 handle.write(line + "\n")
         except OSError:
-            # The operation result remains visible in the GUI; log I/O must not
-            # turn a successful database backup/migration into a reported failure.
             pass
 
     def _sync_actions(self) -> None:
         has_profile = self._service is not None
-        has_folder = bool(getattr(self, "backup_folder", None) and self.backup_folder.text().strip())
+        has_folder = bool(
+            getattr(self, "backup_folder", None)
+            and self.backup_folder.text().strip()
+        )
         for control in (
             self.profile_combo,
             self.add_profile_button,
