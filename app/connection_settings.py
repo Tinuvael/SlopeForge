@@ -204,15 +204,19 @@ class ConnectionSettingsStore:
         return data
 
     def _write_document(self, data: dict) -> None:
+        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = self.path.with_suffix(self.path.suffix + ".tmp")
             temporary.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
             os.replace(temporary, self.path)
         except OSError as exc:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
             raise ConnectionSettingsError(
                 f"Connection profiles could not be saved: {self.path}"
             ) from exc
@@ -319,36 +323,80 @@ class ConnectionSettingsStore:
             None,
         )
         secret_to_write = profile.password if password is None and profile.password else password
-        if secret_to_write is not None:
+        previous_secret: str | None = None
+        previous_username = str(existing.get("username") or "") if existing else profile.username
+        credential_changed = secret_to_write is not None
+        if credential_changed:
             try:
+                previous_secret = self.credentials.read(profile.profile_id)
                 self.credentials.write(profile.profile_id, profile.username, secret_to_write)
             except CredentialStoreError as exc:
                 raise ConnectionSettingsError(str(exc)) from exc
+
         payload = self._profile_to_json(replace(profile, password=""))
         if existing is None:
             data["profiles"].append(payload)
         else:
             existing.clear()
             existing.update(payload)
-        self._write_document(data)
+        try:
+            self._write_document(data)
+        except ConnectionSettingsError as save_exc:
+            if credential_changed:
+                try:
+                    if previous_secret is None:
+                        self.credentials.delete(profile.profile_id)
+                    else:
+                        self.credentials.write(
+                            profile.profile_id,
+                            previous_username,
+                            previous_secret,
+                        )
+                except CredentialStoreError as rollback_exc:
+                    raise ConnectionSettingsError(
+                        "Connection profile save failed and the database credential could not be restored."
+                    ) from rollback_exc
+            raise save_exc
         return replace(profile, password=secret_to_write or profile.password or "")
 
     def remove(self, profile_id: str) -> None:
         data = self._read_document()
         target = str(profile_id)
-        original_count = len(data["profiles"])
-        data["profiles"] = [item for item in data["profiles"] if str(item.get("id")) != target]
-        if len(data["profiles"]) == original_count:
+        existing = next(
+            (item for item in data["profiles"] if str(item.get("id")) == target),
+            None,
+        )
+        if existing is None:
             return
+        try:
+            previous_secret = self.credentials.read(target)
+            if previous_secret is not None:
+                self.credentials.delete(target)
+        except CredentialStoreError as exc:
+            raise ConnectionSettingsError(str(exc)) from exc
+
+        data["profiles"] = [
+            item for item in data["profiles"] if str(item.get("id")) != target
+        ]
         if data.get("last_profile_id") == target:
             data["last_profile_id"] = None
         if data.get("auto_connect_profile_id") == target:
             data["auto_connect_profile_id"] = None
-        self._write_document(data)
         try:
-            self.credentials.delete(target)
-        except CredentialStoreError as exc:
-            raise ConnectionSettingsError(str(exc)) from exc
+            self._write_document(data)
+        except ConnectionSettingsError as save_exc:
+            if previous_secret is not None:
+                try:
+                    self.credentials.write(
+                        target,
+                        str(existing.get("username") or ""),
+                        previous_secret,
+                    )
+                except CredentialStoreError as rollback_exc:
+                    raise ConnectionSettingsError(
+                        "Connection removal failed and the database credential could not be restored."
+                    ) from rollback_exc
+            raise save_exc
 
     def last_profile_id(self) -> str | None:
         value = self._read_document().get("last_profile_id")
@@ -408,7 +456,9 @@ class ConnectionSettingsStore:
             data = self._empty_document()
             data["profiles"] = [self._profile_to_json(profile)]
             data["last_profile_id"] = profile.profile_id
-            data["auto_connect_profile_id"] = profile.profile_id
+            # Migration must not silently opt the user into skipping the new
+            # startup selector. Auto-connect is an explicit local preference.
+            data["auto_connect_profile_id"] = None
             self._write_document(data)
             # The legacy INI contains the PostgreSQL password in plaintext.
             # Once both the credential and metadata are safely persisted, remove
