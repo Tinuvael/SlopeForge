@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from types import SimpleNamespace
+
+import pytest
+
+pytest.importorskip("PySide6.QtWidgets")
 
 from app.connection_settings import DATABASE_ONLY, ConnectionProfile
 from app.runtime_controller import (
