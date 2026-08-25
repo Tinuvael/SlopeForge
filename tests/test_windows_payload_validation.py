@@ -7,6 +7,7 @@ from tools.validate_windows_payload import require_payload
 
 REQUIRED = (
     "SlopeForge.exe",
+    "SlopeForgeUpdater.exe",
     "_internal/translations/slopeforge_ru.ts",
     "_internal/alembic.ini",
     "_internal/alembic/env.py",
