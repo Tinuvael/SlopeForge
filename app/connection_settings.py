@@ -384,6 +384,8 @@ class ConnectionSettingsStore:
         if self.path.exists() or not self.legacy_path.is_file():
             return
         parser = configparser.ConfigParser(interpolation=None)
+        credential_written = False
+        profile_id = ""
         try:
             parser.read(self.legacy_path, encoding="utf-8")
             section = parser["connection"]
@@ -398,21 +400,37 @@ class ConnectionSettingsStore:
                 storage_root=section.get("storage_root", ""),
             ).normalized()
             profile.validate_required()
+            profile_id = profile.profile_id
             password = section.get("password", "")
             if password:
                 self.credentials.write(profile.profile_id, profile.username, password)
+                credential_written = True
             data = self._empty_document()
             data["profiles"] = [self._profile_to_json(profile)]
             data["last_profile_id"] = profile.profile_id
             data["auto_connect_profile_id"] = profile.profile_id
             self._write_document(data)
-            backup = self.legacy_path.with_suffix(self.legacy_path.suffix + ".migrated")
-            os.replace(self.legacy_path, backup)
-        except (OSError, KeyError, ValueError, configparser.Error, ConnectionSettingsError, CredentialStoreError) as exc:
+            # The legacy INI contains the PostgreSQL password in plaintext.
+            # Once both the credential and metadata are safely persisted, remove
+            # the old file instead of renaming it and retaining the secret.
+            self.legacy_path.unlink()
+        except (
+            OSError,
+            KeyError,
+            ValueError,
+            configparser.Error,
+            ConnectionSettingsError,
+            CredentialStoreError,
+        ) as exc:
             try:
                 self.path.unlink(missing_ok=True)
             except OSError:
                 pass
+            if credential_written and profile_id:
+                try:
+                    self.credentials.delete(profile_id)
+                except CredentialStoreError:
+                    pass
             raise ConnectionSettingsError(
                 f"Legacy connection settings could not be migrated: {self.legacy_path}"
             ) from exc
