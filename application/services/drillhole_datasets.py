@@ -12,6 +12,10 @@ from domain.blasting.drillholes import (
     match_actual_to_design,
     summarize_drillholes,
 )
+from infrastructure.files.storage_availability import (
+    DATABASE_ONLY_STORAGE_MESSAGE,
+    FileStorageUnavailableError,
+)
 
 
 class DrillholeRepositoryPort(Protocol):
@@ -22,6 +26,8 @@ class DrillholeRepositoryPort(Protocol):
 
 
 class DrillholeStoragePort(Protocol):
+    available: bool
+
     def copy_dataset(
         self,
         domain_id: int,
@@ -30,6 +36,7 @@ class DrillholeStoragePort(Protocol):
         logical_id: str,
         source_paths: tuple[Path, ...],
     ) -> list[Any]: ...
+
     def remove_dataset(
         self,
         domain_id: int,
@@ -50,6 +57,14 @@ class BlastEventDrillholeDatasetService:
         self.storage = storage
         self.line_importer = line_importer
 
+    @property
+    def storage_available(self) -> bool:
+        return bool(getattr(self.storage, "available", True))
+
+    def _require_storage(self) -> None:
+        if not self.storage_available:
+            raise FileStorageUnavailableError(DATABASE_ONLY_STORAGE_MESSAGE)
+
     @staticmethod
     def _logical_id() -> str:
         return f"DH-{uuid4().hex[:8].upper()}"
@@ -64,13 +79,6 @@ class BlastEventDrillholeDatasetService:
 
     @staticmethod
     def _mark_source_identity(path: Path, holes: tuple[Drillhole, ...]) -> None:
-        """Record whether an imported ID is safe as cross-file hole identity.
-
-        DXF entity handles are document-local. Datamine PVALUE is verified as a
-        string-grouping field, but not as a persistent blast-hole identifier, so
-        it is also document-local for matching/revision carry-forward purposes.
-        Only an explicit Datamine SID is currently treated as stable identity.
-        """
         is_datamine = path.suffix.lower() in {".dm", ".dmx"}
         for hole in holes:
             line_id_field = str(
@@ -90,7 +98,6 @@ class BlastEventDrillholeDatasetService:
 
     @classmethod
     def _carry_design_assignments(cls, previous_row, holes: tuple[Drillhole, ...]) -> None:
-        """Preserve explicit group classification only across stable hole identities."""
         if previous_row is None:
             return
         previous = {
@@ -116,11 +123,9 @@ class BlastEventDrillholeDatasetService:
     ):
         if dataset_kind not in {"design", "actual"}:
             raise ValueError(f"Unsupported drillhole dataset kind: {dataset_kind!r}")
+        self._require_storage()
         path = Path(source_path)
         imported = self.line_importer(path)
-        # Geometry sources used in Studio can contain flat marker/reference
-        # strings alongside real hole traces. Existing contour import already
-        # excludes those rows; keep the same product semantics here.
         candidate_lines = [line for line in imported.lines if not line.is_horizontal]
         holes = drillholes_from_lines(candidate_lines)
         self._mark_source_identity(path, holes)
@@ -166,9 +171,7 @@ class BlastEventDrillholeDatasetService:
                 total_drilling_length_m=summary.total_drilling_length_m,
             )
         except Exception:
-            self.storage.remove_dataset(
-                domain_id, event_logical_id, dataset_kind, logical_id
-            )
+            self.storage.remove_dataset(domain_id, event_logical_id, dataset_kind, logical_id)
             raise
         return row
 
@@ -184,7 +187,6 @@ class BlastEventDrillholeDatasetService:
         return row
 
     def actual_uses_current_design(self, domain_id: int, event_logical_id: str) -> bool:
-        """True when current as-drilled QA was calculated against current design evidence."""
         actual = self.current(domain_id, event_logical_id, "actual")
         return actual is None or bool(getattr(actual, "design_revision_current", False))
 
@@ -198,8 +200,6 @@ class BlastEventDrillholeDatasetService:
         if row is None:
             return ()
         if dataset_kind == "actual" and not bool(getattr(row, "design_revision_current", False)):
-            # Historical as-drilled geometry remains stored and reviewable in the
-            # dataset row, but its QA must not be projected onto a newer design.
             return ()
         return self._holes_from_row(row)
 
