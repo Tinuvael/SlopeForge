@@ -142,8 +142,23 @@ def _initialize_empty_database(engine, settings: Settings, server: str | None) -
     upgrade_to_head(settings)
 
 
+def _dispose_failed_engine(engine) -> None:
+    """Release a partially initialized runtime without masking its startup error."""
+    dispose = getattr(engine, "dispose", None)
+    if not callable(dispose):
+        return
+    try:
+        dispose()
+    except Exception:
+        # The original startup failure is more actionable than a secondary pool
+        # teardown error, and SQLAlchemy Engine.dispose() is normally non-raising.
+        pass
+
+
 def initialize_database_runtime(settings: Settings | None = None):
     runtime_settings: Settings | None = settings
+    engine = None
+    runtime_ready = False
     try:
         runtime_settings = runtime_settings or Settings.from_env()
         engine = create_database_engine(runtime_settings)
@@ -160,7 +175,9 @@ def initialize_database_runtime(settings: Settings | None = None):
                 "Required tables were not found in the database: " + ", ".join(missing[:8]) + ("..." if len(missing) > 8 else ""),
                 server,
             )
-        return runtime_settings, engine, create_session_factory(engine)
+        session_factory = create_session_factory(engine)
+        runtime_ready = True
+        return runtime_settings, engine, session_factory
     except ConfigurationError as exc:
         raise StartupError(str(exc), reason="configuration_error",
                            actions=("Configure the PostgreSQL server and file storage in SlopeForge Settings.",)) from exc
@@ -171,3 +188,6 @@ def initialize_database_runtime(settings: Settings | None = None):
         server = safe_database_location(runtime_settings.database_url) if runtime_settings else None
         raise StartupError("Could not connect to the database or verify tables.", server,
                            reason="database_error") from exc
+    finally:
+        if engine is not None and not runtime_ready:
+            _dispose_failed_engine(engine)

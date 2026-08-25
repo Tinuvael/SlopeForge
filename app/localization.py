@@ -29,6 +29,7 @@ _RUSSIAN_CATALOG_RESOURCES = (
     "translations/slopeforge_ru_drillholes.ts",
     "translations/slopeforge_ru_theme.ts",
     "translations/slopeforge_ru_startup.ts",
+    "translations/slopeforge_ru_connections.ts",
 )
 
 

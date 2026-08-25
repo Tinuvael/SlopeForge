@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 from uuid import uuid4
 
+from application.file_storage import (
+    DATABASE_ONLY_STORAGE_MESSAGE,
+    FileStorageUnavailableError,
+)
+
 
 class SurfaceImportResultPort(Protocol):
     source_format: str
@@ -23,6 +28,8 @@ class StoredGeometryFilePort(Protocol):
 
 
 class ProjectGeometryStoragePort(Protocol):
+    available: bool
+
     def copy_dataset(
         self,
         site_id: int,
@@ -44,11 +51,8 @@ class ProjectGeometryStoragePort(Protocol):
 
 class ProjectSurfaceRepositoryPort(Protocol):
     def add_dataset(self, site_id: int, **values: Any) -> Any: ...
-
     def list_for_site(self, site_id: int, *, dataset_kind: str | None = None) -> list[Any]: ...
-
     def get_current(self, site_id: int, dataset_kind: str) -> Any | None: ...
-
     def get_by_logical_id(self, site_id: int, logical_id: str) -> Any: ...
 
 
@@ -66,6 +70,14 @@ class ProjectSurfaceDatasetService:
         self.storage = storage
         self.importer = importer
 
+    @property
+    def storage_available(self) -> bool:
+        return bool(getattr(self.storage, "available", True))
+
+    def _require_storage(self) -> None:
+        if not self.storage_available:
+            raise FileStorageUnavailableError(DATABASE_ONLY_STORAGE_MESSAGE)
+
     @staticmethod
     def _logical_id() -> str:
         return f"PG-{uuid4().hex[:8].upper()}"
@@ -80,14 +92,11 @@ class ProjectSurfaceDatasetService:
     ):
         if dataset_kind not in {"design", "actual"}:
             raise ValueError(f"Unsupported Project surface kind: {dataset_kind!r}")
-
+        self._require_storage()
         imported = self.importer(source_path)
         logical_id = self._logical_id()
         stored_files = self.storage.copy_dataset(
-            site_id,
-            dataset_kind,
-            logical_id,
-            imported.source_paths,
+            site_id, dataset_kind, logical_id, imported.source_paths
         )
         try:
             row = self.repository.add_dataset(
@@ -113,6 +122,7 @@ class ProjectSurfaceDatasetService:
         return self.repository.get_current(site_id, dataset_kind)
 
     def load_dataset(self, site_id: int, logical_id: str) -> tuple[object, object]:
+        self._require_storage()
         row = self.repository.get_by_logical_id(site_id, logical_id)
         paths = [
             self.storage.verify(

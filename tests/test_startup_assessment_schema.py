@@ -122,7 +122,9 @@ def test_startup_rejects_nonempty_unversioned_database(monkeypatch):
     assert "python -m" not in caught.value.presentation()
 
 
-def test_main_passes_runtime_storage_root_to_app_context():
-    source = Path("main.py").read_text(encoding="utf-8")
-    assert "storage_root=settings.storage_root" in source
-    assert "show_startup_error(exc)" in source
+def test_runtime_controller_passes_runtime_storage_root_to_app_context():
+    runtime_source = Path("app/runtime_controller.py").read_text(encoding="utf-8")
+    main_source = Path("main.py").read_text(encoding="utf-8")
+
+    assert "storage_root=settings.storage_root" in runtime_source
+    assert "startup_error_handler=show_startup_error" in main_source

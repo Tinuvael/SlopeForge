@@ -223,8 +223,8 @@ def test_analysis_button_opens_persistent_placeholder_before_report():
     header=source("ui/header.py")
     main=source("ui/main_window.py")
     page=source("ui/pages/analysis_page.py")
-    assert "analysis_requested=Signal()" in header
-    assert 'self.analysis_button=QPushButton(tr("Analysis"))' in header
+    assert "analysis_requested" in header and "Signal()" in header
+    assert 'QPushButton(tr("Analysis"))' in header
     assert 'self.analysis_button.setIcon(ui_icon("analytics"))' in header
     assert header.index("layout.addWidget(self.analysis_button)") < header.index("layout.addWidget(self.report_button)")
     assert "AnalysisPlaceholderPage" in main

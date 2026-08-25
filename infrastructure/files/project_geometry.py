@@ -6,6 +6,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from infrastructure.files.storage_availability import optional_data_root, require_data_root
+
 
 class ProjectGeometryStorageError(OSError):
     pass
@@ -30,8 +32,12 @@ class StoredProjectGeometryFile:
 
 
 class ProjectGeometryFileStorage:
-    def __init__(self, data_root: Path):
-        self.data_root = Path(data_root)
+    def __init__(self, data_root: str | Path | None):
+        self.data_root = optional_data_root(data_root)
+
+    @property
+    def available(self) -> bool:
+        return self.data_root is not None
 
     @staticmethod
     def _safe_filename(path: Path) -> str:
@@ -46,14 +52,8 @@ class ProjectGeometryFileStorage:
         safe_id = str(logical_id).strip()
         if not safe_id or Path(safe_id).name != safe_id:
             raise ValueError("Invalid Project surface dataset id")
-        return (
-            self.data_root
-            / "files"
-            / "project_geometry"
-            / str(int(site_id))
-            / kind
-            / safe_id
-        )
+        root = require_data_root(self.data_root)
+        return root / "files" / "project_geometry" / str(int(site_id)) / kind / safe_id
 
     @staticmethod
     def sha256(path: Path) -> str:
@@ -70,6 +70,7 @@ class ProjectGeometryFileStorage:
         logical_id: str,
         source_paths: tuple[Path, ...],
     ) -> list[StoredProjectGeometryFile]:
+        require_data_root(self.data_root)
         if not source_paths:
             raise ProjectGeometryStorageError("Project surface dataset has no source files")
         folder = self.dataset_folder(site_id, kind, logical_id)
@@ -99,11 +100,12 @@ class ProjectGeometryFileStorage:
                     raise ProjectGeometryStorageError(
                         f"Could not copy Project geometry file: {filename}"
                     )
+                root = require_data_root(self.data_root)
                 stored.append(
                     StoredProjectGeometryFile(
                         original_filename=source.name,
                         stored_filename=destination.name,
-                        relative_path=destination.relative_to(self.data_root).as_posix(),
+                        relative_path=destination.relative_to(root).as_posix(),
                         file_size_bytes=destination.stat().st_size,
                         sha256=self.sha256(destination),
                     )
@@ -114,8 +116,8 @@ class ProjectGeometryFileStorage:
         return stored
 
     def resolve(self, relative_path: str) -> Path:
-        root = self.data_root.resolve()
-        path = (self.data_root / relative_path).resolve()
+        root = require_data_root(self.data_root).resolve()
+        path = (root / relative_path).resolve()
         if path != root and root not in path.parents:
             raise ValueError("Project geometry file path escapes the data directory")
         return path

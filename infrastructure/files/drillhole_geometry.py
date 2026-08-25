@@ -6,6 +6,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from infrastructure.files.storage_availability import optional_data_root, require_data_root
+
 
 class DrillholeGeometryStorageError(OSError):
     pass
@@ -30,8 +32,12 @@ class StoredDrillholeGeometryFile:
 
 
 class BlastEventDrillholeFileStorage:
-    def __init__(self, data_root: Path):
-        self.data_root = Path(data_root)
+    def __init__(self, data_root: str | Path | None):
+        self.data_root = optional_data_root(data_root)
+
+    @property
+    def available(self) -> bool:
+        return self.data_root is not None
 
     @staticmethod
     def _safe_segment(value: str, label: str) -> str:
@@ -60,8 +66,9 @@ class BlastEventDrillholeFileStorage:
         domain_segment = self._safe_segment(str(int(domain_id)), "Domain id")
         event_id = self._safe_segment(event_logical_id, "BlastEvent id")
         dataset_id = self._safe_segment(logical_id, "drillhole dataset id")
+        root = require_data_root(self.data_root)
         return (
-            self.data_root
+            root
             / "files"
             / "domains"
             / domain_segment
@@ -80,6 +87,7 @@ class BlastEventDrillholeFileStorage:
         logical_id: str,
         source_paths: tuple[Path, ...],
     ) -> list[StoredDrillholeGeometryFile]:
+        root = require_data_root(self.data_root)
         if not source_paths:
             raise DrillholeGeometryStorageError("Drillhole dataset has no source files")
         folder = self.dataset_folder(domain_id, event_logical_id, kind, logical_id)
@@ -109,7 +117,7 @@ class BlastEventDrillholeFileStorage:
                     StoredDrillholeGeometryFile(
                         original_filename=source.name,
                         stored_filename=destination.name,
-                        relative_path=destination.relative_to(self.data_root).as_posix(),
+                        relative_path=destination.relative_to(root).as_posix(),
                         file_size_bytes=destination.stat().st_size,
                         sha256=self.sha256(destination),
                     )
@@ -120,8 +128,8 @@ class BlastEventDrillholeFileStorage:
         return stored
 
     def resolve(self, relative_path: str) -> Path:
-        root = self.data_root.resolve()
-        path = (self.data_root / relative_path).resolve()
+        root = require_data_root(self.data_root).resolve()
+        path = (root / relative_path).resolve()
         if path != root and root not in path.parents:
             raise ValueError("Drillhole file path escapes the data directory")
         return path
