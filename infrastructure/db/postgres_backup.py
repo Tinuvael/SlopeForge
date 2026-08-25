@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -38,10 +39,36 @@ def _redact(text: str, secret: str | None) -> str:
     rendered = str(text or "")
     if not secret:
         return rendered
-    for candidate in {secret, quote(secret, safe=""), quote(secret, safe="/@")}: 
+    for candidate in {secret, quote(secret, safe=""), quote(secret, safe="/@")}:
         if candidate:
             rendered = rendered.replace(candidate, "<redacted>")
     return rendered
+
+
+def resolve_pg_dump_executable(explicit: str | None = None) -> str:
+    """Resolve pg_dump without persisting a machine-specific executable path."""
+    candidate = str(explicit or os.getenv("SLOPEFORGE_PG_DUMP", "")).strip()
+    if candidate:
+        return candidate
+    discovered = shutil.which("pg_dump")
+    if discovered:
+        return discovered
+    if os.name == "nt":
+        program_files = Path(os.getenv("ProgramFiles", r"C:\Program Files"))
+        postgres_root = program_files / "PostgreSQL"
+        if postgres_root.is_dir():
+            installations = sorted(
+                (path for path in postgres_root.iterdir() if path.is_dir()),
+                key=lambda path: path.name,
+                reverse=True,
+            )
+            for installation in installations:
+                executable = installation / "bin" / "pg_dump.exe"
+                if executable.is_file():
+                    return str(executable)
+    raise PostgresBackupError(
+        "pg_dump was not found. Install PostgreSQL client tools or set SLOPEFORGE_PG_DUMP."
+    )
 
 
 def _pg_environment(settings: Settings) -> tuple[dict[str, str], str | None]:
@@ -91,7 +118,7 @@ def create_postgres_backup(
     backup_directory: str | Path,
     *,
     revision: str | None,
-    pg_dump_executable: str = "pg_dump",
+    pg_dump_executable: str | None = None,
     now: Callable[[], datetime] | None = None,
     runner: Runner = subprocess.run,
 ) -> BackupArtifact:
@@ -111,9 +138,10 @@ def create_postgres_backup(
             f"Backup already exists and will not be overwritten: {target}"
         )
 
+    executable = resolve_pg_dump_executable(pg_dump_executable)
     env, password = _pg_environment(settings)
     command = [
-        str(pg_dump_executable),
+        executable,
         "--format=custom",
         "--no-password",
         "--file",
@@ -129,7 +157,7 @@ def create_postgres_backup(
         )
     except FileNotFoundError as exc:
         raise PostgresBackupError(
-            "pg_dump was not found. Install PostgreSQL client tools or configure the updater to use pg_dump."
+            "pg_dump could not be started. Check the configured PostgreSQL client tools path."
         ) from exc
     except OSError as exc:
         raise PostgresBackupError("Could not start pg_dump.") from exc
