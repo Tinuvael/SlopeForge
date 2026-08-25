@@ -96,7 +96,12 @@ class RuntimeMigrationGateway:
 
 
 class RuntimeBackupGateway:
-    def __init__(self, settings: Settings, *, pg_dump_executable: str = "pg_dump"):
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        pg_dump_executable: str | None = None,
+    ):
         self.settings = settings
         self.pg_dump_executable = pg_dump_executable
 
@@ -117,7 +122,7 @@ class RuntimeBackupGateway:
 def create_database_upgrade_service(
     settings: Settings,
     *,
-    pg_dump_executable: str = "pg_dump",
+    pg_dump_executable: str | None = None,
 ) -> DatabaseUpgradeService:
     return DatabaseUpgradeService(
         RuntimeMigrationGateway(settings),
