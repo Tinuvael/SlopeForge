@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
 from sqlalchemy.engine import make_url
 
 from .env import load_local_env
@@ -15,16 +16,26 @@ class ConfigurationError(RuntimeError):
 @dataclass(frozen=True)
 class Settings:
     database_url: str
-    storage_root: Path
+    storage_root: Path | None
+
+    @property
+    def database_only(self) -> bool:
+        return self.storage_root is None
 
     @classmethod
-    def from_values(cls, database_url: str, storage_root: str | Path) -> "Settings":
+    def from_values(
+        cls,
+        database_url: str,
+        storage_root: str | Path | None,
+        *,
+        database_only: bool = False,
+    ) -> "Settings":
         database_url = str(database_url or "").strip()
         storage_text = str(storage_root or "").strip()
         missing = []
         if not database_url:
             missing.append("DATABASE_URL")
-        if not storage_text:
+        if not database_only and not storage_text:
             missing.append("STORAGE_ROOT")
         if missing:
             raise ConfigurationError(
@@ -35,14 +46,19 @@ class Settings:
                 "DATABASE_URL must use PostgreSQL with psycopg 3, for example: "
                 "postgresql+psycopg://user:password@host:5432/slopeforge"
             )
-        return cls(database_url=database_url, storage_root=Path(storage_text).expanduser())
+        return cls(
+            database_url=database_url,
+            storage_root=Path(storage_text).expanduser() if storage_text else None,
+        )
 
     @classmethod
     def from_env(cls) -> "Settings":
         load_local_env()
+        storage_root = os.getenv("STORAGE_ROOT", "").strip()
         return cls.from_values(
             os.getenv("DATABASE_URL", ""),
-            os.getenv("STORAGE_ROOT", ""),
+            storage_root or None,
+            database_only=not bool(storage_root),
         )
 
 
