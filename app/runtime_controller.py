@@ -124,7 +124,7 @@ class DesktopRuntimeController:
         return self._target_from_profile(
             dialog.selected_profile,
             update_auto_preference=True,
-            auto_connect_requested=bool(dialog.skip_selection.isChecked()),
+            auto_connect_requested=bool(dialog.auto_connect_requested),
         )
 
     def initial_target(self) -> RuntimeTarget | None:
@@ -196,36 +196,39 @@ class DesktopRuntimeController:
                 splash.close()
                 raise
 
-            current_user = self._authenticate(
-                session_factory,
-                target,
-                splash,
-            )
-            if current_user is None:
-                engine.dispose()
-                return None
-
-            scope_id = (
-                target.profile.profile_id
-                if target.source == "saved"
-                else self._environment_scope(settings)
-            )
-            context = AppContext(
-                session_factory=session_factory,
-                current_user=current_user,
-                storage_root=settings.storage_root,
-                connection_profile_id=(
-                    target.profile.profile_id if target.source == "saved" else ""
-                ),
-                connection_profile_name=target.profile.display_name,
-                connection_mode=self._profile_mode(target.profile, settings),
-                session_scope_id=scope_id,
-                runtime_control=self,
-            )
             try:
+                current_user = self._authenticate(
+                    session_factory,
+                    target,
+                    splash,
+                )
+                if current_user is None:
+                    engine.dispose()
+                    return None
+
+                scope_id = (
+                    target.profile.profile_id
+                    if target.source == "saved"
+                    else self._environment_scope(settings)
+                )
+                context = AppContext(
+                    session_factory=session_factory,
+                    current_user=current_user,
+                    storage_root=settings.storage_root,
+                    connection_profile_id=(
+                        target.profile.profile_id if target.source == "saved" else ""
+                    ),
+                    connection_profile_name=target.profile.display_name,
+                    connection_mode=self._profile_mode(target.profile, settings),
+                    session_scope_id=scope_id,
+                    runtime_control=self,
+                )
                 window = MainWindow(context)
             except Exception:
-                engine.dispose()
+                try:
+                    engine.dispose()
+                except Exception:
+                    logger.exception("Could not dispose failed database runtime")
                 raise
             return ActiveDesktopRuntime(
                 target=target,
@@ -294,6 +297,25 @@ class DesktopRuntimeController:
             except Exception:
                 logger.exception("Could not dispose previous database engine")
 
+    @staticmethod
+    def _confirm_switch(parent, target_name: str) -> bool:
+        box = QMessageBox(
+            QMessageBox.Icon.Question,
+            tr("Switch server?"),
+            tr("The current SlopeForge session will be closed before the selected server is opened."),
+            parent=parent,
+        )
+        box.setInformativeText(
+            f"{tr('Selected server')}: {target_name}\n\n"
+            + tr("Save or finish active work before switching servers.")
+        )
+        switch = box.addButton(tr("Switch server"), QMessageBox.ButtonRole.AcceptRole)
+        cancel = box.addButton(tr("Cancel"), QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(cancel)
+        box.setEscapeButton(cancel)
+        box.exec()
+        return box.clickedButton() is switch
+
     def request_switch(self, profile_id: str | None = None, *, parent=None) -> bool:
         previous = self.current
         if previous is None:
@@ -304,10 +326,6 @@ class DesktopRuntimeController:
                 tr("Connection managed by environment"),
                 tr("Runtime server switching is disabled while DATABASE_URL pins this installation."),
             )
-            return False
-
-        guard = getattr(previous.window, "_guard_leave", None)
-        if callable(guard) and not guard():
             return False
 
         try:
@@ -331,6 +349,15 @@ class DesktopRuntimeController:
                 self._persist_successful_selection(target)
             return True
 
+        if not self._confirm_switch(parent, target.profile.display_name):
+            return False
+
+        guard = getattr(previous.window, "_guard_leave", None)
+        if callable(guard) and not guard():
+            return False
+
+        # Build and authenticate the replacement while the old runtime is still
+        # alive. Only _commit_runtime closes the old window and disposes its engine.
         active = self._build_runtime(target, allow_change=True)
         if active is None:
             return False
