@@ -6,7 +6,18 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-ACTIVE = [ROOT / "main.py", *sorted((ROOT / "app").rglob("*.py")), *sorted((ROOT / "ui").rglob("*.py")), *sorted((ROOT / "widgets").rglob("*.py"))]
+# SlopeForge Updater is a separate English-only administrative executable and
+# updater_main.py deliberately does not install the engineering UI translator.
+UPDATER_UI = ROOT / "ui" / "updater_window.py"
+LOCALIZED_UI = [
+    path for path in sorted((ROOT / "ui").rglob("*.py")) if path != UPDATER_UI
+]
+ACTIVE = [
+    ROOT / "main.py",
+    *sorted((ROOT / "app").rglob("*.py")),
+    *LOCALIZED_UI,
+    *sorted((ROOT / "widgets").rglob("*.py")),
+]
 INVARIANTS = {
     "SlopeForge", "DAI", "FCI", "UCS", "RQD", "GSI", "FF", "Jn", "Jr", "Ja", "Jw", "Q′",
     "MPa", "m", "mm", "kg", "ms", "m²", "m³", "%", "—",
