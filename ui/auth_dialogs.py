@@ -64,7 +64,10 @@ class LoginDialog(QDialog):
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow(tr("Username"), self.username)
         form.addRow(tr("Password"), self.password)
-        self.remember = QCheckBox(tr("Remember me on this computer"))
+        self.remember = QCheckBox(tr("Remember me on this server"))
+        self.remember.setToolTip(
+            tr("Saved sign-in is kept separately for each SlopeForge server connection.")
+        )
         layout.addLayout(form)
         layout.addWidget(self.remember)
         buttons = QHBoxLayout(); buttons.addStretch()
