@@ -60,6 +60,10 @@ class EntityAttachmentService:
     def storage_available(self) -> bool:
         return self.file_storage.available
 
+    @property
+    def storage_unavailable_message(self) -> str:
+        return DATABASE_ONLY_STORAGE_MESSAGE
+
     def _require_storage(self) -> None:
         if not self.storage_available:
             raise FileStorageUnavailableError(DATABASE_ONLY_STORAGE_MESSAGE)
@@ -125,7 +129,7 @@ class EntityAttachmentService:
         self._require_storage()
         self._validate(owner_type, owner_id, attachment_kind)
         root = self.data_root
-        if root is None:  # defensive; _require_storage already guarantees this
+        if root is None:
             raise FileStorageUnavailableError(DATABASE_ONLY_STORAGE_MESSAGE)
         added: list[EntityAttachment] = []
         destinations: list[Path] = []
@@ -201,7 +205,12 @@ class EntityAttachmentService:
         return sorted(result, key=lambda a: (-a.file_date.toordinal(), a.title.casefold()))
 
     def resolve_path(self, attachment: EntityAttachment) -> Path:
-        self._require_storage()
+        if not self.storage_available:
+            # Metadata-only mode must not probe the original network/share path.
+            # Return a deterministic nonexistent local placeholder so existing
+            # read-only Qt views can still render filenames/icons safely.
+            safe_name = Path(attachment.stored_filename or attachment.original_filename).name
+            return Path(".slopeforge-file-unavailable") / safe_name
         return self.file_storage.resolve(attachment)
 
     def is_missing(self, attachment: EntityAttachment) -> bool:
