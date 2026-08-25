@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
+
+from sqlalchemy import text
 
 from application.services.database_upgrade import (
     BackupRecord,
     DatabaseCompatibility,
     DatabaseInspection,
+    DatabaseUpgradeError,
     DatabaseUpgradeService,
 )
 from database.connection import check_connection, create_database_engine
@@ -18,6 +22,9 @@ from database.schema_compatibility import (
 from database.settings import Settings
 from infrastructure.db.postgres_backup import create_postgres_backup
 
+
+# Stable process-independent lock key for SlopeForge schema maintenance.
+_UPDATER_ADVISORY_LOCK_KEY = 0x534C4F5045464F52  # ASCII-ish: SLOPEFOR
 
 _COMPATIBILITY_MAP = {
     SchemaCompatibilityState.UP_TO_DATE: DatabaseCompatibility.UP_TO_DATE,
@@ -48,6 +55,40 @@ class RuntimeMigrationGateway:
                 missing_tables=tuple(missing),
             )
         finally:
+            engine.dispose()
+
+    @contextmanager
+    def upgrade_guard(self):
+        """Hold a session-level PostgreSQL advisory lock for the whole workflow."""
+        engine = create_database_engine(self.settings)
+        connection = None
+        acquired = False
+        try:
+            connection = engine.connect()
+            acquired = bool(
+                connection.scalar(
+                    text("SELECT pg_try_advisory_lock(:key)"),
+                    {"key": _UPDATER_ADVISORY_LOCK_KEY},
+                )
+            )
+            if not acquired:
+                raise DatabaseUpgradeError(
+                    "Another SlopeForge updater is already maintaining this database."
+                )
+            yield
+        finally:
+            if connection is not None:
+                if acquired:
+                    try:
+                        connection.execute(
+                            text("SELECT pg_advisory_unlock(:key)"),
+                            {"key": _UPDATER_ADVISORY_LOCK_KEY},
+                        )
+                    except Exception:
+                        # Never mask the workflow error with a secondary unlock error;
+                        # closing the PostgreSQL session releases advisory locks anyway.
+                        pass
+                connection.close()
             engine.dispose()
 
     def upgrade_to_head(self) -> None:
