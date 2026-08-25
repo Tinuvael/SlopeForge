@@ -330,7 +330,7 @@ class BlockRecentActivityCard(RecentActivityCard):
 
 
 class BlockAttachmentPreview(QuickAttachmentPreview):
-    """Suppress transient old preview rows while a Block is being rerendered."""
+    """Stable sidebar preview that never resolves files in Database only mode."""
 
     def set_items(self, service, items, empty_text: str, *, can_add=True) -> None:
         for index in range(self.content.count()):
@@ -338,11 +338,22 @@ class BlockAttachmentPreview(QuickAttachmentPreview):
             widget = item.widget()
             if widget is not None:
                 widget.hide()
+        storage_available = bool(getattr(service, "storage_available", True)) if service is not None else False
+        preview_service = service if storage_available else None
         self.setUpdatesEnabled(False)
         try:
-            super().set_items(service, items, empty_text, can_add=can_add)
+            super().set_items(
+                preview_service,
+                items,
+                empty_text,
+                can_add=bool(can_add and storage_available),
+            )
         finally:
             self.setUpdatesEnabled(True)
+        if not storage_available:
+            self.add_button.setToolTip(tr("File storage is unavailable for this connection."))
+        else:
+            self.add_button.setToolTip("")
         self.update()
 
 
