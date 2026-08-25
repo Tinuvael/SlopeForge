@@ -9,6 +9,7 @@ import app.connection_settings as connection_settings_module
 from app.connection_settings import (
     DATABASE_ONLY,
     ConnectionProfile,
+    ConnectionSelectionRequired,
     ConnectionSettingsError,
     ConnectionSettingsStore,
     MissingConnectionConfiguration,
@@ -37,10 +38,10 @@ def make_store(tmp_path):
     ), credentials
 
 
-def profile(storage_root: Path) -> ConnectionProfile:
+def profile(storage_root: Path, *, name="Birkachan", host="db.internal") -> ConnectionProfile:
     return ConnectionProfile(
-        name="Birkachan",
-        host="db.internal",
+        name=name,
+        host=host,
         port=5433,
         database="slopeforge",
         username="engineer",
@@ -88,7 +89,7 @@ def test_database_only_profile_does_not_require_storage():
     assert item.to_settings().storage_root is None
 
 
-def test_saved_profile_is_used_when_environment_is_not_configured(monkeypatch, tmp_path):
+def test_saved_profile_is_used_by_noninteractive_resolver_when_only_one_exists(monkeypatch, tmp_path):
     clear_runtime_environment(monkeypatch)
     store, _credentials = make_store(tmp_path)
     store.save(profile(tmp_path))
@@ -98,6 +99,38 @@ def test_saved_profile_is_used_when_environment_is_not_configured(monkeypatch, t
     assert source == "saved"
     assert make_url(settings.database_url).host == "db.internal"
     assert settings.storage_root == tmp_path
+
+
+def test_multiple_saved_profiles_require_explicit_selection_for_noninteractive_resolver(monkeypatch, tmp_path):
+    clear_runtime_environment(monkeypatch)
+    store, _credentials = make_store(tmp_path)
+    first = store.upsert(profile(tmp_path), force_new=True)
+    second = store.upsert(
+        profile(tmp_path, name="Nevenrekan", host="db-2.internal"),
+        force_new=True,
+    )
+
+    with pytest.raises(ConnectionSelectionRequired):
+        resolve_runtime_settings(store)
+
+    settings, source = resolve_runtime_settings(store, profile_id=second.profile_id)
+    assert source == "saved"
+    assert make_url(settings.database_url).host == "db-2.internal"
+    assert first.profile_id != second.profile_id
+
+
+def test_auto_connect_profile_is_independent_of_last_used_profile(tmp_path):
+    store, _credentials = make_store(tmp_path)
+    first = store.upsert(profile(tmp_path), force_new=True)
+    second = store.upsert(
+        profile(tmp_path, name="Nevenrekan", host="db-2.internal"),
+        force_new=True,
+    )
+    store.set_auto_connect_profile(first.profile_id)
+    store.mark_used(second.profile_id)
+
+    assert store.auto_connect_profile_id() == first.profile_id
+    assert store.last_profile_id() == second.profile_id
 
 
 def test_complete_environment_configuration_overrides_saved_profile(monkeypatch, tmp_path):
@@ -115,6 +148,21 @@ def test_complete_environment_configuration_overrides_saved_profile(monkeypatch,
     assert source == "environment"
     assert settings.database_url == environment_url
     assert settings.storage_root == tmp_path / "env-storage"
+
+
+def test_database_url_without_storage_root_is_database_only_environment(monkeypatch, tmp_path):
+    store, _credentials = make_store(tmp_path)
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://viewer:secret@remote-db:5432/slopeforge",
+    )
+    monkeypatch.delenv("STORAGE_ROOT", raising=False)
+
+    settings, source = resolve_runtime_settings(store)
+
+    assert source == "environment"
+    assert settings.database_only is True
+    assert settings.storage_root is None
 
 
 def test_missing_configuration_requests_first_run_setup(monkeypatch, tmp_path):
@@ -158,20 +206,18 @@ def test_storage_validation_rejects_missing_folder(tmp_path):
         validate_storage_root(tmp_path / "missing")
 
 
-def test_first_run_setup_is_resolved_before_authentication():
-    source = Path("main.py").read_text(encoding="utf-8")
-    assert "resolve_runtime_settings(connection_store)" in source
-    assert "ConnectionSetupDialog" in source
-    assert source.index("resolve_runtime_settings(connection_store)") < source.index(
-        "AuthService(session_factory)"
-    )
-    assert "initialize_database_runtime(runtime_settings)" in source
+def test_desktop_runtime_selects_server_before_authentication():
+    source = Path("app/runtime_controller.py").read_text(encoding="utf-8")
+    assert "ServerSelectionDialog" in source
+    assert "AuthService(session_factory)" in source
+    assert source.index("def initial_target") < source.index("def _authenticate")
+    assert "Selection is deliberately shown even when only one profile exists" in source
 
 
-def test_settings_dialog_exposes_connection_section():
+def test_settings_dialog_exposes_connections_section_with_runtime_context():
     source = Path("ui/settings_dialog.py").read_text(encoding="utf-8")
     assert "ConnectionSettingsPage" in source
-    assert 'self._add_page(tr("Connection"), ConnectionSettingsPage())' in source
+    assert 'self._add_page(tr("Connections"), ConnectionSettingsPage(context=context))' in source
 
 
 def test_database_startup_accepts_explicit_settings():
