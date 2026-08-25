@@ -90,6 +90,20 @@ class DesktopRuntimeController:
             return profile.mode
         return DATABASE_ONLY if settings.storage_root is None else FULL_STORAGE
 
+    @staticmethod
+    def _close_splash(splash) -> None:
+        try:
+            splash.close()
+        except Exception:
+            logger.exception("Could not close startup splash")
+
+    @staticmethod
+    def _dispose_engine(engine, *, context: str) -> None:
+        try:
+            engine.dispose()
+        except Exception:
+            logger.exception("Could not dispose database engine %s", context)
+
     def _target_from_profile(
         self,
         profile: ConnectionProfile,
@@ -119,7 +133,10 @@ class DesktopRuntimeController:
             title=title,
             current_profile_id=current_profile_id,
         )
-        if dialog.exec() != dialog.DialogCode.Accepted or dialog.selected_profile is None:
+        if (
+            dialog.exec() != dialog.DialogCode.Accepted
+            or dialog.selected_profile is None
+        ):
             return None
         return self._target_from_profile(
             dialog.selected_profile,
@@ -138,7 +155,10 @@ class DesktopRuntimeController:
                 profile = self.connection_store.runtime_profile(auto_id)
                 return self._target_from_profile(profile)
             except (ConnectionSettingsError, KeyError):
-                self.connection_store.set_auto_connect_profile(None)
+                try:
+                    self.connection_store.set_auto_connect_profile(None)
+                except (ConnectionSettingsError, KeyError):
+                    logger.exception("Could not clear an invalid auto-connect preference")
 
         # Selection is deliberately shown even when only one profile exists.
         return self._select_saved_target()
@@ -172,7 +192,7 @@ class DesktopRuntimeController:
                 )
             except StartupError as exc:
                 logger.exception("Database initialization failed")
-                splash.close()
+                self._close_splash(splash)
                 action = self.startup_error_handler(exc)
                 if action == _RETRY:
                     continue
@@ -181,7 +201,9 @@ class DesktopRuntimeController:
                         QMessageBox.information(
                             None,
                             tr("Connection managed by environment"),
-                            tr("This SlopeForge installation is pinned by DATABASE_URL. Change the environment configuration to use another server."),
+                            tr(
+                                "This SlopeForge installation is pinned by DATABASE_URL. Change the environment configuration to use another server."
+                            ),
                         )
                         return None
                     replacement = self._select_saved_target(
@@ -193,7 +215,7 @@ class DesktopRuntimeController:
                     continue
                 return None
             except Exception:
-                splash.close()
+                self._close_splash(splash)
                 raise
 
             try:
@@ -203,7 +225,7 @@ class DesktopRuntimeController:
                     splash,
                 )
                 if current_user is None:
-                    engine.dispose()
+                    self._dispose_engine(engine, context="after cancelled authentication")
                     return None
 
                 scope_id = (
@@ -225,10 +247,8 @@ class DesktopRuntimeController:
                 )
                 window = MainWindow(context)
             except Exception:
-                try:
-                    engine.dispose()
-                except Exception:
-                    logger.exception("Could not dispose failed database runtime")
+                self._close_splash(splash)
+                self._dispose_engine(engine, context="after failed runtime construction")
                 raise
             return ActiveDesktopRuntime(
                 target=target,
@@ -264,7 +284,10 @@ class DesktopRuntimeController:
         else:
             dialog = FirstAdminDialog(auth_service)
         splash.close_with_fade()
-        if dialog.exec() != dialog.DialogCode.Accepted or dialog.current_user is None:
+        if (
+            dialog.exec() != dialog.DialogCode.Accepted
+            or dialog.current_user is None
+        ):
             return None
         current_user = dialog.current_user
         if isinstance(dialog, LoginDialog) and dialog.remember_requested:
@@ -280,36 +303,48 @@ class DesktopRuntimeController:
                 target.profile.profile_id if target.auto_connect_requested else None
             )
 
+    def _persist_selection_nonfatal(self, target: RuntimeTarget) -> bool:
+        try:
+            self._persist_successful_selection(target)
+            return True
+        except (ConnectionSettingsError, KeyError):
+            # A successfully authenticated DB runtime is authoritative. Local
+            # convenience metadata such as last-used/auto-connect must never
+            # destroy or prevent that runtime from becoming active.
+            logger.exception("Could not persist successful server selection")
+            return False
+
     def _commit_runtime(
         self,
         active: ActiveDesktopRuntime,
         *,
         previous: ActiveDesktopRuntime | None,
     ) -> None:
-        self._persist_successful_selection(active.target)
+        self._persist_selection_nonfatal(active.target)
         self.current = active
         active.window.showMaximized()
         if previous is not None:
             previous.window.close()
             previous.window.deleteLater()
-            try:
-                previous.engine.dispose()
-            except Exception:
-                logger.exception("Could not dispose previous database engine")
+            self._dispose_engine(previous.engine, context="after server switch")
 
     @staticmethod
     def _confirm_switch(parent, target_name: str) -> bool:
         box = QMessageBox(
             QMessageBox.Icon.Question,
             tr("Switch server?"),
-            tr("The current SlopeForge session will be closed before the selected server is opened."),
+            tr(
+                "The current SlopeForge session will be closed before the selected server is opened."
+            ),
             parent=parent,
         )
         box.setInformativeText(
             f"{tr('Selected server')}: {target_name}\n\n"
             + tr("Save or finish active work before switching servers.")
         )
-        switch = box.addButton(tr("Switch server"), QMessageBox.ButtonRole.AcceptRole)
+        switch = box.addButton(
+            tr("Switch server"), QMessageBox.ButtonRole.AcceptRole
+        )
         cancel = box.addButton(tr("Cancel"), QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(cancel)
         box.setEscapeButton(cancel)
@@ -324,7 +359,9 @@ class DesktopRuntimeController:
             QMessageBox.information(
                 parent,
                 tr("Connection managed by environment"),
-                tr("Runtime server switching is disabled while DATABASE_URL pins this installation."),
+                tr(
+                    "Runtime server switching is disabled while DATABASE_URL pins this installation."
+                ),
             )
             return False
 
@@ -345,8 +382,13 @@ class DesktopRuntimeController:
             return False
 
         if target.profile.profile_id == previous.target.profile.profile_id:
-            if target.update_auto_preference:
-                self._persist_successful_selection(target)
+            if target.update_auto_preference and not self._persist_selection_nonfatal(target):
+                QMessageBox.warning(
+                    parent,
+                    tr("Connection settings"),
+                    tr("The server selection preference could not be saved."),
+                )
+                return False
             return True
 
         if not self._confirm_switch(parent, target.profile.display_name):
@@ -369,7 +411,4 @@ class DesktopRuntimeController:
         self.current = None
         if active is None:
             return
-        try:
-            active.engine.dispose()
-        except Exception:
-            logger.exception("Could not dispose database engine during shutdown")
+        self._dispose_engine(active.engine, context="during shutdown")
