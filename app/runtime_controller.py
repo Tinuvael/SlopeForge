@@ -104,6 +104,27 @@ class DesktopRuntimeController:
         except Exception:
             logger.exception("Could not dispose database engine %s", context)
 
+    @staticmethod
+    def _close_replaced_window(window) -> None:
+        """Close after the switch guard has already accepted, without prompting twice."""
+        guard = getattr(window, "_guard_leave", None)
+        if not callable(guard):
+            window.close()
+            return
+        had_instance_guard = "_guard_leave" in getattr(window, "__dict__", {})
+        previous_instance_guard = getattr(window, "__dict__", {}).get("_guard_leave")
+        window._guard_leave = lambda: True
+        try:
+            window.close()
+        finally:
+            if had_instance_guard:
+                window._guard_leave = previous_instance_guard
+            else:
+                try:
+                    del window._guard_leave
+                except AttributeError:
+                    pass
+
     def _target_from_profile(
         self,
         profile: ConnectionProfile,
@@ -324,7 +345,7 @@ class DesktopRuntimeController:
         self.current = active
         active.window.showMaximized()
         if previous is not None:
-            previous.window.close()
+            self._close_replaced_window(previous.window)
             previous.window.deleteLater()
             self._dispose_engine(previous.engine, context="after server switch")
 
