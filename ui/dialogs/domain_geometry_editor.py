@@ -1,7 +1,7 @@
 """Compact modal editor for a Domain's detached multi-polygon working copy."""
 from app.localization import tr
 from PySide6.QtCore import Qt, QLineF, QRectF
-from PySide6.QtGui import QColor, QBrush, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QBrush, QPainter, QPainterPath, QPalette, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QDialog, QFrame, QGraphicsEllipseItem, QGraphicsPathItem,
     QGraphicsScene, QGraphicsView, QGridLayout, QHBoxLayout, QLabel,
@@ -29,13 +29,14 @@ class _DrawingView(QGraphicsView):
         super().mousePressEvent(event)
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
-        painter.fillRect(rect, QColor("#F8FAFC"))
+        palette = self.palette()
+        painter.fillRect(rect, palette.color(QPalette.ColorRole.AlternateBase))
         if not self.owner.grid_toggle.isChecked():
             return
         spacing = self.GRID_SPACING
         left = int(rect.left() // spacing) * spacing
         top = int(rect.top() // spacing) * spacing
-        painter.setPen(QPen(QColor("#E2E8F0"), 0))
+        painter.setPen(QPen(palette.color(QPalette.ColorRole.Dark), 0))
         x = left
         while x <= rect.right():
             painter.drawLine(QLineF(x, rect.top(), x, rect.bottom())); x += spacing
