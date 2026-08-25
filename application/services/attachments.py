@@ -206,12 +206,7 @@ class EntityAttachmentService:
         return sorted(result, key=lambda a: (-a.file_date.toordinal(), a.title.casefold()))
 
     def resolve_path(self, attachment: EntityAttachment) -> Path:
-        if not self.storage_available:
-            # Metadata-only mode must not probe the original network/share path.
-            # Return a deterministic nonexistent local placeholder so existing
-            # read-only Qt views can still render filenames/icons safely.
-            safe_name = Path(attachment.stored_filename or attachment.original_filename).name
-            return Path(".slopeforge-file-unavailable") / safe_name
+        self._require_storage()
         return self.file_storage.resolve(attachment)
 
     def is_missing(self, attachment: EntityAttachment) -> bool:
