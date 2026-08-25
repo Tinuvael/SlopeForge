@@ -6,6 +6,7 @@
 #define AppPublisher "Емшанов Евгений"
 #define AppURL "https://github.com/Tinuvael/SlopeForge"
 #define AppExeName "SlopeForge.exe"
+#define UpdaterExeName "SlopeForgeUpdater.exe"
 
 [Setup]
 AppId={{D24878F9-0D8A-4C90-A1ED-E9E42007114B}
@@ -36,6 +37,7 @@ Source: "..\dist\SlopeForge\*"; DestDir: "{app}"; Flags: ignoreversion recursesu
 
 [Icons]
 Name: "{group}\SlopeForge"; Filename: "{app}\{#AppExeName}"
+Name: "{group}\SlopeForge Updater"; Filename: "{app}\{#UpdaterExeName}"
 Name: "{autodesktop}\SlopeForge"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
