@@ -7,10 +7,12 @@ from pathlib import Path
 import pytest
 
 from database.settings import Settings
+import infrastructure.db.postgres_backup as postgres_backup
 from infrastructure.db.postgres_backup import (
     PostgresBackupError,
     backup_filename,
     create_postgres_backup,
+    resolve_pg_dump_executable,
 )
 
 
@@ -29,6 +31,17 @@ def test_backup_filename_is_deterministic_and_safe() -> None:
     assert backup_filename(_settings(), "2/dev", FIXED_TIME) == (
         "SlopeForge_slopeforge_test_2026-08-26_01-02-03_2_dev.dump"
     )
+
+
+def test_pg_dump_discovery_prefers_explicit_then_environment_then_path(monkeypatch) -> None:
+    monkeypatch.setenv("SLOPEFORGE_PG_DUMP", "from-env")
+    monkeypatch.setattr(postgres_backup.shutil, "which", lambda _name: "from-path")
+
+    assert resolve_pg_dump_executable("explicit") == "explicit"
+    assert resolve_pg_dump_executable() == "from-env"
+
+    monkeypatch.delenv("SLOPEFORGE_PG_DUMP")
+    assert resolve_pg_dump_executable() == "from-path"
 
 
 def test_pg_dump_password_is_environment_only_and_non_empty_output_is_required(tmp_path: Path) -> None:
