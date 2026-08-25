@@ -1,25 +1,23 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import configure_mappers
-from alembic.config import Config
-from alembic.migration import MigrationContext
-from alembic.script import ScriptDirectory
-from alembic.script.revision import ResolutionError
-from alembic.util.exc import CommandError
 
-from .base import Base
-from . import assessment_models  # noqa: F401  Ensure Assessment tables are validated.
-from . import project_surface_models  # noqa: F401  Ensure Project surface metadata is validated.
-from . import drillhole_models  # noqa: F401  Ensure BlastEvent drillhole tables are validated.
-from .connection import (DatabaseConnectionError, check_connection,
-                         create_database_engine, create_session_factory)
-from .models import User  # noqa: F401
+from .connection import (
+    DatabaseConnectionError,
+    check_connection,
+    create_database_engine,
+    create_session_factory,
+)
 from .migrations import upgrade_to_head
+from .schema_compatibility import (
+    SchemaCompatibilityState,
+    classify_schema_compatibility,
+    database_alembic_heads,
+    expected_alembic_head,
+    known_alembic_revisions,
+    missing_required_tables,
+)
 from .settings import ConfigurationError, Settings, safe_database_location
 
 
@@ -39,31 +37,17 @@ class StartupError(RuntimeError):
         return "\n\n".join(details)
 
 
-def _alembic_script() -> ScriptDirectory:
-    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
-    config = Config(str(root / "alembic.ini"))
-    config.set_main_option("script_location", str(root / "alembic"))
-    return ScriptDirectory.from_config(config)
-
-
 def _expected_alembic_head() -> str:
-    heads = _alembic_script().get_heads()
-    if len(heads) != 1:
-        rendered = ", ".join(heads) if heads else "none"
-        raise StartupError(
-            f"The application migration graph must have exactly one head; found: {rendered}."
-        )
-    return heads[0]
+    """Compatibility wrapper kept for startup tests/callers."""
+    try:
+        return expected_alembic_head()
+    except RuntimeError as exc:
+        raise StartupError(str(exc)) from exc
 
 
 def _database_alembic_heads(engine) -> tuple[str, ...]:
-    with engine.connect() as connection:
-        return tuple(MigrationContext.configure(connection).get_current_heads())
-
-
-def _release_schema_version(revision: str) -> int | None:
-    """Return the comparable production schema version for release-era revisions."""
-    return int(revision) if revision.isdecimal() else None
+    """Compatibility wrapper kept for startup tests/callers."""
+    return database_alembic_heads(engine)
 
 
 def _verify_alembic_revision(engine, server: str | None) -> None:
@@ -73,59 +57,33 @@ def _verify_alembic_revision(engine, server: str | None) -> None:
     except SQLAlchemyError as exc:
         raise StartupError(
             "Could not read the database schema version.",
-            server, reason="database_revision_unreadable",
+            server,
+            reason="database_revision_unreadable",
         ) from exc
 
-    if current_heads == (required,):
+    report = classify_schema_compatibility(
+        current_heads,
+        required,
+        known_alembic_revisions(),
+    )
+    if report.state == SchemaCompatibilityState.UP_TO_DATE:
         return
-
-    if len(current_heads) != 1:
+    if report.state == SchemaCompatibilityState.NEWER_THAN_RELEASE:
         raise StartupError(
-            "The selected database has an incompatible schema state.",
-            server, reason="database_version_incompatible",
+            "The selected database requires a newer version of SlopeForge.",
+            server,
+            reason="application_upgrade_required",
         )
-
-    current = current_heads[0]
-    current_version = _release_schema_version(current)
-    required_version = _release_schema_version(required)
-    if current_version is not None and required_version is not None:
-        if current_version > required_version:
-            raise StartupError(
-                "The selected database requires a newer version of SlopeForge.",
-                server, reason="application_upgrade_required",
-            )
-        if current_version < required_version:
-            raise StartupError(
-                "The selected database uses an older SlopeForge schema.",
-                server, reason="database_upgrade_required",
-            )
-
-    script = _alembic_script()
-    try:
-        known_revision = script.get_revision(current)
-    except (CommandError, ResolutionError):
-        known_revision = None
-
-    if known_revision is not None:
-        # A recognized non-head revision belongs to this application's migration
-        # history and therefore represents an older database schema.
+    if report.state == SchemaCompatibilityState.UPGRADE_REQUIRED:
         raise StartupError(
             "The selected database uses an older SlopeForge schema.",
-            server, reason="database_upgrade_required",
+            server,
+            reason="database_upgrade_required",
         )
-
-    # All production schema revisions from SlopeForge 1 onward use monotonically
-    # increasing integer identifiers. Unknown non-numeric revisions are therefore
-    # legacy pre-1.0 development history, not evidence of a newer application.
-    if current_version is None:
-        raise StartupError(
-            "The selected database uses an older SlopeForge schema.",
-            server, reason="database_upgrade_required",
-        )
-
     raise StartupError(
         "The selected database has an incompatible schema version.",
-        server, reason="database_version_incompatible",
+        server,
+        reason="database_version_incompatible",
     )
 
 
@@ -137,7 +95,8 @@ def _initialize_empty_database(engine, settings: Settings, server: str | None) -
     if existing:
         raise StartupError(
             "The selected database contains data but has no recognized SlopeForge schema version.",
-            server, reason="database_version_incompatible",
+            server,
+            reason="database_version_incompatible",
         )
     upgrade_to_head(settings)
 
@@ -166,28 +125,43 @@ def initialize_database_runtime(settings: Settings | None = None):
         server = safe_database_location(runtime_settings.database_url)
         _initialize_empty_database(engine, runtime_settings, server)
         _verify_alembic_revision(engine, server)
-        configure_mappers()
-        existing = set(inspect(engine).get_table_names())
-        required = set(Base.metadata.tables)
-        missing = sorted(required - existing)
+        missing = list(missing_required_tables(engine))
         if missing:
             raise StartupError(
-                "Required tables were not found in the database: " + ", ".join(missing[:8]) + ("..." if len(missing) > 8 else ""),
+                "Required tables were not found in the database: "
+                + ", ".join(missing[:8])
+                + ("..." if len(missing) > 8 else ""),
                 server,
             )
         session_factory = create_session_factory(engine)
         runtime_ready = True
         return runtime_settings, engine, session_factory
     except ConfigurationError as exc:
-        raise StartupError(str(exc), reason="configuration_error",
-                           actions=("Configure the PostgreSQL server and file storage in SlopeForge Settings.",)) from exc
+        raise StartupError(
+            str(exc),
+            reason="configuration_error",
+            actions=(
+                "Configure the PostgreSQL server and file storage in SlopeForge Settings.",
+            ),
+        ) from exc
     except DatabaseConnectionError as exc:
-        server = safe_database_location(runtime_settings.database_url) if runtime_settings else None
+        server = (
+            safe_database_location(runtime_settings.database_url)
+            if runtime_settings
+            else None
+        )
         raise StartupError(str(exc), server, reason="connection_error") from exc
     except SQLAlchemyError as exc:
-        server = safe_database_location(runtime_settings.database_url) if runtime_settings else None
-        raise StartupError("Could not connect to the database or verify tables.", server,
-                           reason="database_error") from exc
+        server = (
+            safe_database_location(runtime_settings.database_url)
+            if runtime_settings
+            else None
+        )
+        raise StartupError(
+            "Could not connect to the database or verify tables.",
+            server,
+            reason="database_error",
+        ) from exc
     finally:
         if engine is not None and not runtime_ready:
             _dispose_failed_engine(engine)
