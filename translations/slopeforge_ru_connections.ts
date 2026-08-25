@@ -52,6 +52,7 @@
         <message><source>Test</source><translation>Проверить</translation></message>
         <message><source>Testing PostgreSQL…</source><translation>Проверка PostgreSQL…</translation></message>
         <message><source>The current SlopeForge session will be closed before the selected server is opened.</source><translation>Текущий сеанс SlopeForge будет закрыт перед открытием выбранного сервера.</translation></message>
+        <message><source>The server selection preference could not be saved.</source><translation>Не удалось сохранить настройку выбора сервера.</translation></message>
         <message><source>This SlopeForge installation is pinned by DATABASE_URL. Change the environment configuration to use another server.</source><translation>Подключение этой установки SlopeForge задано через DATABASE_URL. Измените параметры окружения, чтобы использовать другой сервер.</translation></message>
         <message><source>This installation is currently pinned by DATABASE_URL. Saved profiles can be managed, but runtime switching is disabled until the environment override is removed.</source><translation>Подключение сейчас задано через DATABASE_URL. Сохранёнными профилями можно управлять, но переключение сервера отключено до удаления настройки окружения.</translation></message>
         <message><source>current server</source><translation>текущий сервер</translation></message>
