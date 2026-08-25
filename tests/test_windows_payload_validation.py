@@ -10,7 +10,10 @@ REQUIRED = (
     "_internal/translations/slopeforge_ru.ts",
     "_internal/alembic.ini",
     "_internal/alembic/env.py",
-    "_internal/alembic/versions/0001_mvp_baseline.py",
+    "_internal/alembic/versions/0001_slopeforge_1.py",
+    "_internal/alembic/schema_v1/core.py",
+    "_internal/alembic/schema_v1/project_surfaces.py",
+    "_internal/alembic/schema_v1/drillhole_datasets.py",
     "_internal/app/icons/slopeforge_icon.ico",
 )
 
@@ -24,6 +27,21 @@ def make_payload(root: Path) -> None:
 
 def test_complete_payload_is_accepted(tmp_path):
     make_payload(tmp_path)
+    require_payload(tmp_path)
+
+
+def test_missing_release_1_schema_component_is_rejected(tmp_path):
+    make_payload(tmp_path)
+    missing = tmp_path / "_internal/alembic/schema_v1/core.py"
+    missing.unlink()
+
+    with pytest.raises(SystemExit, match=r"schema_v1[\\/]core\.py"):
+        require_payload(tmp_path)
+
+
+def test_pre_1_0_baseline_is_not_required(tmp_path):
+    make_payload(tmp_path)
+    assert not (tmp_path / "_internal/alembic/versions/0001_mvp_baseline.py").exists()
     require_payload(tmp_path)
 
 
