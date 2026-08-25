@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import configure_mappers
 
 from .connection import (
     DatabaseConnectionError,
@@ -125,6 +126,9 @@ def initialize_database_runtime(settings: Settings | None = None):
         server = safe_database_location(runtime_settings.database_url)
         _initialize_empty_database(engine, runtime_settings, server)
         _verify_alembic_revision(engine, server)
+        # Preserve the explicit mapper validation seam used by startup smoke tests;
+        # missing_required_tables() also configures defensively for non-startup callers.
+        configure_mappers()
         missing = list(missing_required_tables(engine))
         if missing:
             raise StartupError(
