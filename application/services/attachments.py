@@ -272,18 +272,21 @@ class EntityAttachmentService:
         return AttachmentDeleteResult()
 
     def open_file(self, attachment: EntityAttachment) -> bool:
-        self._require_storage()
+        if not self.storage_available:
+            return False
         path = self.resolve_path(attachment)
         return path.is_file() and open_local_path(path)
 
     def open_owner_folder(self, owner_type: str, owner_id: str) -> bool:
-        self._require_storage()
+        if not self.storage_available:
+            return False
         return open_local_path(self.owner_folder(owner_type, owner_id))
 
     def open_attachment_folder(
         self, owner_type: str, owner_id: str, attachment_kind: str
     ) -> bool:
-        self._require_storage()
+        if not self.storage_available:
+            return False
         return open_local_path(
             self.attachment_folder(owner_type, owner_id, attachment_kind)
         )
