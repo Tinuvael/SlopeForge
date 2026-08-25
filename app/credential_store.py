@@ -48,8 +48,10 @@ class WindowsCredentialStore:
             ):
                 return None
             raise CredentialStoreError("Could not read the saved database credential.") from exc
-        blob = result.get("CredentialBlob", "")
+        blob = result.get("CredentialBlob", b"")
         if isinstance(blob, bytes):
+            if not blob:
+                return ""
             for encoding in ("utf-16-le", "utf-8"):
                 try:
                     return blob.decode(encoding).rstrip("\x00")
@@ -60,13 +62,17 @@ class WindowsCredentialStore:
 
     def write(self, profile_id: str, username: str, password: str) -> None:
         win32cred = self._module()
+        # CRED_TYPE_GENERIC treats the credential blob as opaque bytes. UTF-16LE
+        # gives deterministic Windows round-tripping without serializing the
+        # PostgreSQL password into SlopeForge's profile metadata.
+        secret = str(password or "").encode("utf-16-le")
         try:
             win32cred.CredWrite(
                 {
                     "Type": win32cred.CRED_TYPE_GENERIC,
                     "TargetName": credential_target(profile_id),
                     "UserName": str(username or ""),
-                    "CredentialBlob": str(password or ""),
+                    "CredentialBlob": secret,
                     "Persist": win32cred.CRED_PERSIST_LOCAL_MACHINE,
                     "Comment": "SlopeForge PostgreSQL connection credential",
                 },
