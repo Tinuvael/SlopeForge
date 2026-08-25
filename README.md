@@ -20,22 +20,30 @@ It organizes engineering data around Projects, Domains, Blast Events, Production
 - Photos and engineering documents with controlled ownership
 - Project-level Excel reporting
 - PostgreSQL persistence with SQLAlchemy and Alembic
+- Saved multi-server PostgreSQL connection profiles with secure Windows credential storage
+- Separate Windows database updater with verified PostgreSQL backup before production migrations
 - English and Russian UI localization
 
 ## Download
 
 Download the latest Windows package from **[GitHub Releases](https://github.com/Tinuvael/SlopeForge/releases/latest)**.
 
-Available release artifacts include a portable ZIP and Windows installer. PostgreSQL is not bundled and must be configured separately.
+Available release artifacts include a portable ZIP and Windows installer. PostgreSQL is not bundled and must be configured separately. Installed Windows packages also include **SlopeForge Updater** for backup-gated production database migrations.
 
 ## Run from source
 
-Use Python 3.12 and a PostgreSQL database. See **[Database setup](docs/database_setup.md)** for connection configuration.
+Use Python 3.12 and a PostgreSQL database. See **[Database setup](docs/database_setup.md)** for connection configuration and production upgrade guidance.
 
 ```bash
 python -m pip install -r requirements.txt
 alembic upgrade head
 python main.py
+```
+
+The updater can be launched from a source checkout with:
+
+```bash
+python updater_main.py
 ```
 
 ## Engineering note
