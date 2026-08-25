@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from pathlib import Path
 
 import pytest
 
@@ -50,7 +49,7 @@ def _attachment() -> EntityAttachment:
     )
 
 
-def test_database_only_attachments_keep_metadata_without_touching_files(tmp_path):
+def test_database_only_attachments_keep_metadata_without_touching_files():
     state = AssessmentDomainState()
     item = _attachment()
     state.attachments.append(item)
@@ -66,7 +65,6 @@ def test_database_only_attachments_keep_metadata_without_touching_files(tmp_path
     assert service.list_for_owner("blast_event", "BE-001", "document") == [item]
     assert service.counts("blast_event", "BE-001") == (0, 1)
     assert service.is_missing(item) is True
-    assert tmp_path.iterdir() is not None  # no shared-storage path is required
 
     service.update_metadata(
         item.id,
@@ -78,8 +76,11 @@ def test_database_only_attachments_keep_metadata_without_touching_files(tmp_path
     )
     assert updates == ["Updated survey"]
 
-    with pytest.raises(FileStorageUnavailableError):
-        service.open_file(item)
+    # Read/open UI actions are harmless no-ops in metadata-only mode; destructive
+    # and import operations still fail explicitly before touching a filesystem.
+    assert service.open_file(item) is False
+    assert service.open_owner_folder("blast_event", "BE-001") is False
+    assert service.open_attachment_folder("blast_event", "BE-001", "document") is False
     with pytest.raises(FileStorageUnavailableError):
         service.delete_attachment(item.id)
     with pytest.raises(FileStorageUnavailableError):
