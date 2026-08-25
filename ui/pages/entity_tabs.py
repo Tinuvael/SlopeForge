@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QFileInfo, QSize, Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -144,6 +145,39 @@ class StorageAwareAttachmentManagerWidget(EntityAttachmentManagerWidget):
     def refresh(self):
         super().refresh()
         self._sync_storage_actions()
+
+    def _document_name_widget(self, item):
+        if self._storage_available():
+            return super()._document_name_widget(item)
+
+        # Database-only mode must not resolve attachment.relative_path at all.
+        # Use the filename solely as icon/metadata input; no filesystem probe is
+        # made against the configured shared-storage location.
+        wrapper = QWidget()
+        wrapper.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout = QHBoxLayout(wrapper)
+        layout.setContentsMargins(7, 4, 7, 4)
+        layout.setSpacing(10)
+        icon_label = QLabel()
+        icon_label.setFixedSize(38, 38)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if self._file_icon_provider is not None:
+            icon = self._file_icon_provider.icon(QFileInfo(item.original_filename))
+            icon_label.setPixmap(icon.pixmap(32, 32))
+        text = QVBoxLayout()
+        text.setContentsMargins(0, 0, 0, 0)
+        text.setSpacing(1)
+        title = QLabel(item.title or Path(item.original_filename).stem)
+        title.setObjectName("RelatedEntityTitle")
+        filename = QLabel(item.original_filename)
+        filename.setObjectName("AttachmentFilename")
+        text.addWidget(title)
+        text.addWidget(filename)
+        layout.addWidget(icon_label)
+        layout.addLayout(text, 1)
+        if item.description:
+            wrapper.setToolTip(item.description)
+        return wrapper
 
     def add(self, _checked=False):
         if not self._storage_available():
