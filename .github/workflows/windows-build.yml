@@ -47,7 +47,7 @@ jobs:
       - name: Run PostgreSQL integration tests
         run: python -m pytest -q -m postgres
 
-  build:
+  pr-checks:
     runs-on: windows-latest
     steps:
       - name: Check out selected ref
@@ -59,12 +59,11 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install runtime, test and build dependencies
+      - name: Install runtime and test dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -r requirements-build.txt pytest
-          choco install innosetup --version=6.7.1 --no-progress -y
+          python -m pip install -r requirements.txt pytest
 
       - name: Validate Python code and non-PostgreSQL tests
         shell: pwsh
@@ -75,6 +74,29 @@ jobs:
           python -m compileall app application domain infrastructure database repositories ui
           python tools/architecture_audit.py | Out-Null
           python -m pytest -q -m "not postgres"
+
+  build:
+    if: github.event_name == 'workflow_dispatch'
+    needs:
+      - postgres-tests
+      - pr-checks
+    runs-on: windows-latest
+    steps:
+      - name: Check out selected ref
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-build.txt
+          choco install innosetup --version=6.7.1 --no-progress -y
 
       - name: Build canonical Windows release
         shell: cmd
