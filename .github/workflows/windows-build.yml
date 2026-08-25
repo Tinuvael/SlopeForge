@@ -71,7 +71,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           $ErrorActionPreference = "Stop"
-          python -m compileall app application domain infrastructure database repositories ui
+          python -m compileall app application domain infrastructure database repositories ui main.py updater_main.py
           python tools/architecture_audit.py | Out-Null
           python -m pytest -q -m "not postgres"
 
@@ -123,6 +123,7 @@ jobs:
           $installed = Join-Path $env:RUNNER_TEMP "installed"
           Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installed" -Wait -NoNewWindow
           python tools/validate_windows_payload.py $installed
+          if (!(Test-Path "$installed/SlopeForgeUpdater.exe")) { throw "Installer did not include SlopeForge Updater" }
           if (!(Test-Path "$installed/unins000.exe")) { throw "Installer did not create an uninstaller" }
           Start-Process "$installed/unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -NoNewWindow
           if (Test-Path "$installed/SlopeForge.exe") { throw "Silent uninstall left application files behind" }
