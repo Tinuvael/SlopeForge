@@ -26,7 +26,7 @@ class Header(QWidget):
     add_blast_event_requested = Signal()
     add_assessment_area_requested = Signal()
     archive_requested = Signal()
-    analysis_requested=Signal()
+    analysis_requested = Signal()
     report_requested = Signal()
     navigation_toggle_requested = Signal()
     switch_server_requested = Signal()
@@ -49,7 +49,9 @@ class Header(QWidget):
         self.add_project_action = self.add_menu.addAction(tr("Add project"))
         self.add_domain_action = self.add_menu.addAction(tr("Add domain"))
         self.add_blast_event_action = self.add_menu.addAction(tr("Add blast event"))
-        self.add_assessment_area_action = self.add_menu.addAction(tr("Add assessment area"))
+        self.add_assessment_area_action = self.add_menu.addAction(
+            tr("Add assessment area")
+        )
         self.add_button.setIcon(high_contrast_icon(ui_icon("add")))
         self.add_project_action.setIcon(ui_icon("folder-open"))
         self.add_domain_action.setIcon(ui_icon("domain"))
@@ -84,18 +86,22 @@ class Header(QWidget):
         self.analysis_button.setIcon(ui_icon("analytics"))
         self.analysis_button.clicked.connect(self.analysis_requested)
         self.report_button = QPushButton(tr("Report"))
-        self.report_button.setIcon(ui_icon("report","blue"))
+        self.report_button.setIcon(ui_icon("report", "blue"))
         self.report_button.setEnabled(False)
         self.report_button.clicked.connect(self.report_requested)
 
-        server_name = getattr(context, "connection_profile_name", "") or tr("Server")
+        server_name = (
+            getattr(context, "connection_profile_name", "") or tr("Server")
+        )
         self.server_button = QPushButton(server_name)
         self.server_button.setObjectName("ServerProfileButton")
         self.server_button.setToolTip(
             f"{tr('Current server')}: {server_name}\n{tr('Switch server…')}"
         )
         self.server_button.clicked.connect(self._switch_server)
-        self.server_button.setEnabled(getattr(context, "runtime_control", None) is not None)
+        self.server_button.setEnabled(
+            getattr(context, "runtime_control", None) is not None
+        )
 
         self.settings = QPushButton(tr("Settings"))
         self.settings.setIcon(ui_icon("settings"))
@@ -142,7 +148,9 @@ class Header(QWidget):
         )
 
     def set_archive_context(self, enabled, archived=False):
-        self.archive_button.setEnabled(self.context.current_user.can_edit and enabled)
+        self.archive_button.setEnabled(
+            self.context.current_user.can_edit and enabled
+        )
         self.archive_button.setText(tr("Restore") if archived else tr("Archive"))
         self.archive_button.setIcon(ui_icon("restore" if archived else "archive"))
 
@@ -157,6 +165,12 @@ class Header(QWidget):
         dialog = SettingsDialog(self.context, self)
         dialog.catalogue_changed.connect(self.catalogue_changed)
         dialog.exec()
+        profile_id = dialog.requested_switch_profile_id
+        if not profile_id:
+            return
+        control = getattr(self.context, "runtime_control", None)
+        if control is not None:
+            control.request_switch(profile_id, parent=self.window())
 
     def focus_search(self):
         self.search.setFocus(Qt.FocusReason.ShortcutFocusReason)
