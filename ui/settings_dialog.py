@@ -11,7 +11,7 @@ from infrastructure.services.session_service import RememberTokenService
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget
 
 from ui.application_theme import apply_application_theme
 from ui.connection_dialog import ConnectionSettingsPage
@@ -36,7 +36,7 @@ class SettingsDialog(QDialog):
         self.menu.setFixedWidth(190)
         self.pages = QStackedWidget()
         self._add_page(tr("General"), self.general_page())
-        self._add_page(tr("Connection"), ConnectionSettingsPage())
+        self._add_page(tr("Connections"), ConnectionSettingsPage(context=context))
         if context:
             self.catalogues_page = EngineeringCataloguesPage(
                 create_explosive_catalogue(context), can_edit=context.current_user.can_edit)
@@ -96,11 +96,15 @@ class SettingsDialog(QDialog):
         self.theme_combo.currentIndexChanged.connect(self._theme_changed)
 
         if self.context:
-            logout = QPushButton(tr("Sign out on this computer"))
-            logout.clicked.connect(self.sign_out)
-            revoke_all = QPushButton(tr("End all my saved sessions"))
+            server_name = self.context.connection_profile_name or tr("current server")
+            server = QLabel(f"{tr('Signed in server')}: {server_name}")
+            server.setObjectName("FormHelperText")
+            layout.addWidget(server)
+            forget = QPushButton(tr("Forget sign-in on this server"))
+            forget.clicked.connect(self.forget_sign_in)
+            revoke_all = QPushButton(tr("End all my saved sessions on this server"))
             revoke_all.clicked.connect(self.revoke_my_sessions)
-            layout.addWidget(logout)
+            layout.addWidget(forget)
             layout.addWidget(revoke_all)
         layout.addStretch()
         return widget
@@ -114,15 +118,40 @@ class SettingsDialog(QDialog):
         if app is not None:
             apply_application_theme(app, self.theme_combo.currentData(), persist=True)
 
+    def _remember_service(self) -> RememberTokenService | None:
+        if self.context is None:
+            return None
+        return RememberTokenService(
+            self.context.session_factory,
+            scope_id=self.context.session_scope_id or self.context.connection_profile_id or "default",
+        )
+
+    def forget_sign_in(self) -> None:
+        service = self._remember_service()
+        if service is None:
+            return
+        service.forget_local()
+        QMessageBox.information(
+            self,
+            tr("Saved sign-in removed"),
+            tr("SlopeForge will ask for your user credentials the next time this server is opened."),
+        )
+
+    # Compatibility name retained for callers/tests that used the old action.
     def sign_out(self) -> None:
-        if self.context:
-            RememberTokenService(self.context.session_factory).revoke_local()
-        self.accept()
+        self.forget_sign_in()
 
     def revoke_my_sessions(self) -> None:
-        if self.context:
-            RememberTokenService(self.context.session_factory).revoke_all_for_user(self.context.current_user.id)
-        self.accept()
+        service = self._remember_service()
+        if service is None or self.context is None:
+            return
+        service.revoke_all_for_user(self.context.current_user.id)
+        service.forget_local()
+        QMessageBox.information(
+            self,
+            tr("Saved sessions ended"),
+            tr("All remembered sessions for your user on this server have been ended."),
+        )
 
     def about_page(self) -> QWidget:
         widget = QWidget()
