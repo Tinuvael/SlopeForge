@@ -7,6 +7,7 @@ from pathlib import Path
 def require_payload(payload: Path) -> None:
     required = (
         Path("SlopeForge.exe"),
+        Path("SlopeForgeUpdater.exe"),
         Path("_internal/translations/slopeforge_ru.ts"),
         Path("_internal/alembic.ini"),
         Path("_internal/alembic/env.py"),
