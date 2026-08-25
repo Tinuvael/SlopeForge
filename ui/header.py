@@ -86,7 +86,7 @@ class Header(QWidget):
         self.analysis_button.setIcon(ui_icon("analytics"))
         self.analysis_button.clicked.connect(self.analysis_requested)
         self.report_button = QPushButton(tr("Report"))
-        self.report_button.setIcon(ui_icon("report", "blue"))
+        self.report_button.setIcon(ui_icon("report","blue"))
         self.report_button.setEnabled(False)
         self.report_button.clicked.connect(self.report_requested)
 
