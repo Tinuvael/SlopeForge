@@ -8,38 +8,44 @@ SlopeForge uses PostgreSQL as its only application database through SQLAlchemy 2
 python -m pip install -r requirements.txt
 ```
 
-## Configure environment
+## Connection configuration
 
-Copy `.env.example` to `.env` and set the local database/storage values.
+The normal desktop application stores named connection-profile metadata locally and asks the user to select a server before authentication. PostgreSQL passwords are not stored in the profile JSON; Windows builds keep them in Windows Credential Manager.
 
-Linux/macOS:
+Saved profile metadata lives under the normal SlopeForge application configuration directory, on Windows:
 
-```bash
-cp .env.example .env
+```text
+%APPDATA%\SlopeForge\connections.json
 ```
 
-Windows PowerShell:
+One installation may contain multiple independent server/database profiles. Each profile has a stable local identifier, display name, PostgreSQL host/port/database/user, a storage mode, and last-used metadata.
 
-```powershell
-Copy-Item .env.example .env
-notepad .env
-```
+Two storage modes are supported:
 
-Example:
+- **Full** — PostgreSQL plus a configured shared file-storage directory. This is the normal site/workstation mode.
+- **Database only** — PostgreSQL without physical shared storage. PostgreSQL-backed project, blast, assessment and attachment metadata remain available, while physical file preview/open/add/delete/import actions are unavailable and must not probe the missing network/share path.
+
+`Database only` is a connection/storage mode, not an application permission role. SlopeForge `admin`, `editor`, and `viewer` permissions remain authoritative after the selected database authenticates the user.
+
+### Environment-pinned deployment
+
+Administratively managed single-server installations may still pin the runtime through environment variables or `.env`:
 
 ```env
 DATABASE_URL=postgresql+psycopg://slopeforge_user:change-me@localhost:5432/slopeforge
 STORAGE_ROOT=C:/SlopeForge/storage
 ```
 
-A LAN PostgreSQL server and shared storage path are also valid, for example:
+A LAN PostgreSQL server and shared storage path are also valid:
 
 ```env
 DATABASE_URL=postgresql+psycopg://slopeforge_user:change-me@192.168.1.20:5432/slopeforge
 STORAGE_ROOT=//fileserver/SlopeForge/storage
 ```
 
-`.env` is ignored by Git. Never commit credentials. Real process/system environment variables override `.env` values.
+If `DATABASE_URL` is set and `STORAGE_ROOT` is omitted, the pinned runtime is treated as `Database only`.
+
+Environment configuration takes precedence over locally saved profiles. While `DATABASE_URL` pins the installation, interactive server switching is disabled. `.env` is ignored by Git; never commit credentials. Real process/system environment variables override `.env` values.
 
 ## Create the database
 
@@ -90,20 +96,26 @@ migration after the current head and must preserve production data as required.
 
 ### GUI first-run initialization
 
-When the configured PostgreSQL database exists but has no user tables, SlopeForge
-applies the current Alembic baseline automatically. The connection may come from
-environment variables, the connection dialog, or the saved
-`%APPDATA%\SlopeForge\connection.ini`; a temporary `.env` is not required.
-Automatic initialization is refused when an unversioned database already contains
-user tables or reports an obsolete migration revision.
+When the selected PostgreSQL database exists but has no user tables, SlopeForge applies the current Alembic baseline automatically. Automatic initialization is refused when an unversioned database already contains user tables or reports an incompatible migration revision.
+
+On normal desktop startup:
+
+1. SlopeForge shows `Select server` before SlopeForge user authentication unless a saved profile is configured to skip server selection.
+2. `Add` / `Edit` collects and tests PostgreSQL settings plus optional Full-mode file storage.
+3. A successful saved profile writes non-secret metadata to `connections.json` and its PostgreSQL password to Windows Credential Manager on Windows.
+4. Only after a server profile is selected does SlopeForge create that profile's Engine / SessionFactory and authenticate the SlopeForge application user.
+5. `Remember me on this server` stores a remember token separately for that connection profile; application-user passwords are not stored locally.
+
+The former single `%APPDATA%\SlopeForge\connection.ini` format is migrated once when encountered. Its PostgreSQL password is moved to the credential store, the profile metadata is written to `connections.json`, and the plaintext legacy INI is removed after successful migration.
 
 Manual Windows smoke check:
 
-1. Remove `.env` and `%APPDATA%\SlopeForge\connection.ini`.
-2. Drop and recreate `slopeforge` as an empty PostgreSQL database.
-3. Launch SlopeForge and enter the connection and storage paths in the connection dialog.
-4. Confirm that baseline revision `1` is applied and the first-administrator dialog appears.
-5. Restart SlopeForge; the saved connection should open normally without showing the connection dialog again.
+1. Start from no environment-pinned `DATABASE_URL` and no saved `connections.json`.
+2. Launch SlopeForge; confirm `Select server` appears before the application login.
+3. Add a Full profile, test it, connect, and sign in with `Remember me on this server` enabled.
+4. Restart; confirm server selection appears again unless `Skip server selection on startup` was enabled, and confirm the remembered login is scoped to that server.
+5. Add a second profile and switch to it from the header or `Settings → Connections`; confirm a clean new login/runtime is used.
+6. Add a `Database only` profile with no storage path; confirm database-backed pages open and attachment metadata/counts render without probing physical shared files.
 
 ## First administrator
 
@@ -119,7 +131,7 @@ Or launch the desktop application:
 python main.py
 ```
 
-If there are no users, the GUI can create the first administrator. Existing users prevent the first-admin flow from running again.
+If there are no users in the selected database, the GUI can create the first administrator. Existing users prevent the first-admin flow from running again.
 
 ## Run SlopeForge
 
@@ -131,9 +143,11 @@ Normal UI terminology is Project / Quarry and Domain. Internal `Site` is the per
 
 ## Attachment storage
 
-Attachment metadata is stored in PostgreSQL; physical files are stored under `STORAGE_ROOT` through the current storage/infrastructure layer.
+Attachment metadata is stored in PostgreSQL. In a Full connection, physical files are stored under the configured file-storage root through the current storage/infrastructure layer.
 
-Do not assume a database cascade removes physical files. File deletion/copy/move must go through the application/storage workflow so rollback and one-owner semantics are preserved.
+In `Database only`, no substitute local attachment directory is created. Metadata and counts can be read from PostgreSQL, but physical file paths are unavailable. Physical preview/open/add/delete actions and source-file imports must remain disabled or fail before filesystem/network access.
+
+Do not assume a database cascade removes physical files. File deletion/copy/move in Full mode must go through the application/storage workflow so rollback and one-owner semantics are preserved.
 
 ## Tests
 
