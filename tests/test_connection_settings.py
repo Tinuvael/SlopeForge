@@ -7,6 +7,7 @@ from sqlalchemy.engine import make_url
 
 import app.connection_settings as connection_settings_module
 from app.connection_settings import (
+    DATABASE_ONLY,
     ConnectionProfile,
     ConnectionSettingsError,
     ConnectionSettingsStore,
@@ -14,16 +15,31 @@ from app.connection_settings import (
     resolve_runtime_settings,
     validate_storage_root,
 )
+from app.credential_store import MemoryCredentialStore
 
 
 @pytest.fixture(autouse=True)
 def isolate_local_env(monkeypatch):
-    """Keep unit tests independent from a developer's repository-local .env file."""
     monkeypatch.setattr(connection_settings_module, "load_local_env", lambda: None)
+
+
+def clear_runtime_environment(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("STORAGE_ROOT", raising=False)
+
+
+def make_store(tmp_path):
+    credentials = MemoryCredentialStore()
+    return ConnectionSettingsStore(
+        tmp_path / "connections.json",
+        credential_store=credentials,
+        legacy_path=tmp_path / "connection.ini",
+    ), credentials
 
 
 def profile(storage_root: Path) -> ConnectionProfile:
     return ConnectionProfile(
+        name="Birkachan",
         host="db.internal",
         port=5433,
         database="slopeforge",
@@ -33,22 +49,18 @@ def profile(storage_root: Path) -> ConnectionProfile:
     )
 
 
-def clear_runtime_environment(monkeypatch):
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.delenv("STORAGE_ROOT", raising=False)
+def test_saved_connection_profile_round_trips_without_plaintext_password(tmp_path):
+    store, credentials = make_store(tmp_path)
+    saved = store.save(profile(tmp_path))
 
+    loaded = store.runtime_profile(saved.profile_id)
 
-def test_saved_connection_profile_round_trips(tmp_path):
-    store = ConnectionSettingsStore(tmp_path / "connection.ini")
-    expected = profile(tmp_path)
-    store.save(expected)
-
-    loaded = store.load()
-
-    assert loaded == expected.normalized()
+    assert loaded.host == "db.internal"
+    assert loaded.password == "p@ss:/word"
     text = store.path.read_text(encoding="utf-8")
     assert "db.internal" in text
-    assert "p@ss:/word" in text
+    assert "p@ss:/word" not in text
+    assert credentials.read(saved.profile_id) == "p@ss:/word"
 
 
 def test_profile_builds_psycopg_url_without_losing_special_password(tmp_path):
@@ -64,9 +76,21 @@ def test_profile_builds_psycopg_url_without_losing_special_password(tmp_path):
     assert settings.storage_root == tmp_path
 
 
+def test_database_only_profile_does_not_require_storage():
+    item = ConnectionProfile(
+        name="Management viewer",
+        host="db.internal",
+        database="slopeforge",
+        username="viewer",
+        mode=DATABASE_ONLY,
+    )
+    item.validate_required()
+    assert item.to_settings().storage_root is None
+
+
 def test_saved_profile_is_used_when_environment_is_not_configured(monkeypatch, tmp_path):
     clear_runtime_environment(monkeypatch)
-    store = ConnectionSettingsStore(tmp_path / "connection.ini")
+    store, _credentials = make_store(tmp_path)
     store.save(profile(tmp_path))
 
     settings, source = resolve_runtime_settings(store)
@@ -77,7 +101,7 @@ def test_saved_profile_is_used_when_environment_is_not_configured(monkeypatch, t
 
 
 def test_complete_environment_configuration_overrides_saved_profile(monkeypatch, tmp_path):
-    store = ConnectionSettingsStore(tmp_path / "connection.ini")
+    store, _credentials = make_store(tmp_path)
     store.save(profile(tmp_path))
     environment_url = (
         "postgresql+psycopg://env_user:env_password@env-host:5432/env_db"
@@ -95,19 +119,33 @@ def test_complete_environment_configuration_overrides_saved_profile(monkeypatch,
 
 def test_missing_configuration_requests_first_run_setup(monkeypatch, tmp_path):
     clear_runtime_environment(monkeypatch)
-    store = ConnectionSettingsStore(tmp_path / "missing.ini")
+    store, _credentials = make_store(tmp_path)
 
     with pytest.raises(MissingConnectionConfiguration):
         resolve_runtime_settings(store)
 
 
-def test_corrupt_saved_profile_is_rejected(monkeypatch, tmp_path):
-    clear_runtime_environment(monkeypatch)
-    path = tmp_path / "connection.ini"
-    path.write_text("[connection]\nhost=localhost\n", encoding="utf-8")
+def test_legacy_connection_ini_migrates_secret_out_of_plaintext(tmp_path):
+    legacy = tmp_path / "connection.ini"
+    legacy.write_text(
+        "[connection]\n"
+        "host=localhost\n"
+        "port=5432\n"
+        "database=slopeforge\n"
+        "username=postgres\n"
+        "password=legacy-secret\n"
+        f"storage_root={tmp_path.as_posix()}\n",
+        encoding="utf-8",
+    )
+    store, credentials = make_store(tmp_path)
 
-    with pytest.raises(ConnectionSettingsError):
-        ConnectionSettingsStore(path).load()
+    items = store.list_profiles()
+
+    assert len(items) == 1
+    assert credentials.read(items[0].profile_id) == "legacy-secret"
+    assert not legacy.exists()
+    assert legacy.with_suffix(".ini.migrated").exists()
+    assert "legacy-secret" not in store.path.read_text(encoding="utf-8")
 
 
 def test_storage_validation_accepts_writable_folder(tmp_path):
