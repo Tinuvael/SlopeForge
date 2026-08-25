@@ -76,8 +76,11 @@ def test_database_only_attachments_keep_metadata_without_touching_files():
     )
     assert updates == ["Updated survey"]
 
-    # Read/open UI actions are harmless no-ops in metadata-only mode; destructive
-    # and import operations still fail explicitly before touching a filesystem.
+    # Metadata-only mode exposes no substitute local path. Open commands are
+    # harmless no-ops; destructive/import/path-resolution operations fail before
+    # any filesystem or network-share access.
+    with pytest.raises(FileStorageUnavailableError):
+        service.resolve_path(item)
     assert service.open_file(item) is False
     assert service.open_owner_folder("blast_event", "BE-001") is False
     assert service.open_attachment_folder("blast_event", "BE-001", "document") is False
