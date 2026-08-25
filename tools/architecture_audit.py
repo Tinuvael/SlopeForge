@@ -18,7 +18,7 @@ IGNORED_PARTS = {".git", ".venv", "venv", "env", "build", "dist", "__pycache__",
 
 def python_files(include_tests: bool = False) -> list[Path]:
     roots = [ROOT / name for name in SOURCE_ROOTS]
-    roots.append(ROOT / "main.py")
+    roots.extend((ROOT / "main.py", ROOT / "updater_main.py"))
     if include_tests:
         roots.append(ROOT / "tests")
     files: list[Path] = []
