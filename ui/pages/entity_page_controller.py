@@ -1,6 +1,8 @@
 """Thin UI adapter for entity-page application services."""
-from app.use_case_factory import (create_assessment_area_context_queries,
-                                  create_entity_editing_session)
+from app.use_case_factory import (
+    create_assessment_area_context_queries,
+    create_entity_editing_session,
+)
 from application.services.attachments import EntityAttachmentService
 from infrastructure.services.contour_blast_service import ContourBlastService
 
@@ -12,19 +14,34 @@ class EntityPageController:
         self.domain_id = self.editing.domain_id
         self.state = self.editing.state
         self.links = self.editing.links
+        storage_enabled = bool(getattr(context, "file_storage_available", False))
+        storage_path = (
+            context.storage_root / "slopeforge_state.json"
+            if storage_enabled and context.storage_root is not None
+            else None
+        )
         self.attachments = EntityAttachmentService(
-            self.state, context.storage_root / "slopeforge_state.json",
+            self.state,
+            storage_path,
             on_add=self._persist_attachment_add,
             on_update=self.editing.update_attachment_metadata,
-            on_delete=self.editing.delete_attachment_metadata)
+            on_delete=self.editing.delete_attachment_metadata,
+            storage_enabled=storage_enabled,
+        )
         self.contour_service = ContourBlastService(context.session_factory)
         self.area_context = create_assessment_area_context_queries(context)
 
     def _persist_attachment_add(self, attachments):
         owner = None
         if attachments and attachments[0].owner_type == "assessment_evaluation":
-            owner = next((item for item in self.state.evaluations
-                          if item.id == attachments[0].owner_id), None)
+            owner = next(
+                (
+                    item
+                    for item in self.state.evaluations
+                    if item.id == attachments[0].owner_id
+                ),
+                None,
+            )
         self.editing.add_attachment_metadata_batch(attachments, owner)
 
     @property
@@ -33,18 +50,21 @@ class EntityPageController:
 
     @property
     def expected_version(self):
-        """Canonical version for every command issued by this open entity page."""
         return self.editing.expected_version
 
     def event(self, event_id):
-        return next((event for event in self.state.blast_events if event.id == event_id), None)
+        return next(
+            (event for event in self.state.blast_events if event.id == event_id), None
+        )
 
     def production_event(self, event_id):
         event = self.event(event_id)
         return event if event is not None and event.event_type == "production" else None
 
     def area(self, area_id):
-        return next((area for area in self.state.assessment_areas if area.id == area_id), None)
+        return next(
+            (area for area in self.state.assessment_areas if area.id == area_id), None
+        )
 
     def project_assessment_boundaries(self):
         return self.area_context.list_current_boundaries(self.site_id)
