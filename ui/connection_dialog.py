@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -39,6 +40,21 @@ from database.connection import DatabaseConnectionError, check_connection, creat
 from database.settings import ConfigurationError, Settings
 
 
+def _confirm_remove(parent) -> bool:
+    box = QMessageBox(
+        QMessageBox.Icon.Warning,
+        tr("Remove connection"),
+        tr("Remove this saved connection from this computer?"),
+        parent=parent,
+    )
+    remove = box.addButton(tr("Remove"), QMessageBox.ButtonRole.DestructiveRole)
+    cancel = box.addButton(tr("Cancel"), QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(cancel)
+    box.setEscapeButton(cancel)
+    box.exec()
+    return box.clickedButton() is remove
+
+
 class ConnectionForm(QWidget):
     def __init__(self, profile: ConnectionProfile | None = None, parent=None):
         super().__init__(parent)
@@ -50,18 +66,18 @@ class ConnectionForm(QWidget):
 
         identity_card = QFrame()
         identity_card.setObjectName("ConnectionCard")
-        identity_layout = QFormLayout(identity_card)
-        identity_layout.setContentsMargins(14, 12, 14, 12)
-        identity_layout.setHorizontalSpacing(12)
-        identity_layout.setVerticalSpacing(8)
+        identity_form = QFormLayout(identity_card)
+        identity_form.setContentsMargins(14, 12, 14, 12)
+        identity_form.setHorizontalSpacing(12)
+        identity_form.setVerticalSpacing(8)
         self.name = QLineEdit(profile.name)
         self.name.setPlaceholderText(tr("e.g. Birkachan production"))
         self.mode = QComboBox()
         self.mode.addItem(tr("Full"), FULL_STORAGE)
         self.mode.addItem(tr("Database only"), DATABASE_ONLY)
         self.mode.setCurrentIndex(max(0, self.mode.findData(profile.mode)))
-        identity_layout.addRow(tr("Connection name"), self.name)
-        identity_layout.addRow(tr("Mode"), self.mode)
+        identity_form.addRow(tr("Connection name"), self.name)
+        identity_form.addRow(tr("Mode"), self.mode)
         root.addWidget(identity_card)
 
         database_card = QFrame()
@@ -72,9 +88,10 @@ class ConnectionForm(QWidget):
         database_title = QLabel(tr("PostgreSQL server"))
         database_title.setObjectName("CardTitle")
         database_layout.addWidget(database_title)
-
         database_form = QFormLayout()
-        database_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        database_form.setLabelAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
         database_form.setHorizontalSpacing(12)
         database_form.setVerticalSpacing(8)
         self.host = QLineEdit(profile.host)
@@ -106,12 +123,10 @@ class ConnectionForm(QWidget):
         storage_title = QLabel(tr("File storage"))
         storage_title.setObjectName("CardTitle")
         storage_layout.addWidget(storage_title)
-        self.storage_hint = QLabel(
-            tr("Use a folder that all SlopeForge users can access.")
-        )
-        self.storage_hint.setObjectName("MutedText")
-        self.storage_hint.setWordWrap(True)
-        storage_layout.addWidget(self.storage_hint)
+        storage_hint = QLabel(tr("Use a folder that all SlopeForge users can access."))
+        storage_hint.setObjectName("MutedText")
+        storage_hint.setWordWrap(True)
+        storage_layout.addWidget(storage_hint)
         storage_row = QHBoxLayout()
         storage_row.setSpacing(8)
         self.storage = QLineEdit(str(profile.storage_root or ""))
@@ -136,7 +151,6 @@ class ConnectionForm(QWidget):
         self.status.setWordWrap(True)
         self.status.setMinimumHeight(22)
         root.addWidget(self.status)
-
         self.mode.currentIndexChanged.connect(self._sync_mode)
         self._sync_mode()
 
@@ -169,7 +183,7 @@ class ConnectionForm(QWidget):
             last_used_at=self._original.last_used_at,
         )
 
-    def set_status(self, text: str, *, error: bool = False, success: bool = False) -> None:
+    def set_status(self, text: str, *, error=False, success=False) -> None:
         self.status.setText(text)
         state = "error" if error else "success" if success else "info"
         self.status.setProperty("statusState", state)
@@ -177,20 +191,17 @@ class ConnectionForm(QWidget):
         self.status.style().polish(self.status)
 
     def validate_and_test(
-        self,
-        *,
-        saved_password: str = "",
+        self, *, saved_password: str = ""
     ) -> tuple[ConnectionProfile, Settings] | None:
         profile = self.profile()
         if not profile.password and saved_password:
-            profile = ConnectionProfile(**{**profile.__dict__, "password": saved_password})
+            profile = replace(profile, password=saved_password)
         engine = None
-        message = (
+        self.set_status(
             tr("Testing PostgreSQL and file storage…")
             if profile.mode == FULL_STORAGE
             else tr("Testing PostgreSQL…")
         )
-        self.set_status(message)
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
         try:
@@ -223,8 +234,6 @@ class ConnectionForm(QWidget):
 
 
 class ConnectionProfileDialog(QDialog):
-    """Add or edit exactly one saved server profile."""
-
     def __init__(
         self,
         store: ConnectionSettingsStore,
@@ -240,13 +249,11 @@ class ConnectionProfileDialog(QDialog):
         self.setWindowTitle(tr("Edit connection") if profile else tr("Add connection"))
         self.resize(620, 610)
         self.setMinimumWidth(560)
-
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 16, 18, 16)
         root.setSpacing(12)
         self.form = ConnectionForm(profile)
         root.addWidget(self.form, 1)
-
         buttons = QHBoxLayout()
         test = QPushButton(tr("Test connection"))
         test.setIcon(ui_icon("analytics", "blue"))
@@ -309,7 +316,7 @@ class ConnectionSetupDialog(ConnectionProfileDialog):
 
 
 class ServerSelectionDialog(QDialog):
-    """Compact startup/server-switch selector. It never authenticates a SlopeForge user."""
+    """Compact startup/server-switch selector. User authentication happens afterwards."""
 
     def __init__(
         self,
@@ -325,20 +332,18 @@ class ServerSelectionDialog(QDialog):
         self.current_profile_id = current_profile_id
         self.selected_profile: ConnectionProfile | None = None
         self.runtime_settings: Settings | None = None
+        self.auto_connect_requested = False
         self.setWindowTitle(tr(title))
         self.setModal(True)
         self.resize(650, 430)
         self.setMinimumWidth(600)
-
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 16, 18, 16)
         root.setSpacing(10)
         heading = QLabel(tr(title))
         heading.setObjectName("EntityTitle")
         root.addWidget(heading)
-        helper = QLabel(
-            tr("Choose the PostgreSQL server used for this SlopeForge session.")
-        )
+        helper = QLabel(tr("Choose the PostgreSQL server used for this SlopeForge session."))
         helper.setObjectName("MutedText")
         helper.setWordWrap(True)
         root.addWidget(helper)
@@ -351,7 +356,6 @@ class ServerSelectionDialog(QDialog):
         self.list.currentItemChanged.connect(self._selection_changed)
         self.list.itemDoubleClicked.connect(lambda _item: self._connect())
         body.addWidget(self.list, 1)
-
         details = QFrame()
         details.setObjectName("ConnectionCard")
         details_layout = QVBoxLayout(details)
@@ -379,16 +383,13 @@ class ServerSelectionDialog(QDialog):
         self.edit_button.clicked.connect(self._edit)
         self.remove_button.clicked.connect(self._remove)
         self.test_button.clicked.connect(self._test)
-        manage.addWidget(self.add_button)
-        manage.addWidget(self.edit_button)
-        manage.addWidget(self.remove_button)
-        manage.addWidget(self.test_button)
+        for button in (self.add_button, self.edit_button, self.remove_button, self.test_button):
+            manage.addWidget(button)
         manage.addStretch()
         root.addLayout(manage)
 
         self.skip_selection = QCheckBox(tr("Skip server selection on startup"))
         root.addWidget(self.skip_selection)
-
         actions = QHBoxLayout()
         cancel = QPushButton(tr("Cancel"))
         cancel.clicked.connect(self.reject)
@@ -399,19 +400,15 @@ class ServerSelectionDialog(QDialog):
         actions.addWidget(cancel)
         actions.addWidget(self.connect_button)
         root.addLayout(actions)
-
         self._reload()
 
     def _reload(self, select_id: str | None = None) -> None:
         selected = select_id or self.current_profile_id or self.store.last_profile_id()
         self.list.clear()
-        profiles = self.store.list_profiles()
-        for profile in profiles:
+        for profile in self.store.list_profiles():
             item = QListWidgetItem(profile.display_name)
             item.setData(Qt.ItemDataRole.UserRole, profile.profile_id)
-            item.setToolTip(
-                f"{profile.username}@{profile.host}:{profile.port}/{profile.database}"
-            )
+            item.setToolTip(f"{profile.username}@{profile.host}:{profile.port}/{profile.database}")
             self.list.addItem(item)
             if selected and profile.profile_id == selected:
                 self.list.setCurrentItem(item)
@@ -428,7 +425,7 @@ class ServerSelectionDialog(QDialog):
         except (ConnectionSettingsError, KeyError):
             return None
 
-    def _selection_changed(self, current, _previous) -> None:
+    def _selection_changed(self, _current, _previous) -> None:
         profile = self._current_profile()
         enabled = profile is not None
         for button in (self.edit_button, self.remove_button, self.test_button, self.connect_button):
@@ -476,14 +473,7 @@ class ServerSelectionDialog(QDialog):
                 tr("Switch to another server before removing the current connection."),
             )
             return
-        answer = QMessageBox.question(
-            self,
-            tr("Remove connection"),
-            tr("Remove this saved connection from this computer?"),
-            QMessageBox.StandardButton.Remove | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if answer != QMessageBox.StandardButton.Remove:
+        if not _confirm_remove(self):
             return
         try:
             self.store.remove(profile.profile_id)
@@ -520,15 +510,13 @@ class ServerSelectionDialog(QDialog):
         except (ConnectionSettingsError, ConfigurationError, KeyError) as exc:
             QMessageBox.warning(self, tr("Connection settings"), str(exc))
             return
-        self.store.set_auto_connect_profile(
-            profile.profile_id if self.skip_selection.isChecked() else None
-        )
+        self.auto_connect_requested = self.skip_selection.isChecked()
         self.selected_profile = runtime
         self.accept()
 
 
 class ConnectionSettingsPage(QWidget):
-    """Manage saved connections. Runtime switching is delegated to AppContext.runtime_control."""
+    """Manage saved profiles; the current DB runtime is switched by runtime_control."""
 
     connection_changed = Signal()
 
@@ -542,20 +530,17 @@ class ConnectionSettingsPage(QWidget):
         self.store = store or ConnectionSettingsStore()
         self.context = context
         _profile, source = effective_profile(self.store)
+        self.environment_pinned = source == "environment"
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 8, 12, 8)
         root.setSpacing(10)
-
-        title = QLabel(f"<b>{tr('Connections')}</b>")
-        root.addWidget(title)
+        root.addWidget(QLabel(f"<b>{tr('Connections')}</b>"))
         description = QLabel(
             tr("Manage PostgreSQL servers saved on this computer. PostgreSQL passwords are stored separately from profile metadata.")
         )
         description.setWordWrap(True)
         description.setObjectName("MutedText")
         root.addWidget(description)
-
-        self.environment_pinned = source == "environment"
         if self.environment_pinned:
             override = QLabel(
                 tr("This installation is currently pinned by DATABASE_URL. Saved profiles can be managed, but runtime switching is disabled until the environment override is removed.")
@@ -568,11 +553,15 @@ class ConnectionSettingsPage(QWidget):
         self.list.setObjectName("ConnectionProfileList")
         self.list.currentItemChanged.connect(self._sync_actions)
         root.addWidget(self.list, 1)
-
         self.details = QLabel("")
         self.details.setObjectName("MutedText")
         self.details.setWordWrap(True)
         root.addWidget(self.details)
+        self.startup_checkbox = QCheckBox(
+            tr("Skip server selection on startup for this connection")
+        )
+        self.startup_checkbox.toggled.connect(self._startup_preference_changed)
+        root.addWidget(self.startup_checkbox)
 
         actions = QHBoxLayout()
         self.add_button = QPushButton(tr("Add"))
@@ -585,12 +574,7 @@ class ConnectionSettingsPage(QWidget):
         self.remove_button.clicked.connect(self._remove)
         self.test_button.clicked.connect(self._test)
         self.switch_button.clicked.connect(self._switch)
-        for button in (
-            self.add_button,
-            self.edit_button,
-            self.remove_button,
-            self.test_button,
-        ):
+        for button in (self.add_button, self.edit_button, self.remove_button, self.test_button):
             actions.addWidget(button)
         actions.addStretch()
         actions.addWidget(self.switch_button)
@@ -609,13 +593,15 @@ class ConnectionSettingsPage(QWidget):
     def _reload(self, selected_id: str | None = None) -> None:
         selected_id = selected_id or getattr(self.context, "connection_profile_id", "")
         self.list.clear()
+        auto_id = self.store.auto_connect_profile_id()
+        current_id = getattr(self.context, "connection_profile_id", "")
         for profile in self.store.list_profiles():
-            label = profile.display_name
-            if profile.profile_id == getattr(self.context, "connection_profile_id", ""):
-                label += f"  ·  {tr('Current')}"
-            if profile.profile_id == self.store.auto_connect_profile_id():
-                label += f"  ·  {tr('Startup')}"
-            item = QListWidgetItem(label)
+            labels = [profile.display_name]
+            if profile.profile_id == current_id:
+                labels.append(tr("Current"))
+            if profile.profile_id == auto_id:
+                labels.append(tr("Startup"))
+            item = QListWidgetItem("  ·  ".join(labels))
             item.setData(Qt.ItemDataRole.UserRole, profile.profile_id)
             self.list.addItem(item)
             if selected_id and profile.profile_id == selected_id:
@@ -627,19 +613,22 @@ class ConnectionSettingsPage(QWidget):
     def _sync_actions(self, _current, _previous) -> None:
         profile = self._current()
         enabled = profile is not None
+        current_id = getattr(self.context, "connection_profile_id", "")
         self.edit_button.setEnabled(enabled)
         self.test_button.setEnabled(enabled)
-        self.remove_button.setEnabled(
-            enabled
-            and profile.profile_id != getattr(self.context, "connection_profile_id", "")
-        )
+        self.remove_button.setEnabled(enabled and profile.profile_id != current_id)
         self.switch_button.setEnabled(
             enabled
             and not self.environment_pinned
             and self.context is not None
             and getattr(self.context, "runtime_control", None) is not None
-            and profile.profile_id != getattr(self.context, "connection_profile_id", "")
+            and profile.profile_id != current_id
         )
+        with QSignalBlocker(self.startup_checkbox):
+            self.startup_checkbox.setEnabled(enabled and not self.environment_pinned)
+            self.startup_checkbox.setChecked(
+                enabled and self.store.auto_connect_profile_id() == profile.profile_id
+            )
         if profile is None:
             self.details.clear()
             return
@@ -653,6 +642,18 @@ class ConnectionSettingsPage(QWidget):
             f"{profile.username}@{profile.host}:{profile.port}/{profile.database}\n"
             f"{tr('Mode')}: {mode}  ·  {tr('File storage')}: {storage}"
         )
+
+    def _startup_preference_changed(self, checked: bool) -> None:
+        profile = self._current()
+        if profile is None or self.environment_pinned:
+            return
+        try:
+            self.store.set_auto_connect_profile(profile.profile_id if checked else None)
+        except (ConnectionSettingsError, KeyError) as exc:
+            QMessageBox.warning(self, tr("Connection settings"), str(exc))
+            return
+        self._reload(profile.profile_id)
+        self.connection_changed.emit()
 
     def _add(self) -> None:
         dialog = ConnectionProfileDialog(self.store, parent=self)
@@ -671,18 +672,9 @@ class ConnectionSettingsPage(QWidget):
 
     def _remove(self) -> None:
         profile = self._current()
-        if profile is None:
+        if profile is None or profile.profile_id == getattr(self.context, "connection_profile_id", ""):
             return
-        if profile.profile_id == getattr(self.context, "connection_profile_id", ""):
-            return
-        answer = QMessageBox.question(
-            self,
-            tr("Remove connection"),
-            tr("Remove this saved connection from this computer?"),
-            QMessageBox.StandardButton.Remove | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if answer != QMessageBox.StandardButton.Remove:
+        if not _confirm_remove(self):
             return
         try:
             self.store.remove(profile.profile_id)
@@ -716,7 +708,3 @@ class ConnectionSettingsPage(QWidget):
         if profile is None or control is None:
             return
         control.request_switch(profile.profile_id, parent=self.window())
-
-
-# Backwards-compatible singular name retained for existing imports/tests.
-ConnectionSettingsPage = ConnectionSettingsPage
