@@ -47,8 +47,12 @@ class FakeWindow:
         self.events.append(f"show:{self.name}")
 
     def close(self):
+        if not self._guard_leave():
+            self.events.append(f"close-rejected:{self.name}")
+            return False
         self.closed = True
         self.events.append(f"close:{self.name}")
+        return True
 
     def deleteLater(self):
         self.deleted = True
@@ -140,6 +144,32 @@ def test_failed_replacement_keeps_previous_runtime_alive(monkeypatch):
     assert old.window.closed is False
     assert old.engine.disposed is False
     assert events == ["guard:old"]
+
+
+def test_successful_switch_runs_user_guard_once(monkeypatch):
+    events = []
+    old_profile = profile("old", "Old server")
+    new_profile = profile("new", "New server")
+    store = FakeStore((old_profile, new_profile))
+    control = controller(store)
+    old = active(old_profile, events, "old")
+    new = active(new_profile, events, "new")
+    control.current = old
+    monkeypatch.setattr(control, "_confirm_switch", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(control, "_build_runtime", lambda *_args, **_kwargs: new)
+
+    assert control.request_switch("new") is True
+
+    assert events == [
+        "guard:old",
+        "show:new",
+        "close:old",
+        "delete:old",
+        "dispose:old",
+    ]
+    assert old.window.closed is True
+    assert old.engine.disposed is True
+    assert control.current is new
 
 
 def test_cancelled_unsaved_work_guard_never_builds_replacement(monkeypatch):
