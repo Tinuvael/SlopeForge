@@ -8,9 +8,9 @@ import database.startup as startup
 from database.settings import Settings
 
 
-CURRENT_HEAD = "0003_drillhole_datasets"
-PROJECT_SURFACE_HEAD = "0002_project_surface_datasets"
-BASELINE = "0001_mvp_baseline"
+CURRENT_HEAD = "1"
+KNOWN_OLDER = "0"
+PRE_1_0_HEAD = "0003_drillhole_datasets"
 
 
 class FakeInspector:
@@ -27,7 +27,7 @@ def test_expected_alembic_head_resolves_real_repository_graph():
 
 class FakeScript:
     def get_revision(self, revision):
-        return object() if revision in {BASELINE, PROJECT_SURFACE_HEAD, CURRENT_HEAD} else None
+        return object() if revision in {KNOWN_OLDER, CURRENT_HEAD} else None
 
 
 def arrange_startup(monkeypatch, *, revision=CURRENT_HEAD, tables=None):
@@ -75,36 +75,38 @@ def test_startup_accepts_database_at_the_single_current_head(monkeypatch):
     assert startup.initialize_database_runtime() == (settings, engine, "sessions")
 
 
-@pytest.mark.parametrize("older_revision", [BASELINE, PROJECT_SURFACE_HEAD])
-def test_startup_known_older_revision_requires_migration(monkeypatch, older_revision):
-    arrange_startup(monkeypatch, revision=older_revision)
+def test_startup_known_older_revision_requires_database_upgrade(monkeypatch):
+    arrange_startup(monkeypatch, revision=KNOWN_OLDER)
     with pytest.raises(startup.StartupError) as caught:
         startup.initialize_database_runtime()
-    assert caught.value.reason == "database_migration_required"
-    rendered = caught.value.presentation()
-    assert older_revision in rendered
-    assert CURRENT_HEAD in rendered
+    assert caught.value.reason == "database_upgrade_required"
+    assert "older SlopeForge schema" in str(caught.value)
+    assert "python -m" not in caught.value.presentation()
 
 
-def test_startup_removed_revision_requires_reset_not_migrate(monkeypatch):
-    arrange_startup(monkeypatch, revision="20260809_0008")
+def test_startup_pre_1_0_revision_requires_database_upgrade(monkeypatch):
+    arrange_startup(monkeypatch, revision=PRE_1_0_HEAD)
     with pytest.raises(startup.StartupError) as caught:
         startup.initialize_database_runtime()
-    rendered = caught.value.presentation()
-    assert caught.value.reason == "database_revision_obsolete"
-    assert "20260809_0008" in rendered
-    assert CURRENT_HEAD in rendered
-    assert "reset-dev-db" in rendered
-    assert "database.cli migrate" not in rendered
+    assert caught.value.reason == "database_upgrade_required"
+    assert "python -m" not in caught.value.presentation()
 
 
-def test_real_script_directory_classifies_removed_revision(monkeypatch):
+def test_startup_unknown_future_revision_requires_application_upgrade(monkeypatch):
+    arrange_startup(monkeypatch, revision="2")
+    with pytest.raises(startup.StartupError) as caught:
+        startup.initialize_database_runtime()
+    assert caught.value.reason == "application_upgrade_required"
+    assert "newer" in str(caught.value)
+
+
+def test_real_script_directory_classifies_pre_1_0_revision_as_database_upgrade(monkeypatch):
     monkeypatch.setattr(startup, "_expected_alembic_head", lambda: CURRENT_HEAD)
     monkeypatch.setattr(startup, "_database_alembic_heads",
-                        lambda _engine: ("20260809_0008",))
+                        lambda _engine: (PRE_1_0_HEAD,))
     with pytest.raises(startup.StartupError) as caught:
         startup._verify_alembic_revision(object(), None)
-    assert caught.value.reason == "database_revision_obsolete"
+    assert caught.value.reason == "database_upgrade_required"
 
 
 def test_startup_initializes_a_completely_empty_database(monkeypatch):
@@ -116,9 +118,8 @@ def test_startup_rejects_nonempty_unversioned_database(monkeypatch):
     arrange_startup(monkeypatch, revision=None, tables=("unmanaged_data",))
     with pytest.raises(startup.StartupError) as caught:
         startup.initialize_database_runtime()
-    assert caught.value.reason == "database_migration_required"
-    assert "not empty" in str(caught.value)
-    assert "database.cli migrate" not in caught.value.presentation()
+    assert caught.value.reason == "database_version_incompatible"
+    assert "python -m" not in caught.value.presentation()
 
 
 def test_main_passes_runtime_storage_root_to_app_context():

@@ -61,40 +61,71 @@ def _database_alembic_heads(engine) -> tuple[str, ...]:
         return tuple(MigrationContext.configure(connection).get_current_heads())
 
 
+def _release_schema_version(revision: str) -> int | None:
+    """Return the comparable production schema version for release-era revisions."""
+    return int(revision) if revision.isdecimal() else None
+
+
 def _verify_alembic_revision(engine, server: str | None) -> None:
     required = _expected_alembic_head()
     try:
         current_heads = _database_alembic_heads(engine)
     except SQLAlchemyError as exc:
         raise StartupError(
-            f"Could not read the database Alembic revision. Current application revision: {required}.",
+            "Could not read the database schema version.",
             server, reason="database_revision_unreadable",
         ) from exc
+
     if current_heads == (required,):
         return
-    current = ", ".join(current_heads) if current_heads else "missing"
-    script = _alembic_script()
-    unknown = []
-    for revision in current_heads:
-        try:
-            if script.get_revision(revision) is None:
-                unknown.append(revision)
-        except (CommandError, ResolutionError):
-            unknown.append(revision)
-    if unknown:
+
+    if len(current_heads) != 1:
         raise StartupError(
-            "This database uses obsolete pre-MVP migration history.\n\n"
-            f"Database revision:\n{current}\n\n"
-            f"Current application revision:\n{required}\n\n"
-            "This database cannot be upgraded because its old migration history was "
-            "intentionally replaced by the MVP baseline.\n\n"
-            "The current development database is disposable and must be recreated.",
-            server, reason="database_revision_obsolete",
-            actions=("Run:\npython -m database.cli reset-dev-db",),
+            "The selected database has an incompatible schema state.",
+            server, reason="database_version_incompatible",
         )
+
+    current = current_heads[0]
+    current_version = _release_schema_version(current)
+    required_version = _release_schema_version(required)
+    if current_version is not None and required_version is not None:
+        if current_version > required_version:
+            raise StartupError(
+                "The selected database requires a newer version of SlopeForge.",
+                server, reason="application_upgrade_required",
+            )
+        if current_version < required_version:
+            raise StartupError(
+                "The selected database uses an older SlopeForge schema.",
+                server, reason="database_upgrade_required",
+            )
+
+    script = _alembic_script()
+    try:
+        known_revision = script.get_revision(current)
+    except (CommandError, ResolutionError):
+        known_revision = None
+
+    if known_revision is not None:
+        # A recognized non-head revision belongs to this application's migration
+        # history and therefore represents an older database schema.
+        raise StartupError(
+            "The selected database uses an older SlopeForge schema.",
+            server, reason="database_upgrade_required",
+        )
+
+    # All production schema revisions from SlopeForge 1 onward use monotonically
+    # increasing integer identifiers. Unknown non-numeric revisions are therefore
+    # legacy pre-1.0 development history, not evidence of a newer application.
+    if current_version is None:
+        raise StartupError(
+            "The selected database uses an older SlopeForge schema.",
+            server, reason="database_upgrade_required",
+        )
+
     raise StartupError(
-        f"Database revision: {current}. Current application revision: {required}.",
-        server, reason="database_migration_required",
+        "The selected database has an incompatible schema version.",
+        server, reason="database_version_incompatible",
     )
 
 
@@ -105,9 +136,8 @@ def _initialize_empty_database(engine, settings: Settings, server: str | None) -
     existing = set(inspect(engine).get_table_names())
     if existing:
         raise StartupError(
-            "The database has no Alembic revision but is not empty. Automatic "
-            "schema initialization was refused to protect existing data.",
-            server, reason="database_migration_required",
+            "The selected database contains data but has no recognized SlopeForge schema version.",
+            server, reason="database_version_incompatible",
         )
     upgrade_to_head(settings)
 

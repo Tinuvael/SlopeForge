@@ -55,7 +55,7 @@ a focused move has more benefit than import churn. New adapters belong under
 - `Mine`, `BlastBlock`, and `AssessmentWorkspace` persistence are removed and must not be revived.
 - The revisioned Technical Card and revisioned Assessment persistence are canonical.
 - `Domain.version` is the optimistic-concurrency token for focused writes.
-- `0001_mvp_baseline` is immutable; every future physical schema change appends a normal Alembic revision.
+- Alembic revision `1` is the immutable SlopeForge 1.0 production baseline; every future physical schema change appends a normal Alembic revision after the current head.
 
 ## Product model
 
@@ -116,12 +116,15 @@ Do not introduce duplicate/shared physical ownership unless explicitly requested
 
 ## Database / migrations
 
-The current development DB is disposable during MVP work. Prefer a clean correct schema over complicated compatibility solely for dev/test records.
+The final pre-1.0 development database is disposable for the release-baseline consolidation. Existing databases carrying the former development revision chain must be recreated rather than stamped or disguised as compatible.
 
-Still:
+After SlopeForge 1.0 is released, revision `1` is the immutable production baseline and stored data must be treated as preservable production data unless an explicit development-only context says otherwise.
+
+Always:
 
 - use proper Alembic migrations for physical schema changes;
 - keep one Alembic head;
+- never rewrite revision `1` after the 1.0 release;
 - never use `alembic stamp` to mask an incompatible schema;
 - never run destructive tests against normal `DATABASE_URL`;
 - PostgreSQL integration tests use a dedicated `TEST_DATABASE_URL` whose database name clearly indicates a test DB.

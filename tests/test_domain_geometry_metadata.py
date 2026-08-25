@@ -19,17 +19,16 @@ def test_domain_geometry_metadata_contract():
     assert "jsonb_typeof" in checks["ck_domain_geometries_polygons_array"]
 
 
-def test_domain_geometry_remains_in_immutable_mvp_baseline_with_appended_migrations():
-    path = Path("alembic/versions/0001_mvp_baseline.py")
-    spec = spec_from_file_location("mvp_baseline", path)
+def test_domain_geometry_remains_in_release_1_frozen_core():
+    path = Path("alembic/schema_v1/core.py")
+    spec = spec_from_file_location("release_1_core", path)
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert module.revision == "0001_mvp_baseline"
-    assert module.down_revision is None
+    assert "domain_geometries" in path.read_text()
+    baseline = Path("alembic/versions/0001_slopeforge_1.py")
+    assert 'revision = "1"' in baseline.read_text()
     assert sorted(item.name for item in Path("alembic/versions").glob("*.py")) == [
-        "0001_mvp_baseline.py",
-        "0002_project_surface_datasets.py",
-        "0003_blast_event_drillhole_datasets.py",
+        "0001_slopeforge_1.py",
     ]
 
 

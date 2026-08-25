@@ -86,8 +86,9 @@ def migrate() -> int:
             "The database references an Alembic revision that is not present in the "
             "current application.\n\n"
             "This database cannot be migrated from the current graph.\n\n"
-            "For the disposable MVP development database run:\n\n"
+            "For a disposable pre-1.0 development database run:\n\n"
             "    python -m database.cli reset-dev-db\n\n"
+            "Do not stamp an old physical schema as SlopeForge 1 revision 1.\n\n"
             f"Details: {exc}",
             file=sys.stderr,
         )

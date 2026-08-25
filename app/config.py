@@ -5,6 +5,7 @@ APP_AUTHOR = "Емшанов Евгений"
 APP_DESCRIPTION = "Desktop application for storing and analyzing blasting and final wall quality data."
 APP_COPYRIGHT = "© 2026 Емшанов Евгений"
 APP_REPOSITORY_URL = "https://github.com/Tinuvael/SlopeForge"
+APP_RELEASES_URL = f"{APP_REPOSITORY_URL}/releases/latest"
 APP_USER_MODEL_ID = "Tinuvael.SlopeForge"
 
 MIN_WIDTH = 1400

@@ -150,12 +150,14 @@ class ConnectionForm(QWidget):
 
 
 class ConnectionSetupDialog(QDialog):
-    """First-run connection setup shown before authentication."""
+    """First-run or recovery connection setup shown before authentication."""
 
     def __init__(
         self,
         store: ConnectionSettingsStore | None = None,
         parent=None,
+        *,
+        initial_profile: ConnectionProfile | None = None,
     ):
         super().__init__(parent)
         apply_window_icon(self)
@@ -180,7 +182,7 @@ class ConnectionSetupDialog(QDialog):
         description.setObjectName("MutedText")
         root.addWidget(description)
 
-        self.form = ConnectionForm()
+        self.form = ConnectionForm(initial_profile)
         root.addWidget(self.form, 1)
 
         buttons = QHBoxLayout()

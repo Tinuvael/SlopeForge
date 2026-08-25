@@ -109,17 +109,13 @@ def test_destructive_migration_guard_rejects_non_test_database() -> None:
         )
 
 
-def test_alembic_history_appends_after_immutable_mvp_baseline() -> None:
+def test_alembic_history_is_single_release_1_baseline() -> None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0003_drillhole_datasets"]
-    assert [revision.revision for revision in script.walk_revisions()] == [
-        "0003_drillhole_datasets",
-        "0002_project_surface_datasets",
-        "0001_mvp_baseline",
-    ]
+    assert script.get_heads() == ["1"]
+    assert [revision.revision for revision in script.walk_revisions()] == ["1"]
 
 
 def test_every_alembic_revision_fits_standard_version_column() -> None:
@@ -194,7 +190,7 @@ def test_charge_preset_postgresql_round_trip(monkeypatch: pytest.MonkeyPatch, tm
 
 @pytest.mark.postgres
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
-def test_mvp_baseline_repeats_cleanly_without_leftover_types(
+def test_release_1_baseline_repeats_cleanly_without_leftover_types(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from alembic import command
@@ -221,7 +217,7 @@ def test_mvp_baseline_repeats_cleanly_without_leftover_types(
 
 @pytest.mark.postgres
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set")
-def test_mvp_baseline_upgrade_application_smoke_and_round_trip(
+def test_release_1_baseline_upgrade_application_smoke_and_round_trip(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from alembic import command

@@ -61,34 +61,33 @@ def test_sqlalchemy_metadata_compiles_for_postgresql_and_has_no_legacy_tables() 
         str(CreateTable(table).compile(dialect=postgresql.dialect()))
 
 
-def test_mvp_baseline_is_self_contained() -> None:
-    migration = Path("alembic/versions/0001_mvp_baseline.py").read_text()
+def test_release_1_frozen_core_is_self_contained() -> None:
+    migration = Path("alembic/schema_v1/core.py").read_text()
     assert "from database.base import Base" not in migration
     assert "from database import models" not in migration
     assert "create_all" not in migration
     assert "op.create_table" in migration
     assert "op.drop_table" in migration
-    assert 'revision = "0001_mvp_baseline"' in migration
-    assert "down_revision = None" in migration
     assert "user_role" in migration
     assert "blast_block_status" not in migration
     assert "mines" not in migration
     assert "blast_blocks" not in migration
 
 
-def test_mvp_baseline_upgrade_and_downgrade_resolve_all_runtime_names(monkeypatch) -> None:
-    """Calling migration functions catches undefined names hidden from compileall."""
+def test_release_1_frozen_components_resolve_all_runtime_names(monkeypatch) -> None:
+    """Calling frozen component functions catches undefined names hidden from compileall."""
     from importlib.util import module_from_spec, spec_from_file_location
 
     class NoOpOperations:
         def __getattr__(self, _name): return lambda *args, **kwargs: None
 
-    path = Path("alembic/versions/0001_mvp_baseline.py")
-    spec = spec_from_file_location("mvp_baseline_runtime_names", path)
-    module = module_from_spec(spec); assert spec.loader is not None; spec.loader.exec_module(module)
-    monkeypatch.setattr(module, "op", NoOpOperations())
-    monkeypatch.setattr(module.sa.Enum, "drop", lambda *args, **kwargs: None)
-    module.upgrade(); module.downgrade()
+    for component in ("core", "project_surfaces", "drillhole_datasets"):
+        path = Path(f"alembic/schema_v1/{component}.py")
+        spec = spec_from_file_location(f"release_1_{component}_runtime_names", path)
+        module = module_from_spec(spec); assert spec.loader is not None; spec.loader.exec_module(module)
+        monkeypatch.setattr(module, "op", NoOpOperations())
+        monkeypatch.setattr(module.sa.Enum, "drop", lambda *args, **kwargs: None)
+        module.upgrade(); module.downgrade()
 
 
 def test_first_admin_creation_uses_advisory_lock_and_rechecks_users() -> None:

@@ -1,9 +1,12 @@
 import logging
 import sys
+import webbrowser
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from app.config import APP_RELEASES_URL
 from app.connection_settings import (
+    ConnectionProfile,
     ConnectionSettingsError,
     ConnectionSettingsStore,
     MissingConnectionConfiguration,
@@ -15,7 +18,7 @@ from app.platform import set_windows_app_user_model_id
 from app.qt import apply_application_icon
 from app.runtime_paths import runtime_log_path
 from app.splash import SlopeForgeSplash
-from database.settings import ConfigurationError
+from database.settings import ConfigurationError, Settings
 from database.startup import StartupError, initialize_database_runtime
 from infrastructure.services.auth_service import AuthService
 from infrastructure.services.session_service import RememberTokenService
@@ -30,16 +33,111 @@ LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_CHANGE_CONNECTION = "change_connection"
+_RETRY = "retry"
+_CLOSE = "close"
 
-def show_startup_error(error: StartupError) -> None:
-    QMessageBox.critical(None, tr("PostgreSQL unavailable"), error.presentation())
+
+def _with_connection_context(message: str, error: StartupError) -> str:
+    if not error.server:
+        return message
+    return f"{message}\n\n{tr('Connection')}: {error.server}"
 
 
-def _connection_setup(store: ConnectionSettingsStore):
-    dialog = ConnectionSetupDialog(store)
+def show_startup_error(error: StartupError) -> str:
+    """Show recoverable startup guidance without exposing migration internals."""
+    box = QMessageBox()
+    box.setIcon(QMessageBox.Icon.Warning)
+
+    release_button = None
+    retry_button = None
+
+    if error.reason == "database_upgrade_required":
+        box.setWindowTitle(tr("Database update required"))
+        box.setText(
+            tr("The selected database is older than this version of SlopeForge.")
+        )
+        box.setInformativeText(_with_connection_context(
+            tr("Update the database to a compatible version or contact your database administrator."),
+            error,
+        ))
+        retry_button = box.addButton(tr("Try again"), QMessageBox.ButtonRole.AcceptRole)
+    elif error.reason == "application_upgrade_required":
+        box.setWindowTitle(tr("SlopeForge update required"))
+        box.setText(
+            tr("The selected database requires a newer version of SlopeForge.")
+        )
+        box.setInformativeText(_with_connection_context(
+            tr("Update SlopeForge before opening this database."),
+            error,
+        ))
+        release_button = box.addButton(
+            tr("Get latest release"), QMessageBox.ButtonRole.AcceptRole
+        )
+    elif error.reason == "database_version_incompatible":
+        box.setWindowTitle(tr("Database version mismatch"))
+        box.setText(
+            tr("The selected database is not compatible with this version of SlopeForge.")
+        )
+        box.setInformativeText(_with_connection_context(
+            tr("Contact your database administrator or use another database connection."),
+            error,
+        ))
+    elif error.reason in {"connection_error", "database_revision_unreadable"}:
+        box.setWindowTitle(tr("Database connection failed"))
+        box.setText(tr("SlopeForge could not connect to the selected PostgreSQL database."))
+        box.setInformativeText(_with_connection_context(
+            tr("Check the server address, network, credentials and database availability, or choose another connection."),
+            error,
+        ))
+        retry_button = box.addButton(tr("Try again"), QMessageBox.ButtonRole.AcceptRole)
+    else:
+        box.setWindowTitle(tr("Database unavailable"))
+        box.setText(tr("SlopeForge could not open the selected database."))
+        box.setInformativeText(_with_connection_context(
+            tr("Choose another connection or contact your database administrator."),
+            error,
+        ))
+        retry_button = box.addButton(tr("Try again"), QMessageBox.ButtonRole.AcceptRole)
+
+    change_button = box.addButton(
+        tr("Change connection"), QMessageBox.ButtonRole.ActionRole
+    )
+    close_button = box.addButton(tr("Close"), QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(change_button)
+    box.setEscapeButton(close_button)
+    box.exec()
+
+    clicked = box.clickedButton()
+    if clicked is change_button:
+        return _CHANGE_CONNECTION
+    if retry_button is not None and clicked is retry_button:
+        return _RETRY
+    if release_button is not None and clicked is release_button:
+        webbrowser.open(APP_RELEASES_URL)
+    return _CLOSE
+
+
+def _connection_setup(
+    store: ConnectionSettingsStore,
+    current_settings: Settings | None = None,
+):
+    initial_profile = (
+        ConnectionProfile.from_settings(current_settings)
+        if current_settings is not None
+        else None
+    )
+    dialog = ConnectionSetupDialog(store, initial_profile=initial_profile)
     if dialog.exec() != dialog.DialogCode.Accepted:
         return None
     return dialog.runtime_settings
+
+
+def _create_splash() -> SlopeForgeSplash:
+    splash = SlopeForgeSplash()
+    splash.show()
+    splash.show_status(tr("Loading application…"))
+    return splash
 
 
 def main():
@@ -75,14 +173,28 @@ def main():
         QMessageBox.critical(None, tr("Connection configuration error"), str(exc))
         return 1
 
-    splash = SlopeForgeSplash()
-    splash.show()
-    splash.show_status(tr("Loading application…"))
+    splash = _create_splash()
+    while True:
+        try:
+            startup_stage = "database initialization"
+            logger.info("Startup stage: %s", startup_stage)
+            splash.show_status(tr("Connecting to database…"))
+            settings, _engine, session_factory = initialize_database_runtime(runtime_settings)
+            break
+        except StartupError as exc:
+            logging.exception("Startup failed during stage: %s", startup_stage)
+            splash.close()
+            action = show_startup_error(exc)
+            if action == _CHANGE_CONNECTION:
+                replacement = _connection_setup(connection_store, runtime_settings)
+                if replacement is None:
+                    return 0
+                runtime_settings = replacement
+            elif action != _RETRY:
+                return 1
+            splash = _create_splash()
+
     try:
-        startup_stage = "database initialization"
-        logger.info("Startup stage: %s", startup_stage)
-        splash.show_status(tr("Connecting to database…"))
-        settings, _engine, session_factory = initialize_database_runtime(runtime_settings)
         startup_stage = "authentication initialization"
         logger.info("Startup stage: %s", startup_stage)
         splash.show_status(tr("Checking database schema…"))
@@ -117,15 +229,14 @@ def main():
         ))
         window.showMaximized()
         return app.exec()
-    except StartupError as exc:
-        logging.exception("Startup failed during stage: %s", startup_stage)
-        splash.close_with_fade()
-        show_startup_error(exc)
-        return 1
     except Exception:
         logging.exception("Unexpected startup failure during stage: %s", startup_stage)
         splash.close_with_fade()
-        QMessageBox.critical(None, tr("Startup error"), f"Unexpected startup error. Details were written to {LOG_PATH}.")
+        QMessageBox.critical(
+            None,
+            tr("Startup error"),
+            f"{tr('Unexpected startup error. Details were written to')} {LOG_PATH}.",
+        )
         return 1
 
 

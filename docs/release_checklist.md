@@ -1,6 +1,6 @@
-# MVP release checklist
+# SlopeForge 1.0 release checklist
 
-Use this as the consolidated manual release-candidate pass. Active issue #63 is the authoritative list of unfinished bug-bash/product work; update this checklist when those issues materially change final behavior.
+Use this as the consolidated manual pass before publishing SlopeForge 1.0. Completed MVP/RC issues should stay closed unless a concrete regression is found.
 
 ## Automated checks
 
@@ -10,9 +10,19 @@ python tools/architecture_audit.py
 python -m compileall app application domain infrastructure database repositories ui
 git diff --check
 QT_QPA_PLATFORM=offscreen pytest -q
+python -m alembic heads
+python -m alembic history
 ```
 
 For schema/persistence validation, also run PostgreSQL integration tests with a dedicated `TEST_DATABASE_URL` and verify migrations from a clean database.
+
+Release 1.0 version sanity:
+
+- `app.config.APP_VERSION == "1.0.0"`;
+- `app.config.APP_VERSION_DISPLAY == "1.0"`;
+- Alembic has exactly one baseline revision/head: `1`;
+- a clean database upgraded to head stores revision `1` and matches current ORM metadata;
+- former pre-1.0 development databases are recreated rather than stamped.
 
 ## Windows / Python 3.12
 
@@ -132,4 +142,4 @@ Intentional unchanged terms include SlopeForge, DAI/FCI, repository/file names, 
 
 ## Documentation
 
-- `AGENTS.md`, `README.md`, `docs/architecture.md`, `docs/database_setup.md`, and `docs/wall_assessment_concept.md` reflect the implemented MVP.
+- `AGENTS.md`, `README.md`, `docs/architecture.md`, `docs/database_setup.md`, and `docs/wall_assessment_concept.md` reflect SlopeForge 1.0.
