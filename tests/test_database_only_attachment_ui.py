@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import sys
+
 import pytest
 
-pytest.importorskip("PySide6.QtWidgets")
+if sys.platform != "win32":
+    pytest.skip(
+        "Windows desktop Qt UI test; PostgreSQL Linux CI does not install Qt platform libraries",
+        allow_module_level=True,
+    )
 
 from PySide6.QtWidgets import QApplication
 
