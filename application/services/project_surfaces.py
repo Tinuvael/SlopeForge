@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 from uuid import uuid4
 
-from infrastructure.files.storage_availability import FileStorageUnavailableError, DATABASE_ONLY_STORAGE_MESSAGE
+from application.file_storage import (
+    DATABASE_ONLY_STORAGE_MESSAGE,
+    FileStorageUnavailableError,
+)
 
 
 class SurfaceImportResultPort(Protocol):
