@@ -45,6 +45,7 @@ def test_pg_dump_password_is_environment_only_and_non_empty_output_is_required(t
         _settings(),
         tmp_path,
         revision="1",
+        pg_dump_executable="pg_dump-test",
         now=lambda: FIXED_TIME,
         runner=runner,
     )
@@ -78,6 +79,7 @@ def test_failed_pg_dump_removes_partial_file_and_redacts_password(tmp_path: Path
             _settings(password),
             tmp_path,
             revision="1",
+            pg_dump_executable="pg_dump-test",
             now=lambda: FIXED_TIME,
             runner=runner,
         )
@@ -98,6 +100,7 @@ def test_success_exit_with_empty_output_is_rejected_and_cleaned(tmp_path: Path) 
             _settings(),
             tmp_path,
             revision="1",
+            pg_dump_executable="pg_dump-test",
             now=lambda: FIXED_TIME,
             runner=runner,
         )
