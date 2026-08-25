@@ -22,6 +22,16 @@ def credential_target(profile_id: str) -> str:
     return f"{CREDENTIAL_PREFIX}{str(profile_id).strip()}"
 
 
+def _windows_error_suffix(exc: Exception) -> str:
+    """Expose only a safe Windows error code, never credential contents."""
+    code = getattr(exc, "winerror", None)
+    if code is None:
+        args = getattr(exc, "args", ())
+        if args and isinstance(args[0], int):
+            code = args[0]
+    return f" (Windows error {code})" if code is not None else ""
+
+
 class WindowsCredentialStore:
     """Store PostgreSQL passwords in Windows Credential Manager."""
 
@@ -47,7 +57,10 @@ class WindowsCredentialStore:
                 getattr(exc, "args", ()) and exc.args[0] == not_found
             ):
                 return None
-            raise CredentialStoreError("Could not read the saved database credential.") from exc
+            raise CredentialStoreError(
+                "Could not read the saved database credential."
+                + _windows_error_suffix(exc)
+            ) from exc
         blob = result.get("CredentialBlob", b"")
         if isinstance(blob, bytes):
             if not blob:
@@ -62,10 +75,10 @@ class WindowsCredentialStore:
 
     def write(self, profile_id: str, username: str, password: str) -> None:
         win32cred = self._module()
-        # CRED_TYPE_GENERIC treats the credential blob as opaque bytes. UTF-16LE
-        # gives deterministic Windows round-tripping without serializing the
-        # PostgreSQL password into SlopeForge's profile metadata.
-        secret = str(password or "").encode("utf-16-le")
+        # PyWin32's PyCREDENTIAL contract expects CredentialBlob as PyUnicode
+        # and performs the Windows UTF-16 conversion itself. Passing pre-encoded
+        # bytes causes CredWrite to fail on current PyWin32 builds.
+        secret = str(password or "")
         try:
             win32cred.CredWrite(
                 {
@@ -79,7 +92,10 @@ class WindowsCredentialStore:
                 0,
             )
         except Exception as exc:
-            raise CredentialStoreError("Could not save the database credential.") from exc
+            raise CredentialStoreError(
+                "Could not save the database credential."
+                + _windows_error_suffix(exc)
+            ) from exc
 
     def delete(self, profile_id: str) -> None:
         win32cred = self._module()
@@ -93,7 +109,10 @@ class WindowsCredentialStore:
                 getattr(exc, "args", ()) and exc.args[0] == not_found
             ):
                 return
-            raise CredentialStoreError("Could not remove the saved database credential.") from exc
+            raise CredentialStoreError(
+                "Could not remove the saved database credential."
+                + _windows_error_suffix(exc)
+            ) from exc
 
 
 class SessionOnlyCredentialStore:
