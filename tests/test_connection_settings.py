@@ -191,6 +191,7 @@ def test_legacy_connection_ini_migrates_secret_out_of_plaintext(tmp_path):
 
     assert len(items) == 1
     assert credentials.read(items[0].profile_id) == "legacy-secret"
+    assert store.auto_connect_profile_id() is None
     assert not legacy.exists()
     assert not legacy.with_suffix(".ini.migrated").exists()
     assert "legacy-secret" not in store.path.read_text(encoding="utf-8")
@@ -221,8 +222,9 @@ def test_desktop_runtime_selects_server_before_authentication():
 
 def test_settings_dialog_exposes_connections_section_with_runtime_context():
     source = Path("ui/settings_dialog.py").read_text(encoding="utf-8")
-    assert "ConnectionSettingsPage" in source
-    assert 'self._add_page(tr("Connections"), ConnectionSettingsPage(context=context))' in source
+    assert "self.connections_page = ConnectionSettingsPage(context=context)" in source
+    assert 'self._add_page(tr("Connections"), self.connections_page)' in source
+    assert "requested_switch_profile_id" in source
 
 
 def test_database_startup_accepts_explicit_settings():
