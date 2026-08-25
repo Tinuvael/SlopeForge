@@ -96,7 +96,7 @@ class SettingsDialog(QDialog):
         self.theme_combo.currentIndexChanged.connect(self._theme_changed)
 
         if self.context:
-            server_name = self.context.connection_profile_name or tr("current server")
+            server_name = getattr(self.context, "connection_profile_name", "") or tr("current server")
             server = QLabel(f"{tr('Signed in server')}: {server_name}")
             server.setObjectName("FormHelperText")
             layout.addWidget(server)
@@ -123,7 +123,11 @@ class SettingsDialog(QDialog):
             return None
         return RememberTokenService(
             self.context.session_factory,
-            scope_id=self.context.session_scope_id or self.context.connection_profile_id or "default",
+            scope_id=(
+                getattr(self.context, "session_scope_id", "")
+                or getattr(self.context, "connection_profile_id", "")
+                or "default"
+            ),
         )
 
     def forget_sign_in(self) -> None:
