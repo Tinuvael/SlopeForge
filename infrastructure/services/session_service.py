@@ -74,20 +74,28 @@ def save_local_session(
     path = session_file_path(scope_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(
-            {
-                "username": username,
-                "token": token,
-                "device_name": device_name,
-                "expires_at": expires_at.isoformat(),
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    os.replace(temporary, path)
+    try:
+        temporary.write_text(
+            json.dumps(
+                {
+                    "username": username,
+                    "token": token,
+                    "device_name": device_name,
+                    "expires_at": expires_at.isoformat(),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        os.replace(temporary, path)
+    finally:
+        # A failed atomic replace must not leave the raw remember token behind in
+        # a plaintext temporary file.
+        try:
+            temporary.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def clear_local_session(scope_id: str | None = None) -> None:
@@ -113,6 +121,20 @@ class RememberTokenService:
         self.scope_id = str(scope_id or "default")
         self.migrate_legacy = bool(migrate_legacy)
 
+    def _revoke_created_token(self, hashed: str) -> None:
+        """Compensate a committed token when its local secret cannot be persisted."""
+        with self.session_factory() as session:
+            try:
+                remember = session.scalar(
+                    select(RememberToken).where(RememberToken.token_hash == hashed)
+                )
+                if remember is not None and remember.revoked_at is None:
+                    remember.revoked_at = datetime.now(timezone.utc)
+                    session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
     def create_for_user(
         self,
         user_id: int,
@@ -120,6 +142,7 @@ class RememberTokenService:
         device_name: str | None = None,
     ) -> str:
         raw_token = secrets.token_urlsafe(48)
+        hashed = token_hash(raw_token)
         expires_at = datetime.now(timezone.utc) + timedelta(days=REMEMBER_DAYS)
         device = device_name or default_device_name()
         with self.session_factory() as session:
@@ -127,23 +150,33 @@ class RememberTokenService:
                 session.add(
                     RememberToken(
                         user_id=user_id,
-                        token_hash=token_hash(raw_token),
+                        token_hash=hashed,
                         device_name=device,
                         expires_at=expires_at,
                     )
                 )
                 session.commit()
-                save_local_session(
-                    username,
-                    raw_token,
-                    device,
-                    expires_at,
-                    scope_id=self.scope_id,
-                )
-                return raw_token
             except Exception:
                 session.rollback()
                 raise
+
+        try:
+            save_local_session(
+                username,
+                raw_token,
+                device,
+                expires_at,
+                scope_id=self.scope_id,
+            )
+        except Exception as local_exc:
+            try:
+                self._revoke_created_token(hashed)
+            except Exception as cleanup_exc:
+                raise RuntimeError(
+                    "Remembered sign-in could not be saved locally, and its server token could not be revoked."
+                ) from cleanup_exc
+            raise local_exc
+        return raw_token
 
     def _authenticate_data(self, data: dict | None) -> RememberedSession | None:
         if not data or not data.get("token"):
