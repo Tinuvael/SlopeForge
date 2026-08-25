@@ -6,15 +6,15 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 from uuid import uuid4
 
+from application.file_storage import (
+    DATABASE_ONLY_STORAGE_MESSAGE,
+    FileStorageUnavailableError,
+)
 from domain.blasting.drillholes import (
     Drillhole,
     drillholes_from_lines,
     match_actual_to_design,
     summarize_drillholes,
-)
-from infrastructure.files.storage_availability import (
-    DATABASE_ONLY_STORAGE_MESSAGE,
-    FileStorageUnavailableError,
 )
 
 
@@ -27,32 +27,12 @@ class DrillholeRepositoryPort(Protocol):
 
 class DrillholeStoragePort(Protocol):
     available: bool
-
-    def copy_dataset(
-        self,
-        domain_id: int,
-        event_logical_id: str,
-        kind: str,
-        logical_id: str,
-        source_paths: tuple[Path, ...],
-    ) -> list[Any]: ...
-
-    def remove_dataset(
-        self,
-        domain_id: int,
-        event_logical_id: str,
-        kind: str,
-        logical_id: str,
-    ) -> None: ...
+    def copy_dataset(self, domain_id: int, event_logical_id: str, kind: str, logical_id: str, source_paths: tuple[Path, ...]) -> list[Any]: ...
+    def remove_dataset(self, domain_id: int, event_logical_id: str, kind: str, logical_id: str) -> None: ...
 
 
 class BlastEventDrillholeDatasetService:
-    def __init__(
-        self,
-        repository: DrillholeRepositoryPort,
-        storage: DrillholeStoragePort,
-        line_importer: Callable[[Path], Any],
-    ):
+    def __init__(self, repository: DrillholeRepositoryPort, storage: DrillholeStoragePort, line_importer: Callable[[Path], Any]):
         self.repository = repository
         self.storage = storage
         self.line_importer = line_importer
@@ -81,9 +61,7 @@ class BlastEventDrillholeDatasetService:
     def _mark_source_identity(path: Path, holes: tuple[Drillhole, ...]) -> None:
         is_datamine = path.suffix.lower() in {".dm", ".dmx"}
         for hole in holes:
-            line_id_field = str(
-                hole.source_attributes.get("datamine_line_id_field") or ""
-            ).upper()
+            line_id_field = str(hole.source_attributes.get("datamine_line_id_field") or "").upper()
             stable = is_datamine and line_id_field == "SID"
             if stable:
                 identity_kind = "datamine_sid"
@@ -100,27 +78,12 @@ class BlastEventDrillholeDatasetService:
     def _carry_design_assignments(cls, previous_row, holes: tuple[Drillhole, ...]) -> None:
         if previous_row is None:
             return
-        previous = {
-            hole.hole_id: hole.engineering_group_id
-            for hole in cls._holes_from_row(previous_row)
-            if hole.engineering_group_id and hole.has_stable_source_id
-        }
+        previous = {hole.hole_id: hole.engineering_group_id for hole in cls._holes_from_row(previous_row) if hole.engineering_group_id and hole.has_stable_source_id}
         for hole in holes:
-            if not hole.has_stable_source_id:
-                continue
-            group_id = previous.get(hole.hole_id)
-            if group_id:
-                hole.engineering_group_id = group_id
+            if hole.has_stable_source_id and previous.get(hole.hole_id):
+                hole.engineering_group_id = previous[hole.hole_id]
 
-    def import_dataset(
-        self,
-        domain_id: int,
-        event_logical_id: str,
-        dataset_kind: str,
-        source_path: str | Path,
-        *,
-        imported_by_user_id: int | None = None,
-    ):
+    def import_dataset(self, domain_id: int, event_logical_id: str, dataset_kind: str, source_path: str | Path, *, imported_by_user_id: int | None = None):
         if dataset_kind not in {"design", "actual"}:
             raise ValueError(f"Unsupported drillhole dataset kind: {dataset_kind!r}")
         self._require_storage()
@@ -129,30 +92,19 @@ class BlastEventDrillholeDatasetService:
         candidate_lines = [line for line in imported.lines if not line.is_horizontal]
         holes = drillholes_from_lines(candidate_lines)
         self._mark_source_identity(path, holes)
-        previous_design = None
         if dataset_kind == "design":
-            previous_design = self.repository.get_current(domain_id, event_logical_id, "design")
-            self._carry_design_assignments(previous_design, holes)
+            self._carry_design_assignments(self.repository.get_current(domain_id, event_logical_id, "design"), holes)
         summary = summarize_drillholes(holes)
-
         matches = []
         matched_design_dataset_id = None
         if dataset_kind == "actual":
             design_row = self.repository.get_current(domain_id, event_logical_id, "design")
             if design_row is None:
                 raise ValueError("Import design drillholes before importing as-drilled holes")
-            design_holes = self._holes_from_row(design_row)
-            matches = [item.to_dict() for item in match_actual_to_design(design_holes, holes)]
+            matches = [item.to_dict() for item in match_actual_to_design(self._holes_from_row(design_row), holes)]
             matched_design_dataset_id = int(design_row.id)
-
         logical_id = self._logical_id()
-        stored_files = self.storage.copy_dataset(
-            domain_id,
-            event_logical_id,
-            dataset_kind,
-            logical_id,
-            (path,),
-        )
+        stored_files = self.storage.copy_dataset(domain_id, event_logical_id, dataset_kind, logical_id, (path,))
         try:
             row = self.repository.add_dataset(
                 domain_id,
@@ -179,23 +131,14 @@ class BlastEventDrillholeDatasetService:
         row = self.repository.get_current(domain_id, event_logical_id, dataset_kind)
         if row is not None and dataset_kind == "actual":
             design = self.repository.get_current(domain_id, event_logical_id, "design")
-            row.design_revision_current = (
-                design is not None
-                and row.matched_design_dataset_id is not None
-                and int(row.matched_design_dataset_id) == int(design.id)
-            )
+            row.design_revision_current = design is not None and row.matched_design_dataset_id is not None and int(row.matched_design_dataset_id) == int(design.id)
         return row
 
     def actual_uses_current_design(self, domain_id: int, event_logical_id: str) -> bool:
         actual = self.current(domain_id, event_logical_id, "actual")
         return actual is None or bool(getattr(actual, "design_revision_current", False))
 
-    def current_holes(
-        self,
-        domain_id: int,
-        event_logical_id: str,
-        dataset_kind: str,
-    ) -> tuple[Drillhole, ...]:
+    def current_holes(self, domain_id: int, event_logical_id: str, dataset_kind: str) -> tuple[Drillhole, ...]:
         row = self.current(domain_id, event_logical_id, dataset_kind)
         if row is None:
             return ()
@@ -203,25 +146,10 @@ class BlastEventDrillholeDatasetService:
             return ()
         return self._holes_from_row(row)
 
-    def assigned_holes(
-        self,
-        domain_id: int,
-        event_logical_id: str,
-        group_id: str,
-    ) -> tuple[Drillhole, ...]:
-        return tuple(
-            hole
-            for hole in self.current_holes(domain_id, event_logical_id, "design")
-            if hole.engineering_group_id == group_id
-        )
+    def assigned_holes(self, domain_id: int, event_logical_id: str, group_id: str) -> tuple[Drillhole, ...]:
+        return tuple(hole for hole in self.current_holes(domain_id, event_logical_id, "design") if hole.engineering_group_id == group_id)
 
-    def assign_design_holes(
-        self,
-        domain_id: int,
-        event_logical_id: str,
-        group_id: str,
-        hole_ids: set[str] | list[str] | tuple[str, ...],
-    ):
+    def assign_design_holes(self, domain_id: int, event_logical_id: str, group_id: str, hole_ids: set[str] | list[str] | tuple[str, ...]):
         row = self.current(domain_id, event_logical_id, "design")
         if row is None:
             raise ValueError("Import design drillholes before assigning engineering groups")
@@ -234,18 +162,9 @@ class BlastEventDrillholeDatasetService:
         unknown = sorted(selected - known)
         if unknown:
             raise ValueError(f"Unknown design drillhole ID(s): {', '.join(unknown)}")
-        conflicts = sorted(
-            hole.hole_id
-            for hole in holes
-            if hole.hole_id in selected
-            and hole.engineering_group_id
-            and hole.engineering_group_id != group_id
-        )
+        conflicts = sorted(hole.hole_id for hole in holes if hole.hole_id in selected and hole.engineering_group_id and hole.engineering_group_id != group_id)
         if conflicts:
-            raise ValueError(
-                "Design drillhole(s) are already assigned to another drilling group: "
-                + ", ".join(conflicts)
-            )
+            raise ValueError("Design drillhole(s) are already assigned to another drilling group: " + ", ".join(conflicts))
         for hole in holes:
             if hole.hole_id in selected:
                 hole.engineering_group_id = group_id
