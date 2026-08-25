@@ -91,6 +91,10 @@ class DesktopRuntimeController:
         return DATABASE_ONLY if settings.storage_root is None else FULL_STORAGE
 
     @staticmethod
+    def _profile_location(profile: ConnectionProfile) -> str:
+        return f"{profile.host}:{profile.port} / {profile.database}"
+
+    @staticmethod
     def _close_splash(splash) -> None:
         try:
             splash.close()
@@ -300,10 +304,17 @@ class DesktopRuntimeController:
             splash.close_with_fade()
             return current_user
 
+        dialog_kwargs = {
+            "server_name": target.profile.display_name,
+            "server_location": self._profile_location(target.profile),
+            "database_only": (
+                self._profile_mode(target.profile, target.settings) == DATABASE_ONLY
+            ),
+        }
         if auth_service.has_users():
-            dialog = LoginDialog(auth_service)
+            dialog = LoginDialog(auth_service, **dialog_kwargs)
         else:
-            dialog = FirstAdminDialog(auth_service)
+            dialog = FirstAdminDialog(auth_service, **dialog_kwargs)
         splash.close_with_fade()
         if (
             dialog.exec() != dialog.DialogCode.Accepted

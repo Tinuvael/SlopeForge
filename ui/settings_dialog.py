@@ -38,6 +38,30 @@ from ui.application_theme import apply_application_theme
 from ui.connection_dialog import ConnectionSettingsPage
 from ui.engineering_catalogues_page import EngineeringCataloguesPage
 from ui.user_admin_page import UserAdminPage
+from ui.widgets.design_system import set_button_role
+
+
+def _confirm_end_saved_sessions(parent, server_name: str) -> bool:
+    box = QMessageBox(
+        QMessageBox.Icon.Warning,
+        tr("End all saved sessions?"),
+        tr("End all remembered sign-ins for your user on this server?"),
+        parent=parent,
+    )
+    details = tr(
+        "You will need to sign in again on remembered devices for this server."
+    )
+    if server_name:
+        details = f"{tr('Server')}: {server_name}\n\n{details}"
+    box.setInformativeText(details)
+    end_sessions = box.addButton(
+        tr("End sessions"), QMessageBox.ButtonRole.DestructiveRole
+    )
+    cancel = box.addButton(tr("Cancel"), QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(cancel)
+    box.setEscapeButton(cancel)
+    box.exec()
+    return box.clickedButton() is end_sessions
 
 
 class SettingsDialog(QDialog):
@@ -154,10 +178,12 @@ class SettingsDialog(QDialog):
             server = QLabel(f"{tr('Signed in server')}: {server_name}")
             server.setObjectName("FormHelperText")
             layout.addWidget(server)
-            forget = QPushButton(tr("Forget sign-in on this server"))
+            forget = set_button_role(
+                QPushButton(tr("Forget sign-in on this server")), "secondary"
+            )
             forget.clicked.connect(self.forget_sign_in)
-            revoke_all = QPushButton(
-                tr("End all my saved sessions on this server")
+            revoke_all = set_button_role(
+                QPushButton(tr("End all my saved sessions on this server")), "danger"
             )
             revoke_all.clicked.connect(self.revoke_my_sessions)
             layout.addWidget(forget)
@@ -206,6 +232,9 @@ class SettingsDialog(QDialog):
     def revoke_my_sessions(self) -> None:
         service = self._remember_service()
         if service is None or self.context is None:
+            return
+        server_name = getattr(self.context, "connection_profile_name", "")
+        if not _confirm_end_saved_sessions(self, server_name):
             return
         service.revoke_all_for_user(self.context.current_user.id)
         service.forget_local()

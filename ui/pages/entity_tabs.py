@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from app.localization import tr
 from ui.dialogs.entity_attachment_dialog import EntityAttachmentManagerWidget
+from ui.widgets.design_system import set_status_role
 
 # Kept for callers/tests that imported the old page-local style. Presentation is
 # now supplied by the application theme through the ``entityTabs`` property.
@@ -101,8 +102,8 @@ class StorageAwareAttachmentManagerWidget(EntityAttachmentManagerWidget):
                 "Attachment metadata remains available."
             )
         )
-        self.storage_notice.setObjectName("MutedText")
         self.storage_notice.setWordWrap(True)
+        set_status_role(self.storage_notice, "info")
         self.storage_notice.hide()
         root.addWidget(self.storage_notice)
 
