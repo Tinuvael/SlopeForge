@@ -26,7 +26,7 @@ class Header(QWidget):
     add_blast_event_requested = Signal()
     add_assessment_area_requested = Signal()
     archive_requested = Signal()
-    analysis_requested = Signal()
+    analysis_requested=Signal()
     report_requested = Signal()
     navigation_toggle_requested = Signal()
     switch_server_requested = Signal()
@@ -84,11 +84,11 @@ class Header(QWidget):
         self.analysis_button.setIcon(ui_icon("analytics"))
         self.analysis_button.clicked.connect(self.analysis_requested)
         self.report_button = QPushButton(tr("Report"))
-        self.report_button.setIcon(ui_icon("report", "blue"))
+        self.report_button.setIcon(ui_icon("report","blue"))
         self.report_button.setEnabled(False)
         self.report_button.clicked.connect(self.report_requested)
 
-        server_name = context.connection_profile_name or tr("Server")
+        server_name = getattr(context, "connection_profile_name", "") or tr("Server")
         self.server_button = QPushButton(server_name)
         self.server_button.setObjectName("ServerProfileButton")
         self.server_button.setToolTip(
