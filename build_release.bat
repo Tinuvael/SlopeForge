@@ -11,6 +11,12 @@ for %%D in (build dist release) do if exist "%%D" (echo Could not remove %%D.& e
 
 python -m PyInstaller --clean --noconfirm SlopeForge.spec || exit /b 1
 if not exist "dist\SlopeForge\SlopeForge.exe" (echo SlopeForge.exe was not built.& exit /b 1)
+
+python -m PyInstaller --clean --noconfirm SlopeForgeUpdater.spec || exit /b 1
+if not exist "dist\SlopeForgeUpdater.exe" (echo SlopeForgeUpdater.exe was not built.& exit /b 1)
+copy /y "dist\SlopeForgeUpdater.exe" "dist\SlopeForge\SlopeForgeUpdater.exe" >nul || exit /b 1
+if not exist "dist\SlopeForge\SlopeForgeUpdater.exe" (echo SlopeForgeUpdater.exe was not added to the release payload.& exit /b 1)
+
 python tools\validate_windows_payload.py "dist\SlopeForge" || exit /b 1
 
 mkdir release || exit /b 1
