@@ -10,7 +10,10 @@ def require_payload(payload: Path) -> None:
         Path("_internal/translations/slopeforge_ru.ts"),
         Path("_internal/alembic.ini"),
         Path("_internal/alembic/env.py"),
-        Path("_internal/alembic/versions/0001_mvp_baseline.py"),
+        Path("_internal/alembic/versions/0001_slopeforge_1.py"),
+        Path("_internal/alembic/schema_v1/core.py"),
+        Path("_internal/alembic/schema_v1/project_surfaces.py"),
+        Path("_internal/alembic/schema_v1/drillhole_datasets.py"),
         Path("_internal/app/icons/slopeforge_icon.ico"),
     )
     missing = [str(item) for item in required if not (payload / item).is_file()]
