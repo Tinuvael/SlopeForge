@@ -192,8 +192,13 @@ def test_legacy_connection_ini_migrates_secret_out_of_plaintext(tmp_path):
     assert len(items) == 1
     assert credentials.read(items[0].profile_id) == "legacy-secret"
     assert not legacy.exists()
-    assert legacy.with_suffix(".ini.migrated").exists()
+    assert not legacy.with_suffix(".ini.migrated").exists()
     assert "legacy-secret" not in store.path.read_text(encoding="utf-8")
+    assert all(
+        "legacy-secret" not in path.read_text(encoding="utf-8", errors="ignore")
+        for path in tmp_path.iterdir()
+        if path.is_file()
+    )
 
 
 def test_storage_validation_accepts_writable_folder(tmp_path):
