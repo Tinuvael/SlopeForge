@@ -61,18 +61,15 @@ def _walk_edges(
     unused = set(edges)
     lines: list[WallTransitionLine] = []
     while unused:
-        vertices_with_unused = {
-            vertex
-            for edge in unused
-            for vertex in edge
-        }
+        vertices_with_unused = {vertex for edge in unused for vertex in edge}
         start_candidates = sorted(
             vertex
             for vertex in vertices_with_unused
             if sum(
                 tuple(sorted((vertex, neighbour))) in unused
                 for neighbour in adjacency[vertex]
-            ) != 2
+            )
+            != 2
         )
         start = start_candidates[0] if start_candidates else min(vertices_with_unused)
         indices = [start]
@@ -100,7 +97,10 @@ def _walk_edges(
     return tuple(
         sorted(
             lines,
-            key=lambda line: (-line.plan_length, tuple((p.x, p.y, p.z) for p in line.points)),
+            key=lambda line: (
+                -line.plan_length,
+                tuple((p.x, p.y, p.z) for p in line.points),
+            ),
         )
     )
 
@@ -118,7 +118,10 @@ def extract_design_transition_lines(
     ``road`` triangle. The face-side third vertex determines whether that edge
     is the upper (crest) or lower (toe) boundary of the face.
     """
-    roles = tuple(role_mapping.resolve(triangle.source_attributes) for triangle in surface.triangles)
+    roles = tuple(
+        role_mapping.resolve(triangle.source_attributes)
+        for triangle in surface.triangles
+    )
     by_kind: dict[str, set[tuple[int, int]]] = {"crest": set(), "toe": set()}
     for edge, triangle_indices in _shared_edges(surface).items():
         if len(triangle_indices) != 2:
@@ -176,15 +179,28 @@ def _cumulative_plan_lengths(points: tuple[SurfaceVertex, ...]) -> tuple[float, 
     return tuple(values)
 
 
+def _line_is_closed(points: tuple[SurfaceVertex, ...], tolerance: float = 1e-8) -> bool:
+    if len(points) < 3:
+        return False
+    first, last = points[0], points[-1]
+    return hypot(last.x - first.x, last.y - first.y) <= tolerance
+
+
 def _interpolate_polyline(
     points: tuple[SurfaceVertex, ...],
     cumulative: tuple[float, ...],
     chainage: float,
+    *,
+    closed: bool = False,
 ) -> SurfaceVertex:
-    if chainage <= 0:
+    total = cumulative[-1]
+    if closed:
+        chainage %= total
+    elif chainage <= 0:
         return points[0]
-    if chainage >= cumulative[-1]:
+    elif chainage >= total:
         return points[-1]
+
     for index, (start_s, end_s) in enumerate(zip(cumulative, cumulative[1:])):
         if chainage <= end_s:
             span = end_s - start_s
@@ -228,13 +244,17 @@ def _nearest_plan_point(
     return None if best is None else (best[1], best[2])
 
 
-def _chainages(total_length: float, spacing: float) -> tuple[float, ...]:
+def _chainages(total_length: float, spacing: float, *, closed: bool) -> tuple[float, ...]:
     values = [0.0]
     current = spacing
     while current < total_length - 1e-9:
         values.append(current)
         current += spacing
-    if total_length > 1e-9 and abs(values[-1] - total_length) > 1e-9:
+    if (
+        not closed
+        and total_length > 1e-9
+        and abs(values[-1] - total_length) > 1e-9
+    ):
         values.append(total_length)
     return tuple(values)
 
@@ -252,6 +272,7 @@ def sample_wall_alignment(
     Tangents come only from the design crest. Each transverse normal is flipped
     toward the nearest design toe, giving a deterministic downslope ``+U`` sign
     without depending on triangle winding or Assessment boundary orientation.
+    Closed crest loops wrap the tangent window across their storage seam.
     """
     if crest_line.kind != "crest":
         raise ValueError("Wall alignment requires a design crest line")
@@ -264,21 +285,35 @@ def sample_wall_alignment(
     total_length = cumulative[-1]
     if total_length <= 1e-9:
         raise ValueError("Design crest has zero plan length")
+    closed = _line_is_closed(crest_line.points)
 
     samples: list[WallAlignmentSample] = []
-    for chainage in _chainages(total_length, spacing_m):
-        origin = _interpolate_polyline(crest_line.points, cumulative, chainage)
+    for chainage in _chainages(total_length, spacing_m, closed=closed):
+        origin = _interpolate_polyline(
+            crest_line.points,
+            cumulative,
+            chainage,
+            closed=closed,
+        )
         if not point_in_polygon(PlanPoint(origin.x, origin.y), assessment_polygon):
             continue
+        if closed:
+            before_chainage = chainage - tangent_window_m
+            after_chainage = chainage + tangent_window_m
+        else:
+            before_chainage = max(0.0, chainage - tangent_window_m)
+            after_chainage = min(total_length, chainage + tangent_window_m)
         before = _interpolate_polyline(
             crest_line.points,
             cumulative,
-            max(0.0, chainage - tangent_window_m),
+            before_chainage,
+            closed=closed,
         )
         after = _interpolate_polyline(
             crest_line.points,
             cumulative,
-            min(total_length, chainage + tangent_window_m),
+            after_chainage,
+            closed=closed,
         )
         tx, ty = after.x - before.x, after.y - before.y
         tangent_length = hypot(tx, ty)
