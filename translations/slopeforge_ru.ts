@@ -4545,5 +4545,39 @@ Continue?</source><translation>Новый горизонт отличается 
         <source>Hole spacing, m</source>
         <translation>Шаг между скважинами, м</translation>
     </message>
+    <message><source>%1 is not configured for this Project.</source><translation>%1 не настроена для этого проекта.</translation></message>
+    <message><source>ACTUAL</source><translation>ФАКТ</translation></message>
+    <message><source>Active revision R%1 · %2 · %3 triangles</source><translation>Активная ревизия R%1 · %2 · треугольников: %3</translation></message>
+    <message><source>Calculate profiles</source><translation>Рассчитать профили</translation></message>
+    <message><source>Calculated %1 transverse profiles from the active Project surfaces.</source><translation>По активным поверхностям проекта рассчитано поперечных профилей: %1.</translation></message>
+    <message><source>Calculating transverse profiles…</source><translation>Расчёт поперечных профилей…</translation></message>
+    <message><source>Chainage %1 m</source><translation>Пикетаж %1 м</translation></message>
+    <message><source>DESIGN</source><translation>ПРОЕКТ</translation></message>
+    <message><source>Design crest</source><translation>Проектная бровка</translation></message>
+    <message><source>Design semantics: COLOUR 2 = Face · COLOUR 5 = Berm · COLOUR 3 = Road</source><translation>Семантика проекта: COLOUR 2 = Откос · COLOUR 5 = Берма · COLOUR 3 = Дорога</translation></message>
+    <message><source>Design toe</source><translation>Проектная подошва</translation></message>
+    <message><source>Diagnostic local tangent (T) and wall-normal (N) unit vectors.</source><translation>Диагностические единичные векторы локальной касательной (T) и нормали к борту (N).</translation></message>
+    <message><source>Diagnostic mapping read from the active Design surface attributes.</source><translation>Диагностическое соответствие, прочитанное из атрибутов активной проектной поверхности.</translation></message>
+    <message><source>Direction details</source><translation>Параметры направления</translation></message>
+    <message><source>Distance along the crest used to estimate the local strike direction.</source><translation>Расстояние вдоль бровки, используемое для оценки локального направления простирания.</translation></message>
+    <message><source>Distance sampled on each side of the profile origin, normal to the wall.</source><translation>Расстояние выборки в каждую сторону от начала профиля по нормали к борту.</translation></message>
+    <message><source>No active dataset</source><translation>Нет активного набора данных</translation></message>
+    <message><source>No profile selected</source><translation>Профиль не выбран</translation></message>
+    <message><source>No profiles</source><translation>Профили отсутствуют</translation></message>
+    <message><source>Plan / transverse profiles</source><translation>План / поперечные профили</translation></message>
+    <message><source>Profile</source><translation>Профиль</translation></message>
+    <message><source>Profile %1 · Ch. %2 m</source><translation>Профиль %1 · пикетаж %2 м</translation></message>
+    <message><source>Profile %1 · Chainage %2 m</source><translation>Профиль %1 · пикетаж %2 м</translation></message>
+    <message><source>Profile half-width</source><translation>Полуширина профиля</translation></message>
+    <message><source>Profile spacing</source><translation>Шаг профилей</translation></message>
+    <message><source>Profiles</source><translation>Профили</translation></message>
+    <message><source>Ready to calculate.</source><translation>Готово к расчёту.</translation></message>
+    <message><source>Road</source><translation>Дорога</translation></message>
+    <message><source>Shared file storage is unavailable for this connection. Surface metadata can be viewed, but wall conformance cannot be calculated.</source><translation>Общее файловое хранилище недоступно для этого подключения. Метаданные поверхности доступны для просмотра, но расчёт соответствия борта невозможен.</translation></message>
+    <message><source>Strike window</source><translation>Окно простирания</translation></message>
+    <message><source>Transverse section</source><translation>Поперечное сечение</translation></message>
+    <message><source>Unknown</source><translation>Неизвестно</translation></message>
+    <message><source>Wall conformance</source><translation>Соответствие борта</translation></message>
+    <message><source>Wall conformance diagnostic</source><translation>Диагностика соответствия борта</translation></message>
 </context>
 </TS>

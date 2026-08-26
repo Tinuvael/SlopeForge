@@ -105,3 +105,45 @@ def test_empty_and_semantic_palette_states_are_explanatory(monkeypatch):
     _app().setProperty("slopeforgeTheme", "light")
     tab.deleteLater()
     _app().sendPostedEvents()
+
+
+def test_calculated_plan_recolors_all_geometry_without_recalculation(monkeypatch):
+    _app().setProperty("slopeforgeTheme", "light")
+    tab = _tab(monkeypatch)
+    tab.calculate()
+    result_before = tab.result
+    light = module.WallConformancePlanWidget._colors()
+    assert tab.plan._area_item.pen().color() == light["area"]
+    assert tab.plan._crest_item.pen().color() == light["crest"]
+    assert all(item.pen().color() == light["toe"] for item in tab.plan._toe_items)
+
+    _app().setProperty("slopeforgeTheme", "dark")
+    tab.plan._apply_theme()
+    dark = module.WallConformancePlanWidget._colors()
+    assert tab.result is result_before
+    assert tab.plan._area_item.pen().color() == dark["area"]
+    assert tab.plan._area_item.brush().color() == dark["area_fill"]
+    assert tab.plan._crest_item.pen().color() == dark["crest"]
+    assert all(item.pen().color() == dark["toe"] for item in tab.plan._toe_items)
+    assert all(
+        item.pen().color() in (dark["profile"], dark["selected"])
+        for item in tab.plan._profile_items
+    )
+    _app().setProperty("slopeforgeTheme", "light")
+    tab.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_legends_render_at_compact_minimum_width(monkeypatch):
+    tab = _tab(monkeypatch)
+    tab.calculate()
+    tab.profile_plot.resize(tab.profile_plot.minimumWidth(), 300)
+    tab.profile_plot.show()
+    _app().processEvents()
+    image = tab.profile_plot.grab().toImage()
+    assert not image.isNull()
+    assert tab.profile_plot.minimumWidth() == 340
+    assert tab.plan.legend.wordWrap()
+    assert tab.plan.legend.sizePolicy().horizontalPolicy().name == "Ignored"
+    tab.deleteLater()
+    _app().sendPostedEvents()

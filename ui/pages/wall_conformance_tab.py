@@ -44,6 +44,9 @@ class WallConformancePlanWidget(QWidget):
         self.view.set_polygon_drawing_mode(True)
         self._profiles = ()
         self._profile_items = []
+        self._area_item = None
+        self._crest_item = None
+        self._toe_items = []
         self._half_width_m = 12.0
         self._selected_index = -1
 
@@ -53,14 +56,18 @@ class WallConformancePlanWidget(QWidget):
         title = QLabel(tr("Plan / transverse profiles"))
         title.setObjectName("EngineeringSectionTitle")
         bar.addWidget(title)
-        self.legend = QLabel()
-        self.legend.setObjectName("MutedText")
-        bar.addWidget(self.legend)
         bar.addStretch()
         fit = QPushButton(tr("Fit"))
         fit.clicked.connect(self.view.fit_to_extent)
         bar.addWidget(fit)
         root.addLayout(bar)
+        self.legend = QLabel()
+        self.legend.setObjectName("MutedText")
+        self.legend.setWordWrap(True)
+        self.legend.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        root.addWidget(self.legend)
         root.addWidget(self.view, 1)
         self._apply_theme()
 
@@ -95,10 +102,10 @@ class WallConformancePlanWidget(QWidget):
         colors = self._colors()
         swatch = lambda key: f'<span style="color:{colors[key].name()}">&#9632;</span>'
         return (
-            f"{swatch('area')} {tr('Assessment area')} &nbsp; "
-            f"{swatch('crest')} {tr('Design crest')} &nbsp; "
-            f"{swatch('toe')} {tr('Design toe')} &nbsp; "
-            f"{swatch('profile')} {tr('Profiles')} &nbsp; "
+            f"{swatch('area')} {tr('Assessment area')} · "
+            f"{swatch('crest')} {tr('Design crest')} · "
+            f"{swatch('toe')} {tr('Design toe')} · "
+            f"{swatch('profile')} {tr('Profiles')} · "
             f"{swatch('selected')} {tr('Selected')}"
         )
 
@@ -106,8 +113,14 @@ class WallConformancePlanWidget(QWidget):
         colors = self._colors()
         self.legend.setText(self._legend_html())
         self.scene.setBackgroundBrush(QBrush(colors["background"]))
-        if not self._profile_items:
-            return
+        if self._area_item is not None:
+            self._area_item.setPen(self._cosmetic_pen(colors["area"], 2.0))
+            self._area_item.setBrush(QBrush(colors["area_fill"]))
+        if self._crest_item is not None:
+            self._crest_item.setPen(self._cosmetic_pen(colors["crest"], 3.0))
+        toe_pen = self._cosmetic_pen(colors["toe"], 2.0, Qt.PenStyle.DashLine)
+        for item in self._toe_items:
+            item.setPen(toe_pen)
         for index, item in enumerate(self._profile_items):
             item.setPen(self._profile_pen(index == self._selected_index))
         self.view.viewport().update()
@@ -157,6 +170,9 @@ class WallConformancePlanWidget(QWidget):
     def set_result(self, assessment_polygon: PlanPolygon, diagnostic_result) -> None:
         self.scene.clear()
         self._profile_items = []
+        self._area_item = None
+        self._crest_item = None
+        self._toe_items = []
         self._profiles = diagnostic_result.profile_set.profiles
         self._half_width_m = diagnostic_result.settings.half_width_m
         self._selected_index = -1
@@ -164,19 +180,21 @@ class WallConformancePlanWidget(QWidget):
         self.scene.setBackgroundBrush(QBrush(colors["background"]))
 
         area_path = self._polygon_path(assessment_polygon)
-        self.scene.addPath(
+        self._area_item = self.scene.addPath(
             area_path,
             self._cosmetic_pen(colors["area"], 2.0),
             QBrush(colors["area_fill"]),
         )
         crest = diagnostic_result.profile_set.crest_line
-        self.scene.addPath(
+        self._crest_item = self.scene.addPath(
             self._line_path(crest.points),
             self._cosmetic_pen(colors["crest"], 3.0),
         )
         toe_pen = self._cosmetic_pen(colors["toe"], 2.0, Qt.PenStyle.DashLine)
         for toe in diagnostic_result.profile_set.toe_lines:
-            self.scene.addPath(self._line_path(toe.points), toe_pen)
+            self._toe_items.append(
+                self.scene.addPath(self._line_path(toe.points), toe_pen)
+            )
 
         for profile in self._profiles:
             origin = profile.alignment.origin
@@ -293,6 +311,41 @@ class WallProfilePlot(QWidget):
             for point in (segment.start, segment.end)
         )
 
+    @staticmethod
+    def _draw_legend_row(painter, rect: QRectF, entries, colors) -> None:
+        """Distribute legend entries across the available width without clipping."""
+        if not entries:
+            return
+        slot_width = rect.width() / len(entries)
+        metrics = painter.fontMetrics()
+        for index, (label, color_key) in enumerate(entries):
+            slot = QRectF(
+                rect.left() + index * slot_width,
+                rect.top(),
+                slot_width,
+                rect.height(),
+            )
+            line_width = min(24.0, max(12.0, slot.width() * 0.28))
+            text_width = max(1, slot.width() - line_width - 8)
+            text = metrics.elidedText(label, Qt.TextElideMode.ElideRight, int(text_width))
+            line_left = slot.left() + 4
+            line_y = slot.center().y()
+            painter.setPen(QPen(colors[color_key], 3))
+            painter.drawLine(
+                QPointF(line_left, line_y), QPointF(line_left + line_width, line_y)
+            )
+            painter.setPen(colors["text"])
+            painter.drawText(
+                QRectF(
+                    line_left + line_width + 4,
+                    slot.top(),
+                    text_width,
+                    slot.height(),
+                ),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                text,
+            )
+
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
@@ -308,7 +361,7 @@ class WallProfilePlot(QWidget):
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, tr("No profile selected"))
             return
 
-        left, top, right, bottom = 62, 58, 22, 46
+        left, top, right, bottom = 62, 78, 22, 46
         plot = QRectF(
             left,
             top,
@@ -377,21 +430,18 @@ class WallProfilePlot(QWidget):
             Qt.AlignmentFlag.AlignRight,
             tr("Chainage %1 m").replace("%1", f"{chainage:.1f}"),
         )
-        painter.drawText(QRectF(plot.left(), 29, 70, 20), Qt.AlignmentFlag.AlignLeft, tr("Design"))
-        painter.setPen(QPen(colors["design"], 3))
-        painter.drawLine(QPointF(plot.left() + 45, 39), QPointF(plot.left() + 70, 39))
-        painter.setPen(colors["text"])
-        painter.drawText(QRectF(plot.left() + 84, 29, 70, 20), Qt.AlignmentFlag.AlignLeft, tr("Actual"))
-        painter.setPen(QPen(colors["actual"], 3))
-        painter.drawLine(QPointF(plot.left() + 127, 39), QPointF(plot.left() + 152, 39))
-        painter.setPen(colors["text"])
-        semantic_x = plot.left() + 174
-        for role in ("face", "berm", "road"):
-            painter.setPen(QPen(colors[role], 3))
-            painter.drawLine(QPointF(semantic_x, 39), QPointF(semantic_x + 18, 39))
-            painter.setPen(colors["text"])
-            painter.drawText(QRectF(semantic_x + 22, 29, 48, 20), Qt.AlignmentFlag.AlignLeft, tr(role.title()))
-            semantic_x += 72
+        self._draw_legend_row(
+            painter,
+            QRectF(plot.left(), 27, plot.width(), 20),
+            ((tr("Design"), "design"), (tr("Actual"), "actual")),
+            colors,
+        )
+        self._draw_legend_row(
+            painter,
+            QRectF(plot.left(), 48, plot.width(), 20),
+            ((tr("Face"), "face"), (tr("Berm"), "berm"), (tr("Road"), "road")),
+            colors,
+        )
 
         def draw_segments(segments, color, base_width, semantic=False):
             for segment in segments:
