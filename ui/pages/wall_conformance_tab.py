@@ -38,6 +38,9 @@ class WallConformancePlanWidget(QWidget):
         self.scene = QGraphicsScene(self)
         self.view = PlanView(self.scene)
         self.view.scene_clicked.connect(self._select_nearest_profile)
+        # Read-only section selection uses the PlanView's existing left-click
+        # domain-coordinate signal. Middle-drag remains available for panning.
+        self.view.set_polygon_drawing_mode(True)
         self._profiles = ()
         self._profile_items = []
         self._half_width_m = 12.0
