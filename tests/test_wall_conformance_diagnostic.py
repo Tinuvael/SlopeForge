@@ -135,46 +135,86 @@ def test_diagnostic_service_reports_missing_active_surface() -> None:
         service.calculate_current(1, _area())
 
 
-def _fake_tab_class(surface_service):
-    from PySide6.QtWidgets import QLabel, QPushButton, QWidget
+class FakeButton:
+    def __init__(self):
+        self.enabled = True
 
-    class FakeWallConformanceTab(QWidget):
+    def setEnabled(self, enabled):
+        self.enabled = bool(enabled)
+
+    def isEnabled(self):
+        return self.enabled
+
+
+class FakeLabel:
+    def __init__(self, text=""):
+        self._text = text
+
+    def setText(self, text):
+        self._text = str(text)
+
+    def text(self):
+        return self._text
+
+
+class FakeTabs:
+    def __init__(self, entries):
+        self.entries = list(entries)
+
+    def indexOf(self, widget):
+        try:
+            return self.entries.index(widget)
+        except ValueError:
+            return -1
+
+    def count(self):
+        return len(self.entries)
+
+    def insertTab(self, index, widget, label):
+        self.entries.insert(index, widget)
+        return index
+
+    def tabText(self, index):
+        return getattr(self.entries[index], "_tab_label", None)
+
+
+def _fake_tab_class(surface_service):
+    class FakeWallConformanceTab:
         def __init__(self, context, site_id, polygon, parent=None):
-            super().__init__(parent)
             self.context = context
             self.site_id = site_id
             self.polygon = polygon
+            self.parent = parent
             self.service = WallConformanceDiagnosticService(surface_service)
-            self.calculate_button = QPushButton("Calculate profiles", self)
-            self.status = QLabel("Ready to calculate.", self)
+            self.calculate_button = FakeButton()
+            self.status = FakeLabel("Ready to calculate.")
 
     return FakeWallConformanceTab
 
 
 def _fake_assessment_page():
-    from PySide6.QtWidgets import QTabWidget, QWidget
-
-    page = QWidget()
-    page.context = object()
-    page.controller = SimpleNamespace(site_id=42)
-    page.area = SimpleNamespace(
-        active_geometry_revision=lambda: SimpleNamespace(
-            final_geometry_frozen=_area()
-        )
+    assessment_tab = object()
+    overview = SimpleNamespace(_tab_label="Overview")
+    assessment = assessment_tab
+    linked = SimpleNamespace(_tab_label="Linked events")
+    page = SimpleNamespace(
+        context=object(),
+        controller=SimpleNamespace(site_id=42),
+        area=SimpleNamespace(
+            active_geometry_revision=lambda: SimpleNamespace(
+                final_geometry_frozen=_area()
+            )
+        ),
+        assessment_tab=assessment_tab,
+        tabs=FakeTabs([overview, assessment, linked]),
     )
-    page.tabs = QTabWidget(page)
-    page.assessment_tab = QWidget(page.tabs)
-    page.tabs.addTab(QWidget(page.tabs), "Overview")
-    page.tabs.addTab(page.assessment_tab, "Assessment")
-    page.tabs.addTab(QWidget(page.tabs), "Linked events")
     return page
 
 
 def test_installer_places_wall_conformance_after_assessment(monkeypatch) -> None:
-    from PySide6.QtWidgets import QApplication
     import ui.pages.wall_conformance_install as installer
 
-    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(installer, "set_status_role", lambda label, role: label)
     monkeypatch.setattr(
         installer,
         "WallConformanceTab",
@@ -183,20 +223,19 @@ def test_installer_places_wall_conformance_after_assessment(monkeypatch) -> None
     page = _fake_assessment_page()
 
     tab = installer.install_wall_conformance_tab(page)
+    tab._tab_label = "Wall conformance"
 
     assert page.tabs.indexOf(tab) == 2
     assert page.tabs.tabText(2) == "Wall conformance"
     assert page.wall_conformance_tab is tab
     assert tab.site_id == 42
     assert tab.calculate_button.isEnabled()
-    assert app is not None
 
 
 def test_installer_disables_calculation_when_actual_surface_is_missing(monkeypatch) -> None:
-    from PySide6.QtWidgets import QApplication
     import ui.pages.wall_conformance_install as installer
 
-    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(installer, "set_status_role", lambda label, role: label)
     monkeypatch.setattr(
         installer,
         "WallConformanceTab",
@@ -208,4 +247,3 @@ def test_installer_disables_calculation_when_actual_surface_is_missing(monkeypat
 
     assert not tab.calculate_button.isEnabled()
     assert "Actual survey" in tab.status.text()
-    assert app is not None
