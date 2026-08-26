@@ -98,20 +98,25 @@ def _clip_to_half_width(
     if first.u > upper and second.u > upper:
         return None
 
-    start, end = first, second
-    du = end.u - start.u
+    source_start, source_end = first, second
+    du = source_end.u - source_start.u
     if abs(du) <= 1e-12:
-        return (start, end) if lower <= start.u <= upper else None
-
-    def at_u(target: float) -> SectionPoint:
-        fraction = (target - start.u) / du
-        return SectionPoint(
-            u=target,
-            z=start.z + (end.z - start.z) * fraction,
-            x=start.x + (end.x - start.x) * fraction,
-            y=start.y + (end.y - start.y) * fraction,
+        return (
+            (source_start, source_end)
+            if lower <= source_start.u <= upper
+            else None
         )
 
+    def at_u(target: float) -> SectionPoint:
+        fraction = (target - source_start.u) / du
+        return SectionPoint(
+            u=target,
+            z=source_start.z + (source_end.z - source_start.z) * fraction,
+            x=source_start.x + (source_end.x - source_start.x) * fraction,
+            y=source_start.y + (source_end.y - source_start.y) * fraction,
+        )
+
+    start, end = source_start, source_end
     if start.u < lower:
         start = at_u(lower)
     elif start.u > upper:
