@@ -22,7 +22,7 @@ One installation may contain multiple independent server/database profiles. Each
 
 Two storage modes are supported:
 
-- **Full** — PostgreSQL plus a configured shared file-storage directory. This is the normal site/workstation mode.
+- **Database + shared files** (`full` internally) — PostgreSQL plus a configured shared file-storage directory. This is the normal site/workstation mode.
 - **Database only** — PostgreSQL without physical shared storage. PostgreSQL-backed project, blast, assessment and attachment metadata remain available, while physical file preview/open/add/delete/import actions are unavailable and must not probe the missing network/share path.
 
 `Database only` is a connection/storage mode, not an application permission role. SlopeForge `admin`, `editor`, and `viewer` permissions remain authoritative after the selected database authenticates the user.
@@ -57,14 +57,40 @@ python -m database.cli prepare-db
 
 If it cannot, create the database with an administrator account and grant the application user access.
 
-## Apply migrations
+## Production database upgrades
+
+Installed Windows releases include a separate **SlopeForge Updater** administrative application. Normal `SlopeForge.exe` does not silently migrate an existing production database whose Alembic revision differs from the application release.
+
+Use `SlopeForge Updater` for a production upgrade:
+
+1. Close or disconnect engineering clients for the maintenance window.
+2. Select the saved PostgreSQL server profile. A separate database-administrator profile may be used when the normal application user does not have backup/DDL permissions.
+3. Confirm the displayed server/database, current schema revision, required schema revision, and compatibility state.
+4. Choose a backup folder.
+5. `Create backup` is available independently. It uses PostgreSQL `pg_dump` custom format and reports success only after a real non-empty `.dump` file is verified.
+6. `Backup & upgrade` is enabled only for a known migration ancestor bundled with the installed SlopeForge release. It creates and verifies the backup before calling Alembic, then re-reads the revision and verifies required SlopeForge tables.
+7. Keep the resulting `.dump` and `SlopeForge_updater.log` according to the site's normal backup/retention policy.
+
+The updater refuses a database created by a newer SlopeForge release and refuses unknown/divergent migration history. It does not use `alembic stamp`, does not automatically restore after a failed migration, and does not copy attachment/file-storage trees. Physical file-storage backup remains an independent server/IT responsibility.
+
+`pg_dump` must be available on the updater workstation. SlopeForge checks, in order:
+
+- an explicit `SLOPEFORGE_PG_DUMP` environment variable;
+- `pg_dump` on `PATH`;
+- common Windows PostgreSQL installations under `C:\Program Files\PostgreSQL\<version>\bin\pg_dump.exe`.
+
+The PostgreSQL password is supplied to `pg_dump` through the child process environment and is not written into the command line or updater log.
+
+## Apply migrations from source
+
+For development/test environments or deliberate administrator workflows from a source checkout:
 
 ```bash
 python -m database.cli migrate
 python -m database.cli migration-status
 ```
 
-Do not use `alembic stamp` to hide a physical schema mismatch.
+For production Windows upgrades, prefer the backup-gated `SlopeForge Updater` workflow above. Do not use `alembic stamp` to hide a physical schema mismatch.
 
 ### SlopeForge 1 baseline reset
 
@@ -100,8 +126,8 @@ When the selected PostgreSQL database exists but has no user tables, SlopeForge 
 
 On normal desktop startup:
 
-1. SlopeForge shows `Select server` before SlopeForge user authentication unless a saved profile is configured to skip server selection.
-2. `Add` / `Edit` collects and tests PostgreSQL settings plus optional Full-mode file storage.
+1. SlopeForge shows `Select server` before SlopeForge user authentication unless a saved profile is configured for automatic connection.
+2. `Add` / `Edit` collects and tests PostgreSQL settings plus optional shared file storage.
 3. A successful saved profile writes non-secret metadata to `connections.json` and its PostgreSQL password to Windows Credential Manager on Windows.
 4. Only after a server profile is selected does SlopeForge create that profile's Engine / SessionFactory and authenticate the SlopeForge application user.
 5. `Remember me on this server` stores a remember token separately for that connection profile; application-user passwords are not stored locally.
@@ -112,8 +138,8 @@ Manual Windows smoke check:
 
 1. Start from no environment-pinned `DATABASE_URL` and no saved `connections.json`.
 2. Launch SlopeForge; confirm `Select server` appears before the application login.
-3. Add a Full profile, test it, connect, and sign in with `Remember me on this server` enabled.
-4. Restart; confirm server selection appears again unless `Skip server selection on startup` was enabled, and confirm the remembered login is scoped to that server.
+3. Add a `Database + shared files` profile, test it, connect, and sign in with `Remember me on this server` enabled.
+4. Restart; confirm server selection appears again unless automatic connection at startup was enabled, and confirm the remembered login is scoped to that server.
 5. Add a second profile and switch to it from the header or `Settings → Connections`; confirm a clean new login/runtime is used.
 6. Add a `Database only` profile with no storage path; confirm database-backed pages open and attachment metadata/counts render without probing physical shared files.
 
@@ -143,11 +169,11 @@ Normal UI terminology is Project / Quarry and Domain. Internal `Site` is the per
 
 ## Attachment storage
 
-Attachment metadata is stored in PostgreSQL. In a Full connection, physical files are stored under the configured file-storage root through the current storage/infrastructure layer.
+Attachment metadata is stored in PostgreSQL. In a `Database + shared files` connection, physical files are stored under the configured file-storage root through the current storage/infrastructure layer.
 
 In `Database only`, no substitute local attachment directory is created. Metadata and counts can be read from PostgreSQL, but physical file paths are unavailable. Physical preview/open/add/delete actions and source-file imports must remain disabled or fail before filesystem/network access.
 
-Do not assume a database cascade removes physical files. File deletion/copy/move in Full mode must go through the application/storage workflow so rollback and one-owner semantics are preserved.
+Do not assume a database cascade removes physical files. File deletion/copy/move in full-storage mode must go through the application/storage workflow so rollback and one-owner semantics are preserved.
 
 ## Tests
 
@@ -156,7 +182,7 @@ Fast/normal development checks:
 ```bash
 pytest <relevant tests>
 python tools/architecture_audit.py
-python -m compileall app application domain infrastructure database repositories ui
+python -m compileall app application domain infrastructure database repositories ui main.py updater_main.py
 git diff --check
 ```
 
@@ -195,7 +221,7 @@ For schema/architecture release checks:
 1. Use a new disposable PostgreSQL database.
 2. Set `DATABASE_URL` to that database.
 3. Run `python -m database.cli migrate`.
-4. Run `python -m database.cli migration-status` and confirm revision `1`.
+4. Run `python -m database.cli migration-status` and confirm the expected current release head.
 5. Launch `python main.py` and create the first administrator.
 6. Exercise a minimal Project → Domain → Blast Event / Assessment Area flow appropriate to the current release.
 7. Restart and confirm persisted data remains available.

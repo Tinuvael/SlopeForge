@@ -98,7 +98,7 @@ def test_pre_1_0_revision_is_not_initialized_or_stamped(tmp_path: Path) -> None:
     try:
         with pytest.raises(StartupError) as caught:
             initialize_database_runtime(settings)
-        assert caught.value.reason == "database_upgrade_required"
+        assert caught.value.reason == "database_version_incompatible"
         assert "python -m" not in caught.value.presentation()
         with engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0007_remove_mine_blastblock"
