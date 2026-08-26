@@ -95,11 +95,11 @@ def _curved_bench_surface() -> TriangleSurface:
 def _skew_area() -> PlanPolygon:
     return PlanPolygon(
         (
-            PlanPoint(-8, 4),
-            PlanPoint(12, 7),
-            PlanPoint(14, 17),
+            PlanPoint(-8, -2),
+            PlanPoint(8, 10),
+            PlanPoint(10, 18),
             PlanPoint(-6, 14),
-            PlanPoint(-8, 4),
+            PlanPoint(-8, -2),
         )
     )
 
@@ -137,7 +137,7 @@ def test_alignment_is_normal_to_design_wall_not_assessment_area_edges() -> None:
         tangent_window_m=4.0,
     )
 
-    assert [sample.chainage_m for sample in samples] == [5.0, 10.0]
+    assert [sample.chainage_m for sample in samples] == [5.0, 10.0, 15.0]
     for sample in samples:
         assert sample.tangent_xy == pytest.approx((0.0, 1.0))
         assert sample.normal_xy == pytest.approx((1.0, 0.0))
@@ -148,7 +148,7 @@ def test_alignment_is_normal_to_design_wall_not_assessment_area_edges() -> None:
     area_edge = area.ring[1].x - area.ring[0].x, area.ring[1].y - area.ring[0].y
     edge_length = hypot(*area_edge)
     area_edge = area_edge[0] / edge_length, area_edge[1] / edge_length
-    assert abs(samples[0].normal_xy[0] * area_edge[0] + samples[0].normal_xy[1] * area_edge[1]) > 0.9
+    assert abs(samples[0].normal_xy[0] * area_edge[0] + samples[0].normal_xy[1] * area_edge[1]) < 0.9
 
 
 def test_vertical_section_intersects_design_roles_in_wall_normal_u_coordinates() -> None:
