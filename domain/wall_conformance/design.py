@@ -149,13 +149,21 @@ def extract_design_transition_lines(
     )
 
 
-def _clipped_plan_length(line: WallTransitionLine, polygon: PlanPolygon) -> float:
-    plan_line = PlanLineString(tuple(PlanPoint(point.x, point.y) for point in line.points))
-    fragments = clip_datamine_line_by_polygon(plan_line, polygon)
+def _plan_line(line: WallTransitionLine) -> PlanLineString:
+    return PlanLineString(tuple(PlanPoint(point.x, point.y) for point in line.points))
+
+
+def _fragment_plan_length(fragment: PlanLineString) -> float:
     return sum(
         hypot(b.x - a.x, b.y - a.y)
-        for fragment in fragments
         for a, b in zip(fragment.points, fragment.points[1:])
+    )
+
+
+def _clipped_plan_length(line: WallTransitionLine, polygon: PlanPolygon) -> float:
+    return sum(
+        _fragment_plan_length(fragment)
+        for fragment in clip_datamine_line_by_polygon(_plan_line(line), polygon)
     )
 
 
@@ -259,6 +267,75 @@ def _chainages(total_length: float, spacing: float, *, closed: bool) -> tuple[fl
     return tuple(values)
 
 
+def _fragment_midpoint(fragment: PlanLineString) -> PlanPoint:
+    cumulative = [0.0]
+    for first, second in zip(fragment.points, fragment.points[1:]):
+        cumulative.append(cumulative[-1] + hypot(second.x - first.x, second.y - first.y))
+    target = cumulative[-1] / 2.0
+    for index, (start_s, end_s) in enumerate(zip(cumulative, cumulative[1:])):
+        if target <= end_s:
+            span = end_s - start_s
+            fraction = 0.0 if span <= 1e-12 else (target - start_s) / span
+            first, second = fragment.points[index], fragment.points[index + 1]
+            return PlanPoint(
+                first.x + (second.x - first.x) * fraction,
+                first.y + (second.y - first.y) * fraction,
+            )
+    return fragment.points[-1]
+
+
+def _plan_point_chainage(
+    points: tuple[SurfaceVertex, ...],
+    cumulative: tuple[float, ...],
+    target: PlanPoint,
+) -> float:
+    best: tuple[float, float] | None = None
+    for index, (first, second) in enumerate(zip(points, points[1:])):
+        dx, dy = second.x - first.x, second.y - first.y
+        length_sq = dx * dx + dy * dy
+        fraction = (
+            0.0
+            if length_sq <= 1e-18
+            else max(
+                0.0,
+                min(
+                    1.0,
+                    ((target.x - first.x) * dx + (target.y - first.y) * dy)
+                    / length_sq,
+                ),
+            )
+        )
+        x = first.x + dx * fraction
+        y = first.y + dy * fraction
+        distance_sq = (target.x - x) ** 2 + (target.y - y) ** 2
+        segment_length = hypot(dx, dy)
+        chainage = cumulative[index] + segment_length * fraction
+        candidate = (distance_sq, chainage)
+        if best is None or candidate < best:
+            best = candidate
+    if best is None:
+        raise ValueError("Design crest has no measurable segment")
+    return best[1]
+
+
+def _fallback_chainage_inside_polygon(
+    crest_line: WallTransitionLine,
+    assessment_polygon: PlanPolygon,
+    cumulative: tuple[float, ...],
+) -> float | None:
+    fragments = clip_datamine_line_by_polygon(_plan_line(crest_line), assessment_polygon)
+    if not fragments:
+        return None
+    fragment = max(fragments, key=_fragment_plan_length)
+    if _fragment_plan_length(fragment) <= 1e-9:
+        return None
+    return _plan_point_chainage(
+        crest_line.points,
+        cumulative,
+        _fragment_midpoint(fragment),
+    )
+
+
 def sample_wall_alignment(
     crest_line: WallTransitionLine,
     toe_lines: tuple[WallTransitionLine, ...],
@@ -272,7 +349,9 @@ def sample_wall_alignment(
     Tangents come only from the design crest. Each transverse normal is flipped
     toward the nearest design toe, giving a deterministic downslope ``+U`` sign
     without depending on triangle winding or Assessment boundary orientation.
-    Closed crest loops wrap the tangent window across their storage seam.
+    Closed crest loops wrap the tangent window across their storage seam. If a
+    narrow Area falls entirely between regular chainage stations, the midpoint
+    of its longest crest fragment supplies one deterministic fallback profile.
     """
     if crest_line.kind != "crest":
         raise ValueError("Wall alignment requires a design crest line")
@@ -287,16 +366,44 @@ def sample_wall_alignment(
         raise ValueError("Design crest has zero plan length")
     closed = _line_is_closed(crest_line.points)
 
+    candidate_chainages = [
+        chainage
+        for chainage in _chainages(total_length, spacing_m, closed=closed)
+        if point_in_polygon(
+            PlanPoint(
+                _interpolate_polyline(
+                    crest_line.points,
+                    cumulative,
+                    chainage,
+                    closed=closed,
+                ).x,
+                _interpolate_polyline(
+                    crest_line.points,
+                    cumulative,
+                    chainage,
+                    closed=closed,
+                ).y,
+            ),
+            assessment_polygon,
+        )
+    ]
+    if not candidate_chainages:
+        fallback = _fallback_chainage_inside_polygon(
+            crest_line,
+            assessment_polygon,
+            cumulative,
+        )
+        if fallback is not None:
+            candidate_chainages.append(fallback)
+
     samples: list[WallAlignmentSample] = []
-    for chainage in _chainages(total_length, spacing_m, closed=closed):
+    for chainage in candidate_chainages:
         origin = _interpolate_polyline(
             crest_line.points,
             cumulative,
             chainage,
             closed=closed,
         )
-        if not point_in_polygon(PlanPoint(origin.x, origin.y), assessment_polygon):
-            continue
         if closed:
             before_chainage = chainage - tangent_window_m
             after_chainage = chainage + tangent_window_m
