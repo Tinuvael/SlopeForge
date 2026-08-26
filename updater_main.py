@@ -40,6 +40,10 @@ def _polish_disabled_upgrade_action(window: UpdaterMainWindow) -> None:
     )
 
 
+def _smoke_test_requested(argv: list[str] | None = None) -> bool:
+    return "--smoke-test" in (argv if argv is not None else sys.argv[1:])
+
+
 def main() -> int:
     set_windows_app_user_model_id()
     app = QApplication(sys.argv)
@@ -49,6 +53,15 @@ def main() -> int:
     window = UpdaterMainWindow()
     _polish_disabled_upgrade_action(window)
     window.show()
+
+    if _smoke_test_requested():
+        # Packaging smoke only: construct and render one event-loop pass, but do
+        # not connect to PostgreSQL, create backups, or mutate user settings.
+        app.processEvents()
+        window.close()
+        app.processEvents()
+        return 0
+
     return app.exec()
 
 
