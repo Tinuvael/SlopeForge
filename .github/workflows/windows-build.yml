@@ -76,7 +76,7 @@ jobs:
           python -m pytest -q -m "not postgres"
 
   build:
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'feature/slopeforge-updater'
+    if: github.event_name == 'workflow_dispatch'
     needs:
       - postgres-tests
       - pr-checks
