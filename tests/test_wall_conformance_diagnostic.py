@@ -1,0 +1,173 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from application.services.wall_conformance import (
+    WallConformanceDiagnosticService,
+    WallConformanceDiagnosticSettings,
+    WallConformanceUnavailableError,
+)
+from domain.geometry.surfaces import SurfaceTriangle, SurfaceVertex, TriangleSurface
+from domain.geometry.types import PlanPoint, PlanPolygon
+
+
+def _bench(dx: float = 0.0) -> TriangleSurface:
+    vertices = (
+        SurfaceVertex(-5 + dx, 0, 10),
+        SurfaceVertex(0 + dx, 0, 10),
+        SurfaceVertex(-5 + dx, 20, 10),
+        SurfaceVertex(0 + dx, 20, 10),
+        SurfaceVertex(5 + dx, 0, 0),
+        SurfaceVertex(5 + dx, 20, 0),
+        SurfaceVertex(10 + dx, 0, 0),
+        SurfaceVertex(10 + dx, 20, 0),
+    )
+    specifications = (
+        ((0, 1, 2), 5),
+        ((1, 3, 2), 5),
+        ((1, 4, 3), 2),
+        ((4, 5, 3), 2),
+        ((4, 6, 5), 3),
+        ((6, 7, 5), 3),
+    )
+    return TriangleSurface(
+        vertices,
+        tuple(
+            SurfaceTriangle(indices, source_attributes={"COLOUR": colour})
+            for indices, colour in specifications
+        ),
+    )
+
+
+def _area() -> PlanPolygon:
+    return PlanPolygon(
+        (
+            PlanPoint(-2, 4),
+            PlanPoint(8, 4),
+            PlanPoint(8, 16),
+            PlanPoint(-2, 16),
+            PlanPoint(-2, 4),
+        )
+    )
+
+
+class FakeSurfaceService:
+    def __init__(self, *, storage_available=True, design=True, actual=True):
+        self.storage_available = storage_available
+        self.design = (
+            SimpleNamespace(
+                logical_id="DESIGN-1",
+                revision_number=2,
+                source_format="datamine",
+                triangle_count=6,
+            )
+            if design
+            else None
+        )
+        self.actual = (
+            SimpleNamespace(
+                logical_id="ACTUAL-1",
+                revision_number=7,
+                source_format="datamine",
+                triangle_count=6,
+            )
+            if actual
+            else None
+        )
+
+    def current(self, _site_id, dataset_kind):
+        return self.design if dataset_kind == "design" else self.actual
+
+    def load_dataset(self, _site_id, logical_id):
+        if logical_id == "DESIGN-1":
+            return self.design, SimpleNamespace(surface=_bench())
+        if logical_id == "ACTUAL-1":
+            return self.actual, SimpleNamespace(surface=_bench(dx=1.0))
+        raise AssertionError(logical_id)
+
+
+def test_diagnostic_service_loads_active_project_surfaces_and_builds_profiles() -> None:
+    service = WallConformanceDiagnosticService(FakeSurfaceService())
+
+    result = service.calculate_current(
+        1,
+        _area(),
+        WallConformanceDiagnosticSettings(
+            spacing_m=5.0,
+            tangent_window_m=4.0,
+            half_width_m=12.0,
+        ),
+    )
+
+    assert result.design_dataset.logical_id == "DESIGN-1"
+    assert result.actual_dataset.logical_id == "ACTUAL-1"
+    assert result.profile_set.profiles
+    profile = result.profile_set.profiles[0]
+    design_points = {
+        (round(point.u, 6), round(point.z, 6))
+        for segment in profile.design_segments
+        for point in (segment.start, segment.end)
+    }
+    actual_points = {
+        (round(point.u, 6), round(point.z, 6))
+        for segment in profile.actual_segments
+        for point in (segment.start, segment.end)
+    }
+    assert (0.0, 10.0) in design_points
+    assert (1.0, 10.0) in actual_points
+
+
+def test_diagnostic_service_refuses_database_only_storage_mode() -> None:
+    service = WallConformanceDiagnosticService(
+        FakeSurfaceService(storage_available=False)
+    )
+
+    with pytest.raises(WallConformanceUnavailableError, match="Shared file storage"):
+        service.calculate_current(1, _area())
+
+
+def test_diagnostic_service_reports_missing_active_surface() -> None:
+    service = WallConformanceDiagnosticService(FakeSurfaceService(actual=False))
+
+    with pytest.raises(WallConformanceUnavailableError, match="Actual survey"):
+        service.calculate_current(1, _area())
+
+
+def test_installer_places_wall_conformance_after_assessment(monkeypatch) -> None:
+    from PySide6.QtWidgets import QApplication, QTabWidget, QWidget
+    import ui.pages.wall_conformance_install as installer
+
+    app = QApplication.instance() or QApplication([])
+
+    class FakeWallConformanceTab(QWidget):
+        def __init__(self, context, site_id, polygon, parent=None):
+            super().__init__(parent)
+            self.context = context
+            self.site_id = site_id
+            self.polygon = polygon
+
+    monkeypatch.setattr(installer, "WallConformanceTab", FakeWallConformanceTab)
+
+    page = QWidget()
+    page.context = object()
+    page.controller = SimpleNamespace(site_id=42)
+    page.area = SimpleNamespace(
+        active_geometry_revision=lambda: SimpleNamespace(
+            final_geometry_frozen=_area()
+        )
+    )
+    page.tabs = QTabWidget(page)
+    page.assessment_tab = QWidget(page.tabs)
+    page.tabs.addTab(QWidget(page.tabs), "Overview")
+    page.tabs.addTab(page.assessment_tab, "Assessment")
+    page.tabs.addTab(QWidget(page.tabs), "Linked events")
+
+    tab = installer.install_wall_conformance_tab(page)
+
+    assert page.tabs.indexOf(tab) == 2
+    assert page.tabs.tabText(2) == "Wall conformance"
+    assert page.wall_conformance_tab is tab
+    assert tab.site_id == 42
+    assert app is not None
