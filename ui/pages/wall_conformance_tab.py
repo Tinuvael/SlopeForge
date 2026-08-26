@@ -3,12 +3,13 @@ from __future__ import annotations
 from math import hypot
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDoubleSpinBox,
     QFrame,
+    QGridLayout,
     QGraphicsScene,
     QHBoxLayout,
     QLabel,
@@ -52,6 +53,9 @@ class WallConformancePlanWidget(QWidget):
         title = QLabel(tr("Plan / transverse profiles"))
         title.setObjectName("EngineeringSectionTitle")
         bar.addWidget(title)
+        self.legend = QLabel()
+        self.legend.setObjectName("MutedText")
+        bar.addWidget(self.legend)
         bar.addStretch()
         fit = QPushButton(tr("Fit"))
         fit.clicked.connect(self.view.fit_to_extent)
@@ -87,8 +91,20 @@ class WallConformancePlanWidget(QWidget):
             "selected": QColor("#d97706"),
         }
 
+    def _legend_html(self) -> str:
+        colors = self._colors()
+        swatch = lambda key: f'<span style="color:{colors[key].name()}">&#9632;</span>'
+        return (
+            f"{swatch('area')} {tr('Assessment area')} &nbsp; "
+            f"{swatch('crest')} {tr('Design crest')} &nbsp; "
+            f"{swatch('toe')} {tr('Design toe')} &nbsp; "
+            f"{swatch('profile')} {tr('Profiles')} &nbsp; "
+            f"{swatch('selected')} {tr('Selected')}"
+        )
+
     def _apply_theme(self):
         colors = self._colors()
+        self.legend.setText(self._legend_html())
         self.scene.setBackgroundBrush(QBrush(colors["background"]))
         if not self._profile_items:
             return
@@ -104,10 +120,18 @@ class WallConformancePlanWidget(QWidget):
     @classmethod
     def _profile_pen(cls, selected: bool) -> QPen:
         colors = cls._colors()
-        return QPen(
+        pen = QPen(
             colors["selected"] if selected else colors["profile"],
-            2.4 if selected else 0,
+            3.0 if selected else 1.0,
         )
+        pen.setCosmetic(True)
+        return pen
+
+    @staticmethod
+    def _cosmetic_pen(color: QColor, width: float, style=Qt.PenStyle.SolidLine) -> QPen:
+        pen = QPen(color, width, style)
+        pen.setCosmetic(True)
+        return pen
 
     @staticmethod
     def _polygon_path(polygon: PlanPolygon) -> QPainterPath:
@@ -142,15 +166,15 @@ class WallConformancePlanWidget(QWidget):
         area_path = self._polygon_path(assessment_polygon)
         self.scene.addPath(
             area_path,
-            QPen(colors["area"], 2.0),
+            self._cosmetic_pen(colors["area"], 2.0),
             QBrush(colors["area_fill"]),
         )
         crest = diagnostic_result.profile_set.crest_line
         self.scene.addPath(
             self._line_path(crest.points),
-            QPen(colors["crest"], 3.0),
+            self._cosmetic_pen(colors["crest"], 3.0),
         )
-        toe_pen = QPen(colors["toe"], 2.0, Qt.PenStyle.DashLine)
+        toe_pen = self._cosmetic_pen(colors["toe"], 2.0, Qt.PenStyle.DashLine)
         for toe in diagnostic_result.profile_set.toe_lines:
             self.scene.addPath(self._line_path(toe.points), toe_pen)
 
@@ -217,7 +241,7 @@ class WallProfilePlot(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.profile = None
-        self.setMinimumSize(420, 320)
+        self.setMinimumSize(340, 280)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     @staticmethod
@@ -235,6 +259,9 @@ class WallProfilePlot(QWidget):
                 "text": QColor("#d5dbe3"),
                 "design": QColor("#5aa7e8"),
                 "actual": QColor("#f0c66e"),
+                "face": QColor("#67c587"),
+                "berm": QColor("#5aa7e8"),
+                "road": QColor("#b9a4ef"),
             }
         return {
             "background": QColor("#f8fafc"),
@@ -243,6 +270,9 @@ class WallProfilePlot(QWidget):
             "text": QColor("#475467"),
             "design": QColor("#1261a0"),
             "actual": QColor("#d97706"),
+            "face": QColor("#27864f"),
+            "berm": QColor("#1261a0"),
+            "road": QColor("#7657a8"),
         }
 
     def set_profile(self, profile) -> None:
@@ -278,7 +308,7 @@ class WallProfilePlot(QWidget):
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, tr("No profile selected"))
             return
 
-        left, top, right, bottom = 54, 34, 20, 42
+        left, top, right, bottom = 62, 58, 22, 46
         plot = QRectF(
             left,
             top,
@@ -306,12 +336,27 @@ class WallProfilePlot(QWidget):
             return QPointF(x, y)
 
         painter.setPen(QPen(colors["grid"], 1))
+        metrics = QFontMetrics(painter.font())
         for step in range(6):
             fraction = step / 5
             x = plot.left() + plot.width() * fraction
             y = plot.top() + plot.height() * fraction
             painter.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()))
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
+            painter.setPen(colors["text"])
+            u_value = u_min + fraction * (u_max - u_min)
+            z_value = z_max - fraction * (z_max - z_min)
+            painter.drawText(
+                QRectF(x - 36, plot.bottom() + 5, 72, metrics.height() + 2),
+                Qt.AlignmentFlag.AlignHCenter,
+                f"{u_value:.1f}",
+            )
+            painter.drawText(
+                QRectF(2, y - metrics.height() / 2, left - 10, metrics.height() + 2),
+                Qt.AlignmentFlag.AlignRight,
+                f"{z_value:.1f}",
+            )
+            painter.setPen(QPen(colors["grid"], 1))
 
         painter.setPen(QPen(colors["border"], 1))
         painter.drawRect(plot)
@@ -324,46 +369,40 @@ class WallProfilePlot(QWidget):
         painter.drawText(QRectF(-plot.height() / 2, -12, plot.height(), 24), Qt.AlignmentFlag.AlignCenter, "Z (m)")
         painter.restore()
 
-        painter.drawText(QRectF(plot.left(), 6, 110, 20), Qt.AlignmentFlag.AlignLeft, tr("Design"))
+        title = tr("Transverse section")
+        chainage = getattr(getattr(self.profile, "alignment", None), "chainage_m", 0.0)
+        painter.drawText(QRectF(plot.left(), 5, plot.width(), 20), Qt.AlignmentFlag.AlignLeft, title)
+        painter.drawText(
+            QRectF(plot.left(), 5, plot.width(), 20),
+            Qt.AlignmentFlag.AlignRight,
+            tr("Chainage %1 m").replace("%1", f"{chainage:.1f}"),
+        )
+        painter.drawText(QRectF(plot.left(), 29, 70, 20), Qt.AlignmentFlag.AlignLeft, tr("Design"))
         painter.setPen(QPen(colors["design"], 3))
-        painter.drawLine(QPointF(plot.left() + 50, 16), QPointF(plot.left() + 82, 16))
+        painter.drawLine(QPointF(plot.left() + 45, 39), QPointF(plot.left() + 70, 39))
         painter.setPen(colors["text"])
-        painter.drawText(QRectF(plot.left() + 100, 6, 110, 20), Qt.AlignmentFlag.AlignLeft, tr("Actual"))
+        painter.drawText(QRectF(plot.left() + 84, 29, 70, 20), Qt.AlignmentFlag.AlignLeft, tr("Actual"))
         painter.setPen(QPen(colors["actual"], 3))
-        painter.drawLine(QPointF(plot.left() + 148, 16), QPointF(plot.left() + 180, 16))
+        painter.drawLine(QPointF(plot.left() + 127, 39), QPointF(plot.left() + 152, 39))
+        painter.setPen(colors["text"])
+        semantic_x = plot.left() + 174
+        for role in ("face", "berm", "road"):
+            painter.setPen(QPen(colors[role], 3))
+            painter.drawLine(QPointF(semantic_x, 39), QPointF(semantic_x + 18, 39))
+            painter.setPen(colors["text"])
+            painter.drawText(QRectF(semantic_x + 22, 29, 48, 20), Qt.AlignmentFlag.AlignLeft, tr(role.title()))
+            semantic_x += 72
 
-        def draw_segments(segments, color, base_width):
+        def draw_segments(segments, color, base_width, semantic=False):
             for segment in segments:
                 width = base_width
-                if getattr(segment, "semantic_role", None) == "face":
-                    width += 0.7
-                painter.setPen(QPen(color, width))
+                role = str(getattr(segment, "semantic_role", "") or "").lower()
+                segment_color = colors.get(role, color) if semantic else color
+                painter.setPen(QPen(segment_color, width))
                 painter.drawLine(map_point(segment.start), map_point(segment.end))
 
-        draw_segments(self.profile.design_segments, colors["design"], 2.0)
+        draw_segments(self.profile.design_segments, colors["design"], 2.3, True)
         draw_segments(self.profile.actual_segments, colors["actual"], 2.2)
-
-        painter.setPen(colors["text"])
-        painter.drawText(
-            QRectF(4, plot.bottom() - 8, left - 10, 18),
-            Qt.AlignmentFlag.AlignRight,
-            f"{z_min:.1f}",
-        )
-        painter.drawText(
-            QRectF(4, plot.top() - 8, left - 10, 18),
-            Qt.AlignmentFlag.AlignRight,
-            f"{z_max:.1f}",
-        )
-        painter.drawText(
-            QRectF(plot.left() - 25, plot.bottom() + 6, 55, 18),
-            Qt.AlignmentFlag.AlignLeft,
-            f"{u_min:.1f}",
-        )
-        painter.drawText(
-            QRectF(plot.right() - 30, plot.bottom() + 6, 60, 18),
-            Qt.AlignmentFlag.AlignRight,
-            f"{u_max:.1f}",
-        )
 
 
 class WallConformanceTab(QWidget):
@@ -400,10 +439,26 @@ class WallConformanceTab(QWidget):
         title_row.addWidget(self.calculate_button)
         setup_layout.addLayout(title_row)
 
-        self.datasets_label = QLabel()
-        self.datasets_label.setObjectName("MutedText")
-        self.datasets_label.setWordWrap(True)
-        setup_layout.addWidget(self.datasets_label)
+        datasets = QGridLayout()
+        datasets.setHorizontalSpacing(18)
+        datasets.setVerticalSpacing(2)
+        self.design_title = QLabel(tr("DESIGN"))
+        self.actual_title = QLabel(tr("ACTUAL"))
+        self.design_title.setObjectName("EngineeringSectionTitle")
+        self.actual_title.setObjectName("EngineeringSectionTitle")
+        self.design_metadata = QLabel()
+        self.actual_metadata = QLabel()
+        for label in (self.design_metadata, self.actual_metadata):
+            label.setObjectName("MutedText")
+            label.setWordWrap(True)
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        datasets.addWidget(self.design_title, 0, 0)
+        datasets.addWidget(self.actual_title, 0, 1)
+        datasets.addWidget(self.design_metadata, 1, 0)
+        datasets.addWidget(self.actual_metadata, 1, 1)
+        datasets.setColumnStretch(0, 1)
+        datasets.setColumnStretch(1, 1)
+        setup_layout.addLayout(datasets)
 
         controls = QHBoxLayout()
         controls.addWidget(QLabel(tr("Profile spacing")))
@@ -422,6 +477,9 @@ class WallConformanceTab(QWidget):
         self.tangent_window.setSingleStep(1.0)
         self.tangent_window.setValue(6.0)
         self.tangent_window.setSuffix(" m")
+        self.tangent_window.setToolTip(
+            tr("Distance along the crest used to estimate the local strike direction.")
+        )
         controls.addWidget(self.tangent_window)
         controls.addSpacing(10)
         controls.addWidget(QLabel(tr("Profile half-width")))
@@ -431,13 +489,21 @@ class WallConformanceTab(QWidget):
         self.half_width.setSingleStep(1.0)
         self.half_width.setValue(12.0)
         self.half_width.setSuffix(" m")
+        self.half_width.setToolTip(
+            tr("Distance sampled on each side of the profile origin, normal to the wall.")
+        )
         controls.addWidget(self.half_width)
         controls.addStretch()
         setup_layout.addLayout(controls)
 
-        mapping = QLabel(tr("Prototype design mapping: COLOUR 2 = Face · 5 = Berm · 3 = Road"))
-        mapping.setObjectName("MutedText")
-        setup_layout.addWidget(mapping)
+        self.semantic_mapping = QLabel(
+            tr("Design semantics: COLOUR 2 = Face · COLOUR 5 = Berm · COLOUR 3 = Road")
+        )
+        self.semantic_mapping.setObjectName("MutedText")
+        self.semantic_mapping.setToolTip(
+            tr("Diagnostic mapping read from the active Design surface attributes.")
+        )
+        setup_layout.addWidget(self.semantic_mapping)
 
         self.status = QLabel(tr("Ready to calculate."))
         self.status.setWordWrap(True)
@@ -462,8 +528,14 @@ class WallConformanceTab(QWidget):
         self.profile_selector.currentIndexChanged.connect(self._select_profile)
         selector_row.addWidget(self.profile_selector)
         self.profile_summary = QLabel("—")
-        self.profile_summary.setObjectName("MutedText")
+        self.profile_summary.setObjectName("SummaryValue")
         selector_row.addWidget(self.profile_summary)
+        self.profile_vectors = QLabel("")
+        self.profile_vectors.setObjectName("MutedText")
+        self.profile_vectors.setToolTip(
+            tr("Diagnostic local tangent (T) and wall-normal (N) unit vectors.")
+        )
+        selector_row.addWidget(self.profile_vectors)
         selector_row.addStretch()
         profile_layout.addLayout(selector_row)
         self.profile_plot = WallProfilePlot()
@@ -471,29 +543,34 @@ class WallConformanceTab(QWidget):
         splitter.addWidget(profile_host)
         splitter.setStretchFactor(0, 45)
         splitter.setStretchFactor(1, 55)
-        splitter.setSizes([450, 550])
+        splitter.setSizes([480, 520])
+        self.splitter = splitter
         root.addWidget(splitter, 1)
         self._refresh_dataset_metadata()
 
     @staticmethod
-    def _dataset_text(label: str, dataset) -> str:
+    def _dataset_text(dataset) -> str:
         if dataset is None:
-            return f"{label}: —"
+            return tr("No active dataset")
         revision = int(getattr(dataset, "revision_number", 0) or 0)
-        source_format = str(getattr(dataset, "source_format", "") or "").upper()
+        source_format = str(getattr(dataset, "source_format", "") or tr("Unknown")).upper()
         triangles = int(getattr(dataset, "triangle_count", 0) or 0)
-        return f"{label}: R{revision} · {source_format} · T {triangles}"
+        return (
+            tr("Active revision R%1 · %2 · %3 triangles")
+            .replace("%1", str(revision))
+            .replace("%2", source_format)
+            .replace("%3", f"{triangles:,}")
+        )
 
     def _refresh_dataset_metadata(self) -> None:
         try:
             design, actual = self.service.current_datasets(self.site_id)
         except Exception as exc:
-            self.datasets_label.setText(str(exc))
+            self.design_metadata.setText(str(exc))
+            self.actual_metadata.setText(str(exc))
             return
-        self.datasets_label.setText(
-            f"{self._dataset_text(tr('Design'), design)}    |    "
-            f"{self._dataset_text(tr('Actual'), actual)}"
-        )
+        self.design_metadata.setText(self._dataset_text(design))
+        self.actual_metadata.setText(self._dataset_text(actual))
 
     def _settings(self) -> WallConformanceDiagnosticSettings:
         return WallConformanceDiagnosticSettings(
@@ -518,6 +595,7 @@ class WallConformanceTab(QWidget):
             self.result = None
             self.profile_selector.clear()
             self.profile_summary.setText("—")
+            self.profile_vectors.setText("")
             self.profile_plot.set_profile(None)
             self.status.setText(str(exc))
             set_status_role(self.status, "error")
@@ -547,12 +625,18 @@ class WallConformanceTab(QWidget):
         if count:
             self.profile_selector.setCurrentIndex(0)
             self._select_profile(0)
+        else:
+            self.profile_summary.setText(tr("No profiles"))
+            self.profile_vectors.setText("")
+            self.profile_plot.set_profile(None)
+            self.plan.set_selected_profile(-1)
 
     def _select_profile(self, index: int) -> None:
         if self.result is None or not 0 <= index < len(self.result.profile_set.profiles):
             self.plan.set_selected_profile(-1)
             self.profile_plot.set_profile(None)
             self.profile_summary.setText("—")
+            self.profile_vectors.setText("")
             return
         if self.profile_selector.currentIndex() != index:
             self.profile_selector.blockSignals(True)
@@ -564,6 +648,11 @@ class WallConformanceTab(QWidget):
         tx, ty = profile.alignment.tangent_xy
         nx, ny = profile.alignment.normal_xy
         self.profile_summary.setText(
-            f"Ch. {profile.alignment.chainage_m:.1f} m · "
+            tr("Profile %1 · Chainage %2 m")
+            .replace("%1", str(index + 1))
+            .replace("%2", f"{profile.alignment.chainage_m:.1f}")
+        )
+        self.profile_vectors.setText(tr("Direction details"))
+        self.profile_vectors.setToolTip(
             f"T ({tx:.3f}, {ty:.3f}) · N ({nx:.3f}, {ny:.3f})"
         )
