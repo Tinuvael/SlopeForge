@@ -27,11 +27,14 @@ from domain.wall_conformance.sections import (
     clip_section_segments_to_z_range,
     connected_section_segments,
     intersect_surface_with_profile,
+    section_points_close,
 )
 from domain.wall_conformance.semantic_sections import build_design_section, build_design_variants
 
 
 logger = logging.getLogger(__name__)
+
+_SECTION_TOLERANCE = 1e-5
 
 
 def _assemble_alignment_boundaries(boundaries, tolerance: float = 0.02):
@@ -293,26 +296,47 @@ def evaluate_upper_crest_station(
             False, "no Design geometry incident to sampled crest", interval
         )
 
-    # Only connected Face geometry that lies inside the evaluated Assessment
-    # interval can make this an internal crest. A farther upstream bench beyond
-    # the Area, or a same-U/different-Z folded intersection, is irrelevant.
+    # A connected Face on the upstream side is relevant only while it is still
+    # inside the user-defined Assessment interval. Disconnected folded geometry
+    # was removed by the (U, Z) component walk above; an upper bench outside the
+    # Area remains display context and cannot change membership.
     if any(
         segment.semantic_role == "face"
-        and segment.u_max < -1e-6
-        and segment.u_max >= interval[0] - 1e-6
+        and segment.u_max < -_SECTION_TOLERANCE
+        and segment.u_max >= interval[0] - _SECTION_TOLERANCE
         for segment in local_segments
     ):
         return UpperCrestStationEvaluation(
             False, "connected evaluated Face exists upstream", interval
         )
 
+    # Validate the geometry immediately downstream of the sampled crest.  Do
+    # not use the first element of the whole connected section: it can be the
+    # legitimate Berm/Road context or a farther upstream bench.
     section = build_design_section(local_segments)
-    first = next(
-        (element for element in section.elements if element.horizontal_width > 1e-6),
-        None,
+    downstream_faces = tuple(
+        segment
+        for segment in local_segments
+        if segment.semantic_role == "face"
+        and segment.u_min <= _SECTION_TOLERANCE
+        and segment.u_max > _SECTION_TOLERANCE
+        and (
+            section_points_close(
+                segment.start,
+                SectionPoint(0.0, sample.origin.z, sample.origin.x, sample.origin.y),
+                tolerance=_SECTION_TOLERANCE,
+            )
+            or section_points_close(
+                segment.end,
+                SectionPoint(0.0, sample.origin.z, sample.origin.x, sample.origin.y),
+                tolerance=_SECTION_TOLERANCE,
+            )
+        )
     )
-    if first is None or first.role != "face" or first.start.u > 1e-5:
-        return UpperCrestStationEvaluation(False, "no adjacent downstream Design Face", interval)
+    if not downstream_faces:
+        return UpperCrestStationEvaluation(
+            False, "no adjacent downstream Design Face", interval
+        )
 
     external_toe, _ = _toe_near_area_exit(section, interval[1])
     return UpperCrestStationEvaluation(
