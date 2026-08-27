@@ -349,6 +349,18 @@ def _crest_subline(line, start_chainage: float, end_chainage: float):
     cumulative = [0.0]
     for first, second in zip(line.points, line.points[1:]):
         cumulative.append(cumulative[-1] + hypot(second.x - first.x, second.y - first.y))
+    if (
+        hypot(
+            line.points[0].x - line.points[-1].x,
+            line.points[0].y - line.points[-1].y,
+        ) <= 1e-8
+        and start_chainage <= 1e-8
+        and end_chainage >= cumulative[-1] - 1e-8
+    ):
+        # Preserve the exact shared endpoint instead of reconstructing it by
+        # interpolation; otherwise roundoff can make a full closed loop appear
+        # open to downstream topology/UI code.
+        return line
 
     def interpolate(chainage):
         for index, (start, end) in enumerate(zip(cumulative, cumulative[1:])):
