@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from math import hypot
 
-from domain.geometry.operations import clip_datamine_line_by_polygon, point_in_polygon
+from domain.geometry.operations import point_in_polygon, segment_intersection
 from domain.geometry.surfaces import SurfaceVertex, TriangleSurface
-from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
+from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.wall_conformance.design import (
     extract_design_wall_topology,
     sample_wall_alignment,
@@ -376,53 +376,57 @@ def _crest_subline(line, start_chainage: float, end_chainage: float):
     return WallTransitionLine("crest", deduplicated)
 
 
-def _crest_plan_chainage(line: WallTransitionLine, target: PlanPoint) -> float:
-    """Project a Plan point onto a crest and return deterministic chainage."""
-    cumulative = 0.0
-    best: tuple[float, float] | None = None
-    for first, second in zip(line.points, line.points[1:]):
-        dx, dy = second.x - first.x, second.y - first.y
-        length_sq = dx * dx + dy * dy
-        segment_length = hypot(dx, dy)
-        fraction = (
-            0.0
-            if length_sq <= 1e-18
-            else max(
-                0.0,
-                min(
-                    1.0,
-                    ((target.x - first.x) * dx + (target.y - first.y) * dy)
-                    / length_sq,
-                ),
-            )
-        )
-        x = first.x + dx * fraction
-        y = first.y + dy * fraction
-        candidate = (
-            (target.x - x) ** 2 + (target.y - y) ** 2,
-            cumulative + segment_length * fraction,
-        )
-        if best is None or candidate < best:
-            best = candidate
-        cumulative += segment_length
-    if best is None:
-        raise ValueError("Design crest has no measurable segment")
-    return best[1]
-
-
 def _crest_area_chainage_spans(
     line: WallTransitionLine, assessment_polygon: PlanPolygon
 ) -> tuple[tuple[float, float], ...]:
-    """Return open-crest chainage spans physically inside the Assessment Area."""
-    plan_line = PlanLineString(tuple(PlanPoint(point.x, point.y) for point in line.points))
-    spans = []
-    for fragment in clip_datamine_line_by_polygon(plan_line, assessment_polygon):
-        start = _crest_plan_chainage(line, fragment.points[0])
-        end = _crest_plan_chainage(line, fragment.points[-1])
-        lower, upper = sorted((start, end))
-        if upper - lower > 1e-9:
-            spans.append((lower, upper))
-    return tuple(sorted(spans))
+    """Return in-Area spans without projecting repeated/self-crossing XY points."""
+    spans: list[tuple[float, float]] = []
+    cumulative = 0.0
+    for first, second in zip(line.points, line.points[1:]):
+        start = PlanPoint(first.x, first.y)
+        end = PlanPoint(second.x, second.y)
+        dx, dy = end.x - start.x, end.y - start.y
+        length_sq = dx * dx + dy * dy
+        segment_length = hypot(dx, dy)
+        if segment_length <= 1e-12:
+            continue
+        cuts = [0.0, 1.0]
+        for edge_start, edge_end in zip(
+            assessment_polygon.ring, assessment_polygon.ring[1:]
+        ):
+            intersection = segment_intersection(start, end, edge_start, edge_end)
+            if intersection is not None:
+                cuts.append(max(
+                    0.0,
+                    min(
+                        1.0,
+                        ((intersection.x - start.x) * dx
+                         + (intersection.y - start.y) * dy) / length_sq,
+                    ),
+                ))
+        cuts.sort()
+        unique = [cuts[0]]
+        for value in cuts[1:]:
+            if abs(value - unique[-1]) > 1e-9:
+                unique.append(value)
+        for lower_fraction, upper_fraction in zip(unique, unique[1:]):
+            if upper_fraction - lower_fraction <= 1e-9:
+                continue
+            midpoint_fraction = (lower_fraction + upper_fraction) / 2.0
+            midpoint = PlanPoint(
+                start.x + dx * midpoint_fraction,
+                start.y + dy * midpoint_fraction,
+            )
+            if not point_in_polygon(midpoint, assessment_polygon):
+                continue
+            lower = cumulative + segment_length * lower_fraction
+            upper = cumulative + segment_length * upper_fraction
+            if spans and abs(spans[-1][1] - lower) <= 1e-8:
+                spans[-1] = (spans[-1][0], upper)
+            else:
+                spans.append((lower, upper))
+        cumulative += segment_length
+    return tuple(spans)
 
 
 def _line_is_closed(line: WallTransitionLine, tolerance: float = 1e-8) -> bool:
