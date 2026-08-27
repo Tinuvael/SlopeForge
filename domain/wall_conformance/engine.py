@@ -21,9 +21,11 @@ from domain.wall_conformance.models import (
     UpperCrestStationEvaluation,
     WallAlignmentSample,
     WallProfileSet,
+    WallTransitionLine,
 )
 from domain.wall_conformance.sections import (
     clip_section_segments_to_z_range,
+    connected_section_segments,
     intersect_surface_with_profile,
 )
 from domain.wall_conformance.semantic_sections import build_design_section, build_design_variants
@@ -282,34 +284,29 @@ def evaluate_upper_crest_station(
     full_segments = intersect_surface_with_profile(
         design_surface, sample, role_mapping=role_mapping
     )
-    # Walk only geometry that is continuously connected to U=0 on the upstream
-    # side. A remote folded Face separated by a gap is ignored; an internal
-    # crest remains identifiable because its upstream platform connects back
-    # to another evaluated Face inside the Assessment interval.
-    upstream = sorted(
-        (segment for segment in full_segments
-         if segment.u_min < -1e-6 and segment.u_max <= 1e-6
-         and segment.u_max >= interval[0] - 1e-6
-         and segment.semantic_role not in {"ignore", "unknown"}),
-        key=lambda segment: segment.u_max,
-        reverse=True,
+    local_segments = connected_section_segments(
+        full_segments,
+        SectionPoint(0.0, sample.origin.z, sample.origin.x, sample.origin.y),
     )
-    frontier = 0.0
-    remaining = list(upstream)
-    while remaining:
-        connected = [segment for segment in remaining
-                     if segment.u_max >= frontier - 1e-5]
-        if not connected:
-            break
-        if any(segment.semantic_role == "face" and segment.u_max < -1e-6
-               for segment in connected):
-            return UpperCrestStationEvaluation(
-                False, "connected evaluated Face exists upstream", interval
-            )
-        frontier = min(segment.u_min for segment in connected)
-        remaining = [segment for segment in remaining if segment not in connected]
+    if not local_segments:
+        return UpperCrestStationEvaluation(
+            False, "no Design geometry incident to sampled crest", interval
+        )
 
-    section = build_design_section(full_segments)
+    # Only connected Face geometry that lies inside the evaluated Assessment
+    # interval can make this an internal crest. A farther upstream bench beyond
+    # the Area, or a same-U/different-Z folded intersection, is irrelevant.
+    if any(
+        segment.semantic_role == "face"
+        and segment.u_max < -1e-6
+        and segment.u_max >= interval[0] - 1e-6
+        for segment in local_segments
+    ):
+        return UpperCrestStationEvaluation(
+            False, "connected evaluated Face exists upstream", interval
+        )
+
+    section = build_design_section(local_segments)
     first = next(
         (element for element in section.elements if element.horizontal_width > 1e-6),
         None,
@@ -318,7 +315,43 @@ def evaluate_upper_crest_station(
         return UpperCrestStationEvaluation(False, "no adjacent downstream Design Face", interval)
 
     external_toe, _ = _toe_near_area_exit(section, interval[1])
-    return UpperCrestStationEvaluation(True, "valid local wall section", interval, external_toe)
+    return UpperCrestStationEvaluation(
+        True, "valid local wall section", interval, external_toe, full_segments
+    )
+
+
+def _crest_subline(line, start_chainage: float, end_chainage: float):
+    """Return source-polyline geometry between confirmed sample chainages."""
+    cumulative = [0.0]
+    for first, second in zip(line.points, line.points[1:]):
+        cumulative.append(cumulative[-1] + hypot(second.x - first.x, second.y - first.y))
+
+    def interpolate(chainage):
+        for index, (start, end) in enumerate(zip(cumulative, cumulative[1:])):
+            if chainage <= end + 1e-9:
+                span = end - start
+                fraction = 0.0 if span <= 1e-12 else (chainage - start) / span
+                first, second = line.points[index], line.points[index + 1]
+                return SurfaceVertex(
+                    first.x + (second.x - first.x) * fraction,
+                    first.y + (second.y - first.y) * fraction,
+                    first.z + (second.z - first.z) * fraction,
+                ), index
+        return line.points[-1], len(line.points) - 2
+
+    first, first_index = interpolate(start_chainage)
+    last, last_index = interpolate(end_chainage)
+    if abs(end_chainage - start_chainage) <= 1e-9:
+        return WallTransitionLine(
+            "crest", (line.points[first_index], line.points[first_index + 1])
+        )
+    middle = tuple(line.points[index] for index in range(first_index + 1, last_index + 1))
+    points = (first, *middle, last)
+    deduplicated = tuple(
+        point for index, point in enumerate(points)
+        if index == 0 or point != points[index - 1]
+    )
+    return WallTransitionLine("crest", deduplicated)
 
 
 def _collect_external_upper_stations(
@@ -331,7 +364,7 @@ def _collect_external_upper_stations(
     spacing_m,
     tangent_window_m,
 ):
-    retained = []
+    confirmed = []
     accepted = []
     candidates = tuple(
         boundary for boundary in topology.alignment_boundaries
@@ -350,7 +383,7 @@ def _collect_external_upper_stations(
         except ValueError as error:
             logger.debug("Upper component %d has no samples: %s", candidate_index, error)
             continue
-        valid_samples = []
+        evaluated = []
         for sample in component_samples:
             evaluation = evaluate_upper_crest_station(
                 sample,
@@ -359,6 +392,7 @@ def _collect_external_upper_stations(
                 role_mapping,
                 toe_lines,
             )
+            evaluated.append((sample, evaluation))
             if not evaluation.valid:
                 logger.debug(
                     "Upper station skipped: origin=(%.3f, %.3f, %.3f) "
@@ -367,25 +401,48 @@ def _collect_external_upper_stations(
                     sample.chainage_m, evaluation.reason,
                 )
                 continue
-            valid_samples.append(sample)
-        if not valid_samples:
+        valid_stations = [item for item in evaluated if item[1].valid]
+        if not valid_stations:
             continue
-        component_index = len(retained)
-        retained.append(component)
-        accepted.extend(WallAlignmentSample(
+        component_index = len(confirmed)
+        valid_chainages = {sample.chainage_m for sample, _ in valid_stations}
+        if len(valid_stations) == len(evaluated):
+            confirmed.append(component)
+        else:
+            # Display only source-geometry spans supported by neighboring valid
+            # stations. Rejected samples split the confirmed Plan geometry.
+            runs = []
+            current = []
+            for sample, _evaluation in evaluated:
+                if sample.chainage_m in valid_chainages:
+                    current.append(sample)
+                elif current:
+                    runs.append(current)
+                    current = []
+            if current:
+                runs.append(current)
+            for run in runs:
+                confirmed.append(DesignAlignmentBoundary(
+                    _crest_subline(
+                        component.line, run[0].chainage_m, run[-1].chainage_m
+                    ),
+                    component.face_patch_index,
+                    (),
+                    component.source,
+                ))
+        accepted.extend((WallAlignmentSample(
             sample.chainage_m, sample.origin, sample.tangent_xy,
             sample.normal_xy, component_index,
-        ) for sample in valid_samples)
+        ), evaluation) for sample, evaluation in valid_stations)
     if not accepted:
         raise ValueError("No design wall alignment samples fall inside the Assessment Area")
-    boundary = ExternalWallBoundary(tuple(retained))
     logger.debug(
         "External wall boundary: semantic crest edges=%d accepted components=%d "
         "profiles=%d",
         len(tuple(edge for edge in topology.boundary_edges if edge.kind == "crest")),
-        len(retained), len(accepted),
+        len(confirmed), len(accepted),
     )
-    return boundary, tuple(accepted)
+    return ExternalWallBoundary(tuple(confirmed)), tuple(accepted)
 
 
 def _point_line_distance(point: SectionPoint, line) -> float:
@@ -439,7 +496,7 @@ def build_transverse_profiles(
     """
     topology = extract_design_wall_topology(design_surface, role_mapping)
     toe_lines = tuple(line for line in topology.transitions if line.kind == "toe")
-    alignment, samples = _collect_external_upper_stations(
+    alignment, stations = _collect_external_upper_stations(
         topology,
         design_surface,
         assessment_polygon,
@@ -449,15 +506,10 @@ def build_transverse_profiles(
         tangent_window_m=tangent_window_m,
     )
     profiles = []
-    for sample in samples:
-        interval = _assessment_u_interval(sample, assessment_polygon)
-        full_design_segments = intersect_surface_with_profile(
-            design_surface, sample, role_mapping=role_mapping
-        )
-        external_toe, _ = _toe_near_area_exit(
-            build_design_section(full_design_segments),
-            None if interval is None else interval[1],
-        )
+    for sample, evaluation in stations:
+        interval = evaluation.assessment_u_interval
+        full_design_segments = evaluation.full_design_segments
+        external_toe = evaluation.external_toe
         design_segments = _clip_segments_to_interval(
             full_design_segments,
             interval,

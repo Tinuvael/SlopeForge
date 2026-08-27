@@ -8,6 +8,7 @@ from domain.wall_conformance import (
     clip_section_segments_to_z_range,
     intersect_surface_with_profile,
 )
+from domain.wall_conformance.sections import connected_section_segments
 
 
 def test_profile_half_width_clips_one_segment_at_both_limits() -> None:
@@ -62,3 +63,45 @@ def test_actual_segment_outside_design_elevation_is_removed() -> None:
     )
 
     assert clip_section_segments_to_z_range((segment,), 600.0, 630.0) == ()
+
+
+def test_section_connectivity_requires_endpoint_proximity_in_u_and_z() -> None:
+    local_platform = SectionSegment(
+        SectionPoint(-0.3, 630.0, -0.3, 0.0),
+        SectionPoint(0.0, 630.0, 0.0, 0.0),
+        1,
+        "berm",
+    )
+    remote_face = SectionSegment(
+        SectionPoint(-2.0, 680.0, -2.0, 0.0),
+        SectionPoint(-0.2, 670.0, -0.2, 0.0),
+        2,
+        "face",
+    )
+
+    connected = connected_section_segments(
+        (remote_face, local_platform), SectionPoint(0.0, 630.0, 0.0, 0.0)
+    )
+
+    assert connected == (local_platform,)
+
+
+def test_section_connectivity_walks_truly_touching_u_z_endpoints() -> None:
+    platform = SectionSegment(
+        SectionPoint(-3.0, 630.0, -3.0, 0.0),
+        SectionPoint(0.0, 630.0, 0.0, 0.0),
+        1,
+        "berm",
+    )
+    face = SectionSegment(
+        SectionPoint(-6.0, 640.0, -6.0, 0.0),
+        SectionPoint(-3.0, 630.0, -3.0, 0.0),
+        2,
+        "face",
+    )
+
+    connected = connected_section_segments(
+        (face, platform), SectionPoint(0.0, 630.0, 0.0, 0.0)
+    )
+
+    assert set(connected) == {platform, face}

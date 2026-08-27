@@ -11,6 +11,37 @@ from domain.wall_conformance.models import (
 )
 
 
+def section_points_close(
+    first: SectionPoint, second: SectionPoint, *, tolerance: float = 1e-5
+) -> bool:
+    """Return whether points coincide in the physical ``(U, Z)`` section."""
+    return hypot(first.u - second.u, first.z - second.z) <= tolerance
+
+
+def connected_section_segments(
+    segments: tuple[SectionSegment, ...],
+    origin: SectionPoint,
+    *,
+    tolerance: float = 1e-5,
+) -> tuple[SectionSegment, ...]:
+    """Return the endpoint-connected component incident to ``origin``."""
+    remaining = list(segments)
+    connected = []
+    frontier = [origin]
+    while frontier:
+        point = frontier.pop()
+        touching = [
+            segment for segment in remaining
+            if section_points_close(segment.start, point, tolerance=tolerance)
+            or section_points_close(segment.end, point, tolerance=tolerance)
+        ]
+        for segment in touching:
+            remaining.remove(segment)
+            connected.append(segment)
+            frontier.extend((segment.start, segment.end))
+    return tuple(connected)
+
+
 def _same_point(a: SurfaceVertex, b: SurfaceVertex, tolerance: float) -> bool:
     return max(abs(a.x - b.x), abs(a.y - b.y), abs(a.z - b.z)) <= tolerance
 
