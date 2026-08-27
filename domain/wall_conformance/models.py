@@ -187,6 +187,16 @@ class WallAlignmentSample:
 
 
 @dataclass(frozen=True)
+class UpperCrestStationEvaluation:
+    """Local external-boundary decision for one sampled crest station."""
+
+    valid: bool
+    reason: str
+    assessment_u_interval: tuple[float, float] | None = None
+    external_toe: SectionPoint | None = None
+
+
+@dataclass(frozen=True)
 class SectionPoint:
     u: float
     z: float
