@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from math import hypot
 
-from domain.geometry.operations import point_in_polygon
+from domain.geometry.operations import clip_datamine_line_by_polygon, point_in_polygon
 from domain.geometry.surfaces import SurfaceVertex, TriangleSurface
-from domain.geometry.types import PlanPoint, PlanPolygon
+from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
 from domain.wall_conformance.design import (
     extract_design_wall_topology,
     sample_wall_alignment,
@@ -365,17 +365,83 @@ def _crest_subline(line, start_chainage: float, end_chainage: float):
 
     first, first_index = interpolate(start_chainage)
     last, last_index = interpolate(end_chainage)
-    if abs(end_chainage - start_chainage) <= 1e-9:
-        return WallTransitionLine(
-            "crest", (line.points[first_index], line.points[first_index + 1])
-        )
     middle = tuple(line.points[index] for index in range(first_index + 1, last_index + 1))
     points = (first, *middle, last)
     deduplicated = tuple(
         point for index, point in enumerate(points)
         if index == 0 or point != points[index - 1]
     )
+    if len(deduplicated) < 2:
+        raise ValueError("Confirmed crest span has zero plan length")
     return WallTransitionLine("crest", deduplicated)
+
+
+def _crest_plan_chainage(line: WallTransitionLine, target: PlanPoint) -> float:
+    """Project a Plan point onto a crest and return deterministic chainage."""
+    cumulative = 0.0
+    best: tuple[float, float] | None = None
+    for first, second in zip(line.points, line.points[1:]):
+        dx, dy = second.x - first.x, second.y - first.y
+        length_sq = dx * dx + dy * dy
+        segment_length = hypot(dx, dy)
+        fraction = (
+            0.0
+            if length_sq <= 1e-18
+            else max(
+                0.0,
+                min(
+                    1.0,
+                    ((target.x - first.x) * dx + (target.y - first.y) * dy)
+                    / length_sq,
+                ),
+            )
+        )
+        x = first.x + dx * fraction
+        y = first.y + dy * fraction
+        candidate = (
+            (target.x - x) ** 2 + (target.y - y) ** 2,
+            cumulative + segment_length * fraction,
+        )
+        if best is None or candidate < best:
+            best = candidate
+        cumulative += segment_length
+    if best is None:
+        raise ValueError("Design crest has no measurable segment")
+    return best[1]
+
+
+def _crest_area_chainage_spans(
+    line: WallTransitionLine, assessment_polygon: PlanPolygon
+) -> tuple[tuple[float, float], ...]:
+    """Return open-crest chainage spans physically inside the Assessment Area."""
+    plan_line = PlanLineString(tuple(PlanPoint(point.x, point.y) for point in line.points))
+    spans = []
+    for fragment in clip_datamine_line_by_polygon(plan_line, assessment_polygon):
+        start = _crest_plan_chainage(line, fragment.points[0])
+        end = _crest_plan_chainage(line, fragment.points[-1])
+        lower, upper = sorted((start, end))
+        if upper - lower > 1e-9:
+            spans.append((lower, upper))
+    return tuple(sorted(spans))
+
+
+def _line_is_closed(line: WallTransitionLine, tolerance: float = 1e-8) -> bool:
+    first, last = line.points[0], line.points[-1]
+    return hypot(first.x - last.x, first.y - last.y) <= tolerance
+
+
+def _split_valid_runs(evaluated):
+    runs = []
+    current = []
+    for index, (sample, evaluation) in enumerate(evaluated):
+        if evaluation.valid:
+            current.append((index, sample, evaluation))
+        elif current:
+            runs.append(current)
+            current = []
+    if current:
+        runs.append(current)
+    return runs
 
 
 def _collect_external_upper_stations(
@@ -424,40 +490,78 @@ def _collect_external_upper_stations(
                     sample.origin.x, sample.origin.y, sample.origin.z,
                     sample.chainage_m, evaluation.reason,
                 )
-                continue
-        valid_stations = [item for item in evaluated if item[1].valid]
-        if not valid_stations:
+        runs = _split_valid_runs(evaluated)
+        if not runs:
             continue
-        component_index = len(confirmed)
-        valid_chainages = {sample.chainage_m for sample, _ in valid_stations}
-        if len(valid_stations) == len(evaluated):
+
+        if _line_is_closed(component.line) and all(
+            evaluation.valid for _, evaluation in evaluated
+        ):
+            component_index = len(confirmed)
             confirmed.append(component)
-        else:
-            # Display only source-geometry spans supported by neighboring valid
-            # stations. Rejected samples split the confirmed Plan geometry.
-            runs = []
-            current = []
-            for sample, _evaluation in evaluated:
-                if sample.chainage_m in valid_chainages:
-                    current.append(sample)
-                elif current:
-                    runs.append(current)
-                    current = []
-            if current:
-                runs.append(current)
-            for run in runs:
-                confirmed.append(DesignAlignmentBoundary(
-                    _crest_subline(
-                        component.line, run[0].chainage_m, run[-1].chainage_m
-                    ),
-                    component.face_patch_index,
-                    (),
-                    component.source,
-                ))
-        accepted.extend((WallAlignmentSample(
-            sample.chainage_m, sample.origin, sample.tangent_xy,
-            sample.normal_xy, component_index,
-        ), evaluation) for sample, evaluation in valid_stations)
+            for _sample_index, sample, evaluation in runs[0]:
+                accepted.append((WallAlignmentSample(
+                    sample.chainage_m, sample.origin, sample.tangent_xy,
+                    sample.normal_xy, component_index,
+                ), evaluation))
+            continue
+
+        area_spans = _crest_area_chainage_spans(component.line, assessment_polygon)
+        for run in runs:
+            first_index, first_sample, _ = run[0]
+            last_index, last_sample, _ = run[-1]
+            containing_span = next(
+                (
+                    span for span in area_spans
+                    if span[0] - 1e-8 <= first_sample.chainage_m <= span[1] + 1e-8
+                ),
+                None,
+            )
+            if containing_span is None:
+                logger.debug(
+                    "Confirmed crest run has no Assessment-clipped source span: "
+                    "component=%d chainage=%.3f",
+                    candidate_index, first_sample.chainage_m,
+                )
+                continue
+            start_chainage, end_chainage = containing_span
+            if first_index > 0:
+                previous_sample, previous_evaluation = evaluated[first_index - 1]
+                if not previous_evaluation.valid:
+                    start_chainage = max(
+                        start_chainage,
+                        (previous_sample.chainage_m + first_sample.chainage_m) / 2.0,
+                    )
+            if last_index + 1 < len(evaluated):
+                next_sample, next_evaluation = evaluated[last_index + 1]
+                if not next_evaluation.valid:
+                    end_chainage = min(
+                        end_chainage,
+                        (last_sample.chainage_m + next_sample.chainage_m) / 2.0,
+                    )
+            if end_chainage - start_chainage <= 1e-9:
+                logger.debug(
+                    "Confirmed crest run collapsed below tolerance: component=%d",
+                    candidate_index,
+                )
+                continue
+
+            confirmed_line = _crest_subline(
+                component.line, start_chainage, end_chainage
+            )
+            component_index = len(confirmed)
+            confirmed.append(DesignAlignmentBoundary(
+                confirmed_line,
+                component.face_patch_index,
+                (),
+                component.source,
+            ))
+            for _sample_index, sample, evaluation in run:
+                accepted.append((WallAlignmentSample(
+                    sample.chainage_m, sample.origin, sample.tangent_xy,
+                    sample.normal_xy, component_index,
+                ), evaluation))
+
     if not accepted:
         raise ValueError("No design wall alignment samples fall inside the Assessment Area")
     logger.debug(
