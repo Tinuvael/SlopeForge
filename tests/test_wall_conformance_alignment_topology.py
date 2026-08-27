@@ -4,11 +4,13 @@ from domain.geometry.surfaces import SurfaceTriangle, SurfaceVertex, TriangleSur
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.wall_conformance import (
     SurfaceRoleMapping,
+    WallAlignmentSample,
     WallTransitionLine,
     build_transverse_profiles,
     extract_design_wall_topology,
     sample_wall_alignment,
 )
+from domain.wall_conformance.engine import _downstream_area_exit_u
 
 
 MAPPING = SurfaceRoleMapping(
@@ -65,6 +67,30 @@ def _area() -> PlanPolygon:
     )
 
 
+def _area_ending_at_lower_toe() -> PlanPolygon:
+    return PlanPolygon(
+        (
+            PlanPoint(0, 1), PlanPoint(26, 1), PlanPoint(26, 19),
+            PlanPoint(0, 19), PlanPoint(0, 1),
+        )
+    )
+
+
+def test_downstream_area_exit_uses_first_exit_for_concave_polygon():
+    area = PlanPolygon((
+        PlanPoint(0, 0), PlanPoint(10, 0), PlanPoint(10, 4),
+        PlanPoint(6, 4), PlanPoint(6, 1), PlanPoint(4, 1),
+        PlanPoint(4, 4), PlanPoint(0, 4), PlanPoint(0, 0),
+    ))
+    sample = WallAlignmentSample(
+        0.0,
+        SurfaceVertex(0, 2, 10),
+        (0.0, 1.0),
+        (1.0, 0.0),
+    )
+    assert _downstream_area_exit_u(sample, area) == 4.0
+
+
 def test_alignment_uses_upper_face_patch_not_longest_intermediate_crest():
     surface = _multi_face_surface()
     topology = extract_design_wall_topology(surface, MAPPING)
@@ -89,6 +115,23 @@ def test_alignment_uses_upper_face_patch_not_longest_intermediate_crest():
     assert [variant.signature for variant in profiles.design_variants] == [
         "FACE-BERM-FACE-ROAD-FACE-BERM"
     ]
+
+
+def test_area_may_end_at_lower_toe_with_lower_berm_outside():
+    surface = _multi_face_surface()
+    result = build_transverse_profiles(
+        surface,
+        surface,
+        _area_ending_at_lower_toe(),
+        MAPPING,
+        spacing_m=5.0,
+        tangent_window_m=4.0,
+        half_width_m=40.0,
+    )
+    assert result.profiles
+    assert {point.x for point in result.crest_line.points} == {0.0}
+    assert len(result.toe_lines) == 1
+    assert {point.x for point in result.toe_lines[0].points} == {26.0}
 
 
 def test_face_patch_orientation_does_not_depend_on_triangle_winding():

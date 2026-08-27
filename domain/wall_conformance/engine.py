@@ -37,17 +37,75 @@ def _segment_inside_area(segment: SectionSegment, area: PlanPolygon) -> bool:
 
 
 def _terminal_toe(section) -> SectionPoint | None:
-    elements = section.elements
-    face_indices = [index for index, element in enumerate(elements) if element.role == "face"]
-    if not face_indices:
+    transitions = _face_platform_toes(section)
+    return transitions[-1] if transitions else None
+
+
+def _face_platform_toes(section) -> tuple[SectionPoint, ...]:
+    return tuple(
+        first.end
+        for first, second in zip(section.elements, section.elements[1:])
+        if first.role == "face" and second.role in {"berm", "road"}
+    )
+
+
+def _cross_xy(
+    first: tuple[float, float], second: tuple[float, float]
+) -> float:
+    return first[0] * second[1] - first[1] * second[0]
+
+
+def _downstream_area_exit_u(sample, area: PlanPolygon) -> float | None:
+    """Return the first downstream exit of the Assessment polygon.
+
+    Intersections are converted into inside intervals along the positive-U ray.
+    This handles an origin on/slightly outside the upper boundary and avoids
+    selecting a later re-entry of a concave Assessment polygon.
+    """
+    origin = sample.origin
+    direction = sample.normal_xy
+    intersections = []
+    for first, second in zip(area.ring, area.ring[1:]):
+        edge = (second.x - first.x, second.y - first.y)
+        offset = (first.x - origin.x, first.y - origin.y)
+        denominator = _cross_xy(direction, edge)
+        if abs(denominator) <= 1e-12:
+            continue
+        ray_u = _cross_xy(offset, edge) / denominator
+        edge_fraction = _cross_xy(offset, direction) / denominator
+        if ray_u >= -1e-8 and -1e-8 <= edge_fraction <= 1.0 + 1e-8:
+            intersections.append(max(0.0, ray_u))
+    ordered = []
+    for value in sorted(intersections):
+        if not ordered or abs(value - ordered[-1]) > 1e-7:
+            ordered.append(value)
+    if not ordered:
         return None
-    last_face_index = face_indices[-1]
-    if not any(
-        element.role in {"berm", "road"}
-        for element in elements[last_face_index + 1 :]
-    ):
-        return None
-    return elements[last_face_index].end
+    bounds = [0.0, *ordered]
+    for start, end in zip(bounds, bounds[1:]):
+        if end - start <= 1e-8:
+            continue
+        midpoint = (start + end) / 2.0
+        if point_in_polygon(
+            PlanPoint(
+                origin.x + midpoint * direction[0],
+                origin.y + midpoint * direction[1],
+            ),
+            area,
+        ):
+            return end
+    return None
+
+
+def _toe_near_area_exit(
+    section, downstream_area_u: float | None
+) -> tuple[SectionPoint | None, tuple[SectionPoint, ...]]:
+    transitions = _face_platform_toes(section)
+    if downstream_area_u is None or not transitions:
+        return None, transitions
+    return min(
+        transitions, key=lambda point: abs(point.u - downstream_area_u)
+    ), transitions
 
 
 def _select_upper_envelope(
@@ -86,25 +144,31 @@ def _select_upper_envelope(
         upstream_faces = 0
         valid_downstream = 0
         terminal_toes = []
-        for sample in samples:
+        for probe_index, sample in enumerate(samples):
+            full_segments = intersect_surface_with_profile(
+                design_surface, sample, role_mapping=role_mapping
+            )
             area_segments = tuple(
-                segment
-                for segment in intersect_surface_with_profile(
-                    design_surface, sample, role_mapping=role_mapping
-                )
+                segment for segment in full_segments
                 if _segment_inside_area(segment, assessment_polygon)
             )
-            if any(
+            upstream_face = any(
                 segment.semantic_role == "face" and segment.u_max < -1e-4
                 for segment in area_segments
-            ):
+            )
+            if upstream_face:
                 upstream_faces += 1
-            section = build_design_section(area_segments)
-            terminal = _terminal_toe(section)
+            full_section = build_design_section(full_segments)
+            downstream_area_u = _downstream_area_exit_u(
+                sample, assessment_polygon
+            )
+            terminal, toe_transitions = _toe_near_area_exit(
+                full_section, downstream_area_u
+            )
             first_downstream = next(
                 (
                     element
-                    for element in section.elements
+                    for element in full_section.elements
                     if element.horizontal_width > 1e-4
                 ),
                 None,
@@ -116,6 +180,19 @@ def _select_upper_envelope(
             ):
                 valid_downstream += 1
                 terminal_toes.append(terminal)
+            logger.debug(
+                "Envelope candidate %d probe %d: area_exit_u=%s "
+                "toe_transitions=%s terminal_toe_u=%s delta=%s upstream_face=%s",
+                index,
+                probe_index,
+                None if downstream_area_u is None else round(downstream_area_u, 3),
+                [round(point.u, 3) for point in toe_transitions],
+                None if terminal is None else round(terminal.u, 3),
+                None
+                if terminal is None or downstream_area_u is None
+                else round(abs(terminal.u - downstream_area_u), 3),
+                upstream_face,
+            )
         in_area_length = transition_length_in_area(
             boundary.line, assessment_polygon
         )
