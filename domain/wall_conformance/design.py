@@ -8,6 +8,7 @@ from domain.geometry.surfaces import TriangleSurface, SurfaceVertex
 from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
 from domain.wall_conformance.models import (
     DesignAlignmentBoundary,
+    DesignBoundaryEdge,
     DesignWallTopology,
     SurfaceRoleMapping,
     WallAlignmentSample,
@@ -38,63 +39,87 @@ def _face_transition_kind(
     return _outer_face_boundary_kind(surface, edge, face_triangle_index)
 
 
-def _walk_edges(
-    surface: TriangleSurface,
-    edges: set[tuple[int, int]],
-    kind: str,
-) -> tuple[WallTransitionLine, ...]:
-    if not edges:
-        return ()
-    adjacency: dict[int, set[int]] = defaultdict(set)
-    for first, second in edges:
-        adjacency[first].add(second)
-        adjacency[second].add(first)
+def _vertex_key(vertex: SurfaceVertex) -> tuple[float, float, float]:
+    return vertex.x, vertex.y, vertex.z
 
-    unused = set(edges)
-    lines: list[WallTransitionLine] = []
+
+def _canonical_chain(points, edges):
+    forward = tuple(_vertex_key(point) for point in points)
+    reverse = tuple(reversed(forward))
+    if reverse < forward:
+        return tuple(reversed(points)), tuple(reversed(edges))
+    return tuple(points), tuple(edges)
+
+
+def _boundary_chains(
+    boundary_edges: tuple[DesignBoundaryEdge, ...],
+    kind: str,
+) -> tuple[tuple[WallTransitionLine, tuple[DesignBoundaryEdge, ...]], ...]:
+    """Derive deterministic maximal chains without consuming network branches."""
+    wanted = tuple(edge for edge in boundary_edges if edge.kind == kind)
+    if not wanted:
+        return ()
+    adjacency: dict[tuple[float, float, float], list[int]] = defaultdict(list)
+    vertices = {}
+    for index, edge in enumerate(wanted):
+        for point in (edge.first, edge.second):
+            key = _vertex_key(point)
+            vertices[key] = point
+            adjacency[key].append(index)
+    for incident in adjacency.values():
+        incident.sort(key=lambda index: tuple(sorted((
+            _vertex_key(wanted[index].first), _vertex_key(wanted[index].second)
+        ))))
+
+    unused = set(range(len(wanted)))
+    chains = []
+
+    def walk(start_key, edge_index):
+        point_keys = [start_key]
+        chain_edges = []
+        current_key = start_key
+        current_edge = edge_index
+        while current_edge in unused:
+            unused.remove(current_edge)
+            edge = wanted[current_edge]
+            other_key = (
+                _vertex_key(edge.second)
+                if _vertex_key(edge.first) == current_key
+                else _vertex_key(edge.first)
+            )
+            point_keys.append(other_key)
+            chain_edges.append(edge)
+            if len(adjacency[other_key]) != 2:
+                break
+            next_edges = [index for index in adjacency[other_key] if index in unused]
+            if not next_edges:
+                break
+            current_key, current_edge = other_key, next_edges[0]
+        points = tuple(vertices[key] for key in point_keys)
+        return _canonical_chain(points, chain_edges)
+
+    # Maximal chains stop at every junction. No branch is chosen by source ID.
+    for vertex_key in sorted(adjacency):
+        if len(adjacency[vertex_key]) == 2:
+            continue
+        for edge_index in adjacency[vertex_key]:
+            if edge_index in unused:
+                chains.append(walk(vertex_key, edge_index))
+
+    # Remaining edges are closed degree-2 components. Canonical geometry picks
+    # the seam and orientation, independently of input/vertex storage order.
     while unused:
-        vertices_with_unused = {vertex for edge in unused for vertex in edge}
-        start_candidates = sorted(
-            vertex
-            for vertex in vertices_with_unused
-            if sum(
-                tuple(sorted((vertex, neighbour))) in unused
-                for neighbour in adjacency[vertex]
-            )
-            != 2
-        )
-        start = start_candidates[0] if start_candidates else min(vertices_with_unused)
-        indices = [start]
-        current = start
-        previous: int | None = None
-        while True:
-            candidates = sorted(
-                neighbour
-                for neighbour in adjacency[current]
-                if tuple(sorted((current, neighbour))) in unused
-                and neighbour != previous
-            )
-            if not candidates:
-                break
-            neighbour = candidates[0]
-            unused.remove(tuple(sorted((current, neighbour))))
-            indices.append(neighbour)
-            previous, current = current, neighbour
-            if current == start:
-                break
-        if len(indices) >= 2:
-            lines.append(
-                WallTransitionLine(kind, tuple(surface.vertices[index] for index in indices))
-            )
-    return tuple(
-        sorted(
-            lines,
-            key=lambda line: (
-                -line.plan_length,
-                tuple((p.x, p.y, p.z) for p in line.points),
-            ),
-        )
-    )
+        edge_index = min(unused, key=lambda index: tuple(sorted((
+            _vertex_key(wanted[index].first), _vertex_key(wanted[index].second)
+        ))))
+        edge = wanted[edge_index]
+        start_key = min(_vertex_key(edge.first), _vertex_key(edge.second))
+        chains.append(walk(start_key, edge_index))
+
+    return tuple(sorted(
+        ((WallTransitionLine(kind, points), tuple(edges)) for points, edges in chains),
+        key=lambda item: tuple(_vertex_key(point) for point in item[0].points),
+    ))
 
 
 def _triangle_components(
@@ -309,54 +334,67 @@ def extract_design_wall_topology(
         # alignment cannot turn down a multi-segment lateral crop boundary.
         by_patch[patch_index]["crest"].update(outer)
 
+    semantic_edges = []
+    for patch_index, kinds in by_patch.items():
+        for kind, patch_edges in kinds.items():
+            for edge in patch_edges:
+                face_triangle = next(
+                    index for index in edges[edge]
+                    if face_patch.get(index) == patch_index
+                )
+                first, second = (surface.vertices[index] for index in edge)
+                # Canonical endpoint orientation is geometric, never source-ID based.
+                if _vertex_key(second) < _vertex_key(first):
+                    first, second = second, first
+                source = (
+                    "outer Face boundary"
+                    if edge in outer_by_patch[patch_index]
+                    else "Face/Platform"
+                )
+                semantic_edges.append(DesignBoundaryEdge(
+                    kind,
+                    first,
+                    second,
+                    patch_index,
+                    _third_vertex(surface, edge, face_triangle),
+                    source,
+                ))
+    semantic_edges = tuple(sorted(semantic_edges, key=lambda edge: (
+        edge.kind, _vertex_key(edge.first), _vertex_key(edge.second), edge.source
+    )))
+
     transitions = []
     alignments = []
     for patch_index, kinds in by_patch.items():
-        crest_lines = _walk_edges(surface, kinds["crest"], "crest")
-        toe_lines = _walk_edges(surface, kinds["toe"], "toe")
+        patch_edges = tuple(
+            edge for edge in semantic_edges if edge.face_patch_index == patch_index
+        )
+        crest_chains = _boundary_chains(patch_edges, "crest")
+        toe_chains = _boundary_chains(patch_edges, "toe")
+        crest_lines = tuple(line for line, _ in crest_chains)
+        toe_lines = tuple(line for line, _ in toe_chains)
         transitions.extend((*crest_lines, *toe_lines))
-        for line in crest_lines:
-            vertex_indices = {
-                (vertex.x, vertex.y, vertex.z): index
-                for index, vertex in enumerate(surface.vertices)
-            }
-            boundary_edges = [
-                tuple(
-                    sorted(
-                        (
-                            vertex_indices[(first.x, first.y, first.z)],
-                            vertex_indices[(second.x, second.y, second.z)],
-                        )
-                    )
-                )
-                for first, second in zip(line.points, line.points[1:])
-            ]
-            interiors = tuple(
-                _third_vertex(
-                    surface,
-                    edge,
-                    next(
-                        i for i in edges[edge] if face_patch.get(i) == patch_index
-                    ),
-                )
-                for edge in boundary_edges
-            )
-            source = (
-                "outer Face boundary"
-                if boundary_edges and all(
-                    edge in outer_by_patch[patch_index] for edge in boundary_edges
-                )
-                else (
-                    "mixed Face/Platform + outer boundary"
-                    if any(edge in outer_by_patch[patch_index] for edge in boundary_edges)
-                    else "Face/Platform"
-                )
-            )
+        for line, chain_edges in crest_chains:
+            sources = {edge.source for edge in chain_edges}
+            source = next(iter(sources)) if len(sources) == 1 else "mixed crest sources"
             alignments.append(
-                DesignAlignmentBoundary(line, patch_index, interiors, source)
+                DesignAlignmentBoundary(
+                    line,
+                    patch_index,
+                    tuple(edge.face_interior for edge in chain_edges),
+                    source,
+                )
             )
 
-    return DesignWallTopology(tuple(transitions), tuple(alignments))
+    return DesignWallTopology(
+        tuple(sorted(transitions, key=lambda line: (
+            line.kind, tuple(_vertex_key(point) for point in line.points)
+        ))),
+        tuple(sorted(alignments, key=lambda boundary:
+            tuple(_vertex_key(point) for point in boundary.line.points)
+        )),
+        semantic_edges,
+    )
 
 
 def extract_design_transition_lines(

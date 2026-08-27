@@ -47,7 +47,7 @@ class WallConformancePlanWidget(QWidget):
         self._profiles = ()
         self._profile_items = []
         self._area_item = None
-        self._crest_item = None
+        self._crest_items = []
         self._toe_items = []
         self._selected_index = -1
 
@@ -118,8 +118,8 @@ class WallConformancePlanWidget(QWidget):
         if self._area_item is not None:
             self._area_item.setPen(self._cosmetic_pen(colors["area"], 2.0))
             self._area_item.setBrush(QBrush(colors["area_fill"]))
-        if self._crest_item is not None:
-            self._crest_item.setPen(self._cosmetic_pen(colors["crest"], 3.0))
+        for item in self._crest_items:
+            item.setPen(self._cosmetic_pen(colors["crest"], 3.0))
         toe_pen = self._cosmetic_pen(colors["toe"], 2.0, Qt.PenStyle.DashLine)
         for item in self._toe_items:
             item.setPen(toe_pen)
@@ -173,7 +173,7 @@ class WallConformancePlanWidget(QWidget):
         self.scene.clear()
         self._profile_items = []
         self._area_item = None
-        self._crest_item = None
+        self._crest_items = []
         self._toe_items = []
         self._profiles = diagnostic_result.profile_set.profiles
         self._selected_index = -1
@@ -186,11 +186,11 @@ class WallConformancePlanWidget(QWidget):
             self._cosmetic_pen(colors["area"], 2.0),
             QBrush(colors["area_fill"]),
         )
-        crest = diagnostic_result.profile_set.crest_line
-        self._crest_item = self.scene.addPath(
-            self._line_path(crest.points),
-            self._cosmetic_pen(colors["crest"], 3.0),
-        )
+        for crest in diagnostic_result.profile_set.crest_lines:
+            self._crest_items.append(self.scene.addPath(
+                self._line_path(crest.points),
+                self._cosmetic_pen(colors["crest"], 3.0),
+            ))
         toe_pen = self._cosmetic_pen(colors["toe"], 2.0, Qt.PenStyle.DashLine)
         for toe in diagnostic_result.profile_set.toe_lines:
             self._toe_items.append(
@@ -221,7 +221,7 @@ class WallConformancePlanWidget(QWidget):
         self._profiles = ()
         self._profile_items = []
         self._area_item = None
-        self._crest_item = None
+        self._crest_items = []
         self._toe_items = []
         self._selected_index = -1
         self._apply_theme()

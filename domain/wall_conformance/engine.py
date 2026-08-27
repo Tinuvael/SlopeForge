@@ -13,10 +13,12 @@ from domain.wall_conformance.design import (
 )
 from domain.wall_conformance.models import (
     DesignAlignmentBoundary,
+    ExternalWallBoundary,
     SectionPoint,
     SectionSegment,
     SurfaceRoleMapping,
     TransverseProfile,
+    WallAlignmentSample,
     WallProfileSet,
 )
 from domain.wall_conformance.sections import (
@@ -270,10 +272,13 @@ def _select_upper_envelope(
     *,
     spacing_m: float,
     tangent_window_m: float,
-) -> DesignAlignmentBoundary:
+) -> ExternalWallBoundary:
     candidates = [
         boundary
-        for boundary in _assemble_alignment_boundaries(topology.alignment_boundaries)
+        # Topology extraction has already derived maximal chains from the
+        # semantic edge network. Reassembling them here could join separate
+        # branches again at a junction and destroy the network topology.
+        for boundary in topology.alignment_boundaries
         if transition_length_in_area(boundary.line, assessment_polygon) > 1e-9
     ]
     logger.debug(
@@ -372,33 +377,93 @@ def _select_upper_envelope(
             upstream_faces,
             len(terminal_toes),
         )
-    viable = [item for item in diagnostics if -item[1] > 0.0]
+    # A component is external when it has coherent downstream probes and at
+    # least one locally clean station. Remote folded-wall intersections may
+    # make other probes report upstream Face geometry; they are not a reason
+    # to discard the whole physical component. An internal crest, by contrast,
+    # has evaluated Face geometry upstream at every sampled station.
+    viable = [item for item in diagnostics if -item[1] > 0.0 and item[0] < 1.0]
     if not viable:
         logger.debug("Wall-envelope selection failed: no valid downstream probes")
         raise ValueError("Unable to determine a unique Design wall envelope")
-    viable.sort(
-        key=lambda item: (
-            *item[:3],
-            tuple((point.x, point.y, point.z) for point in item[3].line.points),
-        )
-    )
-    best = viable[0]
-    equally_external = [item for item in viable if item[:3] == best[:3]]
-    independent_patches = {item[3].face_patch_index for item in equally_external}
-    if len(independent_patches) > 1:
+    # A remote upstream intersection is diagnostic only. Membership is local:
+    # every component with at least one coherent downstream Face/toe probe is
+    # retained. One cleaner component must never suppress another valid part.
+    external = [item[3] for item in viable]
+    external.sort(key=lambda boundary: tuple(
+        (point.x, point.y, point.z) for point in boundary.line.points
+    ))
+
+    def local_downstream(boundary):
+        if not boundary.interior_points:
+            return None
+        first, second = boundary.line.points[0], boundary.line.points[-1]
+        midpoint = ((first.x + second.x) / 2.0, (first.y + second.y) / 2.0)
+        interior = min(boundary.interior_points, key=lambda point:
+            (point.x - midpoint[0]) ** 2 + (point.y - midpoint[1]) ** 2)
+        vector = interior.x - midpoint[0], interior.y - midpoint[1]
+        length = hypot(*vector)
+        return None if length <= 1e-9 else (vector[0] / length, vector[1] / length)
+
+    directions = [direction for boundary in external
+                  if (direction := local_downstream(boundary)) is not None]
+    if any(
+        first[0] * second[0] + first[1] * second[1] < -0.25
+        for index, first in enumerate(directions)
+        for second in directions[index + 1:]
+    ):
         logger.debug(
-            "Wall-envelope selection failed: equally external Face patches=%s",
-            sorted(independent_patches),
+            "Wall-envelope selection failed: conflicting local downstream sectors=%s",
+            directions,
         )
         raise ValueError("Unable to determine a unique Design wall envelope")
-    selected = best[3]
+    selected = ExternalWallBoundary(tuple(external))
     logger.debug(
-        "Selected Upper Crest: source=%s face_patch=%d terminal_toes=%d",
-        selected.source,
-        selected.face_patch_index,
-        len(best[4]),
+        "External wall boundary: semantic crest edges=%d upper components=%d",
+        len(tuple(edge for edge in topology.boundary_edges if edge.kind == "crest")),
+        len(selected.upper_components),
     )
     return selected
+
+
+def _sample_external_boundary(
+    boundary: ExternalWallBoundary,
+    toe_lines,
+    assessment_polygon,
+    *,
+    spacing_m: float,
+    tangent_window_m: float,
+):
+    samples = []
+    for component_index, component in enumerate(boundary.upper_components):
+        try:
+            component_samples = sample_wall_alignment(
+                component.line,
+                toe_lines,
+                assessment_polygon,
+                spacing_m=spacing_m,
+                tangent_window_m=tangent_window_m,
+                interior_points=component.interior_points,
+            )
+        except ValueError as error:
+            logger.debug("Upper component %d has no samples: %s", component_index, error)
+            continue
+        for sample in component_samples:
+            interval = _assessment_u_interval(sample, assessment_polygon)
+            if interval is None or interval[1] - interval[0] <= 1e-6:
+                logger.debug(
+                    "Station skipped: component=%d chainage=%.3f "
+                    "reason=local Assessment width below geometry tolerance",
+                    component_index, sample.chainage_m,
+                )
+                continue
+            samples.append(WallAlignmentSample(
+                sample.chainage_m, sample.origin, sample.tangent_xy,
+                sample.normal_xy, component_index,
+            ))
+    if not samples:
+        raise ValueError("No design wall alignment samples fall inside the Assessment Area")
+    return tuple(samples)
 
 
 def _point_line_distance(point: SectionPoint, line) -> float:
@@ -427,8 +492,12 @@ def _external_toe_lines(profiles, toe_lines):
     for observation in observations:
         closest = min(toe_lines, key=lambda line: _point_line_distance(observation, line))
         counts[closest] += 1
-    maximum = max(counts.values())
-    return tuple(line for line in toe_lines if counts[line] == maximum and maximum > 0)
+    retained = tuple(line for line in toe_lines if counts[line] > 0)
+    logger.debug(
+        "External Lower Toe: retained components=%d observations=%s",
+        len(retained), tuple(counts[line] for line in retained),
+    )
+    return retained
 
 
 def build_transverse_profiles(
@@ -457,14 +526,12 @@ def build_transverse_profiles(
         spacing_m=spacing_m,
         tangent_window_m=tangent_window_m,
     )
-    crest = alignment.line
-    samples = sample_wall_alignment(
-        crest,
+    samples = _sample_external_boundary(
+        alignment,
         toe_lines,
         assessment_polygon,
         spacing_m=spacing_m,
         tangent_window_m=tangent_window_m,
-        interior_points=alignment.interior_points,
     )
     profiles = []
     for sample in samples:
@@ -531,6 +598,6 @@ def build_transverse_profiles(
     profiles = tuple(profiles)
     external_toes = _external_toe_lines(profiles, toe_lines)
     return WallProfileSet(
-        crest_line=crest, toe_lines=external_toes, profiles=profiles,
+        crest_lines=alignment.upper_lines, toe_lines=external_toes, profiles=profiles,
         design_variants=build_design_variants(profiles),
     )

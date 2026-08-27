@@ -12,6 +12,8 @@ from .engine import build_transverse_profiles
 from .models import (
     PROTOTYPE_DESIGN_ROLE_MAPPING,
     DesignAlignmentBoundary,
+    DesignBoundaryEdge,
+    ExternalWallBoundary,
     DesignWallTopology,
     SectionPoint,
     SectionSegment,
@@ -31,6 +33,8 @@ __all__ = [
     "SurfaceRoleMapping",
     "PROTOTYPE_DESIGN_ROLE_MAPPING",
     "DesignAlignmentBoundary",
+    "DesignBoundaryEdge",
+    "ExternalWallBoundary",
     "DesignWallTopology",
     "TransverseProfile",
     "WallAlignmentSample",

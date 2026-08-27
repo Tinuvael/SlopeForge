@@ -133,7 +133,7 @@ def test_calculated_plan_recolors_all_geometry_without_recalculation(monkeypatch
     result_before = tab.result
     light = module.WallConformancePlanWidget._colors()
     assert tab.plan._area_item.pen().color() == light["area"]
-    assert tab.plan._crest_item.pen().color() == light["crest"]
+    assert all(item.pen().color() == light["crest"] for item in tab.plan._crest_items)
     assert all(item.pen().color() == light["toe"] for item in tab.plan._toe_items)
 
     _app().setProperty("slopeforgeTheme", "dark")
@@ -142,7 +142,7 @@ def test_calculated_plan_recolors_all_geometry_without_recalculation(monkeypatch
     assert tab.result is result_before
     assert tab.plan._area_item.pen().color() == dark["area"]
     assert tab.plan._area_item.brush().color() == dark["area_fill"]
-    assert tab.plan._crest_item.pen().color() == dark["crest"]
+    assert all(item.pen().color() == dark["crest"] for item in tab.plan._crest_items)
     assert all(item.pen().color() == dark["toe"] for item in tab.plan._toe_items)
     assert all(
         item.pen().color() in (dark["profile"], dark["selected"])

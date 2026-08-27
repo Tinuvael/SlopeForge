@@ -126,9 +126,41 @@ class DesignAlignmentBoundary:
 
 
 @dataclass(frozen=True)
+class DesignBoundaryEdge:
+    """One semantically classified Design boundary edge with Face provenance."""
+
+    kind: str
+    first: SurfaceVertex
+    second: SurfaceVertex
+    face_patch_index: int
+    face_interior: SurfaceVertex
+    source: str
+
+    def __post_init__(self) -> None:
+        if self.kind not in TRANSITION_KINDS:
+            raise ValueError(f"Unsupported boundary edge kind: {self.kind!r}")
+
+
+@dataclass(frozen=True)
+class ExternalWallBoundary:
+    """Locally confirmed upper components of one evaluated wall region."""
+
+    upper_components: tuple[DesignAlignmentBoundary, ...]
+
+    def __post_init__(self) -> None:
+        if not self.upper_components:
+            raise ValueError("External wall boundary requires an upper component")
+
+    @property
+    def upper_lines(self) -> tuple[WallTransitionLine, ...]:
+        return tuple(component.line for component in self.upper_components)
+
+
+@dataclass(frozen=True)
 class DesignWallTopology:
     transitions: tuple[WallTransitionLine, ...]
     alignment_boundaries: tuple[DesignAlignmentBoundary, ...]
+    boundary_edges: tuple[DesignBoundaryEdge, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -137,6 +169,7 @@ class WallAlignmentSample:
     origin: SurfaceVertex
     tangent_xy: tuple[float, float]
     normal_xy: tuple[float, float]
+    boundary_component_index: int = 0
 
     def __post_init__(self) -> None:
         if not isfinite(self.chainage_m) or self.chainage_m < 0:
@@ -249,13 +282,19 @@ class TransverseProfile:
 
 @dataclass(frozen=True)
 class WallProfileSet:
-    crest_line: WallTransitionLine
+    crest_lines: tuple[WallTransitionLine, ...]
     toe_lines: tuple[WallTransitionLine, ...]
     profiles: tuple[TransverseProfile, ...]
     design_variants: tuple[DesignVariant, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.crest_line.kind != "crest":
-            raise ValueError("Wall profile set alignment must use a crest line")
+        if not self.crest_lines or any(line.kind != "crest" for line in self.crest_lines):
+            raise ValueError("Wall profile set alignment must use crest lines")
         if any(line.kind != "toe" for line in self.toe_lines):
             raise ValueError("Wall profile set toe_lines may contain only toe transitions")
+
+    @property
+    def crest_line(self) -> WallTransitionLine:
+        if len(self.crest_lines) != 1:
+            raise ValueError("External Design upper boundary has multiple components")
+        return self.crest_lines[0]
