@@ -18,6 +18,7 @@ from .models import (
     semantic_value_token,
 )
 from .sections import intersect_surface_with_profile
+from .semantic_sections import build_design_section, build_design_variants
 
 __all__ = [
     "SectionPoint",
@@ -34,4 +35,6 @@ __all__ = [
     "sample_wall_alignment",
     "select_primary_crest_line",
     "semantic_value_token",
+    "build_design_section",
+    "build_design_variants",
 ]

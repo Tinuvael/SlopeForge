@@ -13,6 +13,7 @@ from domain.wall_conformance.models import (
     WallProfileSet,
 )
 from domain.wall_conformance.sections import intersect_surface_with_profile
+from domain.wall_conformance.semantic_sections import build_design_section, build_design_variants
 
 
 def build_transverse_profiles(
@@ -41,21 +42,21 @@ def build_transverse_profiles(
         spacing_m=spacing_m,
         tangent_window_m=tangent_window_m,
     )
-    profiles = tuple(
-        TransverseProfile(
-            alignment=sample,
-            design_segments=intersect_surface_with_profile(
-                design_surface,
-                sample,
-                role_mapping=role_mapping,
-                half_width_m=half_width_m,
-            ),
-            actual_segments=intersect_surface_with_profile(
-                actual_surface,
-                sample,
-                half_width_m=half_width_m,
-            ),
+    profiles = []
+    for sample in samples:
+        design_segments = intersect_surface_with_profile(
+            design_surface, sample, role_mapping=role_mapping, half_width_m=half_width_m,
         )
-        for sample in samples
+        profiles.append(TransverseProfile(
+            alignment=sample,
+            design_segments=design_segments,
+            actual_segments=intersect_surface_with_profile(
+                actual_surface, sample, half_width_m=half_width_m,
+            ),
+            design_section=build_design_section(design_segments),
+        ))
+    profiles = tuple(profiles)
+    return WallProfileSet(
+        crest_line=crest, toe_lines=toe_lines, profiles=profiles,
+        design_variants=build_design_variants(profiles),
     )
-    return WallProfileSet(crest_line=crest, toe_lines=toe_lines, profiles=profiles)

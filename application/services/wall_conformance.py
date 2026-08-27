@@ -83,10 +83,16 @@ class WallConformanceDiagnosticService:
             raise WallConformanceUnavailableError(
                 "The active Design surface does not contain triangulated geometry."
             )
-        counts: dict[str, dict[str, list[object]]] = {}
+        attribute_names = sorted({
+            str(key)
+            for triangle in surface.triangles
+            for key in triangle.source_attributes
+        })
+        counts: dict[str, dict[str, list[object]]] = {name: {} for name in attribute_names}
         for triangle in surface.triangles:
-            for key, value in triangle.source_attributes.items():
-                name = str(key)
+            attributes = {str(key): value for key, value in triangle.source_attributes.items()}
+            for name in attribute_names:
+                value = attributes.get(name, "<missing>")
                 token = semantic_value_token(value)
                 entry = counts.setdefault(name, {}).setdefault(token, [value, 0])
                 entry[1] = int(entry[1]) + 1
@@ -158,7 +164,7 @@ class WallConformanceDiagnosticService:
         except ValueError as exc:
             if str(exc) == "No design crest intersects the Assessment Area":
                 raise WallConformanceUnavailableError(
-                    "No design crest intersects this Assessment Area. "
+                    "No design wall alignment intersects this Assessment Area. "
                     "Check the Assessment Area boundary and Design surface semantics."
                 ) from exc
             raise

@@ -4599,5 +4599,17 @@ Continue?</source><translation>Новый горизонт отличается 
     <message><source>Strike smoothing radius</source><translation>Радиус сглаживания простирания</translation></message>
     <message><source>Triangles</source><translation>Треугольники</translation></message>
     <message><source>U (m, + toward toe)</source><translation>U (м, + к подошве)</translation></message>
+    <message><source>%1 · Height %2 m · Angle %3° · range %4–%5°</source><translation>%1 · Высота %2 м · Угол %3° · диапазон %4–%5°</translation></message>
+    <message><source>%1 · Width %2 m · range %3–%4 m</source><translation>%1 · Ширина %2 м · диапазон %3–%4 м</translation></message>
+    <message><source>ACTUAL SURVEY</source><translation>ФАКТИЧЕСКАЯ СЪЁМКА</translation></message>
+    <message><source>All actual profiles · Select a profile to inspect</source><translation>Все фактические профили · Выберите профиль для просмотра</translation></message>
+    <message><source>All profiles</source><translation>Все профили</translation></message>
+    <message><source>Overview · All actual profiles</source><translation>Обзор · Все фактические профили</translation></message>
+    <message><source>Profiles used: %1</source><translation>Использовано профилей: %1</translation></message>
+    <message><source>REPRESENTATIVE DESIGN</source><translation>РЕПРЕЗЕНТАТИВНЫЙ ПРОЕКТ</translation></message>
+    <message><source>Representative Design Profile</source><translation>Репрезентативный проектный профиль</translation></message>
+    <message><source>U (m, + toward wall/toe)</source><translation>U (м, + в сторону борта/подошвы)</translation></message>
+    <message><source>Variant %1 · %2 · %3 profiles</source><translation>Вариант %1 · %2 · профилей: %3</translation></message>
+    <message><source>dZ (m, local Design crest = 0)</source><translation>dZ (м, локальная проектная бровка = 0)</translation></message>
 </context>
 </TS>

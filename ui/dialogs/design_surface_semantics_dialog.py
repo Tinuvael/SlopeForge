@@ -89,6 +89,9 @@ class DesignSurfaceSemanticsDialog(QDialog):
             for key, label in ROLE_CHOICES:
                 combo.addItem(tr(label), key)
             combo.setCurrentIndex(max(0, combo.findData(role)))
+            if entry.value == "<missing>":
+                combo.setCurrentIndex(combo.findData("unknown"))
+                combo.setEnabled(False)
             combo.currentIndexChanged.connect(self._update_summary)
             self.table.setItem(row, 0, value_item)
             self.table.setItem(row, 1, count_item)
@@ -136,7 +139,11 @@ class DesignSurfaceSemanticsDialog(QDialog):
     def _save(self) -> None:
         mapping = SurfaceRoleMapping(
             self.attribute.currentText(),
-            tuple((value, role) for value, role, _ in self._assignments()),
+            tuple(
+                (value, role)
+                for value, role, _ in self._assignments()
+                if value != "<missing>"
+            ),
         )
         try:
             self.service.save_design_semantics(

@@ -81,3 +81,20 @@ def test_custom_values_drive_design_transition_extraction():
     )
     transitions = extract_design_transition_lines(_surface(), mapping)
     assert {line.kind for line in transitions} == {"crest", "toe"}
+
+
+def test_missing_source_attribute_is_counted_as_unknown():
+    base = _surface()
+    triangles = list(base.triangles)
+    triangles[-1] = SurfaceTriangle(
+        triangles[-1].vertex_indices, source_attributes={"ZONE": "A"}
+    )
+    service = WallConformanceDiagnosticService(_SurfaceService())
+    service.surface_service.load_current = lambda *_: (
+        service.surface_service.dataset,
+        SimpleNamespace(surface=TriangleSurface(base.vertices, tuple(triangles))),
+    )
+    inspection = service.inspect_design_semantics(1)
+    counts = {entry.value: entry.triangle_count for entry in inspection.attribute_values["COLOUR"]}
+    assert counts["<missing>"] == 1
+    assert sum(counts.values()) == len(triangles)

@@ -124,19 +124,8 @@ def extract_design_transition_lines(
         for triangle in surface.triangles
     )
     by_kind: dict[str, set[tuple[int, int]]] = {"crest": set(), "toe": set()}
-    for edge, triangle_indices in _shared_edges(surface).items():
-        if len(triangle_indices) == 1:
-            face_index = triangle_indices[0]
-            if roles[face_index] != "face":
-                continue
-            first, second = (surface.vertices[index] for index in edge)
-            if abs(first.z - second.z) > z_tolerance:
-                continue
-            if _face_transition_kind(
-                surface, edge, face_index, z_tolerance=z_tolerance
-            ) == "crest":
-                by_kind["crest"].add(edge)
-            continue
+    edges = _shared_edges(surface)
+    for edge, triangle_indices in edges.items():
         if len(triangle_indices) != 2:
             continue
         first_index, second_index = triangle_indices
@@ -155,6 +144,21 @@ def extract_design_transition_lines(
         )
         if kind is not None:
             by_kind[kind].add(edge)
+
+    # Uppermost benches have no platform triangle above their Face patch. Use
+    # the already-authoritative toe topology to reject end/crop boundaries:
+    # an edge joining into a toe is a side of the patch, not its upper rim.
+    toe_vertices = {vertex for edge in by_kind["toe"] for vertex in edge}
+    for edge, triangle_indices in edges.items():
+        if len(triangle_indices) != 1 or any(v in toe_vertices for v in edge):
+            continue
+        face_index = triangle_indices[0]
+        if roles[face_index] != "face":
+            continue
+        if _face_transition_kind(
+            surface, edge, face_index, z_tolerance=z_tolerance
+        ) == "crest":
+            by_kind["crest"].add(edge)
 
     return (
         *_walk_edges(surface, by_kind["crest"], "crest"),

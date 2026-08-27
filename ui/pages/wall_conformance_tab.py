@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from math import hypot
+from types import SimpleNamespace
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPainterPath, QPen
@@ -27,6 +28,7 @@ from application.services.wall_conformance import (
     WallConformanceDiagnosticSettings,
 )
 from domain.geometry.types import PlanPolygon
+from domain.wall_conformance.models import SectionPoint
 from ui.widgets.design_system import set_status_role
 from ui.widgets.plan_view import PlanView
 
@@ -215,6 +217,16 @@ class WallConformancePlanWidget(QWidget):
             )
         self.view.fit_to_extent()
 
+    def clear_result(self) -> None:
+        self.scene.clear()
+        self._profiles = ()
+        self._profile_items = []
+        self._area_item = None
+        self._crest_item = None
+        self._toe_items = []
+        self._selected_index = -1
+        self._apply_theme()
+
     def set_selected_profile(self, index: int) -> None:
         if not 0 <= index < len(self._profile_items):
             self._selected_index = -1
@@ -260,6 +272,9 @@ class WallProfilePlot(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.profile = None
+        self.profile_set = None
+        self.variant_index = 0
+        self.mode = "empty"
         self.setMinimumSize(340, 280)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -300,6 +315,15 @@ class WallProfilePlot(QWidget):
 
     def set_profile(self, profile) -> None:
         self.profile = profile
+        self.profile_set = None
+        self.mode = "selected" if profile is not None else "empty"
+        self.update()
+
+    def set_overview(self, profile_set, variant_index: int = 0) -> None:
+        self.profile = None
+        self.profile_set = profile_set
+        self.variant_index = variant_index
+        self.mode = "overview"
         self.update()
 
     def changeEvent(self, event):
@@ -308,13 +332,39 @@ class WallProfilePlot(QWidget):
             self.update()
 
     def _points(self):
-        if self.profile is None:
-            return ()
+        design, actual = self._geometry()
         return tuple(
             point
-            for segment in (*self.profile.design_segments, *self.profile.actual_segments)
+            for segment in (*design, *actual)
             for point in (segment.start, segment.end)
         )
+
+    def _geometry(self):
+        if self.mode == "selected" and self.profile is not None:
+            design = tuple(s for s in self.profile.design_segments if s.semantic_role != "ignore")
+            return design, self.profile.actual_segments
+        if self.mode != "overview" or not self.profile_set.design_variants:
+            return (), ()
+        variant = self.profile_set.design_variants[self.variant_index]
+        design = tuple(
+            SimpleNamespace(
+                start=SectionPoint(e.start_u, e.start_dz, e.start_u, 0),
+                end=SectionPoint(e.end_u, e.end_dz, e.end_u, 0),
+                semantic_role=e.role,
+            ) for e in variant.elements if e.role != "ignore"
+        )
+        actual = []
+        for index in variant.profile_indices:
+            profile = self.profile_set.profiles[index]
+            origin_z = profile.alignment.origin.z
+            actual.extend(
+                SimpleNamespace(
+                    start=SectionPoint(s.start.u, s.start.z-origin_z, s.start.x, s.start.y),
+                    end=SectionPoint(s.end.u, s.end.z-origin_z, s.end.x, s.end.y),
+                    semantic_role=None,
+                ) for s in profile.actual_segments
+            )
+        return design, tuple(actual)
 
     @staticmethod
     def _legend_rows(profile):
@@ -430,30 +480,34 @@ class WallProfilePlot(QWidget):
         painter.drawRect(plot)
 
         painter.setPen(colors["text"])
-        painter.drawText(QRectF(plot.left(), plot.bottom() + 8, plot.width(), 24), Qt.AlignmentFlag.AlignCenter, tr("U (m, + toward toe)"))
+        painter.drawText(QRectF(plot.left(), plot.bottom() + 8, plot.width(), 24), Qt.AlignmentFlag.AlignCenter, tr("U (m, + toward wall/toe)"))
         painter.save()
         painter.translate(16, plot.center().y())
         painter.rotate(-90)
-        painter.drawText(QRectF(-plot.height() / 2, -12, plot.height(), 24), Qt.AlignmentFlag.AlignCenter, "Z (m)")
+        vertical_axis = tr("dZ (m, local Design crest = 0)") if self.mode == "overview" else "Z (m)"
+        painter.drawText(QRectF(-plot.height() / 2, -12, plot.height(), 24), Qt.AlignmentFlag.AlignCenter, vertical_axis)
         painter.restore()
 
-        title = tr("Transverse section")
-        chainage = getattr(getattr(self.profile, "alignment", None), "chainage_m", 0.0)
+        title = tr("Representative Design Profile") if self.mode == "overview" else tr("Transverse section")
         painter.drawText(QRectF(plot.left(), 5, plot.width(), 20), Qt.AlignmentFlag.AlignLeft, title)
-        painter.drawText(
-            QRectF(plot.left(), 5, plot.width(), 20),
-            Qt.AlignmentFlag.AlignRight,
-            tr("Chainage %1 m").replace("%1", f"{chainage:.1f}"),
-        )
-        painter.drawText(QRectF(plot.left(), 27, plot.width(), 18), Qt.AlignmentFlag.AlignLeft, tr("DESIGN"))
-        design_entries, actual_entries = self._legend_rows(self.profile)
+        if self.mode == "selected":
+            chainage = self.profile.alignment.chainage_m
+            painter.drawText(QRectF(plot.left(), 5, plot.width(), 20), Qt.AlignmentFlag.AlignRight, tr("Chainage %1 m").replace("%1", f"{chainage:.1f}"))
+        design, actual = self._geometry()
+        group_title = tr("REPRESENTATIVE DESIGN") if self.mode == "overview" else tr("DESIGN")
+        painter.drawText(QRectF(plot.left(), 27, plot.width(), 18), Qt.AlignmentFlag.AlignLeft, group_title)
+        design_entries = [(tr(role.title()), role) for role in ("face", "berm", "road") if any(s.semantic_role == role for s in design)]
+        if any(s.semantic_role == "unknown" for s in design):
+            design_entries.append((tr("Unknown"), "unknown"))
+        actual_label = tr("All profiles") if self.mode == "overview" else tr("Selected profile")
+        actual_entries = ((actual_label, "actual"),)
         self._draw_legend_row(
             painter,
             QRectF(plot.left(), 44, plot.width(), 20),
             design_entries,
             colors,
         )
-        painter.drawText(QRectF(plot.left(), 65, plot.width(), 18), Qt.AlignmentFlag.AlignLeft, tr("ACTUAL"))
+        painter.drawText(QRectF(plot.left(), 65, plot.width(), 18), Qt.AlignmentFlag.AlignLeft, tr("ACTUAL SURVEY"))
         self._draw_legend_row(
             painter,
             QRectF(plot.left(), 81, plot.width(), 20),
@@ -469,8 +523,11 @@ class WallProfilePlot(QWidget):
                 painter.setPen(QPen(segment_color, width))
                 painter.drawLine(map_point(segment.start), map_point(segment.end))
 
-        draw_segments(self.profile.design_segments, colors["design"], 2.3, True)
-        draw_segments(self.profile.actual_segments, colors["actual"], 2.2)
+        draw_segments(design, colors["design"], 3.0 if self.mode == "overview" else 2.3, True)
+        actual_color = QColor(colors["actual"])
+        if self.mode == "overview":
+            actual_color.setAlpha(90)
+        draw_segments(actual, actual_color, 1.0 if self.mode == "overview" else 2.2)
 
 
 class WallConformanceTab(QWidget):
@@ -586,7 +643,7 @@ class WallConformanceTab(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
         self.plan = WallConformancePlanWidget()
-        self.plan.profile_selected.connect(self._select_profile)
+        self.plan.profile_selected.connect(lambda index: self._select_profile(index + 1))
         splitter.addWidget(self.plan)
 
         profile_host = QWidget()
@@ -599,6 +656,10 @@ class WallConformanceTab(QWidget):
         self.profile_selector.setMinimumWidth(180)
         self.profile_selector.currentIndexChanged.connect(self._select_profile)
         selector_row.addWidget(self.profile_selector)
+        self.variant_selector = QComboBox()
+        self.variant_selector.currentIndexChanged.connect(self._select_variant)
+        self.variant_selector.setVisible(False)
+        selector_row.addWidget(self.variant_selector)
         self.profile_summary = QLabel("—")
         self.profile_summary.setObjectName("SummaryValue")
         selector_row.addWidget(self.profile_summary)
@@ -612,6 +673,10 @@ class WallConformanceTab(QWidget):
         profile_layout.addLayout(selector_row)
         self.profile_plot = WallProfilePlot()
         profile_layout.addWidget(self.profile_plot, 1)
+        self.representative_summary = QLabel()
+        self.representative_summary.setObjectName("MutedText")
+        self.representative_summary.setWordWrap(True)
+        profile_layout.addWidget(self.representative_summary)
         splitter.addWidget(profile_host)
         splitter.setStretchFactor(0, 45)
         splitter.setStretchFactor(1, 55)
@@ -648,10 +713,17 @@ class WallConformanceTab(QWidget):
             self.edit_semantics.setEnabled(False)
             return
         mapping, fallback = self.service.mapping_for_dataset(design)
-        assignments = {role: value for value, role in mapping.assignments if role in {"face", "berm", "road"}}
+        assignments = {
+            role: sorted(
+                (str(value) for value, assigned in mapping.assignments if assigned == role),
+                key=str.casefold,
+            )
+            for role in ("face", "berm", "road")
+        }
         detail = " · ".join(
-            f"{tr(role.title())}={assignments[role]}"
-            for role in ("face", "berm", "road") if role in assignments
+            f"{tr(role.title())}={','.join(assignments[role])}"
+            for role in ("face", "berm", "road")
+            if assignments[role]
         )
         prefix = tr("Design semantics: default mapping") if fallback else tr("Design semantics: %1").replace("%1", mapping.attribute_name)
         self.semantic_mapping.setText(f"{prefix} · {detail}")
@@ -665,7 +737,13 @@ class WallConformanceTab(QWidget):
             if dialog.exec():
                 self.result = None
                 self.profile_selector.clear()
+                self.variant_selector.clear()
+                self.variant_selector.setVisible(False)
                 self.profile_plot.set_profile(None)
+                self.plan.clear_result()
+                self.profile_summary.setText("—")
+                self.profile_vectors.setText("")
+                self.representative_summary.clear()
                 self._refresh_dataset_metadata()
                 self.status.setText(tr("Design surface semantics saved. Calculate profiles again."))
                 set_status_role(self.status, "success")
@@ -710,6 +788,7 @@ class WallConformanceTab(QWidget):
         self.plan.set_result(self.assessment_polygon, self.result)
         self.profile_selector.blockSignals(True)
         self.profile_selector.clear()
+        self.profile_selector.addItem(tr("Overview · All actual profiles"))
         for index, profile in enumerate(self.result.profile_set.profiles, start=1):
             self.profile_selector.addItem(
                 tr("Profile %1 · Ch. %2 m")
@@ -717,6 +796,17 @@ class WallConformanceTab(QWidget):
                 .replace("%2", f"{profile.alignment.chainage_m:.1f}")
             )
         self.profile_selector.blockSignals(False)
+        self.variant_selector.blockSignals(True)
+        self.variant_selector.clear()
+        for index, variant in enumerate(self.result.profile_set.design_variants, start=1):
+            self.variant_selector.addItem(
+                tr("Variant %1 · %2 · %3 profiles")
+                .replace("%1", str(index))
+                .replace("%2", variant.signature)
+                .replace("%3", str(len(variant.profile_indices)))
+            )
+        self.variant_selector.blockSignals(False)
+        self.variant_selector.setVisible(self.variant_selector.count() > 1)
         count = len(self.result.profile_set.profiles)
         self.status.setText(
             tr("Calculated %1 transverse profiles from the active Project surfaces.")
@@ -733,27 +823,86 @@ class WallConformanceTab(QWidget):
             self.plan.set_selected_profile(-1)
 
     def _select_profile(self, index: int) -> None:
-        if self.result is None or not 0 <= index < len(self.result.profile_set.profiles):
+        if self.result is None:
             self.plan.set_selected_profile(-1)
             self.profile_plot.set_profile(None)
             self.profile_summary.setText("—")
             self.profile_vectors.setText("")
             return
+        if index == 0:
+            self.profile_selector.blockSignals(True)
+            self.profile_selector.setCurrentIndex(0)
+            self.profile_selector.blockSignals(False)
+            self.plan.set_selected_profile(-1)
+            self.profile_plot.set_overview(
+                self.result.profile_set, max(0, self.variant_selector.currentIndex())
+            )
+            self.profile_summary.setText(tr("All actual profiles · Select a profile to inspect"))
+            self.profile_vectors.setText("")
+            self._update_representative_summary()
+            return
+        profile_index = index - 1
+        if not 0 <= profile_index < len(self.result.profile_set.profiles):
+            return
         if self.profile_selector.currentIndex() != index:
             self.profile_selector.blockSignals(True)
             self.profile_selector.setCurrentIndex(index)
             self.profile_selector.blockSignals(False)
-        profile = self.result.profile_set.profiles[index]
-        self.plan.set_selected_profile(index)
+        profile = self.result.profile_set.profiles[profile_index]
+        self.plan.set_selected_profile(profile_index)
         self.profile_plot.set_profile(profile)
+        self.representative_summary.clear()
         tx, ty = profile.alignment.tangent_xy
         nx, ny = profile.alignment.normal_xy
         self.profile_summary.setText(
             tr("Profile %1 · Chainage %2 m")
-            .replace("%1", str(index + 1))
+            .replace("%1", str(profile_index + 1))
             .replace("%2", f"{profile.alignment.chainage_m:.1f}")
         )
         self.profile_vectors.setText(tr("Direction details"))
         self.profile_vectors.setToolTip(
             f"T ({tx:.3f}, {ty:.3f}) · N ({nx:.3f}, {ny:.3f})"
         )
+
+    def _select_variant(self, index: int) -> None:
+        if self.result is not None and self.profile_selector.currentIndex() == 0:
+            self.profile_plot.set_overview(self.result.profile_set, max(0, index))
+            self._update_representative_summary()
+
+    def _update_representative_summary(self) -> None:
+        variants = self.result.profile_set.design_variants if self.result else ()
+        if not variants:
+            self.representative_summary.clear()
+            return
+        variant = variants[max(0, self.variant_selector.currentIndex())]
+        lines = [
+            tr("REPRESENTATIVE DESIGN"),
+            tr("Profiles used: %1").replace("%1", str(len(variant.profile_indices))),
+        ]
+        counters = {}
+        for element in variant.elements:
+            counters[element.role] = counters.get(element.role, 0) + 1
+            name = f"{tr(element.role.title())} {counters[element.role]}"
+            if element.role == "face" and element.angle_median is not None:
+                lines.append(
+                    tr("%1 · Height %2 m · Angle %3° · range %4–%5°")
+                    .replace("%1", name).replace("%2", f"{element.height_median:.1f}")
+                    .replace("%3", f"{element.angle_median:.1f}")
+                    .replace("%4", f"{element.angle_range[0]:.1f}")
+                    .replace("%5", f"{element.angle_range[1]:.1f}")
+                )
+            else:
+                lines.append(
+                    tr("%1 · Width %2 m · range %3–%4 m")
+                    .replace("%1", name).replace("%2", f"{element.width_median:.1f}")
+                    .replace("%3", f"{element.width_range[0]:.1f}")
+                    .replace("%4", f"{element.width_range[1]:.1f}")
+                )
+        self.representative_summary.setText("\n".join(lines))
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape and self.result is not None:
+            self._select_profile(0)
+            event.accept()
+            return
+        super().keyPressEvent(event)

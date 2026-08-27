@@ -89,7 +89,7 @@ def test_calculation_and_plan_click_keep_selection_synchronized(monkeypatch):
     tab.calculate()
     assert tab.profile_selector.count() > 1
     tab.plan.profile_selected.emit(1)
-    assert tab.profile_selector.currentIndex() == 1
+    assert tab.profile_selector.currentIndex() == 2
     assert tab.plan._selected_index == 1
     assert "Profile 2" in tab.profile_summary.text()
     assert "Chainage" in tab.profile_summary.text()
@@ -194,11 +194,67 @@ def test_engineering_parameter_labels_and_legend_contract(monkeypatch):
     assert "not an averaging width" in tab.half_width.toolTip()
     assert tab.half_width.prefix() == "±"
     tab.calculate()
+    tab._select_profile(1)
     design_entries, actual_entries = tab.profile_plot._legend_rows(
         tab.profile_plot.profile
     )
     assert [label for label, _ in design_entries] == ["Face", "Berm", "Road"]
     assert actual_entries == (("Survey", "actual"),)
     assert "Design" not in [label for label, _ in (*design_entries, *actual_entries)]
+    tab.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_overview_selected_and_escape_modes_are_distinct(monkeypatch):
+    from PySide6.QtTest import QTest
+
+    tab = _tab(monkeypatch)
+    tab.calculate()
+    assert tab.profile_plot.mode == "overview"
+    assert tab.profile_plot.profile is None
+    assert len(tab.profile_plot._geometry()[1]) > len(
+        tab.result.profile_set.profiles[0].actual_segments
+    )
+    assert "All actual profiles" in tab.profile_summary.text()
+    assert "dZ" in module.tr("dZ (m, local Design crest = 0)")
+
+    tab._select_profile(1)
+    exact = tab.result.profile_set.profiles[0]
+    assert tab.profile_plot.mode == "selected"
+    assert tab.profile_plot.profile is exact
+    assert tab.profile_plot._geometry() == (
+        tuple(s for s in exact.design_segments if s.semantic_role != "ignore"),
+        exact.actual_segments,
+    )
+    assert tab.plan._selected_index == 0
+
+    tab.show()
+    QTest.keyClick(tab, module.Qt.Key.Key_Escape)
+    assert tab.profile_plot.mode == "overview"
+    assert tab.plan._selected_index == -1
+    assert tab.profile_selector.currentIndex() == 0
+    tab.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_mapping_summary_keeps_multiple_values_and_save_clears_stale_plan(monkeypatch):
+    tab = _tab(monkeypatch)
+    tab.calculate()
+    assert tab.plan.scene.items()
+    tab.service.surface_service.design.semantic_mapping_json = {
+        "attribute_name": "COLOUR",
+        "assignments": [
+            {"value": 9, "role": "face"}, {"value": 2, "role": "face"},
+            {"value": 6, "role": "face"}, {"value": 5, "role": "berm"},
+            {"value": 3, "role": "road"},
+        ],
+    }
+    tab._refresh_dataset_metadata()
+    assert "Face=2,6,9" in tab.semantic_mapping.text()
+    tab.plan.clear_result()
+    tab.result = None
+    tab.profile_plot.set_profile(None)
+    assert not tab.plan.scene.items()
+    assert tab.profile_plot.mode == "empty"
     tab.deleteLater()
     _app().sendPostedEvents()

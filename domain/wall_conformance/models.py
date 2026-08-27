@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from math import hypot, isfinite
+from math import atan2, degrees, hypot, isfinite
 from typing import Any
 
 from domain.geometry.surfaces import SurfaceVertex
@@ -164,10 +164,69 @@ class SectionSegment:
 
 
 @dataclass(frozen=True)
+class DesignSectionElement:
+    role: str
+    start: SectionPoint
+    end: SectionPoint
+    source_triangle_indices: tuple[int, ...]
+
+    @property
+    def horizontal_width(self) -> float:
+        return abs(self.end.u - self.start.u)
+
+    @property
+    def vertical_change(self) -> float:
+        return self.end.z - self.start.z
+
+    @property
+    def vertical_height(self) -> float:
+        return abs(self.vertical_change)
+
+    @property
+    def angle_degrees(self) -> float | None:
+        if self.role != "face":
+            return None
+        return degrees(atan2(self.vertical_height, self.horizontal_width))
+
+
+@dataclass(frozen=True)
+class DesignSection:
+    elements: tuple[DesignSectionElement, ...]
+
+    @property
+    def topology_signature(self) -> str:
+        return "-".join(element.role.upper() for element in self.elements)
+
+
+@dataclass(frozen=True)
+class RepresentativeElement:
+    role: str
+    start_u: float
+    start_dz: float
+    end_u: float
+    end_dz: float
+    width_median: float
+    width_mean: float
+    width_range: tuple[float, float]
+    height_median: float
+    height_range: tuple[float, float]
+    angle_median: float | None
+    angle_range: tuple[float, float] | None
+
+
+@dataclass(frozen=True)
+class DesignVariant:
+    signature: str
+    profile_indices: tuple[int, ...]
+    elements: tuple[RepresentativeElement, ...]
+
+
+@dataclass(frozen=True)
 class TransverseProfile:
     alignment: WallAlignmentSample
     design_segments: tuple[SectionSegment, ...]
     actual_segments: tuple[SectionSegment, ...]
+    design_section: DesignSection | None = None
 
 
 @dataclass(frozen=True)
@@ -175,6 +234,7 @@ class WallProfileSet:
     crest_line: WallTransitionLine
     toe_lines: tuple[WallTransitionLine, ...]
     profiles: tuple[TransverseProfile, ...]
+    design_variants: tuple[DesignVariant, ...] = ()
 
     def __post_init__(self) -> None:
         if self.crest_line.kind != "crest":

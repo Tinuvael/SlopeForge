@@ -53,3 +53,32 @@ def test_sloping_lateral_face_boundaries_are_not_crest_candidates():
         for line in crests for a, b in zip(line.points, line.points[1:])
     }
     assert all(a[2] == b[2] == 10 for a, b in crest_edges)
+
+
+def test_uppermost_alignment_accepts_material_crest_and_toe_elevation_change():
+    vertices = (
+        SurfaceVertex(0, 0, 120), SurfaceVertex(0, 20, 108),
+        SurfaceVertex(5, 0, 100), SurfaceVertex(5, 20, 91),
+        SurfaceVertex(10, 0, 99), SurfaceVertex(10, 20, 90),
+    )
+    surface = TriangleSurface(vertices, (
+        _triangle((0, 2, 1), 2), _triangle((2, 3, 1), 2),
+        _triangle((2, 4, 3), 3), _triangle((4, 5, 3), 3),
+    ))
+    transitions = extract_design_transition_lines(surface, MAPPING)
+    crest = next(line for line in transitions if line.kind == "crest")
+    toe = next(line for line in transitions if line.kind == "toe")
+    assert {p.z for p in crest.points} == {108, 120}
+    assert {p.z for p in toe.points} == {91, 100}
+    area = PlanPolygon((
+        PlanPoint(-1, 2), PlanPoint(8, 2), PlanPoint(8, 18),
+        PlanPoint(-1, 18), PlanPoint(-1, 2),
+    ))
+    result = build_transverse_profiles(
+        surface, surface, area, MAPPING,
+        spacing_m=4, tangent_window_m=5, half_width_m=12,
+    )
+    assert len(result.profiles) >= 3
+    assert max(p.alignment.origin.z for p in result.profiles) - min(
+        p.alignment.origin.z for p in result.profiles
+    ) > 5
