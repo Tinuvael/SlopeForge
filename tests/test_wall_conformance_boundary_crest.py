@@ -1,7 +1,10 @@
 from domain.geometry.surfaces import SurfaceTriangle, SurfaceVertex, TriangleSurface
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.wall_conformance import (
-    SurfaceRoleMapping, build_transverse_profiles, extract_design_transition_lines,
+    SurfaceRoleMapping,
+    build_transverse_profiles,
+    extract_design_transition_lines,
+    extract_design_wall_topology,
 )
 
 
@@ -82,3 +85,53 @@ def test_uppermost_alignment_accepts_material_crest_and_toe_elevation_change():
     assert max(p.alignment.origin.z for p in result.profiles) - min(
         p.alignment.origin.z for p in result.profiles
     ) > 5
+
+
+def _multi_row_upper_face(*, reverse_winding=False):
+    chainages = (0.0, 6.0, 14.0, 22.0)
+    crest_z = (120.0, 128.0, 113.0, 125.0)
+    down_rows = (0.0, 2.0, 5.0, 8.0, 10.0)
+    vertices = tuple(
+        SurfaceVertex(
+            down + (0.12 * row if column in {1, 2} else 0.0),
+            chainage,
+            crest_z[row] - 2.0 * down,
+        )
+        for column, down in enumerate(down_rows)
+        for row, chainage in enumerate(chainages)
+    )
+    triangles = []
+    for column in range(len(down_rows) - 1):
+        role = 2 if column < len(down_rows) - 2 else 3
+        for row in range(len(chainages) - 1):
+            a = column * 4 + row
+            b = a + 1
+            c = (column + 1) * 4 + row
+            d = c + 1
+            for indices in ((a, c, b), (c, d, b)):
+                if reverse_winding:
+                    indices = tuple(reversed(indices))
+                triangles.append(_triangle(indices, role))
+    return TriangleSurface(vertices, tuple(triangles))
+
+
+def test_multi_row_lateral_boundary_never_turns_into_upper_alignment():
+    area = PlanPolygon((
+        PlanPoint(-1, 1), PlanPoint(11, 1), PlanPoint(11, 21),
+        PlanPoint(-1, 21), PlanPoint(-1, 1),
+    ))
+    expected = ((0.0, 0.0, 120.0), (0.0, 6.0, 128.0),
+                (0.0, 14.0, 113.0), (0.0, 22.0, 125.0))
+    for reverse_winding in (False, True):
+        surface = _multi_row_upper_face(reverse_winding=reverse_winding)
+        topology = extract_design_wall_topology(surface, MAPPING)
+        assert len(topology.alignment_boundaries) == 1
+        alignment = topology.alignment_boundaries[0]
+        assert tuple((p.x, p.y, p.z) for p in alignment.line.points) == expected
+        assert len(alignment.interior_points) == 3
+        result = build_transverse_profiles(
+            surface, surface, area, MAPPING,
+            spacing_m=4.0, tangent_window_m=4.0, half_width_m=12.0,
+        )
+        assert result.profiles
+        assert all(profile.alignment.normal_xy[0] > 0 for profile in result.profiles)

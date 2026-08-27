@@ -34,18 +34,8 @@ def _face_transition_kind(
     *,
     z_tolerance: float,
 ) -> str | None:
-    face_triangle = surface.triangles[face_triangle_index]
-    third_index = next(
-        index for index in face_triangle.vertex_indices if index not in edge
-    )
-    first, second = (surface.vertices[index] for index in edge)
-    third = surface.vertices[third_index]
-    transition_z = (first.z + second.z) / 2.0
-    if transition_z > third.z + z_tolerance:
-        return "crest"
-    if transition_z < third.z - z_tolerance:
-        return "toe"
-    return None
+    del z_tolerance  # retained in the public extraction contract
+    return _outer_face_boundary_kind(surface, edge, face_triangle_index)
 
 
 def _walk_edges(
@@ -139,6 +129,151 @@ def _third_vertex(surface, edge, triangle_index):
     return surface.vertices[next(i for i in triangle.vertex_indices if i not in edge)]
 
 
+def _outer_face_boundary_kind(
+    surface: TriangleSurface,
+    edge: tuple[int, int],
+    face_triangle_index: int,
+    *,
+    downslope_xy: tuple[float, float] | None = None,
+) -> str | None:
+    """Classify a Face-patch rim from the triangle's local downslope plane.
+
+    Upper/lower rims run predominantly across the local downslope direction;
+    lateral rims run predominantly along it. This uses no triangle winding or
+    absolute elevation assumption.
+    """
+    first, second = (surface.vertices[index] for index in edge)
+    third = _third_vertex(surface, edge, face_triangle_index)
+    ux, uy = second.x - first.x, second.y - first.y
+    vx, vy = third.x - first.x, third.y - first.y
+    determinant = ux * vy - uy * vx
+    if abs(determinant) <= 1e-12:
+        return None
+    uz, vz = second.z - first.z, third.z - first.z
+    gradient_x = (uz * vy - uy * vz) / determinant
+    gradient_y = (ux * vz - uz * vx) / determinant
+    down_x, down_y = downslope_xy or (-gradient_x, -gradient_y)
+    down_length = hypot(down_x, down_y)
+    edge_length = hypot(ux, uy)
+    midpoint_x = (first.x + second.x) / 2.0
+    midpoint_y = (first.y + second.y) / 2.0
+    interior_x, interior_y = third.x - midpoint_x, third.y - midpoint_y
+    interior_length = hypot(interior_x, interior_y)
+    if down_length <= 1e-12 or edge_length <= 1e-12 or interior_length <= 1e-12:
+        return None
+    edge_projection = abs(
+        (ux * down_x + uy * down_y) / (edge_length * down_length)
+    )
+    interior_projection = (
+        interior_x * down_x + interior_y * down_y
+    ) / (interior_length * down_length)
+    if abs(interior_projection) <= edge_projection + 1e-9:
+        return None
+    return "crest" if interior_projection > 0.0 else "toe"
+
+
+def _face_patch_downslope(
+    surface: TriangleSurface, triangle_indices: tuple[int, ...]
+) -> tuple[float, float] | None:
+    """Area-weighted plan downslope for a connected Face patch."""
+    sum_x = sum_y = total_weight = 0.0
+    for triangle_index in triangle_indices:
+        triangle = surface.triangles[triangle_index]
+        first, second, third = (
+            surface.vertices[index] for index in triangle.vertex_indices
+        )
+        ux, uy, uz = second.x - first.x, second.y - first.y, second.z - first.z
+        vx, vy, vz = third.x - first.x, third.y - first.y, third.z - first.z
+        determinant = ux * vy - uy * vx
+        if abs(determinant) <= 1e-12:
+            continue
+        gradient_x = (uz * vy - uy * vz) / determinant
+        gradient_y = (ux * vz - uz * vx) / determinant
+        weight = abs(determinant)
+        sum_x -= gradient_x * weight
+        sum_y -= gradient_y * weight
+        total_weight += weight
+    if total_weight <= 1e-12 or hypot(sum_x, sum_y) <= 1e-12:
+        return None
+    return sum_x / total_weight, sum_y / total_weight
+
+
+def _platform_triangle_adjacency(
+    edges: dict[tuple[int, int], list[int]], roles: tuple[str, ...]
+) -> dict[int, set[int]]:
+    adjacency: dict[int, set[int]] = defaultdict(set)
+    for adjacent in edges.values():
+        if len(adjacent) != 2:
+            continue
+        first, second = adjacent
+        if roles[first] == roles[second] and roles[first] in PLATFORM_ROLES:
+            adjacency[first].add(second)
+            adjacency[second].add(first)
+    return adjacency
+
+
+def _seed_distances(
+    seeds: set[int], adjacency: dict[int, set[int]]
+) -> dict[int, int]:
+    distances = {triangle: 0 for triangle in seeds}
+    pending = list(sorted(seeds))
+    cursor = 0
+    while cursor < len(pending):
+        current = pending[cursor]
+        cursor += 1
+        for neighbour in sorted(adjacency[current]):
+            if neighbour not in distances:
+                distances[neighbour] = distances[current] + 1
+                pending.append(neighbour)
+    return distances
+
+
+def _upper_outer_edges(
+    surface: TriangleSurface,
+    edges: dict[tuple[int, int], list[int]],
+    face_patch: dict[int, int],
+    face_triangles: tuple[int, ...],
+    patch_index: int,
+) -> set[tuple[int, int]]:
+    """Return upper-rim chains without their lateral boundary tails.
+
+    Strong strike grade can make an individual upper edge locally neutral.
+    Neutral gaps between confidently upper edges are retained, while iterative
+    leaf pruning removes side chains which merely hang from the upper rim.
+    """
+    patch_downslope = _face_patch_downslope(surface, face_triangles)
+    classifications = {
+        edge: _outer_face_boundary_kind(
+            surface,
+            edge,
+            adjacent[0],
+            downslope_xy=patch_downslope,
+        )
+        for edge, adjacent in edges.items()
+        if len(adjacent) == 1 and face_patch.get(adjacent[0]) == patch_index
+    }
+    confirmed = {edge for edge, kind in classifications.items() if kind == "crest"}
+    working = {
+        edge for edge, kind in classifications.items() if kind != "toe"
+    }
+    changed = True
+    while changed:
+        changed = False
+        degree: dict[int, int] = defaultdict(int)
+        for first, second in working:
+            degree[first] += 1
+            degree[second] += 1
+        removable = {
+            edge
+            for edge in working - confirmed
+            if degree[edge[0]] <= 1 or degree[edge[1]] <= 1
+        }
+        if removable:
+            working.difference_update(removable)
+            changed = True
+    return working
+
+
 def extract_design_wall_topology(
     surface: TriangleSurface,
     role_mapping: SurfaceRoleMapping,
@@ -148,10 +283,9 @@ def extract_design_wall_topology(
     """Build transition and upper-alignment relationships from mesh topology.
 
     A design crest/toe is not guessed from mesh winding. Shared face-platform
-    topology remains authoritative. A one-triangle outer
-    edge is accepted only as a crest when its face-side third vertex is lower;
-    this conservative fallback supports the uppermost bench without treating
-    lateral or unknown-role mesh boundaries as crests.
+    topology remains authoritative. Uppermost outer Face rims are classified
+    from their local triangle plane and downslope direction, keeping lateral
+    and unknown-role mesh boundaries out of the alignment.
     """
     roles = tuple(
         role_mapping.resolve(triangle.source_attributes)
@@ -159,23 +293,15 @@ def extract_design_wall_topology(
     )
     edges = _shared_edges(surface)
     face_components = _triangle_components(edges, roles, {"face"})
-    platform_components = _triangle_components(edges, roles, PLATFORM_ROLES)
     face_patch = {
         triangle: index
         for index, group in enumerate(face_components)
         for triangle in group
     }
-    platform_patch = {
-        triangle: index
-        for index, group in enumerate(platform_components)
-        for triangle in group
-    }
     by_patch: dict[int, dict[str, set[tuple[int, int]]]] = {
         index: {"crest": set(), "toe": set()} for index in range(len(face_components))
     }
-    platform_sides: dict[int, dict[str, set[int]]] = defaultdict(
-        lambda: {"crest": set(), "toe": set()}
-    )
+    transition_seeds: dict[tuple[str, str, int], set[int]] = defaultdict(set)
     for edge, triangle_indices in edges.items():
         if len(triangle_indices) != 2:
             continue
@@ -197,12 +323,45 @@ def extract_design_wall_topology(
             patch_index = face_patch[face_index]
             by_patch[patch_index][kind].add(edge)
             platform_index = second_index if face_index == first_index else first_index
-            platform_sides[platform_patch[platform_index]][kind].add(patch_index)
+            transition_seeds[(roles[platform_index], kind, patch_index)].add(
+                platform_index
+            )
 
-    downstream = set()
-    for sides in platform_sides.values():
-        if sides["toe"] and sides["crest"]:
-            downstream.update(sides["crest"])
+    # Pair transitions through their nearest *local* same-role platform
+    # neighbourhood. Reciprocal nearest pairs prevent one connected haul-road
+    # network from making every Face it touches appear downstream.
+    platform_adjacency = _platform_triangle_adjacency(edges, roles)
+    distances = {
+        key: _seed_distances(seeds, platform_adjacency)
+        for key, seeds in transition_seeds.items()
+    }
+    toe_keys = [key for key in transition_seeds if key[1] == "toe"]
+    crest_keys = [key for key in transition_seeds if key[1] == "crest"]
+
+    def nearest(source, targets):
+        ranked = []
+        for target in targets:
+            if source[0] != target[0]:
+                continue
+            reachable = [
+                distances[source][triangle]
+                for triangle in transition_seeds[target]
+                if triangle in distances[source]
+            ]
+            if reachable:
+                ranked.append((min(reachable), target))
+        if not ranked:
+            return set()
+        minimum = min(distance for distance, _ in ranked)
+        return {target for distance, target in ranked if distance == minimum}
+
+    nearest_toes = {key: nearest(key, toe_keys) for key in crest_keys}
+    nearest_crests = {key: nearest(key, crest_keys) for key in toe_keys}
+    downstream = {
+        crest_key[2]
+        for crest_key, local_toes in nearest_toes.items()
+        if any(crest_key in nearest_crests[toe_key] for toe_key in local_toes)
+    }
     root_patches = set(range(len(face_components))) - downstream
 
     # A root Face without an upper platform uses its outer boundary. Classify
@@ -211,16 +370,15 @@ def extract_design_wall_topology(
     for patch_index in root_patches:
         if by_patch[patch_index]["crest"]:
             continue
-        toe_vertices = {v for edge in by_patch[patch_index]["toe"] for v in edge}
-        outer = {
-            edge
-            for edge, adjacent in edges.items()
-            if len(adjacent) == 1
-            and face_patch.get(adjacent[0]) == patch_index
-            and not any(vertex in toe_vertices for vertex in edge)
-        }
-        # The upper rim is the outer chain adjacent to the patch, excluding
-        # end edges that lead directly into the lower boundary.
+        outer = _upper_outer_edges(
+            surface,
+            edges,
+            face_patch,
+            face_components[patch_index],
+            patch_index,
+        )
+        # Only locally classified upper-rim edges are walked together, so an
+        # alignment cannot turn down a multi-segment lateral crop boundary.
         by_patch[patch_index]["crest"].update(outer)
 
     transitions = []
@@ -231,18 +389,20 @@ def extract_design_wall_topology(
         transitions.extend((*crest_lines, *toe_lines))
         if patch_index in root_patches:
             for line in crest_lines:
-                line_vertices = {(point.x, point.y, point.z) for point in line.points}
+                vertex_indices = {
+                    (vertex.x, vertex.y, vertex.z): index
+                    for index, vertex in enumerate(surface.vertices)
+                }
                 boundary_edges = [
-                    edge
-                    for edge in kinds["crest"]
-                    if all(
-                        (
-                            surface.vertices[v].x,
-                            surface.vertices[v].y,
-                            surface.vertices[v].z,
+                    tuple(
+                        sorted(
+                            (
+                                vertex_indices[(first.x, first.y, first.z)],
+                                vertex_indices[(second.x, second.y, second.z)],
+                            )
                         )
-                        in line_vertices for v in edge
                     )
+                    for first, second in zip(line.points, line.points[1:])
                 ]
                 interiors = tuple(
                     _third_vertex(
@@ -570,10 +730,24 @@ def sample_wall_alignment(
         tx, ty = tx / tangent_length, ty / tangent_length
         nx, ny = -ty, tx
 
-        if interior_points:
+        if len(interior_points) == len(crest_line.points) - 1:
+            segment_index = next(
+                (
+                    index
+                    for index, end_chainage in enumerate(cumulative[1:])
+                    if chainage <= end_chainage + 1e-9
+                ),
+                len(interior_points) - 1,
+            )
+            interior = interior_points[segment_index]
+            target = (interior.x, interior.y)
+        elif interior_points:
+            # Compatibility for boundaries produced before segment provenance
+            # was retained. New topology always follows the branch above.
             interior = min(
                 interior_points,
-                key=lambda point: (point.x - origin.x) ** 2 + (point.y - origin.y) ** 2,
+                key=lambda point: (point.x - origin.x) ** 2
+                + (point.y - origin.y) ** 2,
             )
             target = (interior.x, interior.y)
         else:
