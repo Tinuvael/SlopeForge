@@ -3,9 +3,9 @@ from __future__ import annotations
 from domain.geometry.surfaces import TriangleSurface
 from domain.geometry.types import PlanPolygon
 from domain.wall_conformance.design import (
-    extract_design_transition_lines,
+    extract_design_wall_topology,
     sample_wall_alignment,
-    select_primary_crest_line,
+    select_design_alignment,
 )
 from domain.wall_conformance.models import (
     SurfaceRoleMapping,
@@ -32,15 +32,17 @@ def build_transverse_profiles(
     the local design crest tangent and therefore remains normal to the design
     wall even when the Assessment Area boundary has a different azimuth.
     """
-    transitions = extract_design_transition_lines(design_surface, role_mapping)
-    crest = select_primary_crest_line(transitions, assessment_polygon)
-    toe_lines = tuple(line for line in transitions if line.kind == "toe")
+    topology = extract_design_wall_topology(design_surface, role_mapping)
+    alignment = select_design_alignment(topology, assessment_polygon)
+    crest = alignment.line
+    toe_lines = tuple(line for line in topology.transitions if line.kind == "toe")
     samples = sample_wall_alignment(
         crest,
         toe_lines,
         assessment_polygon,
         spacing_m=spacing_m,
         tangent_window_m=tangent_window_m,
+        interior_points=alignment.interior_points,
     )
     profiles = []
     for sample in samples:

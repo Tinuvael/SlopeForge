@@ -7,6 +7,8 @@ from domain.geometry.operations import clip_datamine_line_by_polygon, point_in_p
 from domain.geometry.surfaces import TriangleSurface, SurfaceVertex
 from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
 from domain.wall_conformance.models import (
+    DesignAlignmentBoundary,
+    DesignWallTopology,
     SurfaceRoleMapping,
     WallAlignmentSample,
     WallTransitionLine,
@@ -105,13 +107,45 @@ def _walk_edges(
     )
 
 
-def extract_design_transition_lines(
+def _triangle_components(
+    edges: dict[tuple[int, int], list[int]], roles: tuple[str, ...], wanted: set[str]
+) -> tuple[tuple[int, ...], ...]:
+    adjacency: dict[int, set[int]] = defaultdict(set)
+    for triangle_indices in edges.values():
+        if len(triangle_indices) != 2:
+            continue
+        first, second = triangle_indices
+        if roles[first] in wanted and roles[second] in wanted:
+            adjacency[first].add(second)
+            adjacency[second].add(first)
+    unused = {index for index, role in enumerate(roles) if role in wanted}
+    components = []
+    while unused:
+        pending = [min(unused)]
+        component = []
+        while pending:
+            current = pending.pop()
+            if current not in unused:
+                continue
+            unused.remove(current)
+            component.append(current)
+            pending.extend(adjacency[current])
+        components.append(tuple(sorted(component)))
+    return tuple(components)
+
+
+def _third_vertex(surface, edge, triangle_index):
+    triangle = surface.triangles[triangle_index]
+    return surface.vertices[next(i for i in triangle.vertex_indices if i not in edge)]
+
+
+def extract_design_wall_topology(
     surface: TriangleSurface,
     role_mapping: SurfaceRoleMapping,
     *,
     z_tolerance: float = 1e-6,
-) -> tuple[WallTransitionLine, ...]:
-    """Extract breaklines from face-platform edges and upper face boundaries.
+) -> DesignWallTopology:
+    """Build transition and upper-alignment relationships from mesh topology.
 
     A design crest/toe is not guessed from mesh winding. Shared face-platform
     topology remains authoritative. A one-triangle outer
@@ -123,8 +157,25 @@ def extract_design_transition_lines(
         role_mapping.resolve(triangle.source_attributes)
         for triangle in surface.triangles
     )
-    by_kind: dict[str, set[tuple[int, int]]] = {"crest": set(), "toe": set()}
     edges = _shared_edges(surface)
+    face_components = _triangle_components(edges, roles, {"face"})
+    platform_components = _triangle_components(edges, roles, PLATFORM_ROLES)
+    face_patch = {
+        triangle: index
+        for index, group in enumerate(face_components)
+        for triangle in group
+    }
+    platform_patch = {
+        triangle: index
+        for index, group in enumerate(platform_components)
+        for triangle in group
+    }
+    by_patch: dict[int, dict[str, set[tuple[int, int]]]] = {
+        index: {"crest": set(), "toe": set()} for index in range(len(face_components))
+    }
+    platform_sides: dict[int, dict[str, set[int]]] = defaultdict(
+        lambda: {"crest": set(), "toe": set()}
+    )
     for edge, triangle_indices in edges.items():
         if len(triangle_indices) != 2:
             continue
@@ -143,27 +194,82 @@ def extract_design_transition_lines(
             z_tolerance=z_tolerance,
         )
         if kind is not None:
-            by_kind[kind].add(edge)
+            patch_index = face_patch[face_index]
+            by_patch[patch_index][kind].add(edge)
+            platform_index = second_index if face_index == first_index else first_index
+            platform_sides[platform_patch[platform_index]][kind].add(patch_index)
 
-    # Uppermost benches have no platform triangle above their Face patch. Use
-    # the already-authoritative toe topology to reject end/crop boundaries:
-    # an edge joining into a toe is a side of the patch, not its upper rim.
-    toe_vertices = {vertex for edge in by_kind["toe"] for vertex in edge}
-    for edge, triangle_indices in edges.items():
-        if len(triangle_indices) != 1 or any(v in toe_vertices for v in edge):
-            continue
-        face_index = triangle_indices[0]
-        if roles[face_index] != "face":
-            continue
-        if _face_transition_kind(
-            surface, edge, face_index, z_tolerance=z_tolerance
-        ) == "crest":
-            by_kind["crest"].add(edge)
+    downstream = set()
+    for sides in platform_sides.values():
+        if sides["toe"] and sides["crest"]:
+            downstream.update(sides["crest"])
+    root_patches = set(range(len(face_components))) - downstream
 
-    return (
-        *_walk_edges(surface, by_kind["crest"], "crest"),
-        *_walk_edges(surface, by_kind["toe"], "toe"),
-    )
+    # A root Face without an upper platform uses its outer boundary. Classify
+    # it relative to the connected patch's authoritative lower boundary, not
+    # by absolute or constant crest elevation.
+    for patch_index in root_patches:
+        if by_patch[patch_index]["crest"]:
+            continue
+        toe_vertices = {v for edge in by_patch[patch_index]["toe"] for v in edge}
+        outer = {
+            edge
+            for edge, adjacent in edges.items()
+            if len(adjacent) == 1
+            and face_patch.get(adjacent[0]) == patch_index
+            and not any(vertex in toe_vertices for vertex in edge)
+        }
+        # The upper rim is the outer chain adjacent to the patch, excluding
+        # end edges that lead directly into the lower boundary.
+        by_patch[patch_index]["crest"].update(outer)
+
+    transitions = []
+    alignments = []
+    for patch_index, kinds in by_patch.items():
+        crest_lines = _walk_edges(surface, kinds["crest"], "crest")
+        toe_lines = _walk_edges(surface, kinds["toe"], "toe")
+        transitions.extend((*crest_lines, *toe_lines))
+        if patch_index in root_patches:
+            for line in crest_lines:
+                line_vertices = {(point.x, point.y, point.z) for point in line.points}
+                boundary_edges = [
+                    edge
+                    for edge in kinds["crest"]
+                    if all(
+                        (
+                            surface.vertices[v].x,
+                            surface.vertices[v].y,
+                            surface.vertices[v].z,
+                        )
+                        in line_vertices for v in edge
+                    )
+                ]
+                interiors = tuple(
+                    _third_vertex(
+                        surface,
+                        edge,
+                        next(
+                            i
+                            for i in edges[edge]
+                            if face_patch.get(i) == patch_index
+                        ),
+                    )
+                    for edge in boundary_edges
+                )
+                alignments.append(DesignAlignmentBoundary(line, patch_index, interiors))
+
+    return DesignWallTopology(tuple(transitions), tuple(alignments))
+
+
+def extract_design_transition_lines(
+    surface: TriangleSurface,
+    role_mapping: SurfaceRoleMapping,
+    *,
+    z_tolerance: float = 1e-6,
+) -> tuple[WallTransitionLine, ...]:
+    return extract_design_wall_topology(
+        surface, role_mapping, z_tolerance=z_tolerance
+    ).transitions
 
 
 def _plan_line(line: WallTransitionLine) -> PlanLineString:
@@ -195,6 +301,22 @@ def select_primary_crest_line(
     if not scored:
         raise ValueError("No design crest intersects the Assessment Area")
     return max(scored, key=lambda item: (item[0], item[1].plan_length))[1]
+
+
+def select_design_alignment(
+    topology: DesignWallTopology, assessment_polygon: PlanPolygon
+) -> DesignAlignmentBoundary:
+    candidates = [
+        boundary
+        for boundary in topology.alignment_boundaries
+        if _clipped_plan_length(boundary.line, assessment_polygon) > 1e-9
+    ]
+    if not candidates:
+        raise ValueError("No design crest intersects the Assessment Area")
+    patches = {candidate.face_patch_index for candidate in candidates}
+    if len(patches) > 1 or len(candidates) > 1:
+        raise ValueError("Design wall alignment is ambiguous in the Assessment Area")
+    return candidates[0]
 
 
 def _cumulative_plan_lengths(points: tuple[SurfaceVertex, ...]) -> tuple[float, ...]:
@@ -360,12 +482,14 @@ def sample_wall_alignment(
     *,
     spacing_m: float = 3.0,
     tangent_window_m: float = 6.0,
+    interior_points: tuple[SurfaceVertex, ...] = (),
 ) -> tuple[WallAlignmentSample, ...]:
     """Sample a design-derived wall alignment independent of Area azimuth.
 
     Tangents come only from the design crest. Each transverse normal is flipped
-    toward the nearest design toe, giving a deterministic downslope ``+U`` sign
-    without depending on triangle winding or Assessment boundary orientation.
+    toward the adjacent Face patch when that topology is available, giving a
+    deterministic down-wall ``+U`` sign without depending on triangle winding,
+    an unrelated global toe, or Assessment boundary orientation.
     Closed crest loops wrap the tangent window across their storage seam. If a
     narrow Area falls entirely between regular chainage stations, the midpoint
     of its longest crest fragment supplies one deterministic fallback profile.
@@ -446,13 +570,22 @@ def sample_wall_alignment(
         tx, ty = tx / tangent_length, ty / tangent_length
         nx, ny = -ty, tx
 
-        toe = _nearest_plan_point(origin, toe_lines)
-        if toe is None:
+        if interior_points:
+            interior = min(
+                interior_points,
+                key=lambda point: (point.x - origin.x) ** 2 + (point.y - origin.y) ** 2,
+            )
+            target = (interior.x, interior.y)
+        else:
+            # Compatibility fallback for callers that only have transition
+            # lines. The production engine supplies Face-patch interior points.
+            target = _nearest_plan_point(origin, toe_lines)
+        if target is None:
             continue
-        toe_dx, toe_dy = toe[0] - origin.x, toe[1] - origin.y
-        if toe_dx * nx + toe_dy * ny < 0:
+        target_dx, target_dy = target[0] - origin.x, target[1] - origin.y
+        if target_dx * nx + target_dy * ny < 0:
             nx, ny = -nx, -ny
-        if hypot(toe_dx, toe_dy) <= 1e-9:
+        if hypot(target_dx, target_dy) <= 1e-9:
             continue
 
         samples.append(

@@ -673,6 +673,13 @@ class WallConformanceTab(QWidget):
         profile_layout.addLayout(selector_row)
         self.profile_plot = WallProfilePlot()
         profile_layout.addWidget(self.profile_plot, 1)
+        for escape_source in (
+            self,
+            self.plan.view,
+            self.profile_selector,
+            self.profile_plot,
+        ):
+            escape_source.installEventFilter(self)
         self.representative_summary = QLabel()
         self.representative_summary.setObjectName("MutedText")
         self.representative_summary.setWordWrap(True)
@@ -900,9 +907,18 @@ class WallConformanceTab(QWidget):
                 )
         self.representative_summary.setText("\n".join(lines))
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Escape and self.result is not None:
+    def _return_to_overview(self) -> None:
+        if self.result is not None and self.profile_selector.currentIndex() > 0:
             self._select_profile(0)
+
+    def eventFilter(self, watched, event):
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and event.key() == Qt.Key.Key_Escape
+            and self.result is not None
+            and self.profile_selector.currentIndex() > 0
+        ):
+            self._return_to_overview()
             event.accept()
-            return
-        super().keyPressEvent(event)
+            return True
+        return super().eventFilter(watched, event)

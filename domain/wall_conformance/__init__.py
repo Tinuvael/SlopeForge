@@ -2,12 +2,16 @@
 
 from .design import (
     extract_design_transition_lines,
+    extract_design_wall_topology,
     sample_wall_alignment,
+    select_design_alignment,
     select_primary_crest_line,
 )
 from .engine import build_transverse_profiles
 from .models import (
     PROTOTYPE_DESIGN_ROLE_MAPPING,
+    DesignAlignmentBoundary,
+    DesignWallTopology,
     SectionPoint,
     SectionSegment,
     SurfaceRoleMapping,
@@ -25,14 +29,18 @@ __all__ = [
     "SectionSegment",
     "SurfaceRoleMapping",
     "PROTOTYPE_DESIGN_ROLE_MAPPING",
+    "DesignAlignmentBoundary",
+    "DesignWallTopology",
     "TransverseProfile",
     "WallAlignmentSample",
     "WallProfileSet",
     "WallTransitionLine",
     "build_transverse_profiles",
     "extract_design_transition_lines",
+    "extract_design_wall_topology",
     "intersect_surface_with_profile",
     "sample_wall_alignment",
+    "select_design_alignment",
     "select_primary_crest_line",
     "semantic_value_token",
     "build_design_section",

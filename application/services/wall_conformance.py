@@ -167,6 +167,11 @@ class WallConformanceDiagnosticService:
                     "No design wall alignment intersects this Assessment Area. "
                     "Check the Assessment Area boundary and Design surface semantics."
                 ) from exc
+            if str(exc) == "Design wall alignment is ambiguous in the Assessment Area":
+                raise WallConformanceUnavailableError(
+                    "Design wall alignment is ambiguous in this Assessment Area. "
+                    "Check the Assessment Area extent or Design surface semantics."
+                ) from exc
             raise
         return WallConformanceDiagnosticResult(
             design_dataset=design_dataset,

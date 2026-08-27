@@ -233,6 +233,19 @@ def test_overview_selected_and_escape_modes_are_distinct(monkeypatch):
     assert tab.profile_plot.mode == "overview"
     assert tab.plan._selected_index == -1
     assert tab.profile_selector.currentIndex() == 0
+
+    for child in (tab.plan.view, tab.profile_selector, tab.profile_plot):
+        tab._select_profile(1)
+        child.setFocus()
+        QTest.keyClick(child, module.Qt.Key.Key_Escape)
+        assert tab.profile_plot.mode == "overview"
+        assert tab.plan._selected_index == -1
+
+    # Escape in Overview must not close or otherwise clear the calculated tab.
+    tab.profile_selector.setFocus()
+    QTest.keyClick(tab.profile_selector, module.Qt.Key.Key_Escape)
+    assert tab.isVisible()
+    assert tab.result is not None
     tab.deleteLater()
     _app().sendPostedEvents()
 

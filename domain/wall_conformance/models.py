@@ -118,6 +118,19 @@ class WallTransitionLine:
 
 
 @dataclass(frozen=True)
+class DesignAlignmentBoundary:
+    line: WallTransitionLine
+    face_patch_index: int
+    interior_points: tuple[SurfaceVertex, ...]
+
+
+@dataclass(frozen=True)
+class DesignWallTopology:
+    transitions: tuple[WallTransitionLine, ...]
+    alignment_boundaries: tuple[DesignAlignmentBoundary, ...]
+
+
+@dataclass(frozen=True)
 class WallAlignmentSample:
     chainage_m: float
     origin: SurfaceVertex
