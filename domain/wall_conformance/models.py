@@ -206,6 +206,7 @@ class DesignSectionElement:
 @dataclass(frozen=True)
 class DesignSection:
     elements: tuple[DesignSectionElement, ...]
+    upstream_context: DesignSectionElement | None = None
 
     @property
     def topology_signature(self) -> str:
@@ -233,6 +234,7 @@ class DesignVariant:
     signature: str
     profile_indices: tuple[int, ...]
     elements: tuple[RepresentativeElement, ...]
+    upstream_context: RepresentativeElement | None = None
 
 
 @dataclass(frozen=True)
@@ -241,6 +243,8 @@ class TransverseProfile:
     design_segments: tuple[SectionSegment, ...]
     actual_segments: tuple[SectionSegment, ...]
     design_section: DesignSection | None = None
+    assessment_u_interval: tuple[float, float] | None = None
+    external_toe: SectionPoint | None = None
 
 
 @dataclass(frozen=True)

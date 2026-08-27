@@ -4,7 +4,7 @@ import logging
 from math import hypot
 
 from domain.geometry.operations import point_in_polygon
-from domain.geometry.surfaces import TriangleSurface
+from domain.geometry.surfaces import SurfaceVertex, TriangleSurface
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.wall_conformance.design import (
     extract_design_wall_topology,
@@ -24,6 +24,84 @@ from domain.wall_conformance.semantic_sections import build_design_section, buil
 
 
 logger = logging.getLogger(__name__)
+
+
+def _assemble_alignment_boundaries(boundaries, tolerance: float = 1e-5):
+    """Join continuous crest fragments without bridging separate wall sectors."""
+    remaining = list(boundaries)
+    assembled = []
+    while remaining:
+        current = remaining.pop(0)
+        points = list(current.line.points)
+        interiors = list(current.interior_points)
+        sources = {current.source}
+        patch_indices = {current.face_patch_index}
+        changed = True
+        while changed:
+            changed = False
+            for index, candidate in enumerate(remaining):
+                variants = (
+                    (candidate.line.points, candidate.interior_points),
+                    (
+                        tuple(reversed(candidate.line.points)),
+                        tuple(reversed(candidate.interior_points)),
+                    ),
+                )
+                joined = None
+                for candidate_points, candidate_interiors in variants:
+                    distance = hypot(
+                        points[-1].x - candidate_points[0].x,
+                        points[-1].y - candidate_points[0].y,
+                    )
+                    if distance > tolerance:
+                        continue
+                    first_tangent = (
+                        points[-1].x - points[-2].x,
+                        points[-1].y - points[-2].y,
+                    )
+                    second_tangent = (
+                        candidate_points[1].x - candidate_points[0].x,
+                        candidate_points[1].y - candidate_points[0].y,
+                    )
+                    lengths = hypot(*first_tangent) * hypot(*second_tangent)
+                    if lengths <= 1e-12:
+                        continue
+                    if (
+                        first_tangent[0] * second_tangent[0]
+                        + first_tangent[1] * second_tangent[1]
+                    ) / lengths < 0.5:
+                        continue
+                    joined = candidate_points, candidate_interiors
+                    break
+                if joined is None:
+                    continue
+                candidate_points, candidate_interiors = joined
+                if points[-1] != candidate_points[0]:
+                    bridge = SurfaceVertex(
+                        (points[-1].x + candidate_points[0].x) / 2.0,
+                        (points[-1].y + candidate_points[0].y) / 2.0,
+                        (points[-1].z + candidate_points[0].z) / 2.0,
+                    )
+                    points[-1] = bridge
+                    candidate_points = (bridge, *candidate_points[1:])
+                points.extend(candidate_points[1:])
+                interiors.extend(candidate_interiors)
+                sources.add(candidate.source)
+                patch_indices.add(candidate.face_patch_index)
+                remaining.pop(index)
+                changed = True
+                break
+        source = next(iter(sources)) if len(sources) == 1 else "mixed crest sources"
+        patch_index = next(iter(patch_indices)) if len(patch_indices) == 1 else -1
+        assembled.append(
+            DesignAlignmentBoundary(
+                type(current.line)("crest", tuple(points)),
+                patch_index,
+                tuple(interiors),
+                source,
+            )
+        )
+    return tuple(assembled)
 
 
 def _segment_inside_area(segment: SectionSegment, area: PlanPolygon) -> bool:
@@ -55,8 +133,10 @@ def _cross_xy(
     return first[0] * second[1] - first[1] * second[0]
 
 
-def _downstream_area_exit_u(sample, area: PlanPolygon) -> float | None:
-    """Return the first downstream exit of the Assessment polygon.
+def _assessment_u_interval(
+    sample, area: PlanPolygon
+) -> tuple[float, float] | None:
+    """Return the Assessment interval containing the profile origin.
 
     Intersections are converted into inside intervals along the positive-U ray.
     This handles an origin on/slightly outside the upper boundary and avoids
@@ -73,15 +153,15 @@ def _downstream_area_exit_u(sample, area: PlanPolygon) -> float | None:
             continue
         ray_u = _cross_xy(offset, edge) / denominator
         edge_fraction = _cross_xy(offset, direction) / denominator
-        if ray_u >= -1e-8 and -1e-8 <= edge_fraction <= 1.0 + 1e-8:
-            intersections.append(max(0.0, ray_u))
+        if -1e-8 <= edge_fraction <= 1.0 + 1e-8:
+            intersections.append(ray_u)
     ordered = []
     for value in sorted(intersections):
         if not ordered or abs(value - ordered[-1]) > 1e-7:
             ordered.append(value)
     if not ordered:
         return None
-    bounds = [0.0, *ordered]
+    bounds = ordered
     for start, end in zip(bounds, bounds[1:]):
         if end - start <= 1e-8:
             continue
@@ -93,8 +173,63 @@ def _downstream_area_exit_u(sample, area: PlanPolygon) -> float | None:
             ),
             area,
         ):
-            return end
+            if start - 1e-7 <= 0.0 <= end + 1e-7:
+                return start, end
+    # The sampled crest can sit just outside the drawn polygon. Use the first
+    # downstream inside interval rather than falling back to a fixed width.
+    for start, end in zip(bounds, bounds[1:]):
+        midpoint = (start + end) / 2.0
+        if end > 0.0 and point_in_polygon(
+            PlanPoint(
+                origin.x + midpoint * direction[0],
+                origin.y + midpoint * direction[1],
+            ),
+            area,
+        ):
+            return start, end
     return None
+
+
+def _downstream_area_exit_u(sample, area: PlanPolygon) -> float | None:
+    interval = _assessment_u_interval(sample, area)
+    return None if interval is None else interval[1]
+
+
+def _interpolate_section_point(first: SectionPoint, second: SectionPoint, u: float):
+    span = second.u - first.u
+    fraction = 0.0 if abs(span) <= 1e-12 else (u - first.u) / span
+    return SectionPoint(
+        u,
+        first.z + (second.z - first.z) * fraction,
+        first.x + (second.x - first.x) * fraction,
+        first.y + (second.y - first.y) * fraction,
+    )
+
+
+def _clip_segments_to_interval(segments, interval):
+    if interval is None:
+        return ()
+    lower, upper = interval
+    clipped = []
+    for segment in segments:
+        if segment.u_max < lower - 1e-9 or segment.u_min > upper + 1e-9:
+            continue
+        start, end = segment.start, segment.end
+        if start.u > end.u:
+            start, end = end, start
+        if start.u < lower:
+            start = _interpolate_section_point(start, end, lower)
+        if end.u > upper:
+            end = _interpolate_section_point(start, end, upper)
+        clipped.append(
+            SectionSegment(
+                start,
+                end,
+                segment.source_triangle_index,
+                segment.semantic_role,
+            )
+        )
+    return tuple(clipped)
 
 
 def _toe_near_area_exit(
@@ -120,7 +255,7 @@ def _select_upper_envelope(
 ) -> DesignAlignmentBoundary:
     candidates = [
         boundary
-        for boundary in topology.alignment_boundaries
+        for boundary in _assemble_alignment_boundaries(topology.alignment_boundaries)
         if transition_length_in_area(boundary.line, assessment_polygon) > 1e-9
     ]
     logger.debug(
@@ -264,10 +399,9 @@ def _point_line_distance(point: SectionPoint, line) -> float:
 
 def _external_toe_lines(profiles, toe_lines):
     observations = [
-        terminal
+        profile.external_toe
         for profile in profiles
-        if profile.design_section is not None
-        if (terminal := _terminal_toe(profile.design_section)) is not None
+        if profile.external_toe is not None
     ]
     if not observations or not toe_lines:
         return ()
@@ -287,7 +421,6 @@ def build_transverse_profiles(
     *,
     spacing_m: float = 3.0,
     tangent_window_m: float = 6.0,
-    half_width_m: float | None = None,
 ) -> WallProfileSet:
     """Build design-derived transverse sections through design and actual meshes.
 
@@ -317,16 +450,29 @@ def build_transverse_profiles(
     )
     profiles = []
     for sample in samples:
-        design_segments = intersect_surface_with_profile(
-            design_surface, sample, role_mapping=role_mapping, half_width_m=half_width_m,
+        interval = _assessment_u_interval(sample, assessment_polygon)
+        full_design_segments = intersect_surface_with_profile(
+            design_surface, sample, role_mapping=role_mapping
+        )
+        external_toe, _ = _toe_near_area_exit(
+            build_design_section(full_design_segments),
+            None if interval is None else interval[1],
+        )
+        design_segments = _clip_segments_to_interval(
+            full_design_segments,
+            interval,
+        )
+        actual_segments = _clip_segments_to_interval(
+            intersect_surface_with_profile(actual_surface, sample),
+            interval,
         )
         profiles.append(TransverseProfile(
             alignment=sample,
             design_segments=design_segments,
-            actual_segments=intersect_surface_with_profile(
-                actual_surface, sample, half_width_m=half_width_m,
-            ),
+            actual_segments=actual_segments,
             design_section=build_design_section(design_segments),
+            assessment_u_interval=interval,
+            external_toe=external_toe,
         ))
     profiles = tuple(profiles)
     external_toes = _external_toe_lines(profiles, toe_lines)

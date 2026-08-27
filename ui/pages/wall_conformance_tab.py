@@ -49,7 +49,6 @@ class WallConformancePlanWidget(QWidget):
         self._area_item = None
         self._crest_item = None
         self._toe_items = []
-        self._half_width_m = 12.0
         self._selected_index = -1
 
         root = QVBoxLayout(self)
@@ -106,8 +105,8 @@ class WallConformancePlanWidget(QWidget):
             return f'<span style="color:{colors[key].name()}">&#9632;</span>'
         return (
             f"{swatch('area')} {tr('Assessment area')} · "
-            f"{swatch('crest')} {tr('Design crest')} · "
-            f"{swatch('toe')} {tr('Design toe')} · "
+            f"{swatch('crest')} {tr('Design upper crest')} · "
+            f"{swatch('toe')} {tr('Design lower toe')} · "
             f"{swatch('profile')} {tr('Profiles')} · "
             f"{swatch('selected')} {tr('Selected profile')}"
         )
@@ -177,7 +176,6 @@ class WallConformancePlanWidget(QWidget):
         self._crest_item = None
         self._toe_items = []
         self._profiles = diagnostic_result.profile_set.profiles
-        self._half_width_m = diagnostic_result.settings.half_width_m
         self._selected_index = -1
         colors = self._colors()
         self.scene.setBackgroundBrush(QBrush(colors["background"]))
@@ -202,13 +200,14 @@ class WallConformancePlanWidget(QWidget):
         for profile in self._profiles:
             origin = profile.alignment.origin
             nx, ny = profile.alignment.normal_xy
+            lower, upper = profile.assessment_u_interval or (0.0, 0.0)
             first = QPointF(
-                origin.x - nx * self._half_width_m,
-                -(origin.y - ny * self._half_width_m),
+                origin.x + nx * lower,
+                -(origin.y + ny * lower),
             )
             second = QPointF(
-                origin.x + nx * self._half_width_m,
-                -(origin.y + ny * self._half_width_m),
+                origin.x + nx * upper,
+                -(origin.y + ny * upper),
             )
             self._profile_items.append(
                 self.scene.addLine(
@@ -258,10 +257,11 @@ class WallConformancePlanWidget(QWidget):
         for index, profile in enumerate(self._profiles):
             origin = profile.alignment.origin
             nx, ny = profile.alignment.normal_xy
-            ax = origin.x - nx * self._half_width_m
-            ay = origin.y - ny * self._half_width_m
-            bx = origin.x + nx * self._half_width_m
-            by = origin.y + ny * self._half_width_m
+            lower, upper = profile.assessment_u_interval or (0.0, 0.0)
+            ax = origin.x + nx * lower
+            ay = origin.y + ny * lower
+            bx = origin.x + nx * upper
+            by = origin.y + ny * upper
             candidates.append((self._distance_to_segment(x, y, ax, ay, bx, by), index))
         distance, index = min(candidates)
         if distance <= self._scene_tolerance():
@@ -346,12 +346,16 @@ class WallProfilePlot(QWidget):
         if self.mode != "overview" or not self.profile_set.design_variants:
             return (), ()
         variant = self.profile_set.design_variants[self.variant_index]
+        representative_elements = (
+            *((variant.upstream_context,) if variant.upstream_context else ()),
+            *variant.elements,
+        )
         design = tuple(
             SimpleNamespace(
                 start=SectionPoint(e.start_u, e.start_dz, e.start_u, 0),
                 end=SectionPoint(e.end_u, e.end_dz, e.end_u, 0),
                 semantic_role=e.role,
-            ) for e in variant.elements if e.role != "ignore"
+            ) for e in representative_elements if e.role != "ignore"
         )
         actual = []
         for index in variant.profile_indices:
@@ -606,19 +610,6 @@ class WallConformanceTab(QWidget):
             tr("Distance along the design crest on each side of the profile used to estimate the local wall strike. Larger values smooth local curvature.")
         )
         controls.addWidget(self.tangent_window)
-        controls.addSpacing(10)
-        controls.addWidget(QLabel(tr("Section extent")))
-        self.half_width = QDoubleSpinBox()
-        self.half_width.setRange(2.0, 100.0)
-        self.half_width.setDecimals(1)
-        self.half_width.setSingleStep(1.0)
-        self.half_width.setValue(12.0)
-        self.half_width.setPrefix("±")
-        self.half_width.setSuffix(" m")
-        self.half_width.setToolTip(
-            tr("Maximum displayed and intersected distance from the profile origin in local U. The section covers -U to +U; this is not an averaging width.")
-        )
-        controls.addWidget(self.half_width)
         controls.addStretch()
         setup_layout.addLayout(controls)
 
@@ -762,7 +753,6 @@ class WallConformanceTab(QWidget):
         return WallConformanceDiagnosticSettings(
             spacing_m=self.spacing.value(),
             tangent_window_m=self.tangent_window.value(),
-            half_width_m=self.half_width.value(),
         )
 
     def calculate(self) -> None:

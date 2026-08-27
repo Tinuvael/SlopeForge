@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
 from domain.geometry.surfaces import SurfaceTriangle, SurfaceVertex, TriangleSurface
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.wall_conformance import (
+    DesignAlignmentBoundary,
     SurfaceRoleMapping,
     WallAlignmentSample,
     WallTransitionLine,
@@ -10,7 +13,10 @@ from domain.wall_conformance import (
     extract_design_wall_topology,
     sample_wall_alignment,
 )
-from domain.wall_conformance.engine import _downstream_area_exit_u
+from domain.wall_conformance.engine import (
+    _assemble_alignment_boundaries,
+    _downstream_area_exit_u,
+)
 
 
 MAPPING = SurfaceRoleMapping(
@@ -91,12 +97,46 @@ def test_downstream_area_exit_uses_first_exit_for_concave_polygon():
     assert _downstream_area_exit_u(sample, area) == 4.0
 
 
+def test_continuous_mixed_source_crest_fragments_are_assembled():
+    fragments = (
+        DesignAlignmentBoundary(
+            WallTransitionLine("crest", (
+                SurfaceVertex(0, 0, 10), SurfaceVertex(10, 0, 10),
+            )),
+            1,
+            (SurfaceVertex(5, 2, 5),),
+            "Face/Platform",
+        ),
+        DesignAlignmentBoundary(
+            WallTransitionLine("crest", (
+                SurfaceVertex(10 + 1e-6, 0, 10), SurfaceVertex(20, 0, 11),
+            )),
+            1,
+            (SurfaceVertex(15, 2, 6),),
+            "outer Face boundary",
+        ),
+        DesignAlignmentBoundary(
+            WallTransitionLine("crest", (
+                SurfaceVertex(20, 0, 11), SurfaceVertex(30, 0, 12),
+            )),
+            1,
+            (SurfaceVertex(25, 2, 7),),
+            "Face/Platform",
+        ),
+    )
+    assembled = _assemble_alignment_boundaries(fragments)
+    assert len(assembled) == 1
+    assert len(assembled[0].line.points) == 4
+    assert assembled[0].line.plan_length == pytest.approx(30.0)
+    assert assembled[0].source == "mixed crest sources"
+
+
 def test_alignment_uses_upper_face_patch_not_longest_intermediate_crest():
     surface = _multi_face_surface()
     topology = extract_design_wall_topology(surface, MAPPING)
     profiles = build_transverse_profiles(
         surface, surface, _area(), MAPPING,
-        spacing_m=5.0, tangent_window_m=4.0, half_width_m=40.0,
+        spacing_m=5.0, tangent_window_m=4.0,
     )
     other_crests = [
         line
@@ -126,12 +166,52 @@ def test_area_may_end_at_lower_toe_with_lower_berm_outside():
         MAPPING,
         spacing_m=5.0,
         tangent_window_m=4.0,
-        half_width_m=40.0,
     )
     assert result.profiles
     assert {point.x for point in result.crest_line.points} == {0.0}
     assert len(result.toe_lines) == 1
     assert {point.x for point in result.toe_lines[0].points} == {26.0}
+
+
+def test_profile_width_follows_assessment_polygon_without_width_setting():
+    surface = _multi_face_surface()
+    widths = []
+    for downstream_x in (20.0, 31.0):
+        area = PlanPolygon((
+            PlanPoint(0, 1), PlanPoint(downstream_x, 1),
+            PlanPoint(downstream_x, 19), PlanPoint(0, 19), PlanPoint(0, 1),
+        ))
+        result = build_transverse_profiles(
+            surface, surface, area, MAPPING,
+            spacing_m=5.0, tangent_window_m=4.0,
+        )
+        widths.append([
+            upper - lower
+            for lower, upper in (
+                profile.assessment_u_interval for profile in result.profiles
+            )
+        ])
+    assert all(abs(width - 20.0) < 1e-6 for width in widths[0])
+    assert all(abs(width - 31.0) < 1e-6 for width in widths[1])
+
+
+def test_irregular_assessment_polygon_produces_station_specific_widths():
+    surface = _multi_face_surface()
+    area = PlanPolygon((
+        PlanPoint(0, 1), PlanPoint(18, 1), PlanPoint(31, 19),
+        PlanPoint(0, 19), PlanPoint(0, 1),
+    ))
+    result = build_transverse_profiles(
+        surface, surface, area, MAPPING,
+        spacing_m=4.0, tangent_window_m=4.0,
+    )
+    widths = {
+        round(upper - lower, 2)
+        for lower, upper in (
+            profile.assessment_u_interval for profile in result.profiles
+        )
+    }
+    assert len(widths) > 1
 
 
 def test_face_patch_orientation_does_not_depend_on_triangle_winding():
@@ -140,7 +220,7 @@ def test_face_patch_orientation_does_not_depend_on_triangle_winding():
             _multi_face_surface(reverse_winding=reverse_winding),
             _multi_face_surface(reverse_winding=reverse_winding),
             _area(), MAPPING,
-            spacing_m=7.0, tangent_window_m=4.0, half_width_m=40.0,
+            spacing_m=7.0, tangent_window_m=4.0,
         )
         assert profiles.profiles
         assert all(profile.alignment.normal_xy[0] > 0 for profile in profiles.profiles)
@@ -201,7 +281,7 @@ def test_connected_road_ramp_does_not_define_global_face_hierarchy():
     surface = _connected_ramp_surface()
     profiles = build_transverse_profiles(
         surface, surface, _area(), MAPPING,
-        spacing_m=2.0, tangent_window_m=3.0, half_width_m=40.0,
+        spacing_m=2.0, tangent_window_m=3.0,
     )
     assert {point.x for point in profiles.crest_line.points} == {0.0}
     assert profiles.profiles
@@ -247,7 +327,7 @@ def test_folded_upper_crest_extra_crossing_does_not_replace_profile_origin():
     ))
     result = build_transverse_profiles(
         surface, surface, area, MAPPING,
-        spacing_m=4.0, tangent_window_m=3.0, half_width_m=14.0,
+        spacing_m=4.0, tangent_window_m=3.0,
     )
     assert result.profiles
     folded_profiles = [

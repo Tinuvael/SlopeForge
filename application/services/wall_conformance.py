@@ -21,7 +21,6 @@ class WallConformanceUnavailableError(RuntimeError):
 class WallConformanceDiagnosticSettings:
     spacing_m: float = 3.0
     tangent_window_m: float = 6.0
-    half_width_m: float = 12.0
 
 
 @dataclass(frozen=True)
@@ -159,7 +158,6 @@ class WallConformanceDiagnosticService:
                 role_mapping,
                 spacing_m=settings.spacing_m,
                 tangent_window_m=settings.tangent_window_m,
-                half_width_m=settings.half_width_m,
             )
         except ValueError as exc:
             if str(exc) == "No design crest intersects the Assessment Area":

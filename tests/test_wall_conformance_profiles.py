@@ -164,7 +164,6 @@ def test_vertical_section_intersects_design_roles_in_wall_normal_u_coordinates()
         surface,
         alignment,
         role_mapping=ROLE_MAPPING,
-        half_width_m=12.0,
     )
 
     roles = {segment.semantic_role for segment in segments}
@@ -198,7 +197,6 @@ def test_curved_design_alignment_rotates_profiles_with_local_wall_orientation() 
         ROLE_MAPPING,
         spacing_m=5.0,
         tangent_window_m=7.0,
-        half_width_m=12.0,
     )
 
     assert len(result.profiles) >= 4

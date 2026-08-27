@@ -297,8 +297,6 @@ def extract_design_wall_topology(
     # distinguishes the external Upper Crest from internal transitions.
     outer_by_patch: dict[int, set[tuple[int, int]]] = defaultdict(set)
     for patch_index in range(len(face_components)):
-        if by_patch[patch_index]["crest"]:
-            continue
         outer = _upper_outer_edges(
             surface,
             edges,
@@ -348,7 +346,11 @@ def extract_design_wall_topology(
                 if boundary_edges and all(
                     edge in outer_by_patch[patch_index] for edge in boundary_edges
                 )
-                else "Face/Platform"
+                else (
+                    "mixed Face/Platform + outer boundary"
+                    if any(edge in outer_by_patch[patch_index] for edge in boundary_edges)
+                    else "Face/Platform"
+                )
             )
             alignments.append(
                 DesignAlignmentBoundary(line, patch_index, interiors, source)

@@ -72,3 +72,36 @@ def test_representative_normalizes_elevation_and_separates_variants():
     assert face_variant.elements[0].end_dz == -10
     assert face_variant.elements[0].angle_range[0] == face_variant.elements[0].angle_range[1]
     assert next(v for v in variants if v.signature == "FACE-BERM-FACE").elements[1].width_median == 7
+
+
+def test_representative_preserves_upper_platform_as_context_only():
+    design = (
+        segment((-6, 101), (0, 100), "berm", 1),
+        segment((0, 100), (5, 90), "face", 2),
+        segment((5, 90), (9, 90), "berm", 3),
+        segment((9, 90), (19, 70), "face", 4),
+    )
+    section = build_design_section(design)
+    assert section.upstream_context.role == "berm"
+    assert section.upstream_context.end.u == 0
+    assert section.topology_signature == "FACE-BERM-FACE"
+    variant = build_design_variants((profile(design),))[0]
+    assert variant.upstream_context.role == "berm"
+    assert variant.upstream_context.end_u == 0
+    assert [element.height_median for element in variant.elements if element.role == "face"] == [10, 20]
+
+
+def test_representative_design_parameters_ignore_actual_geometry():
+    design = (
+        segment((0, 100), (5, 90), "face", 1),
+        segment((5, 90), (9, 90), "berm", 2),
+        segment((9, 90), (19, 70), "face", 3),
+    )
+    first = profile(design)
+    second = TransverseProfile(
+        first.alignment,
+        first.design_segments,
+        (segment((0, 130), (40, 5), None, 99),),
+        first.design_section,
+    )
+    assert build_design_variants((first,)) == build_design_variants((second,))

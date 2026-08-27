@@ -97,7 +97,6 @@ def test_diagnostic_service_loads_active_project_surfaces_and_builds_profiles() 
         WallConformanceDiagnosticSettings(
             spacing_m=5.0,
             tangent_window_m=4.0,
-            half_width_m=12.0,
         ),
     )
 

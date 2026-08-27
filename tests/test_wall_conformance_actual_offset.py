@@ -51,7 +51,6 @@ def test_actual_surface_offset_is_preserved_in_design_wall_normal_coordinates() 
         MAPPING,
         spacing_m=5.0,
         tangent_window_m=4.0,
-        half_width_m=12.0,
     )
 
     profile = result.profiles[0]

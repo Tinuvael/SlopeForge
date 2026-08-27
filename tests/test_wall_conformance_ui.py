@@ -189,10 +189,8 @@ def test_engineering_parameter_labels_and_legend_contract(monkeypatch):
     tab = _tab(monkeypatch)
     labels = [label.text() for label in tab.findChildren(module.QLabel)]
     assert "Strike smoothing radius" in labels
-    assert "Section extent" in labels
+    assert "Section extent" not in labels
     assert "each side" in tab.tangent_window.toolTip()
-    assert "not an averaging width" in tab.half_width.toolTip()
-    assert tab.half_width.prefix() == "±"
     tab.calculate()
     tab._select_profile(1)
     design_entries, actual_entries = tab.profile_plot._legend_rows(

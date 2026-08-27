@@ -42,7 +42,7 @@ def test_uppermost_face_boundary_is_crest_and_normal_toe_is_preserved():
     ))
     result = build_transverse_profiles(
         surface, surface, area, MAPPING,
-        spacing_m=5, tangent_window_m=4, half_width_m=12,
+        spacing_m=5, tangent_window_m=4,
     )
     assert result.profiles
     assert all(profile.alignment.normal_xy[0] > 0 for profile in result.profiles)
@@ -79,7 +79,7 @@ def test_uppermost_alignment_accepts_material_crest_and_toe_elevation_change():
     ))
     result = build_transverse_profiles(
         surface, surface, area, MAPPING,
-        spacing_m=4, tangent_window_m=5, half_width_m=12,
+        spacing_m=4, tangent_window_m=5,
     )
     assert len(result.profiles) >= 3
     assert max(p.alignment.origin.z for p in result.profiles) - min(
@@ -131,7 +131,7 @@ def test_multi_row_lateral_boundary_never_turns_into_upper_alignment():
         assert len(alignment.interior_points) == 3
         result = build_transverse_profiles(
             surface, surface, area, MAPPING,
-            spacing_m=4.0, tangent_window_m=4.0, half_width_m=12.0,
+            spacing_m=4.0, tangent_window_m=4.0,
         )
         assert result.profiles
         assert all(profile.alignment.normal_xy[0] > 0 for profile in result.profiles)

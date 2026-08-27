@@ -4554,8 +4554,10 @@ Continue?</source><translation>Новый горизонт отличается 
     <message><source>Chainage %1 m</source><translation>Пикетаж %1 м</translation></message>
     <message><source>DESIGN</source><translation>ПРОЕКТ</translation></message>
     <message><source>Design crest</source><translation>Проектная бровка</translation></message>
+    <message><source>Design upper crest</source><translation>Верхняя проектная бровка</translation></message>
     <message><source>Design semantics: COLOUR 2 = Face · COLOUR 5 = Berm · COLOUR 3 = Road</source><translation>Семантика проекта: COLOUR 2 = Откос · COLOUR 5 = Берма · COLOUR 3 = Дорога</translation></message>
     <message><source>Design toe</source><translation>Проектная подошва</translation></message>
+    <message><source>Design lower toe</source><translation>Нижняя проектная подошва</translation></message>
     <message><source>Diagnostic local tangent (T) and wall-normal (N) unit vectors.</source><translation>Диагностические единичные векторы локальной касательной (T) и нормали к борту (N).</translation></message>
     <message><source>Diagnostic mapping read from the active Design surface attributes.</source><translation>Диагностическое соответствие, прочитанное из атрибутов активной проектной поверхности.</translation></message>
     <message><source>Direction details</source><translation>Параметры направления</translation></message>
@@ -4589,9 +4591,7 @@ Continue?</source><translation>Новый горизонт отличается 
     <message><source>Edit design semantics…</source><translation>Изменить семантику проекта…</translation></message>
     <message><source>Face: %1 · Berm: %2 · Road: %3 · Ignore: %4 · Unknown: %5</source><translation>Откос: %1 · Берма: %2 · Дорога: %3 · Игнорировать: %4 · Неизвестно: %5</translation></message>
     <message><source>Map at least one source value to Face before saving.</source><translation>Перед сохранением назначьте хотя бы одно исходное значение роли «Откос».</translation></message>
-    <message><source>Maximum displayed and intersected distance from the profile origin in local U. The section covers -U to +U; this is not an averaging width.</source><translation>Максимальное отображаемое и пересекаемое расстояние от начала профиля по локальной оси U. Сечение охватывает диапазон от -U до +U; это не ширина усреднения.</translation></message>
     <message><source>No Berm or Road platform geometry is mapped.</source><translation>Геометрия площадок «Берма» или «Дорога» не назначена.</translation></message>
-    <message><source>Section extent</source><translation>Протяжённость сечения</translation></message>
     <message><source>Selected profile</source><translation>Выбранный профиль</translation></message>
     <message><source>Some Design triangles remain unknown.</source><translation>Часть треугольников проектной поверхности остаётся нераспознанной.</translation></message>
     <message><source>Source attribute</source><translation>Исходный атрибут</translation></message>

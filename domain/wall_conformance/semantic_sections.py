@@ -32,11 +32,40 @@ def build_design_section(
     segments: tuple[SectionSegment, ...], *, tolerance: float = 1e-6
 ) -> DesignSection:
     """Collapse triangle fragments into ordered engineering elements."""
+    upstream = [
+        segment
+        for segment in segments
+        if segment.semantic_role in {"berm", "road"}
+        and segment.u_min < -tolerance
+        and segment.u_max <= tolerance
+    ]
+    upstream.sort(key=lambda segment: (segment.u_min, segment.u_max))
+    context = None
+    if upstream:
+        contiguous = [upstream[-1]]
+        for segment in reversed(upstream[:-1]):
+            if segment.u_max < contiguous[-1].u_min - tolerance:
+                break
+            if segment.semantic_role != contiguous[-1].semantic_role:
+                break
+            contiguous.append(segment)
+        contiguous.reverse()
+        if contiguous[-1].u_max >= -tolerance:
+            start = min(contiguous, key=lambda segment: segment.u_min).start
+            last = max(contiguous, key=lambda segment: segment.u_max).end
+            end = type(last)(0.0, last.z, last.x, last.y) if last.u > 0 else last
+            context = DesignSectionElement(
+                contiguous[-1].semantic_role,
+                start,
+                end,
+                tuple(sorted({segment.source_triangle_index for segment in contiguous})),
+            )
     usable = [
         clipped
         for segment in segments
         if segment.semantic_role != "ignore"
         if (clipped := _clip_to_positive_u(segment, tolerance)) is not None
+        if clipped.u_max - clipped.u_min > tolerance
     ]
     usable.sort(key=lambda s: (s.u_min, s.u_max, s.start.z, s.end.z))
     elements: list[DesignSectionElement] = []
@@ -54,7 +83,7 @@ def build_design_section(
             elements.append(
                 DesignSectionElement(role, start, end, (segment.source_triangle_index,))
             )
-    return DesignSection(tuple(elements))
+    return DesignSection(tuple(elements), context)
 
 
 def _range(values):
@@ -91,7 +120,48 @@ def build_design_variants(
                 angle_median=median(angles) if angles else None,
                 angle_range=_range(angles) if angles else None,
             ))
+        contexts = [
+            profile.design_section.upstream_context
+            for _, profile in members
+            if profile.design_section.upstream_context is not None
+        ]
+        representative_context = None
+        if contexts:
+            roles = {context.role for context in contexts}
+            if len(roles) == 1:
+                origins = [
+                    profile.alignment.origin.z
+                    for _, profile in members
+                    if profile.design_section.upstream_context is not None
+                ]
+                representative_context = RepresentativeElement(
+                    role=contexts[0].role,
+                    start_u=median(context.start.u for context in contexts),
+                    start_dz=median(
+                        context.start.z - origin
+                        for context, origin in zip(contexts, origins)
+                    ),
+                    end_u=0.0,
+                    end_dz=median(
+                        context.end.z - origin
+                        for context, origin in zip(contexts, origins)
+                    ),
+                    width_median=median(context.horizontal_width for context in contexts),
+                    width_mean=mean(context.horizontal_width for context in contexts),
+                    width_range=_range(
+                        [context.horizontal_width for context in contexts]
+                    ),
+                    height_median=median(context.vertical_height for context in contexts),
+                    height_range=_range(
+                        [context.vertical_height for context in contexts]
+                    ),
+                    angle_median=None,
+                    angle_range=None,
+                )
         variants.append(DesignVariant(
-            signature, tuple(index for index, _ in members), tuple(representative)
+            signature,
+            tuple(index for index, _ in members),
+            tuple(representative),
+            representative_context,
         ))
     return tuple(variants)
