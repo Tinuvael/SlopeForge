@@ -429,11 +429,6 @@ def _crest_area_chainage_spans(
     return tuple(spans)
 
 
-def _line_is_closed(line: WallTransitionLine, tolerance: float = 1e-8) -> bool:
-    first, last = line.points[0], line.points[-1]
-    return hypot(first.x - last.x, first.y - last.y) <= tolerance
-
-
 def _split_valid_runs(indexed_evaluated):
     runs = []
     current = []
@@ -501,18 +496,6 @@ def _collect_external_upper_stations(
             (index, sample, evaluation)
             for index, (sample, evaluation) in enumerate(evaluated)
         ]
-        if _line_is_closed(component.line) and all(
-            evaluation.valid for _, evaluation in evaluated
-        ):
-            component_index = len(confirmed)
-            confirmed.append(component)
-            for _sample_index, sample, evaluation in indexed_evaluated:
-                accepted.append((WallAlignmentSample(
-                    sample.chainage_m, sample.origin, sample.tangent_xy,
-                    sample.normal_xy, component_index,
-                ), evaluation))
-            continue
-
         area_spans = _crest_area_chainage_spans(component.line, assessment_polygon)
         for area_start, area_end in area_spans:
             span_evaluated = [
