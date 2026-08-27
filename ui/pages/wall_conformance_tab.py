@@ -100,13 +100,14 @@ class WallConformancePlanWidget(QWidget):
 
     def _legend_html(self) -> str:
         colors = self._colors()
-        swatch = lambda key: f'<span style="color:{colors[key].name()}">&#9632;</span>'
+        def swatch(key):
+            return f'<span style="color:{colors[key].name()}">&#9632;</span>'
         return (
             f"{swatch('area')} {tr('Assessment area')} · "
             f"{swatch('crest')} {tr('Design crest')} · "
             f"{swatch('toe')} {tr('Design toe')} · "
             f"{swatch('profile')} {tr('Profiles')} · "
-            f"{swatch('selected')} {tr('Selected')}"
+            f"{swatch('selected')} {tr('Selected profile')}"
         )
 
     def _apply_theme(self):
@@ -280,6 +281,8 @@ class WallProfilePlot(QWidget):
                 "face": QColor("#67c587"),
                 "berm": QColor("#5aa7e8"),
                 "road": QColor("#b9a4ef"),
+                "unknown": QColor("#9aa6b2"),
+                "ignore": QColor("#718096"),
             }
         return {
             "background": QColor("#f8fafc"),
@@ -291,6 +294,8 @@ class WallProfilePlot(QWidget):
             "face": QColor("#27864f"),
             "berm": QColor("#1261a0"),
             "road": QColor("#7657a8"),
+            "unknown": QColor("#7a8696"),
+            "ignore": QColor("#94a3b8"),
         }
 
     def set_profile(self, profile) -> None:
@@ -310,6 +315,16 @@ class WallProfilePlot(QWidget):
             for segment in (*self.profile.design_segments, *self.profile.actual_segments)
             for point in (segment.start, segment.end)
         )
+
+    @staticmethod
+    def _legend_rows(profile):
+        design = [(tr("Face"), "face"), (tr("Berm"), "berm"), (tr("Road"), "road")]
+        if any(
+            getattr(segment, "semantic_role", None) == "unknown"
+            for segment in profile.design_segments
+        ):
+            design.append((tr("Unknown"), "unknown"))
+        return tuple(design), ((tr("Survey"), "actual"),)
 
     @staticmethod
     def _draw_legend_row(painter, rect: QRectF, entries, colors) -> None:
@@ -361,7 +376,7 @@ class WallProfilePlot(QWidget):
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, tr("No profile selected"))
             return
 
-        left, top, right, bottom = 62, 78, 22, 46
+        left, top, right, bottom = 62, 104, 22, 46
         plot = QRectF(
             left,
             top,
@@ -415,7 +430,7 @@ class WallProfilePlot(QWidget):
         painter.drawRect(plot)
 
         painter.setPen(colors["text"])
-        painter.drawText(QRectF(plot.left(), plot.bottom() + 8, plot.width(), 24), Qt.AlignmentFlag.AlignCenter, "U (m)")
+        painter.drawText(QRectF(plot.left(), plot.bottom() + 8, plot.width(), 24), Qt.AlignmentFlag.AlignCenter, tr("U (m, + toward toe)"))
         painter.save()
         painter.translate(16, plot.center().y())
         painter.rotate(-90)
@@ -430,16 +445,19 @@ class WallProfilePlot(QWidget):
             Qt.AlignmentFlag.AlignRight,
             tr("Chainage %1 m").replace("%1", f"{chainage:.1f}"),
         )
+        painter.drawText(QRectF(plot.left(), 27, plot.width(), 18), Qt.AlignmentFlag.AlignLeft, tr("DESIGN"))
+        design_entries, actual_entries = self._legend_rows(self.profile)
         self._draw_legend_row(
             painter,
-            QRectF(plot.left(), 27, plot.width(), 20),
-            ((tr("Design"), "design"), (tr("Actual"), "actual")),
+            QRectF(plot.left(), 44, plot.width(), 20),
+            design_entries,
             colors,
         )
+        painter.drawText(QRectF(plot.left(), 65, plot.width(), 18), Qt.AlignmentFlag.AlignLeft, tr("ACTUAL"))
         self._draw_legend_row(
             painter,
-            QRectF(plot.left(), 48, plot.width(), 20),
-            ((tr("Face"), "face"), (tr("Berm"), "berm"), (tr("Road"), "road")),
+            QRectF(plot.left(), 81, plot.width(), 20),
+            actual_entries,
             colors,
         )
 
@@ -520,7 +538,7 @@ class WallConformanceTab(QWidget):
         self.spacing.setSuffix(" m")
         controls.addWidget(self.spacing)
         controls.addSpacing(10)
-        controls.addWidget(QLabel(tr("Strike window")))
+        controls.addWidget(QLabel(tr("Strike smoothing radius")))
         self.tangent_window = QDoubleSpinBox()
         self.tangent_window.setRange(1.0, 100.0)
         self.tangent_window.setDecimals(1)
@@ -528,32 +546,36 @@ class WallConformanceTab(QWidget):
         self.tangent_window.setValue(6.0)
         self.tangent_window.setSuffix(" m")
         self.tangent_window.setToolTip(
-            tr("Distance along the crest used to estimate the local strike direction.")
+            tr("Distance along the design crest on each side of the profile used to estimate the local wall strike. Larger values smooth local curvature.")
         )
         controls.addWidget(self.tangent_window)
         controls.addSpacing(10)
-        controls.addWidget(QLabel(tr("Profile half-width")))
+        controls.addWidget(QLabel(tr("Section extent")))
         self.half_width = QDoubleSpinBox()
         self.half_width.setRange(2.0, 100.0)
         self.half_width.setDecimals(1)
         self.half_width.setSingleStep(1.0)
         self.half_width.setValue(12.0)
+        self.half_width.setPrefix("±")
         self.half_width.setSuffix(" m")
         self.half_width.setToolTip(
-            tr("Distance sampled on each side of the profile origin, normal to the wall.")
+            tr("Maximum displayed and intersected distance from the profile origin in local U. The section covers -U to +U; this is not an averaging width.")
         )
         controls.addWidget(self.half_width)
         controls.addStretch()
         setup_layout.addLayout(controls)
 
-        self.semantic_mapping = QLabel(
-            tr("Design semantics: COLOUR 2 = Face · COLOUR 5 = Berm · COLOUR 3 = Road")
-        )
+        mapping_row = QHBoxLayout()
+        self.semantic_mapping = QLabel()
         self.semantic_mapping.setObjectName("MutedText")
         self.semantic_mapping.setToolTip(
             tr("Diagnostic mapping read from the active Design surface attributes.")
         )
-        setup_layout.addWidget(self.semantic_mapping)
+        mapping_row.addWidget(self.semantic_mapping, 1)
+        self.edit_semantics = QPushButton(tr("Edit design semantics…"))
+        self.edit_semantics.clicked.connect(self._edit_design_semantics)
+        mapping_row.addWidget(self.edit_semantics)
+        setup_layout.addLayout(mapping_row)
 
         self.status = QLabel(tr("Ready to calculate."))
         self.status.setWordWrap(True)
@@ -621,6 +643,35 @@ class WallConformanceTab(QWidget):
             return
         self.design_metadata.setText(self._dataset_text(design))
         self.actual_metadata.setText(self._dataset_text(actual))
+        if design is None:
+            self.semantic_mapping.setText(tr("Design semantics: unavailable"))
+            self.edit_semantics.setEnabled(False)
+            return
+        mapping, fallback = self.service.mapping_for_dataset(design)
+        assignments = {role: value for value, role in mapping.assignments if role in {"face", "berm", "road"}}
+        detail = " · ".join(
+            f"{tr(role.title())}={assignments[role]}"
+            for role in ("face", "berm", "road") if role in assignments
+        )
+        prefix = tr("Design semantics: default mapping") if fallback else tr("Design semantics: %1").replace("%1", mapping.attribute_name)
+        self.semantic_mapping.setText(f"{prefix} · {detail}")
+        self.edit_semantics.setEnabled(bool(getattr(self.service.surface_service, "storage_available", True)))
+
+    def _edit_design_semantics(self) -> None:
+        from ui.dialogs.design_surface_semantics_dialog import DesignSurfaceSemanticsDialog
+
+        try:
+            dialog = DesignSurfaceSemanticsDialog(self.service, self.site_id, self)
+            if dialog.exec():
+                self.result = None
+                self.profile_selector.clear()
+                self.profile_plot.set_profile(None)
+                self._refresh_dataset_metadata()
+                self.status.setText(tr("Design surface semantics saved. Calculate profiles again."))
+                set_status_role(self.status, "success")
+        except Exception as exc:
+            self.status.setText(str(exc))
+            set_status_role(self.status, "error")
 
     def _settings(self) -> WallConformanceDiagnosticSettings:
         return WallConformanceDiagnosticSettings(

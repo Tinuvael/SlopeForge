@@ -26,6 +26,11 @@ def _semantic_token(value: object) -> str:
     return "0" if normalized in {"", "-0"} else normalized
 
 
+def semantic_value_token(value: object) -> str:
+    """Return the stable comparison token used for imported attribute values."""
+    return _semantic_token(value)
+
+
 @dataclass(frozen=True)
 class SurfaceRoleMapping:
     """Map one imported triangle attribute to canonical engineering roles."""
@@ -58,6 +63,39 @@ class SurfaceRoleMapping:
             if _semantic_token(source_value) == token:
                 return role
         return "unknown"
+
+    def to_dict(self) -> dict[str, object]:
+        def json_value(value: object) -> object:
+            if value is None or isinstance(value, (bool, int, float, str)):
+                return value
+            return str(value)
+
+        return {
+            "attribute_name": self.attribute_name,
+            "assignments": [
+                {"value": json_value(value), "role": role}
+                for value, role in self.assignments
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, object]) -> "SurfaceRoleMapping":
+        assignments = payload.get("assignments", [])
+        if not isinstance(assignments, list):
+            raise ValueError("Surface semantic assignments must be a list")
+        return cls(
+            str(payload.get("attribute_name", "")),
+            tuple(
+                (item["value"], str(item["role"]))
+                for item in assignments
+                if isinstance(item, dict) and "value" in item and "role" in item
+            ),
+        )
+
+
+PROTOTYPE_DESIGN_ROLE_MAPPING = SurfaceRoleMapping(
+    "COLOUR", ((2, "face"), (5, "berm"), (3, "road"))
+)
 
 
 @dataclass(frozen=True)

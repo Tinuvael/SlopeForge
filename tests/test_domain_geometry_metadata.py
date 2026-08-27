@@ -29,6 +29,7 @@ def test_domain_geometry_remains_in_release_1_frozen_core():
     assert 'revision = "1"' in baseline.read_text()
     assert sorted(item.name for item in Path("alembic/versions").glob("*.py")) == [
         "0001_slopeforge_1.py",
+        "0002_project_surface_semantics.py",
     ]
 
 

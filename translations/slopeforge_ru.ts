@@ -4579,5 +4579,25 @@ Continue?</source><translation>Новый горизонт отличается 
     <message><source>Unknown</source><translation>Неизвестно</translation></message>
     <message><source>Wall conformance</source><translation>Соответствие борта</translation></message>
     <message><source>Wall conformance diagnostic</source><translation>Диагностика соответствия борта</translation></message>
+    <message><source>Active Design revision R%1</source><translation>Активная ревизия проекта R%1</translation></message>
+    <message><source>Design semantics: %1</source><translation>Семантика проекта: %1</translation></message>
+    <message><source>Design semantics: default mapping</source><translation>Семантика проекта: карта по умолчанию</translation></message>
+    <message><source>Design semantics: unavailable</source><translation>Семантика проекта: недоступна</translation></message>
+    <message><source>Design surface semantics</source><translation>Семантика проектной поверхности</translation></message>
+    <message><source>Design surface semantics saved. Calculate profiles again.</source><translation>Семантика проектной поверхности сохранена. Рассчитайте профили повторно.</translation></message>
+    <message><source>Distance along the design crest on each side of the profile used to estimate the local wall strike. Larger values smooth local curvature.</source><translation>Расстояние вдоль проектной бровки в каждую сторону от профиля для оценки локального простирания борта. Большие значения сильнее сглаживают локальную кривизну.</translation></message>
+    <message><source>Edit design semantics…</source><translation>Изменить семантику проекта…</translation></message>
+    <message><source>Face: %1 · Berm: %2 · Road: %3 · Ignore: %4 · Unknown: %5</source><translation>Откос: %1 · Берма: %2 · Дорога: %3 · Игнорировать: %4 · Неизвестно: %5</translation></message>
+    <message><source>Map at least one source value to Face before saving.</source><translation>Перед сохранением назначьте хотя бы одно исходное значение роли «Откос».</translation></message>
+    <message><source>Maximum displayed and intersected distance from the profile origin in local U. The section covers -U to +U; this is not an averaging width.</source><translation>Максимальное отображаемое и пересекаемое расстояние от начала профиля по локальной оси U. Сечение охватывает диапазон от -U до +U; это не ширина усреднения.</translation></message>
+    <message><source>No Berm or Road platform geometry is mapped.</source><translation>Геометрия площадок «Берма» или «Дорога» не назначена.</translation></message>
+    <message><source>Section extent</source><translation>Протяжённость сечения</translation></message>
+    <message><source>Selected profile</source><translation>Выбранный профиль</translation></message>
+    <message><source>Some Design triangles remain unknown.</source><translation>Часть треугольников проектной поверхности остаётся нераспознанной.</translation></message>
+    <message><source>Source attribute</source><translation>Исходный атрибут</translation></message>
+    <message><source>Source value</source><translation>Исходное значение</translation></message>
+    <message><source>Strike smoothing radius</source><translation>Радиус сглаживания простирания</translation></message>
+    <message><source>Triangles</source><translation>Треугольники</translation></message>
+    <message><source>U (m, + toward toe)</source><translation>U (м, + к подошве)</translation></message>
 </context>
 </TS>

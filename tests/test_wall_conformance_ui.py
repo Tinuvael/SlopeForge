@@ -10,6 +10,11 @@ from PySide6.QtWidgets import QApplication
 from domain.geometry.surfaces import SurfaceTriangle, SurfaceVertex, TriangleSurface
 from domain.geometry.types import PlanPoint, PlanPolygon
 from ui.pages import wall_conformance_tab as module
+from application.services.wall_conformance import (
+    DesignSemanticInspection, SurfaceAttributeValueCount,
+)
+from domain.wall_conformance import SurfaceRoleMapping
+from ui.dialogs.design_surface_semantics_dialog import DesignSurfaceSemanticsDialog
 
 
 _APP = None
@@ -145,5 +150,55 @@ def test_legends_render_at_compact_minimum_width(monkeypatch):
     assert tab.profile_plot.minimumWidth() == 340
     assert tab.plan.legend.wordWrap()
     assert tab.plan.legend.sizePolicy().horizontalPolicy().name == "Ignored"
+    tab.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_semantics_dialog_lists_counts_and_saves_through_service():
+    class Service:
+        saved = None
+
+        def inspect_design_semantics(self, _site_id):
+            return DesignSemanticInspection(
+                SimpleNamespace(logical_id="D", revision_number=4),
+                {"COLOUR": (
+                    SurfaceAttributeValueCount(2, 12_450),
+                    SurfaceAttributeValueCount(5, 8_620),
+                    SurfaceAttributeValueCount(7, 120),
+                )},
+                SurfaceRoleMapping("COLOUR", ((2, "face"), (5, "berm"))),
+                False,
+            )
+
+        def save_design_semantics(self, site_id, logical_id, mapping):
+            self.saved = (site_id, logical_id, mapping)
+
+    service = Service()
+    dialog = DesignSurfaceSemanticsDialog(service, 1)
+    assert dialog.table.rowCount() == 3
+    assert dialog.table.item(0, 1).text() == "12,450"
+    assert "Unknown: 120" in dialog.summary.text()
+    dialog._save()
+    assert service.saved[:2] == (1, "D")
+    assert service.saved[2].resolve({"COLOUR": 2}) == "face"
+    dialog.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_engineering_parameter_labels_and_legend_contract(monkeypatch):
+    tab = _tab(monkeypatch)
+    labels = [label.text() for label in tab.findChildren(module.QLabel)]
+    assert "Strike smoothing radius" in labels
+    assert "Section extent" in labels
+    assert "each side" in tab.tangent_window.toolTip()
+    assert "not an averaging width" in tab.half_width.toolTip()
+    assert tab.half_width.prefix() == "±"
+    tab.calculate()
+    design_entries, actual_entries = tab.profile_plot._legend_rows(
+        tab.profile_plot.profile
+    )
+    assert [label for label, _ in design_entries] == ["Face", "Berm", "Road"]
+    assert actual_entries == (("Survey", "actual"),)
+    assert "Design" not in [label for label, _ in (*design_entries, *actual_entries)]
     tab.deleteLater()
     _app().sendPostedEvents()

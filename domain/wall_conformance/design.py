@@ -111,12 +111,13 @@ def extract_design_transition_lines(
     *,
     z_tolerance: float = 1e-6,
 ) -> tuple[WallTransitionLine, ...]:
-    """Extract crest/toe breaklines from shared face-platform design edges.
+    """Extract breaklines from face-platform edges and upper face boundaries.
 
-    A design crest/toe is not guessed from mesh winding. It must be a shared
-    topological edge between a canonical ``face`` triangle and a ``berm`` or
-    ``road`` triangle. The face-side third vertex determines whether that edge
-    is the upper (crest) or lower (toe) boundary of the face.
+    A design crest/toe is not guessed from mesh winding. Shared face-platform
+    topology remains authoritative. A one-triangle outer
+    edge is accepted only as a crest when its face-side third vertex is lower;
+    this conservative fallback supports the uppermost bench without treating
+    lateral or unknown-role mesh boundaries as crests.
     """
     roles = tuple(
         role_mapping.resolve(triangle.source_attributes)
@@ -124,6 +125,18 @@ def extract_design_transition_lines(
     )
     by_kind: dict[str, set[tuple[int, int]]] = {"crest": set(), "toe": set()}
     for edge, triangle_indices in _shared_edges(surface).items():
+        if len(triangle_indices) == 1:
+            face_index = triangle_indices[0]
+            if roles[face_index] != "face":
+                continue
+            first, second = (surface.vertices[index] for index in edge)
+            if abs(first.z - second.z) > z_tolerance:
+                continue
+            if _face_transition_kind(
+                surface, edge, face_index, z_tolerance=z_tolerance
+            ) == "crest":
+                by_kind["crest"].add(edge)
+            continue
         if len(triangle_indices) != 2:
             continue
         first_index, second_index = triangle_indices

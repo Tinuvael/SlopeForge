@@ -216,9 +216,17 @@ def test_metadata_and_indexes_compile_with_postgresql():
         for index in table(name).indexes: assert "CREATE" in str(CreateIndex(index).compile(dialect=dialect))
 
 
-def test_current_schema_is_single_release_1_baseline():
+def test_project_surface_semantics_metadata_is_nullable_jsonb():
+    column = table("project_surface_datasets").c.semantic_mapping_json
+    assert isinstance(column.type, postgresql.JSONB)
+    assert column.nullable is True
+
+
+def test_release_1_baseline_is_frozen_and_semantics_migration_is_appended():
     versions = sorted(Path("alembic/versions").glob("*.py"))
-    assert [path.name for path in versions] == ["0001_slopeforge_1.py"]
+    assert [path.name for path in versions] == [
+        "0001_slopeforge_1.py", "0002_project_surface_semantics.py",
+    ]
     baseline = versions[0].read_text()
     assert 'revision = "1"' in baseline
     assert "down_revision = None" in baseline
@@ -228,3 +236,7 @@ def test_current_schema_is_single_release_1_baseline():
     assert sorted(path.name for path in Path("alembic/schema_v1").glob("*.py")) == [
         "core.py", "drillhole_datasets.py", "project_surfaces.py",
     ]
+    semantics = versions[1].read_text()
+    assert 'revision = "2"' in semantics
+    assert 'down_revision = "1"' in semantics
+    assert "semantic_mapping_json" in semantics

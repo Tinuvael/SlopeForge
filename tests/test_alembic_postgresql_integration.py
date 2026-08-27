@@ -109,13 +109,14 @@ def test_destructive_migration_guard_rejects_non_test_database() -> None:
         )
 
 
-def test_alembic_history_is_single_release_1_baseline() -> None:
+def test_alembic_history_keeps_release_1_frozen_and_has_one_head() -> None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["1"]
-    assert [revision.revision for revision in script.walk_revisions()] == ["1"]
+    assert script.get_heads() == ["2"]
+    assert [revision.revision for revision in script.walk_revisions()] == ["2", "1"]
+    assert script.get_current_head() == "2"
 
 
 def test_every_alembic_revision_fits_standard_version_column() -> None:

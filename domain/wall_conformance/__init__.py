@@ -7,6 +7,7 @@ from .design import (
 )
 from .engine import build_transverse_profiles
 from .models import (
+    PROTOTYPE_DESIGN_ROLE_MAPPING,
     SectionPoint,
     SectionSegment,
     SurfaceRoleMapping,
@@ -14,6 +15,7 @@ from .models import (
     WallAlignmentSample,
     WallProfileSet,
     WallTransitionLine,
+    semantic_value_token,
 )
 from .sections import intersect_surface_with_profile
 
@@ -21,6 +23,7 @@ __all__ = [
     "SectionPoint",
     "SectionSegment",
     "SurfaceRoleMapping",
+    "PROTOTYPE_DESIGN_ROLE_MAPPING",
     "TransverseProfile",
     "WallAlignmentSample",
     "WallProfileSet",
@@ -30,4 +33,5 @@ __all__ = [
     "intersect_surface_with_profile",
     "sample_wall_alignment",
     "select_primary_crest_line",
+    "semantic_value_token",
 ]
