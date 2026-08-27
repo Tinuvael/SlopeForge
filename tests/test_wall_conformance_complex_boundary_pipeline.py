@@ -162,6 +162,31 @@ def test_closed_upper_crest_runs_through_full_production_pipeline() -> None:
     }
 
 
+def test_partial_assessment_does_not_display_whole_closed_crest() -> None:
+    surface = _radial_wall_surface(closed=True)
+    right_half = PlanPolygon((
+        PlanPoint(0.0, -13.0),
+        PlanPoint(13.0, -13.0),
+        PlanPoint(13.0, 13.0),
+        PlanPoint(0.0, 13.0),
+        PlanPoint(0.0, -13.0),
+    ))
+    result = build_transverse_profiles(
+        surface,
+        surface,
+        right_half,
+        MAPPING,
+        spacing_m=3.0,
+        tangent_window_m=2.5,
+    )
+
+    assert result.profiles
+    assert result.crest_lines
+    assert all(line.points[0] != line.points[-1] for line in result.crest_lines)
+    assert all(point.x >= -1e-8 for line in result.crest_lines for point in line.points)
+    assert all(profile.alignment.origin.x >= -1e-8 for profile in result.profiles)
+
+
 def test_closed_wall_full_pipeline_is_storage_order_invariant() -> None:
     surface = _radial_wall_surface(closed=True)
     expected = _physical_signature(surface)
@@ -234,6 +259,61 @@ def _strip_surface(*, length: float = 30.0, multi_bench: bool = False) -> Triang
                 SurfaceTriangle((c, d, b), source_attributes={"COLOUR": role}),
             ))
     return TriangleSurface(vertices, tuple(triangles))
+
+
+def _upper_context_surface() -> TriangleSurface:
+    ys = (0.0, 15.0, 30.0)
+    xs = (-7.0, -2.0, 0.0, 5.0, 7.0)
+    zs = (30.0, 20.0, 20.0, 10.0, 10.0)
+    roles = (2, 5, 2, 5)
+    vertices = tuple(
+        SurfaceVertex(x, y, zs[column])
+        for column, x in enumerate(xs)
+        for y in ys
+    )
+    triangles = []
+    for column, role in enumerate(roles):
+        for row in range(len(ys) - 1):
+            a = column * len(ys) + row
+            b = a + 1
+            c = (column + 1) * len(ys) + row
+            d = c + 1
+            triangles.extend((
+                SurfaceTriangle((a, c, b), source_attributes={"COLOUR": role}),
+                SurfaceTriangle((c, d, b), source_attributes={"COLOUR": role}),
+            ))
+    return TriangleSurface(vertices, tuple(triangles))
+
+
+def test_small_area_overshoot_keeps_external_crest_and_upper_platform_context() -> None:
+    surface = _upper_context_surface()
+    area = PlanPolygon((
+        PlanPoint(-0.001, 1.0),
+        PlanPoint(7.0, 1.0),
+        PlanPoint(7.0, 29.0),
+        PlanPoint(-0.001, 29.0),
+        PlanPoint(-0.001, 1.0),
+    ))
+    result = build_transverse_profiles(
+        surface,
+        surface,
+        area,
+        MAPPING,
+        spacing_m=5.0,
+        tangent_window_m=3.0,
+    )
+
+    assert result.profiles
+    assert all(abs(profile.alignment.origin.x) < 1e-6 for profile in result.profiles)
+    assert all(
+        profile.design_section.upstream_context is not None
+        and profile.design_section.upstream_context.role == "berm"
+        for profile in result.profiles
+    )
+    assert all(
+        profile.design_section.topology_signature == "FACE-BERM"
+        for profile in result.profiles
+    )
 
 
 def test_internal_crest_is_rejected_by_full_pipeline() -> None:
