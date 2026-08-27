@@ -373,3 +373,29 @@ def test_folded_upper_crest_extra_crossing_does_not_replace_profile_origin():
         )
         for profile in result.profiles
     )
+
+
+def _boundary(start: float, end: float) -> DesignAlignmentBoundary:
+    return DesignAlignmentBoundary(
+        WallTransitionLine(
+            "crest",
+            (SurfaceVertex(start, 0.0, 10.0), SurfaceVertex(end, 0.0, 10.0)),
+        ),
+        0,
+        (SurfaceVertex((start + end) / 2.0, 1.0, 9.0),),
+    )
+
+
+def test_alignment_fragment_assembly_is_order_independent() -> None:
+    assembled = _assemble_alignment_boundaries((_boundary(10.0, 20.0), _boundary(0.0, 10.0)))
+
+    assert len(assembled) == 1
+    assert [point.x for point in assembled[0].line.points] == [0.0, 10.0, 20.0]
+
+
+def test_alignment_fragment_assembly_joins_small_tin_gap_only() -> None:
+    joined = _assemble_alignment_boundaries((_boundary(0.0, 10.0), _boundary(10.005, 20.0)))
+    separate = _assemble_alignment_boundaries((_boundary(0.0, 10.0), _boundary(11.0, 20.0)))
+
+    assert len(joined) == 1
+    assert len(separate) == 2

@@ -3,9 +3,12 @@ from __future__ import annotations
 import os
 from types import SimpleNamespace
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QRectF
 
 from domain.geometry.surfaces import SurfaceTriangle, SurfaceVertex, TriangleSurface
 from domain.geometry.types import PlanPoint, PlanPolygon
@@ -18,6 +21,17 @@ from ui.dialogs.design_surface_semantics_dialog import DesignSurfaceSemanticsDia
 
 
 _APP = None
+
+
+def test_profile_plot_uses_equal_metric_scale() -> None:
+    bounds = module.WallProfilePlot._equal_aspect_bounds(
+        QRectF(0.0, 0.0, 400.0, 200.0), 0.0, 10.0, 0.0, 10.0
+    )
+    u_min, u_max, z_min, z_max = bounds
+
+    assert 400.0 / (u_max - u_min) == pytest.approx(
+        200.0 / (z_max - z_min)
+    )
 
 
 def _app():
@@ -213,7 +227,7 @@ def test_overview_selected_and_escape_modes_are_distinct(monkeypatch):
     assert len(tab.profile_plot._geometry()[1]) > len(
         tab.result.profile_set.profiles[0].actual_segments
     )
-    assert "All actual profiles" in tab.profile_summary.text()
+    assert "Actual coverage:" in tab.profile_summary.text()
     assert "dZ" in module.tr("dZ (m, local Design crest = 0)")
 
     tab._select_profile(1)

@@ -19,14 +19,17 @@ from domain.wall_conformance.models import (
     TransverseProfile,
     WallProfileSet,
 )
-from domain.wall_conformance.sections import intersect_surface_with_profile
+from domain.wall_conformance.sections import (
+    clip_section_segments_to_z_range,
+    intersect_surface_with_profile,
+)
 from domain.wall_conformance.semantic_sections import build_design_section, build_design_variants
 
 
 logger = logging.getLogger(__name__)
 
 
-def _assemble_alignment_boundaries(boundaries, tolerance: float = 1e-5):
+def _assemble_alignment_boundaries(boundaries, tolerance: float = 0.02):
     """Join continuous crest fragments without bridging separate wall sectors."""
     remaining = list(boundaries)
     assembled = []
@@ -49,34 +52,37 @@ def _assemble_alignment_boundaries(boundaries, tolerance: float = 1e-5):
                 )
                 joined = None
                 for candidate_points, candidate_interiors in variants:
-                    distance = hypot(
+                    append_distance = hypot(
                         points[-1].x - candidate_points[0].x,
                         points[-1].y - candidate_points[0].y,
                     )
-                    if distance > tolerance:
-                        continue
-                    first_tangent = (
-                        points[-1].x - points[-2].x,
-                        points[-1].y - points[-2].y,
+                    prepend_distance = hypot(
+                        candidate_points[-1].x - points[0].x,
+                        candidate_points[-1].y - points[0].y,
                     )
-                    second_tangent = (
-                        candidate_points[1].x - candidate_points[0].x,
-                        candidate_points[1].y - candidate_points[0].y,
-                    )
-                    lengths = hypot(*first_tangent) * hypot(*second_tangent)
-                    if lengths <= 1e-12:
-                        continue
-                    if (
-                        first_tangent[0] * second_tangent[0]
-                        + first_tangent[1] * second_tangent[1]
-                    ) / lengths < 0.5:
-                        continue
-                    joined = candidate_points, candidate_interiors
-                    break
+
+                    def direction_ok(first_a, first_b, second_a, second_b):
+                        first = (first_b.x - first_a.x, first_b.y - first_a.y)
+                        second = (second_b.x - second_a.x, second_b.y - second_a.y)
+                        lengths = hypot(*first) * hypot(*second)
+                        return lengths > 1e-12 and (
+                            first[0] * second[0] + first[1] * second[1]
+                        ) / lengths >= 0.5
+
+                    if append_distance <= tolerance and direction_ok(
+                        points[-2], points[-1], candidate_points[0], candidate_points[1]
+                    ):
+                        joined = "append", candidate_points, candidate_interiors
+                        break
+                    if prepend_distance <= tolerance and direction_ok(
+                        candidate_points[-2], candidate_points[-1], points[0], points[1]
+                    ):
+                        joined = "prepend", candidate_points, candidate_interiors
+                        break
                 if joined is None:
                     continue
-                candidate_points, candidate_interiors = joined
-                if points[-1] != candidate_points[0]:
+                mode, candidate_points, candidate_interiors = joined
+                if mode == "append" and points[-1] != candidate_points[0]:
                     bridge = SurfaceVertex(
                         (points[-1].x + candidate_points[0].x) / 2.0,
                         (points[-1].y + candidate_points[0].y) / 2.0,
@@ -84,8 +90,20 @@ def _assemble_alignment_boundaries(boundaries, tolerance: float = 1e-5):
                     )
                     points[-1] = bridge
                     candidate_points = (bridge, *candidate_points[1:])
-                points.extend(candidate_points[1:])
-                interiors.extend(candidate_interiors)
+                elif mode == "prepend" and candidate_points[-1] != points[0]:
+                    bridge = SurfaceVertex(
+                        (candidate_points[-1].x + points[0].x) / 2.0,
+                        (candidate_points[-1].y + points[0].y) / 2.0,
+                        (candidate_points[-1].z + points[0].z) / 2.0,
+                    )
+                    candidate_points = (*candidate_points[:-1], bridge)
+                    points[0] = bridge
+                if mode == "append":
+                    points.extend(candidate_points[1:])
+                    interiors.extend(candidate_interiors)
+                else:
+                    points = [*candidate_points[:-1], *points]
+                    interiors = [*candidate_interiors, *interiors]
                 sources.add(candidate.source)
                 patch_indices.add(candidate.face_patch_index)
                 remaining.pop(index)
@@ -462,15 +480,51 @@ def build_transverse_profiles(
             full_design_segments,
             interval,
         )
+        evaluated_section = build_design_section(design_segments)
+        full_section = build_design_section(full_design_segments)
+        design_section = type(evaluated_section)(
+            evaluated_section.elements,
+            full_section.upstream_context,
+        )
+        context_triangle_indices = (
+            set(full_section.upstream_context.source_triangle_indices)
+            if full_section.upstream_context is not None
+            else set()
+        )
+        display_design_segments = tuple(sorted(
+            (
+                *(
+                    segment for segment in full_design_segments
+                    if segment.source_triangle_index in context_triangle_indices
+                    and segment.u_min < 0.0
+                    and segment.u_max <= 1e-7
+                ),
+                *design_segments,
+            ),
+            key=lambda segment: (segment.u_min, segment.u_max),
+        ))
         actual_segments = _clip_segments_to_interval(
             intersect_surface_with_profile(actual_surface, sample),
             interval,
         )
+        design_points = [
+            point
+            for element in design_section.elements
+            for point in (element.start, element.end)
+        ]
+        if design_points:
+            actual_segments = clip_section_segments_to_z_range(
+                actual_segments,
+                min(point.z for point in design_points),
+                max(point.z for point in design_points),
+            )
+        else:
+            actual_segments = ()
         profiles.append(TransverseProfile(
             alignment=sample,
-            design_segments=design_segments,
+            design_segments=display_design_segments,
             actual_segments=actual_segments,
-            design_section=build_design_section(design_segments),
+            design_section=design_section,
             assessment_u_interval=interval,
             external_toe=external_toe,
         ))

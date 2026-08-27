@@ -22,7 +22,7 @@ from .models import (
     WallTransitionLine,
     semantic_value_token,
 )
-from .sections import intersect_surface_with_profile
+from .sections import clip_section_segments_to_z_range, intersect_surface_with_profile
 from .semantic_sections import build_design_section, build_design_variants
 
 __all__ = [
@@ -40,6 +40,7 @@ __all__ = [
     "extract_design_transition_lines",
     "extract_design_wall_topology",
     "intersect_surface_with_profile",
+    "clip_section_segments_to_z_range",
     "sample_wall_alignment",
     "select_design_alignment",
     "select_primary_crest_line",

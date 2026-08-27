@@ -210,10 +210,12 @@ def test_curved_design_alignment_rotates_profiles_with_local_wall_orientation() 
             (round(point.u, 5), round(point.z, 5))
             for segment in profile.design_segments
             for point in (segment.start, segment.end)
+            if point.u >= -1e-7
         }
         actual_geometry = {
             (round(point.u, 5), round(point.z, 5))
             for segment in profile.actual_segments
             for point in (segment.start, segment.end)
+            if point.u >= -1e-7
         }
         assert design_geometry == actual_geometry

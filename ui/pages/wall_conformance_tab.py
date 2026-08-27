@@ -283,6 +283,18 @@ class WallProfilePlot(QWidget):
         app = QApplication.instance()
         return bool(app is not None and app.property("slopeforgeTheme") == "dark")
 
+    @staticmethod
+    def _equal_aspect_bounds(plot: QRectF, u_min, u_max, z_min, z_max):
+        """Expand bounds so one screen pixel represents one metre on both axes."""
+        scale = min(
+            plot.width() / max(u_max - u_min, 1e-12),
+            plot.height() / max(z_max - z_min, 1e-12),
+        )
+        u_center, z_center = (u_min + u_max) / 2.0, (z_min + z_max) / 2.0
+        u_half = plot.width() / scale / 2.0
+        z_half = plot.height() / scale / 2.0
+        return u_center - u_half, u_center + u_half, z_center - z_half, z_center + z_half
+
     @classmethod
     def _colors(cls):
         if cls._dark_theme():
@@ -451,6 +463,9 @@ class WallProfilePlot(QWidget):
         z_pad = (z_max - z_min) * 0.08
         u_min, u_max = u_min - u_pad, u_max + u_pad
         z_min, z_max = z_min - z_pad, z_max + z_pad
+        u_min, u_max, z_min, z_max = self._equal_aspect_bounds(
+            plot, u_min, u_max, z_min, z_max
+        )
 
         def map_point(point):
             x = plot.left() + (point.u - u_min) / (u_max - u_min) * plot.width()
@@ -834,7 +849,18 @@ class WallConformanceTab(QWidget):
             self.profile_plot.set_overview(
                 self.result.profile_set, max(0, self.variant_selector.currentIndex())
             )
-            self.profile_summary.setText(tr("All actual profiles · Select a profile to inspect"))
+            variant = self.result.profile_set.design_variants[
+                max(0, self.variant_selector.currentIndex())
+            ]
+            coverage = sum(
+                bool(self.result.profile_set.profiles[i].actual_segments)
+                for i in variant.profile_indices
+            )
+            self.profile_summary.setText(
+                tr("Actual coverage: %1 / %2 profiles · Select a profile to inspect")
+                .replace("%1", str(coverage))
+                .replace("%2", str(len(variant.profile_indices)))
+            )
             self.profile_vectors.setText("")
             self._update_representative_summary()
             return
@@ -856,6 +882,12 @@ class WallConformanceTab(QWidget):
             .replace("%1", str(profile_index + 1))
             .replace("%2", f"{profile.alignment.chainage_m:.1f}")
         )
+        if not profile.actual_segments:
+            self.profile_summary.setText(
+                self.profile_summary.text()
+                + " · "
+                + tr("No survey data in Design elevation range")
+            )
         self.profile_vectors.setText(tr("Direction details"))
         self.profile_vectors.setToolTip(
             f"T ({tx:.3f}, {ty:.3f}) · N ({nx:.3f}, {ny:.3f})"
@@ -863,8 +895,7 @@ class WallConformanceTab(QWidget):
 
     def _select_variant(self, index: int) -> None:
         if self.result is not None and self.profile_selector.currentIndex() == 0:
-            self.profile_plot.set_overview(self.result.profile_set, max(0, index))
-            self._update_representative_summary()
+            self._select_profile(0)
 
     def _update_representative_summary(self) -> None:
         variants = self.result.profile_set.design_variants if self.result else ()

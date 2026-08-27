@@ -4558,6 +4558,8 @@ Continue?</source><translation>Новый горизонт отличается 
     <message><source>Design semantics: COLOUR 2 = Face · COLOUR 5 = Berm · COLOUR 3 = Road</source><translation>Семантика проекта: COLOUR 2 = Откос · COLOUR 5 = Берма · COLOUR 3 = Дорога</translation></message>
     <message><source>Design toe</source><translation>Проектная подошва</translation></message>
     <message><source>Design lower toe</source><translation>Нижняя проектная подошва</translation></message>
+    <message><source>Actual coverage: %1 / %2 profiles · Select a profile to inspect</source><translation>Покрытие фактической съёмкой: %1 из %2 профилей · Выберите профиль для проверки</translation></message>
+    <message><source>No survey data in Design elevation range</source><translation>Нет данных съёмки в диапазоне отметок проекта</translation></message>
     <message><source>Diagnostic local tangent (T) and wall-normal (N) unit vectors.</source><translation>Диагностические единичные векторы локальной касательной (T) и нормали к борту (N).</translation></message>
     <message><source>Diagnostic mapping read from the active Design surface attributes.</source><translation>Диагностическое соответствие, прочитанное из атрибутов активной проектной поверхности.</translation></message>
     <message><source>Direction details</source><translation>Параметры направления</translation></message>

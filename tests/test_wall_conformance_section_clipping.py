@@ -1,7 +1,13 @@
 import pytest
 
 from domain.geometry.surfaces import SurfaceTriangle, SurfaceVertex, TriangleSurface
-from domain.wall_conformance import WallAlignmentSample, intersect_surface_with_profile
+from domain.wall_conformance import (
+    SectionPoint,
+    SectionSegment,
+    WallAlignmentSample,
+    clip_section_segments_to_z_range,
+    intersect_surface_with_profile,
+)
 
 
 def test_profile_half_width_clips_one_segment_at_both_limits() -> None:
@@ -31,3 +37,28 @@ def test_profile_half_width_clips_one_segment_at_both_limits() -> None:
     assert segments[0].start.z == pytest.approx(8.0)
     assert segments[0].end.u == pytest.approx(2.0)
     assert segments[0].end.z == pytest.approx(12.0)
+
+
+def test_actual_segment_is_clipped_at_design_elevation_limit() -> None:
+    segment = SectionSegment(
+        SectionPoint(0.0, 625.0, 0.0, 0.0),
+        SectionPoint(6.0, 640.0, 6.0, 0.0),
+        4,
+    )
+
+    clipped = clip_section_segments_to_z_range((segment,), 600.0, 630.0)
+
+    assert len(clipped) == 1
+    assert clipped[0].start.z == pytest.approx(625.0)
+    assert clipped[0].end.z == pytest.approx(630.0)
+    assert clipped[0].end.u == pytest.approx(2.0)
+
+
+def test_actual_segment_outside_design_elevation_is_removed() -> None:
+    segment = SectionSegment(
+        SectionPoint(0.0, 665.0, 0.0, 0.0),
+        SectionPoint(2.0, 670.0, 2.0, 0.0),
+        5,
+    )
+
+    assert clip_section_segments_to_z_range((segment,), 600.0, 630.0) == ()

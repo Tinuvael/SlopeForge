@@ -183,3 +183,50 @@ def intersect_surface_with_profile(
             ),
         )
     )
+
+
+def clip_section_segments_to_z_range(
+    segments: tuple[SectionSegment, ...],
+    z_min: float,
+    z_max: float,
+    *,
+    tolerance: float = 1e-7,
+) -> tuple[SectionSegment, ...]:
+    """Clip section segments to the exact local Design elevation envelope."""
+    if z_max < z_min:
+        raise ValueError("Section Z maximum must be greater than its minimum")
+    clipped = []
+    lower, upper = z_min - tolerance, z_max + tolerance
+    for segment in segments:
+        source_first, source_second = segment.start, segment.end
+        if max(source_first.z, source_second.z) < lower or min(
+            source_first.z, source_second.z
+        ) > upper:
+            continue
+        dz = source_second.z - source_first.z
+
+        def at_z(z):
+            fraction = (z - source_first.z) / dz
+            return SectionPoint(
+                source_first.u + (source_second.u - source_first.u) * fraction,
+                z,
+                source_first.x + (source_second.x - source_first.x) * fraction,
+                source_first.y + (source_second.y - source_first.y) * fraction,
+            )
+
+        first, second = source_first, source_second
+        if abs(dz) > 1e-12:
+            if first.z < lower:
+                first = at_z(z_min)
+            elif first.z > upper:
+                first = at_z(z_max)
+            if second.z < lower:
+                second = at_z(z_min)
+            elif second.z > upper:
+                second = at_z(z_max)
+        clipped.append(
+            SectionSegment(
+                first, second, segment.source_triangle_index, segment.semantic_role
+            )
+        )
+    return tuple(clipped)
