@@ -201,8 +201,6 @@ def _assessment_u_interval(
         ):
             if start - 1e-7 <= 0.0 <= end + 1e-7:
                 return start, end
-    # The sampled crest can sit just outside the drawn polygon. Use the first
-    # downstream inside interval rather than falling back to a fixed width.
     for start, end in zip(bounds, bounds[1:]):
         midpoint = (start + end) / 2.0
         if end > 0.0 and point_in_polygon(
@@ -243,10 +241,11 @@ def _clip_segments_to_interval(segments, interval):
         start, end = segment.start, segment.end
         if start.u > end.u:
             start, end = end, start
-        if start.u < lower:
-            start = _interpolate_section_point(start, end, lower)
-        if end.u > upper:
-            end = _interpolate_section_point(start, end, upper)
+        source_start, source_end = start, end
+        if source_start.u < lower:
+            start = _interpolate_section_point(source_start, source_end, lower)
+        if source_end.u > upper:
+            end = _interpolate_section_point(source_start, source_end, upper)
         clipped.append(
             SectionSegment(
                 start,
@@ -269,6 +268,77 @@ def _toe_near_area_exit(
     ), transitions
 
 
+def _origin_section_point(sample: WallAlignmentSample) -> SectionPoint:
+    return SectionPoint(0.0, sample.origin.z, sample.origin.x, sample.origin.y)
+
+
+def _other_incident_endpoint(
+    segment: SectionSegment,
+    origin: SectionPoint,
+) -> SectionPoint | None:
+    start_is_origin = section_points_close(
+        segment.start, origin, tolerance=_SECTION_TOLERANCE
+    )
+    end_is_origin = section_points_close(
+        segment.end, origin, tolerance=_SECTION_TOLERANCE
+    )
+    if start_is_origin == end_is_origin:
+        return None
+    return segment.end if start_is_origin else segment.start
+
+
+def _orient_sample_downwall(
+    sample: WallAlignmentSample,
+    design_surface: TriangleSurface,
+    role_mapping: SurfaceRoleMapping,
+) -> WallAlignmentSample | None:
+    """Orient +U from the Upper Crest down the adjacent Design Face."""
+    origin = _origin_section_point(sample)
+    segments = connected_section_segments(
+        intersect_surface_with_profile(
+            design_surface, sample, role_mapping=role_mapping
+        ),
+        origin,
+    )
+    descent_signs: set[int] = set()
+    for segment in segments:
+        if segment.semantic_role != "face":
+            continue
+        other = _other_incident_endpoint(segment, origin)
+        if other is None or abs(other.u) <= _SECTION_TOLERANCE:
+            continue
+        if other.z < origin.z - _SECTION_TOLERANCE:
+            descent_signs.add(1 if other.u > 0.0 else -1)
+    if descent_signs == {1}:
+        return sample
+    if descent_signs == {-1}:
+        nx, ny = sample.normal_xy
+        return WallAlignmentSample(
+            sample.chainage_m,
+            sample.origin,
+            sample.tangent_xy,
+            (-nx, -ny),
+            sample.boundary_component_index,
+        )
+    if len(descent_signs) > 1:
+        logger.debug(
+            "Upper station skipped: conflicting descending Face sectors at "
+            "origin=(%.3f, %.3f, %.3f)",
+            sample.origin.x,
+            sample.origin.y,
+            sample.origin.z,
+        )
+        return None
+    logger.debug(
+        "Upper station skipped: no descending Design Face incident to "
+        "origin=(%.3f, %.3f, %.3f)",
+        sample.origin.x,
+        sample.origin.y,
+        sample.origin.z,
+    )
+    return None
+
+
 def evaluate_upper_crest_station(
     sample: WallAlignmentSample,
     design_surface: TriangleSurface,
@@ -287,19 +357,13 @@ def evaluate_upper_crest_station(
     full_segments = intersect_surface_with_profile(
         design_surface, sample, role_mapping=role_mapping
     )
-    local_segments = connected_section_segments(
-        full_segments,
-        SectionPoint(0.0, sample.origin.z, sample.origin.x, sample.origin.y),
-    )
+    origin = _origin_section_point(sample)
+    local_segments = connected_section_segments(full_segments, origin)
     if not local_segments:
         return UpperCrestStationEvaluation(
             False, "no Design geometry incident to sampled crest", interval
         )
 
-    # A connected Face on the upstream side is relevant only while it is still
-    # inside the user-defined Assessment interval. Disconnected folded geometry
-    # was removed by the (U, Z) component walk above; an upper bench outside the
-    # Area remains display context and cannot change membership.
     if any(
         segment.semantic_role == "face"
         and segment.u_max < -_SECTION_TOLERANCE
@@ -310,9 +374,6 @@ def evaluate_upper_crest_station(
             False, "connected evaluated Face exists upstream", interval
         )
 
-    # Validate the geometry immediately downstream of the sampled crest.  Do
-    # not use the first element of the whole connected section: it can be the
-    # legitimate Berm/Road context or a farther upstream bench.
     section = build_design_section(local_segments)
     downstream_faces = tuple(
         segment
@@ -322,20 +383,25 @@ def evaluate_upper_crest_station(
         and segment.u_max > _SECTION_TOLERANCE
         and (
             section_points_close(
-                segment.start,
-                SectionPoint(0.0, sample.origin.z, sample.origin.x, sample.origin.y),
-                tolerance=_SECTION_TOLERANCE,
+                segment.start, origin, tolerance=_SECTION_TOLERANCE
             )
             or section_points_close(
-                segment.end,
-                SectionPoint(0.0, sample.origin.z, sample.origin.x, sample.origin.y),
-                tolerance=_SECTION_TOLERANCE,
+                segment.end, origin, tolerance=_SECTION_TOLERANCE
             )
         )
     )
-    if not downstream_faces:
+    descending_faces = tuple(
+        segment
+        for segment in downstream_faces
+        if (
+            (other := _other_incident_endpoint(segment, origin)) is not None
+            and other.u > _SECTION_TOLERANCE
+            and other.z < origin.z - _SECTION_TOLERANCE
+        )
+    )
+    if not descending_faces:
         return UpperCrestStationEvaluation(
-            False, "no adjacent downstream Design Face", interval
+            False, "adjacent downstream Design Face does not descend", interval
         )
 
     external_toe, _ = _toe_near_area_exit(section, interval[1])
@@ -344,22 +410,83 @@ def evaluate_upper_crest_station(
     )
 
 
+def _crest_cumulative_lengths(line: WallTransitionLine) -> tuple[float, ...]:
+    values = [0.0]
+    for first, second in zip(line.points, line.points[1:]):
+        values.append(values[-1] + hypot(second.x - first.x, second.y - first.y))
+    return tuple(values)
+
+
+def _crest_is_closed(line: WallTransitionLine, tolerance: float = 1e-8) -> bool:
+    first, last = line.points[0], line.points[-1]
+    return hypot(first.x - last.x, first.y - last.y) <= tolerance
+
+
+def _interpolate_crest_chainage(
+    line: WallTransitionLine,
+    cumulative: tuple[float, ...],
+    chainage: float,
+) -> SurfaceVertex:
+    total = cumulative[-1]
+    if _crest_is_closed(line):
+        chainage %= total
+    else:
+        chainage = max(0.0, min(total, chainage))
+    for index, (start, end) in enumerate(zip(cumulative, cumulative[1:])):
+        if chainage <= end + 1e-9:
+            span = end - start
+            fraction = 0.0 if span <= 1e-12 else (chainage - start) / span
+            first, second = line.points[index], line.points[index + 1]
+            return SurfaceVertex(
+                first.x + (second.x - first.x) * fraction,
+                first.y + (second.y - first.y) * fraction,
+                first.z + (second.z - first.z) * fraction,
+            )
+    return line.points[-1]
+
+
+def _sample_crest_chainage(
+    line: WallTransitionLine,
+    chainage: float,
+    tangent_window_m: float,
+) -> WallAlignmentSample | None:
+    cumulative = _crest_cumulative_lengths(line)
+    total = cumulative[-1]
+    if total <= 1e-9:
+        return None
+    closed = _crest_is_closed(line)
+    if closed and abs(chainage - total) <= 1e-8:
+        chainage = 0.0
+    origin = _interpolate_crest_chainage(line, cumulative, chainage)
+    if closed:
+        before_s = chainage - tangent_window_m
+        after_s = chainage + tangent_window_m
+    else:
+        before_s = max(0.0, chainage - tangent_window_m)
+        after_s = min(total, chainage + tangent_window_m)
+    before = _interpolate_crest_chainage(line, cumulative, before_s)
+    after = _interpolate_crest_chainage(line, cumulative, after_s)
+    tx, ty = after.x - before.x, after.y - before.y
+    tangent_length = hypot(tx, ty)
+    if tangent_length <= 1e-9:
+        return None
+    tx, ty = tx / tangent_length, ty / tangent_length
+    return WallAlignmentSample(
+        chainage,
+        origin,
+        (tx, ty),
+        (-ty, tx),
+    )
+
+
 def _crest_subline(line, start_chainage: float, end_chainage: float):
     """Return source-polyline geometry between confirmed sample chainages."""
-    cumulative = [0.0]
-    for first, second in zip(line.points, line.points[1:]):
-        cumulative.append(cumulative[-1] + hypot(second.x - first.x, second.y - first.y))
+    cumulative = list(_crest_cumulative_lengths(line))
     if (
-        hypot(
-            line.points[0].x - line.points[-1].x,
-            line.points[0].y - line.points[-1].y,
-        ) <= 1e-8
+        _crest_is_closed(line)
         and start_chainage <= 1e-8
         and end_chainage >= cumulative[-1] - 1e-8
     ):
-        # Preserve the exact shared endpoint instead of reconstructing it by
-        # interpolation; otherwise roundoff can make a full closed loop appear
-        # open to downstream topology/UI code.
         return line
 
     def interpolate(chainage):
@@ -441,6 +568,29 @@ def _crest_area_chainage_spans(
     return tuple(spans)
 
 
+def _samples_with_area_endpoints(
+    line: WallTransitionLine,
+    samples: tuple[WallAlignmentSample, ...],
+    area_spans: tuple[tuple[float, float], ...],
+    tangent_window_m: float,
+) -> tuple[WallAlignmentSample, ...]:
+    """Add exact crest/Assessment intersections as profile stations."""
+    by_chainage = {round(sample.chainage_m, 8): sample for sample in samples}
+    total = _crest_cumulative_lengths(line)[-1]
+    closed = _crest_is_closed(line)
+    for start, end in area_spans:
+        for chainage in (start, end):
+            if closed and abs(chainage - total) <= 1e-8:
+                chainage = 0.0
+            key = round(chainage, 8)
+            if key in by_chainage:
+                continue
+            sample = _sample_crest_chainage(line, chainage, tangent_window_m)
+            if sample is not None:
+                by_chainage[key] = sample
+    return tuple(sorted(by_chainage.values(), key=lambda sample: sample.chainage_m))
+
+
 def _split_valid_runs(indexed_evaluated):
     runs = []
     current = []
@@ -472,8 +622,13 @@ def _collect_external_upper_stations(
         if transition_length_in_area(boundary.line, assessment_polygon) > 1e-9
     )
     for candidate_index, component in enumerate(candidates):
+        area_spans = _crest_area_chainage_spans(
+            component.line, assessment_polygon
+        )
+        if not area_spans:
+            continue
         try:
-            component_samples = sample_wall_alignment(
+            regular_samples = sample_wall_alignment(
                 component.line,
                 toe_lines,
                 assessment_polygon,
@@ -482,10 +637,31 @@ def _collect_external_upper_stations(
                 interior_points=component.interior_points,
             )
         except ValueError as error:
-            logger.debug("Upper component %d has no samples: %s", candidate_index, error)
-            continue
+            logger.debug(
+                "Upper component %d regular sampling unavailable: %s",
+                candidate_index,
+                error,
+            )
+            regular_samples = ()
+        component_samples = _samples_with_area_endpoints(
+            component.line,
+            regular_samples,
+            area_spans,
+            tangent_window_m,
+        )
         evaluated = []
-        for sample in component_samples:
+        for raw_sample in component_samples:
+            sample = _orient_sample_downwall(
+                raw_sample,
+                design_surface,
+                role_mapping,
+            )
+            if sample is None:
+                evaluation = UpperCrestStationEvaluation(
+                    False, "unable to orient +U down adjacent Design Face"
+                )
+                evaluated.append((raw_sample, evaluation))
+                continue
             evaluation = evaluate_upper_crest_station(
                 sample,
                 design_surface,
@@ -508,7 +684,6 @@ def _collect_external_upper_stations(
             (index, sample, evaluation)
             for index, (sample, evaluation) in enumerate(evaluated)
         ]
-        area_spans = _crest_area_chainage_spans(component.line, assessment_polygon)
         for area_start, area_end in area_spans:
             span_evaluated = [
                 item for item in indexed_evaluated
@@ -557,8 +732,11 @@ def _collect_external_upper_stations(
                 ))
                 for _sample_index, sample, evaluation in run:
                     accepted.append((WallAlignmentSample(
-                        sample.chainage_m, sample.origin, sample.tangent_xy,
-                        sample.normal_xy, component_index,
+                        sample.chainage_m,
+                        sample.origin,
+                        sample.tangent_xy,
+                        sample.normal_xy,
+                        component_index,
                     ), evaluation))
 
     if not accepted:
@@ -615,12 +793,7 @@ def build_transverse_profiles(
     spacing_m: float = 3.0,
     tangent_window_m: float = 6.0,
 ) -> WallProfileSet:
-    """Build design-derived transverse sections through design and actual meshes.
-
-    The Assessment Area is only a spatial mask. Profile orientation comes from
-    the local design crest tangent and therefore remains normal to the design
-    wall even when the Assessment Area boundary has a different azimuth.
-    """
+    """Build design-derived transverse sections through design and actual meshes."""
     topology = extract_design_wall_topology(design_surface, role_mapping)
     toe_lines = tuple(line for line in topology.transitions if line.kind == "toe")
     alignment, stations = _collect_external_upper_stations(
@@ -664,10 +837,12 @@ def build_transverse_profiles(
             ),
             key=lambda segment: (segment.u_min, segment.u_max),
         ))
-        actual_segments = _clip_segments_to_interval(
-            intersect_surface_with_profile(actual_surface, sample),
+        raw_actual_segments = intersect_surface_with_profile(actual_surface, sample)
+        u_clipped_actual_segments = _clip_segments_to_interval(
+            raw_actual_segments,
             interval,
         )
+        actual_segments = u_clipped_actual_segments
         design_points = [
             point
             for element in design_section.elements
@@ -681,6 +856,17 @@ def build_transverse_profiles(
             )
         else:
             actual_segments = ()
+        logger.debug(
+            "Wall profile chainage=%.3f U=(%.3f, %.3f) Design segments=%d "
+            "Actual raw=%d after-U=%d after-Z=%d",
+            sample.chainage_m,
+            interval[0],
+            interval[1],
+            len(design_segments),
+            len(raw_actual_segments),
+            len(u_clipped_actual_segments),
+            len(actual_segments),
+        )
         profiles.append(TransverseProfile(
             alignment=sample,
             design_segments=display_design_segments,
@@ -692,6 +878,8 @@ def build_transverse_profiles(
     profiles = tuple(profiles)
     external_toes = _external_toe_lines(profiles, toe_lines)
     return WallProfileSet(
-        crest_lines=alignment.upper_lines, toe_lines=external_toes, profiles=profiles,
+        crest_lines=alignment.upper_lines,
+        toe_lines=external_toes,
+        profiles=profiles,
         design_variants=build_design_variants(profiles),
     )
