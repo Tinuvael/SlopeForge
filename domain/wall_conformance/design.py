@@ -198,36 +198,6 @@ def _face_patch_downslope(
     return sum_x / total_weight, sum_y / total_weight
 
 
-def _platform_triangle_adjacency(
-    edges: dict[tuple[int, int], list[int]], roles: tuple[str, ...]
-) -> dict[int, set[int]]:
-    adjacency: dict[int, set[int]] = defaultdict(set)
-    for adjacent in edges.values():
-        if len(adjacent) != 2:
-            continue
-        first, second = adjacent
-        if roles[first] == roles[second] and roles[first] in PLATFORM_ROLES:
-            adjacency[first].add(second)
-            adjacency[second].add(first)
-    return adjacency
-
-
-def _seed_distances(
-    seeds: set[int], adjacency: dict[int, set[int]]
-) -> dict[int, int]:
-    distances = {triangle: 0 for triangle in seeds}
-    pending = list(sorted(seeds))
-    cursor = 0
-    while cursor < len(pending):
-        current = pending[cursor]
-        cursor += 1
-        for neighbour in sorted(adjacency[current]):
-            if neighbour not in distances:
-                distances[neighbour] = distances[current] + 1
-                pending.append(neighbour)
-    return distances
-
-
 def _upper_outer_edges(
     surface: TriangleSurface,
     edges: dict[tuple[int, int], list[int]],
@@ -301,7 +271,6 @@ def extract_design_wall_topology(
     by_patch: dict[int, dict[str, set[tuple[int, int]]]] = {
         index: {"crest": set(), "toe": set()} for index in range(len(face_components))
     }
-    transition_seeds: dict[tuple[str, str, int], set[int]] = defaultdict(set)
     for edge, triangle_indices in edges.items():
         if len(triangle_indices) != 2:
             continue
@@ -322,52 +291,12 @@ def extract_design_wall_topology(
         if kind is not None:
             patch_index = face_patch[face_index]
             by_patch[patch_index][kind].add(edge)
-            platform_index = second_index if face_index == first_index else first_index
-            transition_seeds[(roles[platform_index], kind, patch_index)].add(
-                platform_index
-            )
 
-    # Pair transitions through their nearest *local* same-role platform
-    # neighbourhood. Reciprocal nearest pairs prevent one connected haul-road
-    # network from making every Face it touches appear downstream.
-    platform_adjacency = _platform_triangle_adjacency(edges, roles)
-    distances = {
-        key: _seed_distances(seeds, platform_adjacency)
-        for key, seeds in transition_seeds.items()
-    }
-    toe_keys = [key for key in transition_seeds if key[1] == "toe"]
-    crest_keys = [key for key in transition_seeds if key[1] == "crest"]
-
-    def nearest(source, targets):
-        ranked = []
-        for target in targets:
-            if source[0] != target[0]:
-                continue
-            reachable = [
-                distances[source][triangle]
-                for triangle in transition_seeds[target]
-                if triangle in distances[source]
-            ]
-            if reachable:
-                ranked.append((min(reachable), target))
-        if not ranked:
-            return set()
-        minimum = min(distance for distance, _ in ranked)
-        return {target for distance, target in ranked if distance == minimum}
-
-    nearest_toes = {key: nearest(key, toe_keys) for key in crest_keys}
-    nearest_crests = {key: nearest(key, crest_keys) for key in toe_keys}
-    downstream = {
-        crest_key[2]
-        for crest_key, local_toes in nearest_toes.items()
-        if any(crest_key in nearest_crests[toe_key] for toe_key in local_toes)
-    }
-    root_patches = set(range(len(face_components))) - downstream
-
-    # A root Face without an upper platform uses its outer boundary. Classify
-    # it relative to the connected patch's authoritative lower boundary, not
-    # by absolute or constant crest elevation.
-    for patch_index in root_patches:
+    # A Face without an upper platform may expose the Project's outer upper
+    # boundary. These remain candidates; Assessment-envelope probing later
+    # distinguishes the external Upper Crest from internal transitions.
+    outer_by_patch: dict[int, set[tuple[int, int]]] = defaultdict(set)
+    for patch_index in range(len(face_components)):
         if by_patch[patch_index]["crest"]:
             continue
         outer = _upper_outer_edges(
@@ -377,6 +306,7 @@ def extract_design_wall_topology(
             face_components[patch_index],
             patch_index,
         )
+        outer_by_patch[patch_index].update(outer)
         # Only locally classified upper-rim edges are walked together, so an
         # alignment cannot turn down a multi-segment lateral crop boundary.
         by_patch[patch_index]["crest"].update(outer)
@@ -387,36 +317,42 @@ def extract_design_wall_topology(
         crest_lines = _walk_edges(surface, kinds["crest"], "crest")
         toe_lines = _walk_edges(surface, kinds["toe"], "toe")
         transitions.extend((*crest_lines, *toe_lines))
-        if patch_index in root_patches:
-            for line in crest_lines:
-                vertex_indices = {
-                    (vertex.x, vertex.y, vertex.z): index
-                    for index, vertex in enumerate(surface.vertices)
-                }
-                boundary_edges = [
-                    tuple(
-                        sorted(
-                            (
-                                vertex_indices[(first.x, first.y, first.z)],
-                                vertex_indices[(second.x, second.y, second.z)],
-                            )
+        for line in crest_lines:
+            vertex_indices = {
+                (vertex.x, vertex.y, vertex.z): index
+                for index, vertex in enumerate(surface.vertices)
+            }
+            boundary_edges = [
+                tuple(
+                    sorted(
+                        (
+                            vertex_indices[(first.x, first.y, first.z)],
+                            vertex_indices[(second.x, second.y, second.z)],
                         )
                     )
-                    for first, second in zip(line.points, line.points[1:])
-                ]
-                interiors = tuple(
-                    _third_vertex(
-                        surface,
-                        edge,
-                        next(
-                            i
-                            for i in edges[edge]
-                            if face_patch.get(i) == patch_index
-                        ),
-                    )
-                    for edge in boundary_edges
                 )
-                alignments.append(DesignAlignmentBoundary(line, patch_index, interiors))
+                for first, second in zip(line.points, line.points[1:])
+            ]
+            interiors = tuple(
+                _third_vertex(
+                    surface,
+                    edge,
+                    next(
+                        i for i in edges[edge] if face_patch.get(i) == patch_index
+                    ),
+                )
+                for edge in boundary_edges
+            )
+            source = (
+                "outer Face boundary"
+                if boundary_edges and all(
+                    edge in outer_by_patch[patch_index] for edge in boundary_edges
+                )
+                else "Face/Platform"
+            )
+            alignments.append(
+                DesignAlignmentBoundary(line, patch_index, interiors, source)
+            )
 
     return DesignWallTopology(tuple(transitions), tuple(alignments))
 
@@ -443,7 +379,9 @@ def _fragment_plan_length(fragment: PlanLineString) -> float:
     )
 
 
-def _clipped_plan_length(line: WallTransitionLine, polygon: PlanPolygon) -> float:
+def transition_length_in_area(
+    line: WallTransitionLine, polygon: PlanPolygon
+) -> float:
     return sum(
         _fragment_plan_length(fragment)
         for fragment in clip_datamine_line_by_polygon(_plan_line(line), polygon)
@@ -456,7 +394,7 @@ def select_primary_crest_line(
 ) -> WallTransitionLine:
     """Choose the design crest with the greatest plan length inside the Area."""
     crests = [line for line in transitions if line.kind == "crest"]
-    scored = [(_clipped_plan_length(line, assessment_polygon), line) for line in crests]
+    scored = [(transition_length_in_area(line, assessment_polygon), line) for line in crests]
     scored = [(length, line) for length, line in scored if length > 1e-9]
     if not scored:
         raise ValueError("No design crest intersects the Assessment Area")
@@ -469,7 +407,7 @@ def select_design_alignment(
     candidates = [
         boundary
         for boundary in topology.alignment_boundaries
-        if _clipped_plan_length(boundary.line, assessment_polygon) > 1e-9
+        if transition_length_in_area(boundary.line, assessment_polygon) > 1e-9
     ]
     if not candidates:
         raise ValueError("No design crest intersects the Assessment Area")

@@ -172,6 +172,12 @@ class WallConformanceDiagnosticService:
                     "Design wall alignment is ambiguous in this Assessment Area. "
                     "Check the Assessment Area extent or Design surface semantics."
                 ) from exc
+            if str(exc) == "Unable to determine a unique Design wall envelope":
+                raise WallConformanceUnavailableError(
+                    "Unable to determine a unique Design wall envelope in this "
+                    "Assessment Area. Check the Assessment Area extent and Design "
+                    "surface semantics."
+                ) from exc
             raise
         return WallConformanceDiagnosticResult(
             design_dataset=design_dataset,

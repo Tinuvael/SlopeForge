@@ -6,6 +6,7 @@ from .design import (
     sample_wall_alignment,
     select_design_alignment,
     select_primary_crest_line,
+    transition_length_in_area,
 )
 from .engine import build_transverse_profiles
 from .models import (
@@ -42,6 +43,7 @@ __all__ = [
     "sample_wall_alignment",
     "select_design_alignment",
     "select_primary_crest_line",
+    "transition_length_in_area",
     "semantic_value_token",
     "build_design_section",
     "build_design_variants",

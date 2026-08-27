@@ -122,6 +122,7 @@ class DesignAlignmentBoundary:
     line: WallTransitionLine
     face_patch_index: int
     interior_points: tuple[SurfaceVertex, ...]
+    source: str = "face/platform"
 
 
 @dataclass(frozen=True)

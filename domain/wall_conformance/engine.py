@@ -1,19 +1,205 @@
 from __future__ import annotations
 
+import logging
+from math import hypot
+
+from domain.geometry.operations import point_in_polygon
 from domain.geometry.surfaces import TriangleSurface
-from domain.geometry.types import PlanPolygon
+from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.wall_conformance.design import (
     extract_design_wall_topology,
     sample_wall_alignment,
-    select_design_alignment,
+    transition_length_in_area,
 )
 from domain.wall_conformance.models import (
+    DesignAlignmentBoundary,
+    SectionPoint,
+    SectionSegment,
     SurfaceRoleMapping,
     TransverseProfile,
     WallProfileSet,
 )
 from domain.wall_conformance.sections import intersect_surface_with_profile
 from domain.wall_conformance.semantic_sections import build_design_section, build_design_variants
+
+
+logger = logging.getLogger(__name__)
+
+
+def _segment_inside_area(segment: SectionSegment, area: PlanPolygon) -> bool:
+    return point_in_polygon(
+        PlanPoint(
+            (segment.start.x + segment.end.x) / 2.0,
+            (segment.start.y + segment.end.y) / 2.0,
+        ),
+        area,
+    )
+
+
+def _terminal_toe(section) -> SectionPoint | None:
+    elements = section.elements
+    face_indices = [index for index, element in enumerate(elements) if element.role == "face"]
+    if not face_indices:
+        return None
+    last_face_index = face_indices[-1]
+    if not any(
+        element.role in {"berm", "road"}
+        for element in elements[last_face_index + 1 :]
+    ):
+        return None
+    return elements[last_face_index].end
+
+
+def _select_upper_envelope(
+    topology,
+    design_surface: TriangleSurface,
+    assessment_polygon: PlanPolygon,
+    role_mapping: SurfaceRoleMapping,
+    toe_lines,
+    *,
+    spacing_m: float,
+    tangent_window_m: float,
+) -> DesignAlignmentBoundary:
+    candidates = [
+        boundary
+        for boundary in topology.alignment_boundaries
+        if transition_length_in_area(boundary.line, assessment_polygon) > 1e-9
+    ]
+    logger.debug(
+        "Assessment Area wall-envelope diagnostics: crest candidates=%d",
+        len(candidates),
+    )
+    diagnostics = []
+    for index, boundary in enumerate(candidates):
+        probe_spacing = max(spacing_m, boundary.line.plan_length / 3.0)
+        try:
+            samples = sample_wall_alignment(
+                boundary.line,
+                toe_lines,
+                assessment_polygon,
+                spacing_m=probe_spacing,
+                tangent_window_m=tangent_window_m,
+                interior_points=boundary.interior_points,
+            )
+        except ValueError:
+            samples = ()
+        upstream_faces = 0
+        valid_downstream = 0
+        terminal_toes = []
+        for sample in samples:
+            area_segments = tuple(
+                segment
+                for segment in intersect_surface_with_profile(
+                    design_surface, sample, role_mapping=role_mapping
+                )
+                if _segment_inside_area(segment, assessment_polygon)
+            )
+            if any(
+                segment.semantic_role == "face" and segment.u_max < -1e-4
+                for segment in area_segments
+            ):
+                upstream_faces += 1
+            section = build_design_section(area_segments)
+            terminal = _terminal_toe(section)
+            first_downstream = next(
+                (
+                    element
+                    for element in section.elements
+                    if element.horizontal_width > 1e-4
+                ),
+                None,
+            )
+            if (
+                terminal is not None
+                and first_downstream is not None
+                and first_downstream.role == "face"
+            ):
+                valid_downstream += 1
+                terminal_toes.append(terminal)
+        in_area_length = transition_length_in_area(
+            boundary.line, assessment_polygon
+        )
+        sample_count = len(samples)
+        upstream_fraction = upstream_faces / sample_count if sample_count else 1.0
+        valid_fraction = valid_downstream / sample_count if sample_count else 0.0
+        diagnostics.append(
+            (
+                upstream_fraction,
+                -valid_fraction,
+                -sample_count,
+                boundary,
+                tuple(terminal_toes),
+            )
+        )
+        logger.debug(
+            "Envelope candidate %d: length=%.3f source=%s samples=%d "
+            "valid_downstream=%d upstream_faces=%d terminal_toes=%d",
+            index,
+            in_area_length,
+            boundary.source,
+            len(samples),
+            valid_downstream,
+            upstream_faces,
+            len(terminal_toes),
+        )
+    viable = [item for item in diagnostics if -item[1] > 0.0]
+    if not viable:
+        logger.debug("Wall-envelope selection failed: no valid downstream probes")
+        raise ValueError("Unable to determine a unique Design wall envelope")
+    viable.sort(
+        key=lambda item: (
+            *item[:3],
+            tuple((point.x, point.y, point.z) for point in item[3].line.points),
+        )
+    )
+    best = viable[0]
+    equally_external = [item for item in viable if item[:3] == best[:3]]
+    independent_patches = {item[3].face_patch_index for item in equally_external}
+    if len(independent_patches) > 1:
+        logger.debug(
+            "Wall-envelope selection failed: equally external Face patches=%s",
+            sorted(independent_patches),
+        )
+        raise ValueError("Unable to determine a unique Design wall envelope")
+    selected = best[3]
+    logger.debug(
+        "Selected Upper Crest: source=%s face_patch=%d terminal_toes=%d",
+        selected.source,
+        selected.face_patch_index,
+        len(best[4]),
+    )
+    return selected
+
+
+def _point_line_distance(point: SectionPoint, line) -> float:
+    best = float("inf")
+    for first, second in zip(line.points, line.points[1:]):
+        dx, dy = second.x - first.x, second.y - first.y
+        length_sq = dx * dx + dy * dy
+        fraction = 0.0 if length_sq <= 1e-18 else max(
+            0.0,
+            min(1.0, ((point.x - first.x) * dx + (point.y - first.y) * dy) / length_sq),
+        )
+        x, y = first.x + fraction * dx, first.y + fraction * dy
+        best = min(best, hypot(point.x - x, point.y - y))
+    return best
+
+
+def _external_toe_lines(profiles, toe_lines):
+    observations = [
+        terminal
+        for profile in profiles
+        if profile.design_section is not None
+        if (terminal := _terminal_toe(profile.design_section)) is not None
+    ]
+    if not observations or not toe_lines:
+        return ()
+    counts = {line: 0 for line in toe_lines}
+    for observation in observations:
+        closest = min(toe_lines, key=lambda line: _point_line_distance(observation, line))
+        counts[closest] += 1
+    maximum = max(counts.values())
+    return tuple(line for line in toe_lines if counts[line] == maximum and maximum > 0)
 
 
 def build_transverse_profiles(
@@ -33,9 +219,17 @@ def build_transverse_profiles(
     wall even when the Assessment Area boundary has a different azimuth.
     """
     topology = extract_design_wall_topology(design_surface, role_mapping)
-    alignment = select_design_alignment(topology, assessment_polygon)
-    crest = alignment.line
     toe_lines = tuple(line for line in topology.transitions if line.kind == "toe")
+    alignment = _select_upper_envelope(
+        topology,
+        design_surface,
+        assessment_polygon,
+        role_mapping,
+        toe_lines,
+        spacing_m=spacing_m,
+        tangent_window_m=tangent_window_m,
+    )
+    crest = alignment.line
     samples = sample_wall_alignment(
         crest,
         toe_lines,
@@ -58,7 +252,8 @@ def build_transverse_profiles(
             design_section=build_design_section(design_segments),
         ))
     profiles = tuple(profiles)
+    external_toes = _external_toe_lines(profiles, toe_lines)
     return WallProfileSet(
-        crest_line=crest, toe_lines=toe_lines, profiles=profiles,
+        crest_line=crest, toe_lines=external_toes, profiles=profiles,
         design_variants=build_design_variants(profiles),
     )
