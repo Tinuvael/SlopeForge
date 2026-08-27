@@ -340,7 +340,7 @@ def evaluate_upper_crest_station(
 
     external_toe, _ = _toe_near_area_exit(section, interval[1])
     return UpperCrestStationEvaluation(
-        True, "valid local wall section", interval, external_toe, full_segments
+        True, "valid local wall section", interval, external_toe, local_segments
     )
 
 
@@ -532,14 +532,14 @@ def build_transverse_profiles(
     profiles = []
     for sample, evaluation in stations:
         interval = evaluation.assessment_u_interval
-        full_design_segments = evaluation.full_design_segments
+        local_design_segments = evaluation.local_design_segments
         external_toe = evaluation.external_toe
         design_segments = _clip_segments_to_interval(
-            full_design_segments,
+            local_design_segments,
             interval,
         )
         evaluated_section = build_design_section(design_segments)
-        full_section = build_design_section(full_design_segments)
+        full_section = build_design_section(local_design_segments)
         design_section = type(evaluated_section)(
             evaluated_section.elements,
             full_section.upstream_context,
@@ -552,7 +552,7 @@ def build_transverse_profiles(
         display_design_segments = tuple(sorted(
             (
                 *(
-                    segment for segment in full_design_segments
+                    segment for segment in local_design_segments
                     if segment.source_triangle_index in context_triangle_indices
                     and segment.u_min < 0.0
                     and segment.u_max <= 1e-7

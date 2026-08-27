@@ -194,7 +194,7 @@ class UpperCrestStationEvaluation:
     reason: str
     assessment_u_interval: tuple[float, float] | None = None
     external_toe: SectionPoint | None = None
-    full_design_segments: tuple[SectionSegment, ...] = ()
+    local_design_segments: tuple[SectionSegment, ...] = ()
 
 
 @dataclass(frozen=True)

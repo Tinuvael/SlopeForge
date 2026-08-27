@@ -375,6 +375,74 @@ def test_folded_upper_crest_extra_crossing_does_not_replace_profile_origin():
     )
 
 
+def _with_remote_high_face(surface: TriangleSurface) -> tuple[TriangleSurface, TriangleSurface]:
+    """Add a disconnected same-plane Face well above the evaluated wall."""
+    vertices = list(surface.vertices)
+    first = len(vertices)
+    vertices.extend((
+        SurfaceVertex(2.0, 0.0, 680.0),
+        SurfaceVertex(2.0, 20.0, 680.0),
+        SurfaceVertex(4.0, 0.0, 670.0),
+        SurfaceVertex(4.0, 20.0, 670.0),
+    ))
+    remote_triangles = (
+        SurfaceTriangle(
+            (first, first + 2, first + 1),
+            source_attributes={"COLOUR": 2},
+        ),
+        SurfaceTriangle(
+            (first + 2, first + 3, first + 1),
+            source_attributes={"COLOUR": 2},
+        ),
+    )
+    design = TriangleSurface(
+        tuple(vertices), (*surface.triangles, *remote_triangles)
+    )
+    actual = TriangleSurface(tuple(vertices[first:]), (
+        SurfaceTriangle((0, 2, 1)), SurfaceTriangle((2, 3, 1)),
+    ))
+    return design, actual
+
+
+def _upper_wall_profiles(result):
+    return tuple(
+        profile for profile in result.profiles
+        if abs(profile.alignment.origin.x) < 1e-6
+    )
+
+
+def test_remote_folded_design_does_not_return_to_local_profile_geometry():
+    base_surface = _multi_face_surface()
+    design_with_remote, high_actual = _with_remote_high_face(base_surface)
+    base = build_transverse_profiles(
+        base_surface, high_actual, _area(), MAPPING,
+        spacing_m=5.0, tangent_window_m=4.0,
+    )
+    augmented = build_transverse_profiles(
+        design_with_remote, high_actual, _area(), MAPPING,
+        spacing_m=5.0, tangent_window_m=4.0,
+    )
+
+    base_profiles = _upper_wall_profiles(base)
+    augmented_profiles = _upper_wall_profiles(augmented)
+    assert len(augmented_profiles) == len(base_profiles)
+    assert [profile.design_segments for profile in augmented_profiles] == [
+        profile.design_segments for profile in base_profiles
+    ]
+    assert [profile.design_section.topology_signature for profile in augmented_profiles] == [
+        profile.design_section.topology_signature for profile in base_profiles
+    ]
+    assert all(
+        max(
+            point.z
+            for segment in profile.design_segments
+            for point in (segment.start, segment.end)
+        ) < 650.0
+        for profile in augmented_profiles
+    )
+    assert all(not profile.actual_segments for profile in augmented_profiles)
+
+
 def _boundary(start: float, end: float) -> DesignAlignmentBoundary:
     return DesignAlignmentBoundary(
         WallTransitionLine(
