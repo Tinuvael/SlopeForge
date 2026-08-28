@@ -8,7 +8,11 @@ from .design import (
     select_primary_crest_line,
     transition_length_in_area,
 )
-from .engine import build_transverse_profiles
+from .engine import build_transverse_profiles as _build_transverse_profiles
+from .invariants import (
+    enforce_profile_engineering_invariants,
+    profile_vertical_order_issue,
+)
 from .models import (
     PROTOTYPE_DESIGN_ROLE_MAPPING,
     DesignAlignmentBoundary,
@@ -27,6 +31,14 @@ from .models import (
 )
 from .sections import clip_section_segments_to_z_range, intersect_surface_with_profile
 from .semantic_sections import build_design_section, build_design_variants
+
+
+def build_transverse_profiles(*args, **kwargs) -> WallProfileSet:
+    """Build profiles and enforce non-negotiable open-pit wall geometry."""
+    return enforce_profile_engineering_invariants(
+        _build_transverse_profiles(*args, **kwargs)
+    )
+
 
 __all__ = [
     "SectionPoint",
@@ -54,4 +66,6 @@ __all__ = [
     "semantic_value_token",
     "build_design_section",
     "build_design_variants",
+    "enforce_profile_engineering_invariants",
+    "profile_vertical_order_issue",
 ]
