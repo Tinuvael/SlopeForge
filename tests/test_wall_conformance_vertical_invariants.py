@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import domain.wall_conformance as wall_conformance
 from domain.geometry.surfaces import SurfaceVertex
 from domain.wall_conformance import (
     SectionPoint,
@@ -60,7 +61,7 @@ def _crest(y: float, z: float) -> WallTransitionLine:
     )
 
 
-def test_rising_internal_candidate_is_removed_before_public_profile_result() -> None:
+def _mixed_profile_set() -> WallProfileSet:
     good = _profile(
         component_index=0,
         crest_z=30.0,
@@ -73,19 +74,35 @@ def test_rising_internal_candidate_is_removed_before_public_profile_result() -> 
         face_end_z=20.0,
         toe_z=20.0,
     )
-    raw = WallProfileSet(
+    return WallProfileSet(
         crest_lines=(_crest(0.0, 30.0), _crest(2.0, 10.0)),
         toe_lines=(),
         profiles=(good, inverted),
     )
 
-    filtered = enforce_profile_engineering_invariants(raw)
+
+def test_rising_internal_candidate_is_removed_before_public_profile_result() -> None:
+    filtered = enforce_profile_engineering_invariants(_mixed_profile_set())
 
     assert len(filtered.profiles) == 1
     assert filtered.profiles[0].alignment.origin.z == pytest.approx(30.0)
     assert filtered.profiles[0].alignment.boundary_component_index == 0
     assert len(filtered.crest_lines) == 1
     assert profile_vertical_order_issue(filtered.profiles[0]) is None
+
+
+def test_public_builder_always_applies_engineering_invariant_gate(monkeypatch) -> None:
+    raw = _mixed_profile_set()
+    monkeypatch.setattr(
+        wall_conformance,
+        "_build_transverse_profiles",
+        lambda *args, **kwargs: raw,
+    )
+
+    result = wall_conformance.build_transverse_profiles(object())
+
+    assert len(result.profiles) == 1
+    assert result.profiles[0].alignment.origin.z == pytest.approx(30.0)
 
 
 def test_lower_toe_may_not_be_above_upper_crest() -> None:
