@@ -277,10 +277,14 @@ def extract_design_wall_topology(
 ) -> DesignWallTopology:
     """Build transition and upper-alignment relationships from mesh topology.
 
-    A design crest/toe is not guessed from mesh winding. Shared face-platform
-    topology remains authoritative. Uppermost outer Face rims are classified
-    from their local triangle plane and downslope direction, keeping lateral
-    and unknown-role mesh boundaries out of the alignment.
+    Shared Face/Platform topology is authoritative. The local triangle-plane
+    crest/toe classification remains useful for transition display and lower-toe
+    candidates, but it is deliberately not the final authority for selecting an
+    external Upper Crest. Face/Platform chains provisionally classified as toe
+    are also exposed as upper-alignment candidates; the exact transverse Design
+    section later accepts only stations whose adjacent Face descends with +U.
+    Outer Face rims still use the dedicated upper-rim filter to avoid admitting
+    lateral project/crop boundaries as alignment candidates.
     """
     roles = tuple(
         role_mapping.resolve(triangle.source_attributes)
@@ -374,9 +378,36 @@ def extract_design_wall_topology(
         crest_lines = tuple(line for line, _ in crest_chains)
         toe_lines = tuple(line for line, _ in toe_chains)
         transitions.extend((*crest_lines, *toe_lines))
-        for line, chain_edges in crest_chains:
+
+        # The triangle-plane classifier is a useful first pass, not the
+        # engineering authority for Upper Crest identity. A steep/graded real
+        # Face can make its true upper Face/Platform transition look like a toe
+        # in plan-gradient space. Feed those semantic transitions to the exact
+        # local-section validator as crest *candidates* while preserving their
+        # preliminary toe classification in ``transitions``.
+        alignment_candidates = [
+            (line, chain_edges, False) for line, chain_edges in crest_chains
+        ]
+        alignment_candidates.extend(
+            (
+                WallTransitionLine("crest", line.points),
+                chain_edges,
+                True,
+            )
+            for line, chain_edges in toe_chains
+            if chain_edges
+            and all(edge.source == "Face/Platform" for edge in chain_edges)
+        )
+        for line, chain_edges, reclassified_candidate in alignment_candidates:
             sources = {edge.source for edge in chain_edges}
-            source = next(iter(sources)) if len(sources) == 1 else "mixed crest sources"
+            if reclassified_candidate:
+                source = "Face/Platform local crest candidate"
+            else:
+                source = (
+                    next(iter(sources))
+                    if len(sources) == 1
+                    else "mixed crest sources"
+                )
             alignments.append(
                 DesignAlignmentBoundary(
                     line,
@@ -634,8 +665,10 @@ def sample_wall_alignment(
     """
     if crest_line.kind != "crest":
         raise ValueError("Wall alignment requires a design crest line")
-    if not toe_lines or any(line.kind != "toe" for line in toe_lines):
-        raise ValueError("Wall alignment requires at least one design toe line")
+    if any(line.kind != "toe" for line in toe_lines):
+        raise ValueError("Wall alignment toe_lines may contain only design toe lines")
+    if not toe_lines and not interior_points:
+        raise ValueError("Wall alignment requires Design Face direction context")
     if spacing_m <= 0 or tangent_window_m <= 0:
         raise ValueError("Alignment spacing and tangent window must be positive")
 
