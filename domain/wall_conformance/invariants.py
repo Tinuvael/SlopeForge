@@ -8,12 +8,16 @@ never reach the diagnostic UI as an external-wall profile.
 """
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import replace
+import logging
 from math import hypot
 
 from .models import TransverseProfile, WallProfileSet
 from .semantic_sections import build_design_variants
 
+
+logger = logging.getLogger(__name__)
 
 _VERTICAL_TOLERANCE_M = 1e-5
 _CONVERGENCE_PLAN_TOLERANCE_M = 1e-4
@@ -76,11 +80,32 @@ def enforce_profile_engineering_invariants(
     gate: an internal/reversed candidate cannot survive merely because its first
     adjacent Face happened to descend locally.
     """
-    retained = tuple(
-        profile
+    checked = tuple(
+        (profile, profile_vertical_order_issue(profile))
         for profile in profile_set.profiles
-        if profile_vertical_order_issue(profile) is None
     )
+    retained = tuple(profile for profile, issue in checked if issue is None)
+    rejected = tuple((profile, issue) for profile, issue in checked if issue is not None)
+    if rejected:
+        reasons = Counter(issue for _, issue in rejected)
+        logger.warning(
+            "Rejected %d/%d impossible Design wall profiles by engineering "
+            "invariants: %s",
+            len(rejected),
+            len(checked),
+            ", ".join(f"{reason}={count}" for reason, count in sorted(reasons.items())),
+        )
+        for profile, issue in rejected:
+            logger.debug(
+                "Rejected wall profile component=%d chainage=%.3f "
+                "crest=(%.3f, %.3f, %.3f) reason=%s",
+                profile.alignment.boundary_component_index,
+                profile.alignment.chainage_m,
+                profile.alignment.origin.x,
+                profile.alignment.origin.y,
+                profile.alignment.origin.z,
+                issue,
+            )
     if not retained:
         raise ValueError(
             "No physically valid Design wall profiles remain: Upper Crest must "
