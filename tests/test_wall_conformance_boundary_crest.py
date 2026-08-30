@@ -120,15 +120,36 @@ def test_multi_row_lateral_boundary_never_turns_into_upper_alignment():
         PlanPoint(-1, 1), PlanPoint(11, 1), PlanPoint(11, 21),
         PlanPoint(-1, 21), PlanPoint(-1, 1),
     ))
-    expected = ((0.0, 0.0, 120.0), (0.0, 6.0, 128.0),
-                (0.0, 14.0, 113.0), (0.0, 22.0, 125.0))
+    expected = {
+        (0.0, 0.0, 120.0),
+        (0.0, 6.0, 128.0),
+        (0.0, 14.0, 113.0),
+        (0.0, 22.0, 125.0),
+    }
     for reverse_winding in (False, True):
         surface = _multi_row_upper_face(reverse_winding=reverse_winding)
         topology = extract_design_wall_topology(surface, MAPPING)
-        assert len(topology.alignment_boundaries) == 1
-        alignment = topology.alignment_boundaries[0]
-        assert tuple((p.x, p.y, p.z) for p in alignment.line.points) == expected
-        assert len(alignment.interior_points) == 3
+        candidates = topology.alignment_boundaries
+        assert candidates
+        # New topology intentionally exposes preliminary Face/Platform toe
+        # chains as crest candidates so the exact section can rescue a true
+        # Upper Crest on irregular real TINs.  That must not admit the lateral
+        # crop edges: every candidate in this fixture remains strike-oriented.
+        assert all(
+            max(point.x for point in boundary.line.points)
+            - min(point.x for point in boundary.line.points)
+            <= 1e-6
+            for boundary in candidates
+        )
+        upper = [
+            boundary
+            for boundary in candidates
+            if {(point.x, point.y, point.z) for point in boundary.line.points}
+            == expected
+        ]
+        assert len(upper) == 1
+        assert len(upper[0].interior_points) == 3
+
         result = build_transverse_profiles(
             surface, surface, area, MAPPING,
             spacing_m=4.0, tangent_window_m=4.0,
