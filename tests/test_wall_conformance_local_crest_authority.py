@@ -88,5 +88,5 @@ def test_exact_section_can_rescue_upper_face_platform_transition_preclassified_a
             if element.role == "face"
         ]
         assert faces
-        assert all(face.start_u >= -1e-6 for face in faces)
+        assert all(face.start.u >= -1e-6 for face in faces)
         assert all(face.vertical_change < 0.0 for face in faces)
