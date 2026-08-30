@@ -2,7 +2,7 @@
 
 ## What this project is
 
-SlopeForge is a Python 3.12 / PySide6 desktop application for open-pit geotechnical and blasting engineering. PostgreSQL, SQLAlchemy 2.x, psycopg 3, and Alembic provide persistence.
+SlopeForge is a Python 3.14 / PySide6 desktop application for open-pit geotechnical and blasting engineering. PostgreSQL, SQLAlchemy 2.x, psycopg 3, and Alembic provide persistence.
 
 ## Source of truth
 
@@ -208,6 +208,6 @@ QT_QPA_PLATFORM=offscreen pytest -q
 - Final diff has no new duplicate source of truth.
 - Focused regression tests cover the change.
 - Revision/rollback/concurrency semantics are preserved where relevant.
-- Windows / Python 3.12 is considered.
+- Windows / Python 3.14 is considered.
 - Current docs are updated only when behavior/architecture actually changed.
 - Known unrelated failures are reported, not opportunistically fixed.
