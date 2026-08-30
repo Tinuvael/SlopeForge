@@ -396,7 +396,11 @@ def test_short_crest_below_profile_spacing_still_has_profile_and_visible_span() 
         tangent_window_m=1.0,
     )
 
-    assert len(result.profiles) == 1
+    assert result.profiles
+    station_y = sorted(profile.alignment.origin.y for profile in result.profiles)
+    assert station_y[0] == pytest.approx(0.1)
+    assert station_y[-1] == pytest.approx(1.4)
+    assert len({round(value, 8) for value in station_y}) == len(station_y)
     assert len(result.crest_lines) == 1
     crest = result.crest_lines[0]
     assert crest.plan_length == pytest.approx(1.3)
