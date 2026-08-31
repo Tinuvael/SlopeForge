@@ -342,7 +342,7 @@ def test_internal_crest_is_rejected_by_full_pipeline() -> None:
     )
 
 
-def test_concave_area_keeps_disconnected_crest_spans_separate() -> None:
+def test_concave_area_keeps_continuous_face_overlap_as_one_wall_sector() -> None:
     surface = _strip_surface()
     area = PlanPolygon((
         PlanPoint(0.0, 1.0),
@@ -364,14 +364,15 @@ def test_concave_area_keeps_disconnected_crest_spans_separate() -> None:
         tangent_window_m=2.0,
     )
 
-    assert len(result.crest_lines) == 2
-    y_ranges = sorted(
-        (min(point.y for point in line.points), max(point.y for point in line.points))
-        for line in result.crest_lines
+    # The notch excludes the crest itself for y=8..22, but x=3..5 of the
+    # descending Design Face remains inside the Area.  Assessment is a mask of
+    # the wall section, so that interval is not a break in engineering coverage.
+    assert len(result.crest_lines) == 1
+    crest = result.crest_lines[0]
+    assert (min(point.y for point in crest.points), max(point.y for point in crest.points)) == pytest.approx(
+        (1.0, 29.0)
     )
-    assert y_ranges[0] == pytest.approx((1.0, 8.0))
-    assert y_ranges[1] == pytest.approx((22.0, 29.0))
-    assert {profile.alignment.boundary_component_index for profile in result.profiles} == {0, 1}
+    assert {profile.alignment.boundary_component_index for profile in result.profiles} == {0}
     assert all(
         0 <= profile.alignment.boundary_component_index < len(result.crest_lines)
         for profile in result.profiles

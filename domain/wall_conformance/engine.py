@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import logging
-from math import hypot
+from math import ceil, hypot
 
 from domain.geometry.operations import point_in_polygon, segment_intersection
 from domain.geometry.surfaces import SurfaceVertex, TriangleSurface
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.wall_conformance.design import (
     extract_design_wall_topology,
-    sample_wall_alignment,
-    transition_length_in_area,
 )
 from domain.wall_conformance.models import (
     DesignAlignmentBoundary,
@@ -35,6 +33,7 @@ from domain.wall_conformance.semantic_sections import build_design_section, buil
 logger = logging.getLogger(__name__)
 
 _SECTION_TOLERANCE = 1e-5
+_STATION_CHAINAGE_TOLERANCE_M = 1e-5
 
 
 def _assemble_alignment_boundaries(boundaries, tolerance: float = 0.02):
@@ -349,10 +348,10 @@ def evaluate_upper_crest_station(
     """Validate one candidate origin using only its local wall geometry."""
     interval = _assessment_u_interval(sample, assessment_polygon)
     if interval is None:
-        return UpperCrestStationEvaluation(False, "no local Assessment interval")
+        return UpperCrestStationEvaluation(False, "no transverse Assessment overlap")
     width = interval[1] - interval[0]
     if width <= 1e-6 or interval[1] <= 1e-6:
-        return UpperCrestStationEvaluation(False, "local Assessment width below tolerance")
+        return UpperCrestStationEvaluation(False, "zero wall width in Assessment")
 
     full_segments = intersect_surface_with_profile(
         design_surface, sample, role_mapping=role_mapping
@@ -364,6 +363,19 @@ def evaluate_upper_crest_station(
             False, "no Design geometry incident to sampled crest", interval
         )
 
+    evaluated_face_width = sum(
+        max(
+            0.0,
+            min(segment.u_max, interval[1]) - max(segment.u_min, interval[0]),
+        )
+        for segment in local_segments
+        if segment.semantic_role == "face"
+    )
+    if evaluated_face_width <= _SECTION_TOLERANCE:
+        return UpperCrestStationEvaluation(
+            False, "no transverse Assessment overlap with Design Face", interval
+        )
+
     if any(
         segment.semantic_role == "face"
         and segment.u_max < -_SECTION_TOLERANCE
@@ -371,7 +383,7 @@ def evaluate_upper_crest_station(
         for segment in local_segments
     ):
         return UpperCrestStationEvaluation(
-            False, "connected evaluated Face exists upstream", interval
+            False, "internal/upstream Face conflict", interval
         )
 
     section = build_design_section(local_segments)
@@ -401,7 +413,7 @@ def evaluate_upper_crest_station(
     )
     if not descending_faces:
         return UpperCrestStationEvaluation(
-            False, "adjacent downstream Design Face does not descend", interval
+            False, "no descending incident Face", interval
         )
 
     external_toe, _ = _toe_near_area_exit(section, interval[1])
@@ -455,8 +467,6 @@ def _sample_crest_chainage(
     if total <= 1e-9:
         return None
     closed = _crest_is_closed(line)
-    if closed and abs(chainage - total) <= 1e-8:
-        chainage = 0.0
     origin = _interpolate_crest_chainage(line, cumulative, chainage)
     if closed:
         before_s = chainage - tangent_window_m
@@ -515,94 +525,247 @@ def _crest_subline(line, start_chainage: float, end_chainage: float):
     return WallTransitionLine("crest", deduplicated)
 
 
-def _crest_area_chainage_spans(
-    line: WallTransitionLine, assessment_polygon: PlanPolygon
-) -> tuple[tuple[float, float], ...]:
-    """Return in-Area spans without projecting repeated/self-crossing XY points."""
-    spans: list[tuple[float, float]] = []
-    cumulative = 0.0
-    for first, second in zip(line.points, line.points[1:]):
-        start = PlanPoint(first.x, first.y)
-        end = PlanPoint(second.x, second.y)
-        dx, dy = end.x - start.x, end.y - start.y
-        length_sq = dx * dx + dy * dy
-        segment_length = hypot(dx, dy)
-        if segment_length <= 1e-12:
-            continue
-        cuts = [0.0, 1.0]
-        for edge_start, edge_end in zip(
-            assessment_polygon.ring, assessment_polygon.ring[1:]
-        ):
-            intersection = segment_intersection(start, end, edge_start, edge_end)
-            if intersection is not None:
-                cuts.append(max(
-                    0.0,
-                    min(
-                        1.0,
-                        ((intersection.x - start.x) * dx
-                         + (intersection.y - start.y) * dy) / length_sq,
-                    ),
-                ))
-        cuts.sort()
-        unique = [cuts[0]]
-        for value in cuts[1:]:
-            if abs(value - unique[-1]) > 1e-9:
-                unique.append(value)
-        for lower_fraction, upper_fraction in zip(unique, unique[1:]):
-            if upper_fraction - lower_fraction <= 1e-9:
-                continue
-            midpoint_fraction = (lower_fraction + upper_fraction) / 2.0
-            midpoint = PlanPoint(
-                start.x + dx * midpoint_fraction,
-                start.y + dy * midpoint_fraction,
-            )
-            if not point_in_polygon(midpoint, assessment_polygon):
-                continue
-            lower = cumulative + segment_length * lower_fraction
-            upper = cumulative + segment_length * upper_fraction
-            if spans and abs(spans[-1][1] - lower) <= 1e-8:
-                spans[-1] = (spans[-1][0], upper)
-            else:
-                spans.append((lower, upper))
-        cumulative += segment_length
-    return tuple(spans)
+def _plan_point_in_triangle(point: PlanPoint, triangle) -> bool:
+    vertices = tuple(PlanPoint(vertex.x, vertex.y) for vertex in triangle)
+    signs = []
+    for first, second in zip(vertices, (*vertices[1:], vertices[0])):
+        signs.append(
+            (second.x - first.x) * (point.y - first.y)
+            - (second.y - first.y) * (point.x - first.x)
+        )
+    return not (
+        any(value < -1e-9 for value in signs)
+        and any(value > 1e-9 for value in signs)
+    )
 
 
-def _samples_with_area_endpoints(
+def _triangle_intersects_area(triangle, area: PlanPolygon, area_bounds) -> bool:
+    triangle_points = tuple(PlanPoint(vertex.x, vertex.y) for vertex in triangle)
+    triangle_x = tuple(point.x for point in triangle_points)
+    triangle_y = tuple(point.y for point in triangle_points)
+    area_min_x, area_min_y, area_max_x, area_max_y = area_bounds
+    if (
+        max(triangle_x) < area_min_x - 1e-9
+        or min(triangle_x) > area_max_x + 1e-9
+        or max(triangle_y) < area_min_y - 1e-9
+        or min(triangle_y) > area_max_y + 1e-9
+    ):
+        return False
+    if any(point_in_polygon(point, area) for point in triangle_points):
+        return True
+    if any(_plan_point_in_triangle(point, triangle) for point in area.ring[:-1]):
+        return True
+    triangle_edges = tuple(zip(triangle_points, (*triangle_points[1:], triangle_points[0])))
+    return any(
+        segment_intersection(first, second, area_first, area_second) is not None
+        for first, second in triangle_edges
+        for area_first, area_second in zip(area.ring, area.ring[1:])
+    )
+
+
+def _point_crest_chainage(
+    point: PlanPoint,
     line: WallTransitionLine,
-    samples: tuple[WallAlignmentSample, ...],
-    area_spans: tuple[tuple[float, float], ...],
-    tangent_window_m: float,
-) -> tuple[WallAlignmentSample, ...]:
-    """Add exact crest/Assessment intersections as profile stations."""
-    by_chainage = {round(sample.chainage_m, 8): sample for sample in samples}
+    cumulative: tuple[float, ...],
+) -> tuple[float, float]:
+    best: tuple[float, float] | None = None
+    for index, (first, second) in enumerate(zip(line.points, line.points[1:])):
+        dx, dy = second.x - first.x, second.y - first.y
+        length_sq = dx * dx + dy * dy
+        fraction = 0.0 if length_sq <= 1e-18 else max(
+            0.0,
+            min(
+                1.0,
+                ((point.x - first.x) * dx + (point.y - first.y) * dy)
+                / length_sq,
+            ),
+        )
+        x, y = first.x + fraction * dx, first.y + fraction * dy
+        distance_sq = (point.x - x) ** 2 + (point.y - y) ** 2
+        chainage = cumulative[index] + hypot(dx, dy) * fraction
+        candidate = distance_sq, chainage
+        if best is None or candidate < best:
+            best = candidate
+    if best is None:
+        raise ValueError("Design crest has no measurable segment")
+    return best[1], best[0] ** 0.5
+
+
+def _merge_chainage_spans(spans, total: float):
+    merged = []
+    for start, end in sorted(
+        (max(0.0, start), min(total, end)) for start, end in spans
+    ):
+        if end < start + 1e-9:
+            continue
+        if merged and start <= merged[-1][1] + 1e-8:
+            merged[-1] = merged[-1][0], max(merged[-1][1], end)
+        else:
+            merged.append((start, end))
+    return tuple(merged)
+
+
+def _face_patch_chainage_prefilter(
+    component: DesignAlignmentBoundary,
+    design_surface: TriangleSurface,
+    assessment_polygon: PlanPolygon,
+    relevant_triangle_indices,
+    *,
+    spacing_m: float,
+):
+    """Bound crest probing to Face triangles that can touch the Area.
+
+    Face-patch provenance is the coarse spatial authority.  Exact eligibility
+    is still decided by the transverse Design section, so this prefilter may
+    admit extra stations but must not reject a wall section merely because its
+    crest is upstream of the Assessment polygon.
+    """
+    cumulative = _crest_cumulative_lengths(component.line)
+    total = cumulative[-1]
+    raw_spans = []
+    event_chainages = []
+    for triangle_index in relevant_triangle_indices:
+        triangle = design_surface.triangles[triangle_index]
+        vertices = tuple(
+            design_surface.vertices[index] for index in triangle.vertex_indices
+        )
+        projected = tuple(
+            _point_crest_chainage(PlanPoint(vertex.x, vertex.y), component.line, cumulative)[0]
+            for vertex in vertices
+        )
+        lower, upper = min(projected), max(projected)
+        raw_spans.append((lower - spacing_m, upper + spacing_m))
+    if not raw_spans:
+        return (), ()
+    spans = _merge_chainage_spans(raw_spans, total)
+    for point in assessment_polygon.ring[:-1]:
+        chainage, _distance = _point_crest_chainage(point, component.line, cumulative)
+        if any(start - 1e-8 <= chainage <= end + 1e-8 for start, end in spans):
+            event_chainages.append(chainage)
+    return spans, tuple(event_chainages)
+
+
+def _probe_chainages(
+    line: WallTransitionLine,
+    spans,
+    event_chainages,
+    spacing_m: float,
+):
     total = _crest_cumulative_lengths(line)[-1]
     closed = _crest_is_closed(line)
-    for start, end in area_spans:
-        for chainage in (start, end):
-            if closed and abs(chainage - total) <= 1e-8:
-                chainage = 0.0
-            key = round(chainage, 8)
-            if key in by_chainage:
-                continue
-            sample = _sample_crest_chainage(line, chainage, tangent_window_m)
-            if sample is not None:
-                by_chainage[key] = sample
-    return tuple(sorted(by_chainage.values(), key=lambda sample: sample.chainage_m))
+    values: dict[float, bool] = {}
+    boundary_events = set()
+
+    def add(chainage: float, *, regular: bool = False) -> None:
+        values[chainage] = values.get(chainage, False) or regular
+
+    for start, end in spans:
+        add(start)
+        add(end)
+        boundary_events.update((start, end))
+        first_regular = max(0, ceil((start - 1e-9) / spacing_m))
+        regular = first_regular * spacing_m
+        while regular <= end + 1e-9:
+            if not (closed and abs(regular - total) <= 1e-8):
+                add(min(total, regular), regular=True)
+            regular += spacing_m
+        local_events = {
+            chainage
+            for chainage in event_chainages
+            if start - 1e-8 <= chainage <= end + 1e-8
+        }
+        for chainage in local_events:
+            add(chainage)
+        boundary_events.update(local_events)
+    if closed:
+        values.pop(total, None)
+    ordered_events = sorted(boundary_events)
+    # Boundary projections catch most exact topology changes; mid-probes also
+    # preserve narrow or concave valid runs between those events.
+    for midpoint in (
+        midpoint
+        for first, second in zip(ordered_events, ordered_events[1:])
+        for midpoint in ((first + second) / 2.0,)
+        if any(start - 1e-8 <= midpoint <= end + 1e-8 for start, end in spans)
+    ):
+        add(midpoint)
+    return tuple(sorted(values.items()))
 
 
-def _split_valid_runs(indexed_evaluated):
+def _split_valid_runs(evaluated):
     runs = []
     current = []
-    for index, sample, evaluation in indexed_evaluated:
+    for item in evaluated:
+        _chainage, _sample, evaluation, _regular = item
         if evaluation.valid:
-            current.append((index, sample, evaluation))
+            current.append(item)
         elif current:
             runs.append(current)
             current = []
     if current:
         runs.append(current)
     return runs
+
+
+def _evaluate_candidate_chainage(
+    component,
+    chainage,
+    design_surface,
+    assessment_polygon,
+    role_mapping,
+    toe_lines,
+    tangent_window_m,
+):
+    raw_sample = _sample_crest_chainage(
+        component.line, chainage, tangent_window_m
+    )
+    if raw_sample is None:
+        return None, UpperCrestStationEvaluation(
+            False, "invalid Design crest tangent"
+        )
+    sample = _orient_sample_downwall(raw_sample, design_surface, role_mapping)
+    if sample is None:
+        return raw_sample, UpperCrestStationEvaluation(
+            False, "no descending incident Face"
+        )
+    return sample, evaluate_upper_crest_station(
+        sample,
+        design_surface,
+        assessment_polygon,
+        role_mapping,
+        toe_lines,
+    )
+
+
+def _refine_valid_run_endpoint(
+    component,
+    invalid_chainage,
+    valid_item,
+    design_surface,
+    assessment_polygon,
+    role_mapping,
+    toe_lines,
+    tangent_window_m,
+):
+    valid_chainage, valid_sample, valid_evaluation, _regular = valid_item
+    for _ in range(32):
+        if abs(valid_chainage - invalid_chainage) <= _STATION_CHAINAGE_TOLERANCE_M:
+            break
+        midpoint = (valid_chainage + invalid_chainage) / 2.0
+        sample, evaluation = _evaluate_candidate_chainage(
+            component,
+            midpoint,
+            design_surface,
+            assessment_polygon,
+            role_mapping,
+            toe_lines,
+            tangent_window_m,
+        )
+        if evaluation.valid:
+            valid_chainage, valid_sample, valid_evaluation = midpoint, sample, evaluation
+        else:
+            invalid_chainage = midpoint
+    return valid_chainage, valid_sample, valid_evaluation, False
 
 
 def _collect_external_upper_stations(
@@ -617,133 +780,161 @@ def _collect_external_upper_stations(
 ):
     confirmed = []
     accepted = []
-    candidates = tuple(
-        boundary for boundary in topology.alignment_boundaries
-        if transition_length_in_area(boundary.line, assessment_polygon) > 1e-9
-    )
-    for candidate_index, component in enumerate(candidates):
-        area_spans = _crest_area_chainage_spans(
-            component.line, assessment_polygon
-        )
-        if not area_spans:
+    area_x = tuple(point.x for point in assessment_polygon.ring)
+    area_y = tuple(point.y for point in assessment_polygon.ring)
+    area_bounds = min(area_x), min(area_y), max(area_x), max(area_y)
+    patch_area_triangles: dict[int, tuple[int, ...]] = {}
+    for candidate_index, component in enumerate(topology.alignment_boundaries):
+        patch_index = component.face_patch_index
+        if not (0 <= patch_index < len(topology.face_patch_triangle_indices)):
             continue
-        try:
-            regular_samples = sample_wall_alignment(
-                component.line,
-                toe_lines,
-                assessment_polygon,
-                spacing_m=spacing_m,
-                tangent_window_m=tangent_window_m,
-                interior_points=component.interior_points,
+        if patch_index not in patch_area_triangles:
+            patch_area_triangles[patch_index] = tuple(
+                triangle_index
+                for triangle_index in topology.face_patch_triangle_indices[patch_index]
+                if _triangle_intersects_area(
+                    tuple(
+                        design_surface.vertices[index]
+                        for index in design_surface.triangles[
+                            triangle_index
+                        ].vertex_indices
+                    ),
+                    assessment_polygon,
+                    area_bounds,
+                )
             )
-        except ValueError as error:
+        prefilter_spans, event_chainages = _face_patch_chainage_prefilter(
+            component,
+            design_surface,
+            assessment_polygon,
+            patch_area_triangles[patch_index],
+            spacing_m=spacing_m,
+        )
+        if not prefilter_spans:
             logger.debug(
-                "Upper component %d regular sampling unavailable: %s",
+                "Upper component %d skipped: associated Design Face patch has "
+                "no spatial interaction with Assessment Area",
                 candidate_index,
-                error,
             )
-            regular_samples = ()
-        component_samples = _samples_with_area_endpoints(
+            continue
+        probe_chainages = _probe_chainages(
             component.line,
-            regular_samples,
-            area_spans,
-            tangent_window_m,
+            prefilter_spans,
+            event_chainages,
+            spacing_m,
         )
         evaluated = []
-        for raw_sample in component_samples:
-            sample = _orient_sample_downwall(
-                raw_sample,
-                design_surface,
-                role_mapping,
-            )
-            if sample is None:
-                evaluation = UpperCrestStationEvaluation(
-                    False, "unable to orient +U down adjacent Design Face"
-                )
-                evaluated.append((raw_sample, evaluation))
-                continue
-            evaluation = evaluate_upper_crest_station(
-                sample,
+        for chainage, regular in probe_chainages:
+            sample, evaluation = _evaluate_candidate_chainage(
+                component,
+                chainage,
                 design_surface,
                 assessment_polygon,
                 role_mapping,
                 toe_lines,
+                tangent_window_m,
             )
-            evaluated.append((sample, evaluation))
+            evaluated.append((chainage, sample, evaluation, regular))
             if not evaluation.valid:
                 logger.debug(
-                    "Upper station skipped: origin=(%.3f, %.3f, %.3f) "
-                    "chainage=%.3f reason=%s",
-                    sample.origin.x, sample.origin.y, sample.origin.z,
-                    sample.chainage_m, evaluation.reason,
+                    "Upper station skipped: component=%d chainage=%.3f "
+                    "origin=%s reason=%s",
+                    candidate_index,
+                    chainage,
+                    (
+                        None
+                        if sample is None
+                        else (
+                            round(sample.origin.x, 3),
+                            round(sample.origin.y, 3),
+                            round(sample.origin.z, 3),
+                        )
+                    ),
+                    evaluation.reason,
                 )
-        if not any(evaluation.valid for _, evaluation in evaluated):
+        if not any(evaluation.valid for _, _, evaluation, _ in evaluated):
             continue
 
-        indexed_evaluated = [
-            (index, sample, evaluation)
-            for index, (sample, evaluation) in enumerate(evaluated)
-        ]
-        for area_start, area_end in area_spans:
-            span_evaluated = [
-                item for item in indexed_evaluated
-                if area_start - 1e-8 <= item[1].chainage_m <= area_end + 1e-8
-            ]
-            for run in _split_valid_runs(span_evaluated):
-                first_index, first_sample, _ = run[0]
-                last_index, last_sample, _ = run[-1]
-                start_chainage, end_chainage = area_start, area_end
-                if first_index > 0:
-                    previous_sample, previous_evaluation = evaluated[first_index - 1]
-                    if (
-                        not previous_evaluation.valid
-                        and previous_sample.chainage_m >= area_start - 1e-8
-                    ):
-                        start_chainage = max(
-                            start_chainage,
-                            (previous_sample.chainage_m + first_sample.chainage_m) / 2.0,
-                        )
-                if last_index + 1 < len(evaluated):
-                    next_sample, next_evaluation = evaluated[last_index + 1]
-                    if (
-                        not next_evaluation.valid
-                        and next_sample.chainage_m <= area_end + 1e-8
-                    ):
-                        end_chainage = min(
-                            end_chainage,
-                            (last_sample.chainage_m + next_sample.chainage_m) / 2.0,
-                        )
-                if end_chainage - start_chainage <= 1e-9:
-                    logger.debug(
-                        "Confirmed crest run collapsed below tolerance: component=%d",
-                        candidate_index,
-                    )
-                    continue
+        for run in _split_valid_runs(evaluated):
+            first_position = evaluated.index(run[0])
+            last_position = evaluated.index(run[-1])
+            if first_position > 0:
+                previous = evaluated[first_position - 1]
+                if not previous[2].valid:
+                    run.insert(0, _refine_valid_run_endpoint(
+                        component,
+                        previous[0],
+                        run[0],
+                        design_surface,
+                        assessment_polygon,
+                        role_mapping,
+                        toe_lines,
+                        tangent_window_m,
+                    ))
+            if last_position + 1 < len(evaluated):
+                following = evaluated[last_position + 1]
+                if not following[2].valid:
+                    run.append(_refine_valid_run_endpoint(
+                        component,
+                        following[0],
+                        run[-1],
+                        design_surface,
+                        assessment_polygon,
+                        role_mapping,
+                        toe_lines,
+                        tangent_window_m,
+                    ))
 
-                confirmed_line = _crest_subline(
-                    component.line, start_chainage, end_chainage
+            start_chainage, end_chainage = run[0][0], run[-1][0]
+            if end_chainage - start_chainage <= _STATION_CHAINAGE_TOLERANCE_M:
+                logger.debug(
+                    "Confirmed crest run collapsed below tolerance: component=%d",
+                    candidate_index,
                 )
-                component_index = len(confirmed)
-                confirmed.append(DesignAlignmentBoundary(
-                    confirmed_line,
-                    component.face_patch_index,
-                    (),
-                    component.source,
-                ))
-                for _sample_index, sample, evaluation in run:
-                    accepted.append((WallAlignmentSample(
-                        sample.chainage_m,
-                        sample.origin,
-                        sample.tangent_xy,
-                        sample.normal_xy,
-                        component_index,
-                    ), evaluation))
+                continue
+
+            total = _crest_cumulative_lengths(component.line)[-1]
+            full_closed_run = (
+                _crest_is_closed(component.line)
+                and len(_split_valid_runs(evaluated)) == 1
+                and evaluated[0][2].valid
+                and evaluated[-1][2].valid
+                and prefilter_spans[0][0] <= 1e-8
+                and prefilter_spans[-1][1] >= total - 1e-8
+            )
+            confirmed_line = (
+                component.line
+                if full_closed_run
+                else _crest_subline(component.line, start_chainage, end_chainage)
+            )
+            component_index = len(confirmed)
+            confirmed.append(DesignAlignmentBoundary(
+                confirmed_line,
+                component.face_patch_index,
+                (),
+                component.source,
+            ))
+            seen_chainages = set()
+            for run_position, (chainage, sample, evaluation, regular) in enumerate(run):
+                if not regular and run_position not in {0, len(run) - 1}:
+                    continue
+                key = round(chainage, 8)
+                if key in seen_chainages or sample is None:
+                    continue
+                seen_chainages.add(key)
+                accepted.append((WallAlignmentSample(
+                    chainage,
+                    sample.origin,
+                    sample.tangent_xy,
+                    sample.normal_xy,
+                    component_index,
+                ), evaluation))
 
     if not accepted:
         raise ValueError("No design wall alignment samples fall inside the Assessment Area")
     logger.debug(
         "External wall boundary: semantic crest edges=%d accepted components=%d "
-        "profiles=%d",
+        "profiles=%d (Face-patch prefilter + transverse Assessment overlap)",
         len(tuple(edge for edge in topology.boundary_edges if edge.kind == "crest")),
         len(confirmed), len(accepted),
     )

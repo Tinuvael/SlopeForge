@@ -98,7 +98,8 @@ def enforce_profile_engineering_invariants(
         for profile, issue in rejected:
             logger.debug(
                 "Rejected wall profile component=%d chainage=%.3f "
-                "crest=(%.3f, %.3f, %.3f) reason=%s",
+                "crest=(%.3f, %.3f, %.3f) reason=engineering invariant "
+                "rejection: %s",
                 profile.alignment.boundary_component_index,
                 profile.alignment.chainage_m,
                 profile.alignment.origin.x,

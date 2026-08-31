@@ -425,6 +425,7 @@ def extract_design_wall_topology(
             tuple(_vertex_key(point) for point in boundary.line.points)
         )),
         semantic_edges,
+        face_components,
     )
 
 

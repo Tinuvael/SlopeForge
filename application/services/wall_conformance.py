@@ -160,7 +160,10 @@ class WallConformanceDiagnosticService:
                 tangent_window_m=settings.tangent_window_m,
             )
         except ValueError as exc:
-            if str(exc) == "No design crest intersects the Assessment Area":
+            if str(exc) in {
+                "No design crest intersects the Assessment Area",
+                "No design wall alignment samples fall inside the Assessment Area",
+            }:
                 raise WallConformanceUnavailableError(
                     "No design wall alignment intersects this Assessment Area. "
                     "Check the Assessment Area boundary and Design surface semantics."

@@ -161,6 +161,7 @@ class DesignWallTopology:
     transitions: tuple[WallTransitionLine, ...]
     alignment_boundaries: tuple[DesignAlignmentBoundary, ...]
     boundary_edges: tuple[DesignBoundaryEdge, ...] = ()
+    face_patch_triangle_indices: tuple[tuple[int, ...], ...] = ()
 
 
 @dataclass(frozen=True)

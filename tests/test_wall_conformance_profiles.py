@@ -206,16 +206,17 @@ def test_curved_design_alignment_rotates_profiles_with_local_wall_orientation() 
         tx, ty = profile.alignment.tangent_xy
         nx, ny = profile.alignment.normal_xy
         assert tx * nx + ty * ny == pytest.approx(0.0, abs=1e-8)
+        lower_u, upper_u = profile.assessment_u_interval
         design_geometry = {
             (round(point.u, 5), round(point.z, 5))
             for segment in profile.design_segments
             for point in (segment.start, segment.end)
-            if point.u >= -1e-7
+            if lower_u - 1e-7 <= point.u <= upper_u + 1e-7
         }
         actual_geometry = {
             (round(point.u, 5), round(point.z, 5))
             for segment in profile.actual_segments
             for point in (segment.start, segment.end)
-            if point.u >= -1e-7
+            if lower_u - 1e-7 <= point.u <= upper_u + 1e-7
         }
         assert design_geometry == actual_geometry
