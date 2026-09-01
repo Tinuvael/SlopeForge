@@ -257,6 +257,12 @@ def test_external_lower_can_be_entirely_outside_assessment() -> None:
     assert sector.lower_guide is not None
     assert all(point.x == pytest.approx(4.0) for point in sector.lower_guide.points)
     assert sector.downstream_extent is None
+    assert sector.lower_station_mapping is not None
+    assert sector.lower_station_mapping.chainages_m == pytest.approx(
+        sector.lower_guide.cumulative_chainages_m
+    )
+    assert sector.lower_station_mapping.station_fractions[0] == pytest.approx(0.0)
+    assert sector.lower_station_mapping.station_fractions[-1] == pytest.approx(1.0)
 
 
 def test_missing_lower_uses_connected_design_extent() -> None:
@@ -267,6 +273,12 @@ def test_missing_lower_uses_connected_design_extent() -> None:
     assert sector.lower_guide is None
     assert sector.downstream_extent is not None
     assert sector.downstream_extent.kind == "downstream_extent"
+    assert sector.downstream_station_mapping is not None
+    assert sector.downstream_station_mapping.chainages_m == pytest.approx(
+        sector.downstream_extent.cumulative_chainages_m
+    )
+    assert sector.downstream_station_mapping.station_fractions[0] == pytest.approx(0.0)
+    assert sector.downstream_station_mapping.station_fractions[-1] == pytest.approx(1.0)
 
 
 def test_two_nearby_unrelated_walls_remain_two_sectors() -> None:

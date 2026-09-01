@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from heapq import heappop, heappush
-from math import acos, degrees, fsum, hypot
+from math import acos, degrees, fsum, hypot, isfinite
 
 from domain.geometry.operations import validate_simple_polygon
 from domain.geometry.surfaces import SurfaceVertex, TriangleSurface
@@ -75,6 +75,73 @@ class WallSectorDiagnostics:
 
 
 @dataclass(frozen=True)
+class GuideStationMapping:
+    """Monotone corridor-station coordinates along one terminal guide."""
+
+    chainages_m: tuple[float, ...]
+    station_fractions: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.chainages_m) != len(self.station_fractions):
+            raise ValueError("Guide station mapping arrays must align")
+        if len(self.chainages_m) < 2:
+            raise ValueError("Guide station mapping requires at least two nodes")
+        if not all(isfinite(value) for value in (
+            *self.chainages_m, *self.station_fractions,
+        )):
+            raise ValueError("Guide station mapping values must be finite")
+        if abs(self.chainages_m[0]) > _GEOMETRY_TOLERANCE:
+            raise ValueError("Guide station mapping must start at zero chainage")
+        if any(
+            second - first <= _GEOMETRY_TOLERANCE
+            for first, second in zip(self.chainages_m, self.chainages_m[1:])
+        ):
+            raise ValueError("Guide station mapping chainages must increase")
+        if any(
+            second < first - _GEOMETRY_TOLERANCE
+            for first, second in zip(
+                self.station_fractions, self.station_fractions[1:]
+            )
+        ):
+            raise ValueError("Guide station mapping stations must be monotone")
+        if (
+            self.station_fractions[0] < -_GEOMETRY_TOLERANCE
+            or self.station_fractions[-1] > 1.0 + _GEOMETRY_TOLERANCE
+            or self.station_fractions[-1] - self.station_fractions[0]
+            <= _GEOMETRY_TOLERANCE
+        ):
+            raise ValueError(
+                "Guide station mapping must occupy an increasing subset of 0..1"
+            )
+
+    def chainage_at_station(self, station_fraction: float) -> float:
+        """Interpolate terminal chainage without geometric projection."""
+        if not (
+            self.station_fractions[0] - _GEOMETRY_TOLERANCE
+            <= station_fraction
+            <= self.station_fractions[-1] + _GEOMETRY_TOLERANCE
+        ):
+            raise ValueError("Station lies outside terminal guide coverage")
+        for index, (first, second) in enumerate(zip(
+            self.station_fractions, self.station_fractions[1:]
+        )):
+            if (
+                first - _GEOMETRY_TOLERANCE
+                <= station_fraction
+                <= second + _GEOMETRY_TOLERANCE
+            ):
+                fraction = (
+                    0.0
+                    if second - first <= _GEOMETRY_TOLERANCE
+                    else (station_fraction - first) / (second - first)
+                )
+                return self.chainages_m[index] + fraction * (
+                    self.chainages_m[index + 1] - self.chainages_m[index]
+                )
+        return self.chainages_m[-1]
+
+
+@dataclass(frozen=True)
 class WallSector:
     sector_id: str
     upper_guide: WallGuide
@@ -92,6 +159,8 @@ class WallSector:
     span_states: tuple[CorridorSpanState, ...]
     portal_correspondences: tuple[PortalSpanCorrespondence, ...]
     diagnostics: WallSectorDiagnostics
+    lower_station_mapping: GuideStationMapping | None = None
+    downstream_station_mapping: GuideStationMapping | None = None
 
 
 @dataclass(frozen=True)
@@ -120,6 +189,28 @@ class WallSectorExtractionResult:
                 (
                     tuple((q(point.x), q(point.y)) for point in sector.downstream_extent.points)
                     if sector.downstream_extent is not None
+                    else None
+                ),
+                (
+                    (
+                        tuple(q(value) for value in sector.lower_station_mapping.chainages_m),
+                        tuple(
+                            q(value)
+                            for value in sector.lower_station_mapping.station_fractions
+                        ),
+                    )
+                    if sector.lower_station_mapping is not None
+                    else None
+                ),
+                (
+                    (
+                        tuple(q(value) for value in sector.downstream_station_mapping.chainages_m),
+                        tuple(
+                            q(value)
+                            for value in sector.downstream_station_mapping.station_fractions
+                        ),
+                    )
+                    if sector.downstream_station_mapping is not None
                     else None
                 ),
                 tuple(
@@ -1719,6 +1810,106 @@ def _crop_guide_by_station(
     return WallGuide(cropped, kind) if cropped is not None else None
 
 
+def _chainage_at_station(
+    chainages: tuple[float, ...],
+    stations: tuple[float, ...],
+    station: float,
+) -> float:
+    for index, (first, second) in enumerate(zip(stations, stations[1:])):
+        if first - _GEOMETRY_TOLERANCE <= station <= second + _GEOMETRY_TOLERANCE:
+            fraction = 0.0 if second - first <= _GEOMETRY_TOLERANCE else (
+                station - first
+            ) / (second - first)
+            return chainages[index] + fraction * (
+                chainages[index + 1] - chainages[index]
+            )
+    return chainages[0] if station <= stations[0] else chainages[-1]
+
+
+def _station_at_chainage(
+    chainages: tuple[float, ...],
+    stations: tuple[float, ...],
+    chainage: float,
+) -> float:
+    for index, (first, second) in enumerate(zip(chainages, chainages[1:])):
+        if first - _GEOMETRY_TOLERANCE <= chainage <= second + _GEOMETRY_TOLERANCE:
+            fraction = 0.0 if second - first <= _GEOMETRY_TOLERANCE else (
+                chainage - first
+            ) / (second - first)
+            return stations[index] + fraction * (
+                stations[index + 1] - stations[index]
+            )
+    return stations[0] if chainage <= chainages[0] else stations[-1]
+
+
+def _crop_terminal_guide_by_station(
+    points: tuple[PlanPoint, ...],
+    stations: tuple[float, ...],
+    start: float,
+    end: float,
+    kind: str,
+) -> tuple[WallGuide, GuideStationMapping] | None:
+    """Crop a terminal guide and retain its transported station mapping."""
+    if end - start <= _GEOMETRY_TOLERANCE or any(
+        second < first - _GEOMETRY_TOLERANCE
+        for first, second in zip(stations, stations[1:])
+    ):
+        return None
+    overlap_start = max(start, stations[0])
+    overlap_end = min(end, stations[-1])
+    if overlap_end - overlap_start <= _GEOMETRY_TOLERANCE:
+        return None
+    chainages = _guide_chainages(points)
+    start_chainage = _chainage_at_station(
+        chainages, stations, overlap_start
+    )
+    end_chainage = _chainage_at_station(chainages, stations, overlap_end)
+    if end_chainage - start_chainage <= _GEOMETRY_TOLERANCE:
+        return None
+
+    nodes = [(_point_at_chainage(points, start_chainage), start_chainage)]
+    nodes.extend(
+        (point, chainage)
+        for point, chainage in zip(points[1:-1], chainages[1:-1])
+        if (
+            start_chainage + _GEOMETRY_TOLERANCE
+            < chainage
+            < end_chainage - _GEOMETRY_TOLERANCE
+        )
+    )
+    nodes.append((_point_at_chainage(points, end_chainage), end_chainage))
+    deduplicated: list[tuple[PlanPoint, float]] = []
+    for point, chainage in nodes:
+        if not deduplicated or hypot(
+            point.x - deduplicated[-1][0].x,
+            point.y - deduplicated[-1][0].y,
+        ) > _GEOMETRY_TOLERANCE:
+            deduplicated.append((point, chainage))
+    if len(deduplicated) < 2:
+        return None
+
+    guide = WallGuide(tuple(point for point, _ in deduplicated), kind)
+    span = end - start
+    normalized_stations = tuple(
+        max(0.0, min(1.0, (
+            _station_at_chainage(chainages, stations, chainage) - start
+        ) / span))
+        for _, chainage in deduplicated
+    )
+    normalized_stations = (
+        (0.0 if abs(overlap_start - start) <= _GEOMETRY_TOLERANCE
+         else normalized_stations[0]),
+        *normalized_stations[1:-1],
+        (1.0 if abs(overlap_end - end) <= _GEOMETRY_TOLERANCE
+         else normalized_stations[-1]),
+    )
+    mapping = GuideStationMapping(
+        guide.cumulative_chainages_m,
+        normalized_stations,
+    )
+    return guide, mapping
+
+
 def _crop_points_by_station(
     points: tuple[PlanPoint, ...],
     stations: tuple[float, ...],
@@ -1738,18 +1929,11 @@ def _crop_points_by_station(
         return None
     chainages = _guide_chainages(points)
 
-    def inverse(station: float) -> float:
-        for index, (first, second) in enumerate(zip(stations, stations[1:])):
-            if first - _GEOMETRY_TOLERANCE <= station <= second + _GEOMETRY_TOLERANCE:
-                fraction = 0.0 if second - first <= _GEOMETRY_TOLERANCE else (
-                    station - first
-                ) / (second - first)
-                return chainages[index] + fraction * (
-                    chainages[index + 1] - chainages[index]
-                )
-        return chainages[0] if station <= stations[0] else chainages[-1]
-
-    return _crop_points(points, inverse(overlap_start), inverse(overlap_end))
+    return _crop_points(
+        points,
+        _chainage_at_station(chainages, stations, overlap_start),
+        _chainage_at_station(chainages, stations, overlap_end),
+    )
 
 
 def _correspondences_for_partition(
@@ -2674,19 +2858,27 @@ def _extract_wall_sectors_propagated(
                 sample.station_fraction, sample.point.x, sample.point.y,
                 sample.source_id,
             )))
-            lower_guide = (
-                _crop_guide_by_station(
+            lower_result = (
+                _crop_terminal_guide_by_station(
                     lower_values[0], lower_values[1],
                     partition_start, partition_end, "lower",
                 )
                 if has_lower and lower_values is not None else None
             )
-            downstream_extent = (
-                _crop_guide_by_station(
+            extent_result = (
+                _crop_terminal_guide_by_station(
                     extent_values[0], extent_values[1],
                     partition_start, partition_end, "downstream_extent",
                 )
                 if not has_lower and extent_values is not None else None
+            )
+            lower_guide = lower_result[0] if lower_result is not None else None
+            lower_mapping = lower_result[1] if lower_result is not None else None
+            downstream_extent = (
+                extent_result[0] if extent_result is not None else None
+            )
+            downstream_mapping = (
+                extent_result[1] if extent_result is not None else None
             )
             supported = bool(samples) and not (critical & codes) and (
                 lower_guide is not None or downstream_extent is not None
@@ -2721,6 +2913,8 @@ def _extract_wall_sectors_propagated(
                     tuple(correspondences), partition_start, partition_end
                 ),
                 WallSectorDiagnostics(tuple(sorted(codes))),
+                lower_mapping,
+                downstream_mapping,
             ))
             sector_hypotheses.append(signature)
         extraction_codes.update(codes)
@@ -2796,6 +2990,8 @@ def _extract_wall_sectors_propagated(
             sector.connection_ids, sector.fragment_ids,
             sector.span_states, sector.portal_correspondences,
             sector.diagnostics,
+            sector.lower_station_mapping,
+            sector.downstream_station_mapping,
         )
         for index, sector in enumerate(sectors)
     )
@@ -2821,6 +3017,7 @@ def extract_wall_sectors(
 __all__ = [
     "AssessmentFaceFragment",
     "CorridorSpanState",
+    "GuideStationMapping",
     "PortalSpanCorrespondence",
     "StationInterval",
     "WallSector",
