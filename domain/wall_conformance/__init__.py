@@ -31,6 +31,13 @@ from .models import (
 )
 from .sections import clip_section_segments_to_z_range, intersect_surface_with_profile
 from .semantic_sections import build_design_section, build_design_variants
+from .profile_sections import (
+    ProfileSectionAssemblyError,
+    ProfileSectionAssemblyResult,
+    ProfileSectionDiagnostic,
+    build_v2_profile_sections,
+    profile_trace_to_alignment,
+)
 
 
 def build_transverse_profiles(*args, **kwargs) -> WallProfileSet:
@@ -59,6 +66,11 @@ __all__ = [
     "extract_design_wall_topology",
     "intersect_surface_with_profile",
     "clip_section_segments_to_z_range",
+    "build_v2_profile_sections",
+    "profile_trace_to_alignment",
+    "ProfileSectionAssemblyError",
+    "ProfileSectionAssemblyResult",
+    "ProfileSectionDiagnostic",
     "sample_wall_alignment",
     "select_design_alignment",
     "select_primary_crest_line",

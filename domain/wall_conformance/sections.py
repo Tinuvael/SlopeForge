@@ -216,6 +216,57 @@ def intersect_surface_with_profile(
     )
 
 
+def _point_at_u(
+    first: SectionPoint,
+    second: SectionPoint,
+    u: float,
+) -> SectionPoint:
+    span = second.u - first.u
+    fraction = 0.0 if abs(span) <= 1e-12 else (u - first.u) / span
+    return SectionPoint(
+        u,
+        first.z + (second.z - first.z) * fraction,
+        first.x + (second.x - first.x) * fraction,
+        first.y + (second.y - first.y) * fraction,
+    )
+
+
+def clip_section_segments_to_u_interval(
+    segments: tuple[SectionSegment, ...],
+    u_min: float,
+    u_max: float,
+    *,
+    tolerance: float = 1e-9,
+) -> tuple[SectionSegment, ...]:
+    """Clip finite section segments to an evaluated transverse corridor."""
+    if u_max < u_min:
+        raise ValueError("Section U maximum must be greater than its minimum")
+    clipped = []
+    for segment in segments:
+        if (
+            segment.u_max < u_min - tolerance
+            or segment.u_min > u_max + tolerance
+        ):
+            continue
+        start, end = segment.start, segment.end
+        if start.u > end.u:
+            start, end = end, start
+        source_start, source_end = start, end
+        if source_start.u < u_min:
+            start = _point_at_u(source_start, source_end, u_min)
+        if source_end.u > u_max:
+            end = _point_at_u(source_start, source_end, u_max)
+        if hypot(end.u - start.u, end.z - start.z) <= tolerance:
+            continue
+        clipped.append(SectionSegment(
+            start,
+            end,
+            segment.source_triangle_index,
+            segment.semantic_role,
+        ))
+    return tuple(clipped)
+
+
 def clip_section_segments_to_z_range(
     segments: tuple[SectionSegment, ...],
     z_min: float,

@@ -181,6 +181,9 @@ def test_single_straight_face_extracts_upper_extent_and_face_samples() -> None:
     assert sector.supported
     assert sector.lower_guide is None
     assert sector.downstream_extent is not None
+    assert sector.upper_portal_id is not None
+    assert sector.lower_portal_id is None
+    assert sector.downstream_portal_id is not None
     assert (sector.upper_guide.points[0].x, sector.upper_guide.points[0].y) == (
         pytest.approx(0.0), pytest.approx(2.0)
     )
@@ -255,6 +258,9 @@ def test_external_lower_can_be_entirely_outside_assessment() -> None:
 
     sector = result.sectors[0]
     assert sector.lower_guide is not None
+    assert sector.upper_portal_id is not None
+    assert sector.lower_portal_id is not None
+    assert sector.downstream_portal_id is None
     assert all(point.x == pytest.approx(4.0) for point in sector.lower_guide.points)
     assert sector.downstream_extent is None
     assert sector.lower_station_mapping is not None

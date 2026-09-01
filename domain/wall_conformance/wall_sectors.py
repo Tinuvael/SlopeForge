@@ -161,6 +161,9 @@ class WallSector:
     diagnostics: WallSectorDiagnostics
     lower_station_mapping: GuideStationMapping | None = None
     downstream_station_mapping: GuideStationMapping | None = None
+    upper_portal_id: str | None = None
+    lower_portal_id: str | None = None
+    downstream_portal_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -213,6 +216,9 @@ class WallSectorExtractionResult:
                     if sector.downstream_station_mapping is not None
                     else None
                 ),
+                sector.upper_portal_id,
+                sector.lower_portal_id,
+                sector.downstream_portal_id,
                 tuple(
                     (
                         sample.source_id,
@@ -2915,6 +2921,9 @@ def _extract_wall_sectors_propagated(
                 WallSectorDiagnostics(tuple(sorted(codes))),
                 lower_mapping,
                 downstream_mapping,
+                upper_run.portal_id,
+                lower_run.portal_id if lower_guide is not None else None,
+                extent_run.portal_id if downstream_extent is not None else None,
             ))
             sector_hypotheses.append(signature)
         extraction_codes.update(codes)
@@ -2992,6 +3001,9 @@ def _extract_wall_sectors_propagated(
             sector.diagnostics,
             sector.lower_station_mapping,
             sector.downstream_station_mapping,
+            sector.upper_portal_id,
+            sector.lower_portal_id,
+            sector.downstream_portal_id,
         )
         for index, sector in enumerate(sectors)
     )
