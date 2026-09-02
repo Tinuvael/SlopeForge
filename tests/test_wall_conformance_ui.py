@@ -107,7 +107,7 @@ def test_calculation_and_plan_click_keep_selection_synchronized(monkeypatch):
     assert tab.plan._selected_index == 1
     assert "Profile 2" in tab.profile_summary.text()
     assert "Chainage" in tab.profile_summary.text()
-    assert "T (" in tab.profile_vectors.toolTip()
+    assert "+U / profile direction is Design-Face-derived" in tab.profile_vectors.toolTip()
     tab.deleteLater()
     _app().sendPostedEvents()
 
@@ -202,9 +202,12 @@ def test_semantics_dialog_lists_counts_and_saves_through_service():
 def test_engineering_parameter_labels_and_legend_contract(monkeypatch):
     tab = _tab(monkeypatch)
     labels = [label.text() for label in tab.findChildren(module.QLabel)]
-    assert "Strike smoothing radius" in labels
+    assert "Strike smoothing radius" not in labels
     assert "Section extent" not in labels
-    assert "each side" in tab.tangent_window.toolTip()
+    assert not hasattr(tab, "tangent_window")
+    settings = tab._settings()
+    assert settings.spacing_m == tab.spacing.value()
+    assert vars(settings) == {"spacing_m": tab.spacing.value()}
     tab.calculate()
     tab._select_profile(1)
     design_entries, actual_entries = tab.profile_plot._legend_rows(

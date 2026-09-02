@@ -6,9 +6,11 @@ from typing import Any
 from domain.geometry.types import PlanPolygon
 from domain.wall_conformance import (
     PROTOTYPE_DESIGN_ROLE_MAPPING,
+    ProfileSectionAssemblyError,
+    ProfileSectionDiagnostic,
     SurfaceRoleMapping,
     WallProfileSet,
-    build_transverse_profiles,
+    build_v2_profile_sections,
     semantic_value_token,
 )
 
@@ -20,7 +22,6 @@ class WallConformanceUnavailableError(RuntimeError):
 @dataclass(frozen=True)
 class WallConformanceDiagnosticSettings:
     spacing_m: float = 3.0
-    tangent_window_m: float = 6.0
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class WallConformanceDiagnosticResult:
     settings: WallConformanceDiagnosticSettings
     role_mapping: SurfaceRoleMapping
     mapping_is_fallback: bool
+    diagnostics: tuple[ProfileSectionDiagnostic, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -151,37 +153,25 @@ class WallConformanceDiagnosticService:
 
         role_mapping, mapping_is_fallback = self.mapping_for_dataset(design_dataset)
         try:
-            profile_set = build_transverse_profiles(
+            assembly_result = build_v2_profile_sections(
                 design_surface,
                 actual_surface,
                 assessment_polygon,
                 role_mapping,
-                spacing_m=settings.spacing_m,
-                tangent_window_m=settings.tangent_window_m,
+                requested_spacing_m=settings.spacing_m,
             )
-        except ValueError as exc:
-            if str(exc) == "No design crest intersects the Assessment Area":
-                raise WallConformanceUnavailableError(
-                    "No design wall alignment intersects this Assessment Area. "
-                    "Check the Assessment Area boundary and Design surface semantics."
-                ) from exc
-            if str(exc) == "Design wall alignment is ambiguous in the Assessment Area":
-                raise WallConformanceUnavailableError(
-                    "Design wall alignment is ambiguous in this Assessment Area. "
-                    "Check the Assessment Area extent or Design surface semantics."
-                ) from exc
-            if str(exc) == "Unable to determine a unique Design wall envelope":
-                raise WallConformanceUnavailableError(
-                    "Unable to determine a unique Design wall envelope in this "
-                    "Assessment Area. Check the Assessment Area extent and Design "
-                    "surface semantics."
-                ) from exc
-            raise
+        except ProfileSectionAssemblyError as exc:
+            raise WallConformanceUnavailableError(
+                "No usable Design wall profiles could be assembled for this "
+                "Assessment Area. Check the Assessment Area coverage and Design "
+                "surface semantics."
+            ) from exc
         return WallConformanceDiagnosticResult(
             design_dataset=design_dataset,
             actual_dataset=actual_dataset,
-            profile_set=profile_set,
+            profile_set=assembly_result.profile_set,
             settings=settings,
             role_mapping=role_mapping,
             mapping_is_fallback=mapping_is_fallback,
+            diagnostics=assembly_result.diagnostics,
         )

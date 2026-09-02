@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import fields
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+import application.services.wall_conformance as wall_conformance_service_module
 from application.services.wall_conformance import (
     WallConformanceDiagnosticService,
     WallConformanceDiagnosticSettings,
@@ -11,6 +14,13 @@ from application.services.wall_conformance import (
 )
 from domain.geometry.surfaces import SurfaceTriangle, SurfaceVertex, TriangleSurface
 from domain.geometry.types import PlanPoint, PlanPolygon
+from domain.wall_conformance import (
+    ProfileSectionAssemblyError,
+    ProfileSectionAssemblyResult,
+    ProfileSectionDiagnostic,
+    SurfaceRoleMapping,
+    build_v2_profile_sections,
+)
 
 
 def _bench(dx: float = 0.0) -> TriangleSurface:
@@ -54,14 +64,24 @@ def _area() -> PlanPolygon:
 
 
 class FakeSurfaceService:
-    def __init__(self, *, storage_available=True, design=True, actual=True):
+    def __init__(
+        self,
+        *,
+        storage_available=True,
+        design=True,
+        actual=True,
+        actual_dx=1.0,
+        semantic_mapping=None,
+    ):
         self.storage_available = storage_available
+        self.actual_dx = actual_dx
         self.design = (
             SimpleNamespace(
                 logical_id="DESIGN-1",
                 revision_number=2,
                 source_format="datamine",
                 triangle_count=6,
+                semantic_mapping_json=semantic_mapping,
             )
             if design
             else None
@@ -84,38 +104,164 @@ class FakeSurfaceService:
         if logical_id == "DESIGN-1":
             return self.design, SimpleNamespace(surface=_bench())
         if logical_id == "ACTUAL-1":
-            return self.actual, SimpleNamespace(surface=_bench(dx=1.0))
+            return self.actual, SimpleNamespace(surface=_bench(dx=self.actual_dx))
         raise AssertionError(logical_id)
 
 
 def test_diagnostic_service_loads_active_project_surfaces_and_builds_profiles() -> None:
-    service = WallConformanceDiagnosticService(FakeSurfaceService())
+    surface_service = FakeSurfaceService()
+    service = WallConformanceDiagnosticService(surface_service)
+    expected = build_v2_profile_sections(
+        _bench(),
+        _bench(dx=surface_service.actual_dx),
+        _area(),
+        service.mapping_for_dataset(surface_service.design)[0],
+        requested_spacing_m=5.0,
+    )
 
     result = service.calculate_current(
         1,
         _area(),
-        WallConformanceDiagnosticSettings(
-            spacing_m=5.0,
-            tangent_window_m=4.0,
-        ),
+        WallConformanceDiagnosticSettings(spacing_m=5.0),
     )
 
     assert result.design_dataset.logical_id == "DESIGN-1"
     assert result.actual_dataset.logical_id == "ACTUAL-1"
-    assert result.profile_set.profiles
-    profile = result.profile_set.profiles[0]
-    design_points = {
-        (round(point.u, 6), round(point.z, 6))
-        for segment in profile.design_segments
-        for point in (segment.start, segment.end)
-    }
-    actual_points = {
-        (round(point.u, 6), round(point.z, 6))
-        for segment in profile.actual_segments
-        for point in (segment.start, segment.end)
-    }
-    assert (0.0, 10.0) in design_points
-    assert (1.0, 10.0) in actual_points
+    assert len(result.profile_set.profiles) == len(expected.profile_set.profiles) == 4
+    assert tuple(profile.alignment for profile in result.profile_set.profiles) == tuple(
+        profile.alignment for profile in expected.profile_set.profiles
+    )
+    assert result.diagnostics == expected.diagnostics
+
+
+def test_diagnostic_service_uses_v2_contract_and_retains_diagnostics(
+    monkeypatch,
+) -> None:
+    mapping = SurfaceRoleMapping(
+        "COLOUR", ((2, "face"), (5, "berm"), (3, "road"))
+    )
+    surface_service = FakeSurfaceService(semantic_mapping=mapping.to_dict())
+    direct = build_v2_profile_sections(
+        _bench(), _bench(dx=1.0), _area(), mapping, requested_spacing_m=7.25
+    )
+    diagnostic = ProfileSectionDiagnostic("partial_sector", "Partial sector retained")
+    assembly = ProfileSectionAssemblyResult(
+        direct.profile_set,
+        direct.placement_result,
+        (diagnostic,),
+    )
+    captured = {}
+
+    def fake_builder(design_surface, actual_surface, polygon, role_mapping, **kwargs):
+        captured.update(
+            design_surface=design_surface,
+            actual_surface=actual_surface,
+            polygon=polygon,
+            role_mapping=role_mapping,
+            kwargs=kwargs,
+        )
+        return assembly
+
+    monkeypatch.setattr(
+        wall_conformance_service_module, "build_v2_profile_sections", fake_builder
+    )
+    result = WallConformanceDiagnosticService(surface_service).calculate_current(
+        1, _area(), WallConformanceDiagnosticSettings(spacing_m=7.25)
+    )
+
+    assert captured["design_surface"] is not captured["actual_surface"]
+    assert captured["role_mapping"] == mapping
+    assert captured["kwargs"] == {"requested_spacing_m": 7.25}
+    assert result.profile_set is assembly.profile_set
+    assert result.diagnostics is assembly.diagnostics
+
+
+def test_changing_actual_changes_sections_but_not_v2_design_placement(monkeypatch) -> None:
+    import domain.wall_conformance as wall_conformance_domain
+
+    def legacy_must_not_run(*_args, **_kwargs):
+        raise AssertionError("legacy build_transverse_profiles was called")
+
+    monkeypatch.setattr(
+        wall_conformance_domain, "build_transverse_profiles", legacy_must_not_run
+    )
+    first = WallConformanceDiagnosticService(
+        FakeSurfaceService(actual_dx=1.0)
+    ).calculate_current(1, _area(), WallConformanceDiagnosticSettings(5.0))
+    second = WallConformanceDiagnosticService(
+        FakeSurfaceService(actual_dx=2.0)
+    ).calculate_current(1, _area(), WallConformanceDiagnosticSettings(5.0))
+
+    def placement_signature(result):
+        return tuple(
+            (
+                profile.alignment.chainage_m,
+                profile.alignment.origin,
+                profile.alignment.normal_xy,
+            )
+            for profile in result.profile_set.profiles
+        )
+
+    def actual_signature(result):
+        return tuple(
+            tuple((segment.start, segment.end) for segment in profile.actual_segments)
+            for profile in result.profile_set.profiles
+        )
+
+    assert placement_signature(first) == placement_signature(second)
+    assert actual_signature(first) != actual_signature(second)
+
+
+def test_profile_section_assembly_error_is_translated_with_cause(monkeypatch) -> None:
+    original = ProfileSectionAssemblyError(
+        "no profiles", placement_result=object(), diagnostics=()
+    )
+
+    def fail(*_args, **_kwargs):
+        raise original
+
+    monkeypatch.setattr(wall_conformance_service_module, "build_v2_profile_sections", fail)
+    with pytest.raises(
+        WallConformanceUnavailableError,
+        match="No usable Design wall profiles.*Assessment Area",
+    ) as caught:
+        WallConformanceDiagnosticService(FakeSurfaceService()).calculate_current(
+            1, _area()
+        )
+
+    assert caught.value.__cause__ is original
+
+
+def test_unexpected_v2_error_is_not_retranslated(monkeypatch) -> None:
+    def fail(*_args, **_kwargs):
+        raise ValueError("unexpected programming error")
+
+    monkeypatch.setattr(wall_conformance_service_module, "build_v2_profile_sections", fail)
+    with pytest.raises(ValueError, match="unexpected programming error"):
+        WallConformanceDiagnosticService(FakeSurfaceService()).calculate_current(
+            1, _area()
+        )
+
+
+def test_active_settings_and_service_source_exclude_legacy_contract() -> None:
+    assert [field.name for field in fields(WallConformanceDiagnosticSettings)] == [
+        "spacing_m"
+    ]
+    source = Path(wall_conformance_service_module.__file__).read_text(encoding="utf-8")
+    for obsolete_name in (
+        "build_transverse_profiles",
+        "sample_wall_alignment",
+        "select_primary_crest_line",
+        "select_design_alignment",
+        "tangent_window_m",
+    ):
+        assert obsolete_name not in source
+
+    ui_source = (
+        Path(__file__).parents[1] / "ui" / "pages" / "wall_conformance_tab.py"
+    ).read_text(encoding="utf-8")
+    assert "Strike smoothing radius" not in ui_source
+    assert "tangent_window" not in ui_source
 
 
 def test_diagnostic_service_refuses_database_only_storage_mode() -> None:
@@ -131,6 +277,13 @@ def test_diagnostic_service_reports_missing_active_surface() -> None:
     service = WallConformanceDiagnosticService(FakeSurfaceService(actual=False))
 
     with pytest.raises(WallConformanceUnavailableError, match="Actual survey"):
+        service.calculate_current(1, _area())
+
+
+def test_diagnostic_service_reports_missing_design_surface() -> None:
+    service = WallConformanceDiagnosticService(FakeSurfaceService(design=False))
+
+    with pytest.raises(WallConformanceUnavailableError, match="Design surface"):
         service.calculate_current(1, _area())
 
 

@@ -613,18 +613,6 @@ class WallConformanceTab(QWidget):
         self.spacing.setValue(3.0)
         self.spacing.setSuffix(" m")
         controls.addWidget(self.spacing)
-        controls.addSpacing(10)
-        controls.addWidget(QLabel(tr("Strike smoothing radius")))
-        self.tangent_window = QDoubleSpinBox()
-        self.tangent_window.setRange(1.0, 100.0)
-        self.tangent_window.setDecimals(1)
-        self.tangent_window.setSingleStep(1.0)
-        self.tangent_window.setValue(6.0)
-        self.tangent_window.setSuffix(" m")
-        self.tangent_window.setToolTip(
-            tr("Distance along the design crest on each side of the profile used to estimate the local wall strike. Larger values smooth local curvature.")
-        )
-        controls.addWidget(self.tangent_window)
         controls.addStretch()
         setup_layout.addLayout(controls)
 
@@ -672,7 +660,7 @@ class WallConformanceTab(QWidget):
         self.profile_vectors = QLabel("")
         self.profile_vectors.setObjectName("MutedText")
         self.profile_vectors.setToolTip(
-            tr("Diagnostic local tangent (T) and wall-normal (N) unit vectors.")
+            tr("+U / profile direction is derived from the Design Face.")
         )
         selector_row.addWidget(self.profile_vectors)
         selector_row.addStretch()
@@ -767,7 +755,6 @@ class WallConformanceTab(QWidget):
     def _settings(self) -> WallConformanceDiagnosticSettings:
         return WallConformanceDiagnosticSettings(
             spacing_m=self.spacing.value(),
-            tangent_window_m=self.tangent_window.value(),
         )
 
     def calculate(self) -> None:
@@ -890,7 +877,10 @@ class WallConformanceTab(QWidget):
             )
         self.profile_vectors.setText(tr("Direction details"))
         self.profile_vectors.setToolTip(
-            f"T ({tx:.3f}, {ty:.3f}) · N ({nx:.3f}, {ny:.3f})"
+            tr("+U / profile direction is Design-Face-derived: ")
+            + f"({nx:.3f}, {ny:.3f}) · "
+            + tr("Perpendicular section-plane direction: ")
+            + f"({tx:.3f}, {ty:.3f})"
         )
 
     def _select_variant(self, index: int) -> None:
