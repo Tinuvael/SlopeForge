@@ -752,16 +752,54 @@ def _projection_values(
     return tuple(point.x * axis[0] + point.y * axis[1] for point in portal.points)
 
 
-def _monotone_projection(values: tuple[float, ...]) -> bool:
-    significant = tuple(
-        second - first
-        for first, second in zip(values, values[1:])
-        if abs(second - first) > _GEOMETRY_TOLERANCE
+def _monotone_projection_ranges(
+    values: tuple[float, ...],
+) -> tuple[tuple[float, float], ...]:
+    """Return maximal locally monotone scalar ranges without choosing a band."""
+    if len(values) < 2:
+        return ()
+    spans: list[tuple[int, int]] = []
+    start = 0
+    direction = 0
+    for edge_index, (first, second) in enumerate(zip(values, values[1:])):
+        delta = second - first
+        edge_direction = (
+            1 if delta > _GEOMETRY_TOLERANCE
+            else -1 if delta < -_GEOMETRY_TOLERANCE
+            else 0
+        )
+        if edge_direction == 0:
+            continue
+        if direction == 0:
+            direction = edge_direction
+            continue
+        if edge_direction != direction:
+            spans.append((start, edge_index + 1))
+            start = edge_index
+            direction = edge_direction
+    if direction == 0:
+        return ()
+    spans.append((start, len(values)))
+    return tuple(
+        (min(values[start:end]), max(values[start:end]))
+        for start, end in spans
+        if max(values[start:end]) - min(values[start:end])
+        > _GEOMETRY_TOLERANCE
     )
-    return bool(significant) and (
-        all(value > 0.0 for value in significant)
-        or all(value < 0.0 for value in significant)
-    )
+
+
+def _locally_orderable_projection_overlap(
+    source_values: tuple[float, ...],
+    target_values: tuple[float, ...],
+) -> float:
+    """Return coarse overlap evidence; Phase 2B owns exact correspondence."""
+    source_ranges = _monotone_projection_ranges(source_values)
+    target_ranges = _monotone_projection_ranges(target_values)
+    return max((
+        min(source_end, target_end) - max(source_start, target_start)
+        for source_start, source_end in source_ranges
+        for target_start, target_end in target_ranges
+    ), default=0.0)
 
 
 def _platform_portal_neighbours(
@@ -913,19 +951,14 @@ def _connection_candidate(
                 strike = (-combined[1], combined[0])
                 source_values = _projection_values(source, strike)
                 target_values = _projection_values(target, strike)
-                strike_overlap = (
-                    min(max(source_values), max(target_values))
-                    - max(min(source_values), min(target_values))
+                strike_overlap = _locally_orderable_projection_overlap(
+                    source_values, target_values
                 )
-                order_compatible = (
-                    _monotone_projection(source_values)
-                    and _monotone_projection(target_values)
-                    and strike_overlap > _GEOMETRY_TOLERANCE
-                )
+                order_compatible = strike_overlap > _GEOMETRY_TOLERANCE
                 if not order_compatible:
                     rejected_reason = (
-                        "portal chains do not define an overlapping monotone "
-                        "local band"
+                        "portal chains do not define an overlapping locally "
+                        "monotone band"
                     )
 
     return CorridorConnection(

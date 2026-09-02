@@ -560,9 +560,16 @@ def _aabb_intersects(
 
 
 def _polygon_centroid(points: tuple[PlanPoint, ...]) -> PlanPoint:
+    origin = points[0]
+    local_points = tuple(
+        PlanPoint(point.x - origin.x, point.y - origin.y)
+        for point in points
+    )
     cross_values = tuple(
         first.x * second.y - second.x * first.y
-        for first, second in zip(points, points[1:] + points[:1])
+        for first, second in zip(
+            local_points, local_points[1:] + local_points[:1]
+        )
     )
     denominator = 3.0 * fsum(cross_values)
     if abs(denominator) <= _GEOMETRY_TOLERANCE:
@@ -571,16 +578,20 @@ def _polygon_centroid(points: tuple[PlanPoint, ...]) -> PlanPoint:
             fsum(point.y for point in points) / len(points),
         )
     return PlanPoint(
-        fsum(
+        origin.x + fsum(
             (first.x + second.x) * cross
             for first, second, cross in zip(
-                points, points[1:] + points[:1], cross_values
+                local_points,
+                local_points[1:] + local_points[:1],
+                cross_values,
             )
         ) / denominator,
-        fsum(
+        origin.y + fsum(
             (first.y + second.y) * cross
             for first, second, cross in zip(
-                points, points[1:] + points[:1], cross_values
+                local_points,
+                local_points[1:] + local_points[:1],
+                cross_values,
             )
         ) / denominator,
     )

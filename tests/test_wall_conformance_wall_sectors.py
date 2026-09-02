@@ -110,6 +110,41 @@ def _layered(
     return builder.surface()
 
 
+def _curved_layered_with_folded_global_projection() -> TriangleSurface:
+    """One corridor whose complete portals fold in one global strike axis."""
+    builder = _MeshBuilder()
+    strike_points = (
+        (0.0, 0.0),
+        (0.5, 4.0),
+        (1.0, 3.0),
+        (1.5, 7.0),
+        (2.0, 10.0),
+    )
+    xz = (
+        (0.0, 30.0),
+        (4.0, 20.0),
+        (8.0, 20.0),
+        (12.0, 10.0),
+    )
+    for layer_index, role in enumerate(("face", "berm", "face")):
+        x0, z0 = xz[layer_index]
+        x1, z1 = xz[layer_index + 1]
+        for segment_index, (first, second) in enumerate(
+            zip(strike_points, strike_points[1:])
+        ):
+            a = builder.vertex(first[0] + x0, first[1], z0)
+            b = builder.vertex(second[0] + x0, second[1], z0)
+            c = builder.vertex(first[0] + x1, first[1], z1)
+            d = builder.vertex(second[0] + x1, second[1], z1)
+            builder.triangle(
+                (a, c, d), role, f"curved:{role}:{segment_index}:0"
+            )
+            builder.triangle(
+                (a, d, b), role, f"curved:{role}:{segment_index}:1"
+            )
+    return builder.surface()
+
+
 def _combine(*surfaces: TriangleSurface) -> TriangleSurface:
     vertices: list[SurfaceVertex] = []
     triangles: list[SurfaceTriangle] = []
@@ -134,6 +169,106 @@ def _rectangle(x0: float, y0: float, x1: float, y1: float) -> PlanPolygon:
         PlanPoint(x0, y0), PlanPoint(x1, y0), PlanPoint(x1, y1),
         PlanPoint(x0, y1), PlanPoint(x0, y0),
     ))
+
+
+def test_polygon_centroid_matches_normal_coordinate_result() -> None:
+    points = (
+        PlanPoint(0.0, 0.0),
+        PlanPoint(4.0, 0.0),
+        PlanPoint(4.0, 2.0),
+        PlanPoint(0.0, 2.0),
+    )
+
+    centroid = wall_sector_module._polygon_centroid(points)
+
+    assert (centroid.x, centroid.y) == pytest.approx((2.0, 1.0))
+
+
+def test_polygon_centroid_is_translation_invariant_at_large_world_offset() -> None:
+    local = (
+        PlanPoint(0.0, 0.0),
+        PlanPoint(6.0, 1.0),
+        PlanPoint(5.0, 4.0),
+        PlanPoint(1.0, 3.0),
+    )
+    offset_x, offset_y = 10_000_000.0, -20_000_000.0
+    translated = tuple(
+        PlanPoint(point.x + offset_x, point.y + offset_y)
+        for point in local
+    )
+
+    local_centroid = wall_sector_module._polygon_centroid(local)
+    translated_centroid = wall_sector_module._polygon_centroid(translated)
+
+    assert (
+        translated_centroid.x - offset_x,
+        translated_centroid.y - offset_y,
+    ) == pytest.approx((local_centroid.x, local_centroid.y), abs=5e-9)
+
+
+def test_thin_large_coordinate_fragment_centroid_stays_inside_station_range() -> None:
+    clipped_fragment = (
+        PlanPoint(10401.685163020593, 12914.575304234058),
+        PlanPoint(10403.654174158004, 12912.0132182679),
+        PlanPoint(10403.656, 12912.011),
+    )
+    source_triangle = TriangleSurface(
+        (
+            SurfaceVertex(10396.008, 12921.962, 640.0),
+            SurfaceVertex(10403.656, 12912.011, 640.0),
+            SurfaceVertex(10395.658, 12921.728000000001, 640.903),
+        ),
+        (SurfaceTriangle((0, 1, 2), "1267", {"ROLE": "FACE"}),),
+    )
+    station_by_vertex = {
+        0: 0.9926473838253586,
+        1: 1.0,
+        2: 1.0,
+    }
+
+    centroid = wall_sector_module._polygon_centroid(clipped_fragment)
+    centroid_station = wall_sector_module._station_at_point_in_triangle(
+        source_triangle, 0, station_by_vertex, centroid
+    )
+    vertex_stations = tuple(
+        wall_sector_module._station_at_point_in_triangle(
+            source_triangle, 0, station_by_vertex, point
+        )
+        for point in clipped_fragment
+    )
+
+    assert centroid_station == pytest.approx(0.999368427133, abs=1e-12)
+    assert min(vertex_stations) <= centroid_station <= max(vertex_stations)
+
+
+def test_polygon_centroid_is_canonical_across_start_and_winding() -> None:
+    points = (
+        PlanPoint(1.0, 1.0),
+        PlanPoint(7.0, 2.0),
+        PlanPoint(5.0, 6.0),
+        PlanPoint(2.0, 4.0),
+    )
+    baseline = wall_sector_module._polygon_centroid(points)
+
+    for offset in range(len(points)):
+        shifted = points[offset:] + points[:offset]
+        for variant in (shifted, tuple(reversed(shifted))):
+            centroid = wall_sector_module._polygon_centroid(variant)
+            assert (centroid.x, centroid.y) == pytest.approx(
+                (baseline.x, baseline.y), abs=1e-12
+            )
+
+
+def test_polygon_centroid_preserves_degenerate_mean_fallback() -> None:
+    points = (
+        PlanPoint(2.0, 3.0),
+        PlanPoint(4.0, 5.0),
+        PlanPoint(6.0, 7.0),
+    )
+
+    centroid = wall_sector_module._polygon_centroid(points)
+
+    assert (centroid.x, centroid.y) == pytest.approx((4.0, 5.0))
 
 
 def _extract(surface: TriangleSurface, area: PlanPolygon):
@@ -212,6 +347,28 @@ def test_two_face_layers_are_one_sector_through_platform(
     assert len(sector.face_component_ids) == 2
     assert len(sector.connection_ids) == 1
     assert all(sample.semantic_role == "face" for sample in sector.face_direction_samples)
+
+
+def test_curved_portals_defer_global_projection_fold_to_local_station_mapping() -> None:
+    surface = _curved_layered_with_folded_global_projection()
+    topology = build_design_topology_index(surface, ROLE_MAPPING)
+
+    assert len(topology.corridor_connections) == 1
+    connection = topology.corridor_connections[0]
+    assert connection.order_compatible
+    assert connection.status == "compatible"
+
+    result = extract_wall_sectors(
+        surface,
+        topology,
+        _rectangle(1.0, 5.0, 13.0, 9.0),
+    )
+
+    assert len(result.sectors) == 1
+    sector = result.sectors[0]
+    assert sector.supported
+    assert len(sector.face_component_ids) == 2
+    assert sector.connection_ids == (connection.connection_id,)
 
 
 def test_three_bench_wall_traverses_two_platforms() -> None:
