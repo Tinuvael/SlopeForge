@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from math import cos, radians, sin
+from math import cos, hypot, radians, sin
 from pathlib import Path
 
 import pytest
@@ -115,6 +115,61 @@ def _layered_surface(
             role=role,
             source_prefix=f"{role}:{index}",
         )
+    return builder.surface()
+
+
+def _mixed_parent_portal_surface(*, two_local_pairs: bool) -> TriangleSurface:
+    """Two Faces whose platform rims contain separated edge-side runs."""
+    builder = _MeshBuilder()
+    strike_points = (
+        (
+            (18.0, 0.0),
+            (12.0, 1.0),
+            (12.0, 5.0),
+            (6.0, 6.0),
+            (6.0, 10.0),
+            (0.0, 11.0),
+        )
+        if two_local_pairs
+        else (
+            (12.0, 0.0),
+            (6.0, 1.0),
+            (6.0, 9.0),
+            (0.0, 10.0),
+        )
+    )
+    for layer_index, role in enumerate(("face", "berm", "face")):
+        first_offset = 4.0 * layer_index
+        second_offset = first_offset + 4.0
+        for segment_index, (first, second) in enumerate(
+            zip(strike_points, strike_points[1:])
+        ):
+            a = builder.vertex(
+                first[0] + first_offset,
+                first[1],
+                40.0 - first[0] - first_offset,
+            )
+            b = builder.vertex(
+                second[0] + first_offset,
+                second[1],
+                40.0 - second[0] - first_offset,
+            )
+            c = builder.vertex(
+                first[0] + second_offset,
+                first[1],
+                40.0 - first[0] - second_offset,
+            )
+            d = builder.vertex(
+                second[0] + second_offset,
+                second[1],
+                40.0 - second[0] - second_offset,
+            )
+            builder.triangle(
+                (a, c, d), role, f"mixed:{role}:{segment_index}:0"
+            )
+            builder.triangle(
+                (a, d, b), role, f"mixed:{role}:{segment_index}:1"
+            )
     return builder.surface()
 
 
@@ -251,6 +306,66 @@ def test_three_face_layers_compose_through_two_platforms() -> None:
     assert len(index.platform_components) == 2
     assert len(index.compatible_corridor_connections) == 2
     assert _compatible_pairs(index) == {(0, 1), (1, 2)}
+
+
+def test_mixed_parent_portals_connect_through_unique_local_side_runs() -> None:
+    surface = _mixed_parent_portal_surface(two_local_pairs=False)
+    index = build_design_topology_index(surface, ROLE_MAPPING)
+
+    assert len(index.corridor_connections) == 1
+    connection = index.corridor_connections[0]
+    portals = {portal.portal_id: portal for portal in index.portals}
+    source = portals[connection.source_portal_id]
+    target = portals[connection.target_portal_id]
+    source_runs = topology_module._local_side_runs(
+        surface, source, "downstream"
+    )
+    target_runs = topology_module._local_side_runs(surface, target, "upstream")
+
+    assert source.provisional_side == "lateral"
+    assert target.provisional_side == "lateral"
+    assert connection.status == "compatible"
+    assert connection.order_compatible
+    assert len(connection.local_run_pairs) == 1
+    assert len(source_runs) == len(target_runs) == 1
+    assert sum(
+        hypot(second.x - first.x, second.y - first.y)
+        for first, second in zip(
+            source_runs[0].points, source_runs[0].points[1:]
+        )
+    ) == pytest.approx(8.0)
+    assert sum(
+        hypot(second.x - first.x, second.y - first.y)
+        for first, second in zip(
+            target_runs[0].points, target_runs[0].points[1:]
+        )
+    ) == pytest.approx(8.0)
+    for variant in (
+        _reordered_surface(surface, reverse_triangles=True),
+        _reordered_surface(surface, reverse_winding=True),
+        _reordered_surface(
+            surface,
+            reverse_vertices=True,
+            reverse_triangles=True,
+            reverse_winding=True,
+        ),
+    ):
+        assert build_design_topology_index(
+            variant, ROLE_MAPPING
+        ).canonical_signature == index.canonical_signature
+
+
+def test_two_plausible_local_run_pairs_remain_explicitly_ambiguous() -> None:
+    index = build_design_topology_index(
+        _mixed_parent_portal_surface(two_local_pairs=True), ROLE_MAPPING
+    )
+
+    assert len(index.corridor_connections) == 1
+    connection = index.corridor_connections[0]
+    assert connection.status == "ambiguous"
+    assert len(connection.local_run_pairs) == 2
+    assert "2 competing locally compatible run pairs" in connection.reason
+    assert "ambiguous_local_run_correspondence" in index.diagnostics.codes
 
 
 def test_nearby_unrelated_walls_remain_topologically_separate() -> None:

@@ -13,14 +13,18 @@ from dataclasses import dataclass, replace
 from heapq import heappop, heappush
 from math import acos, degrees, fsum, hypot, isfinite
 
-from domain.geometry.operations import validate_simple_polygon
+from domain.geometry.operations import (
+    clip_datamine_line_by_polygon,
+    validate_simple_polygon,
+)
 from domain.geometry.surfaces import SurfaceVertex, TriangleSurface
-from domain.geometry.types import PlanPoint, PlanPolygon
+from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
 from domain.wall_conformance.design_topology import (
     CorridorConnection,
     DesignTopologyIndex,
     EdgeGeometryKey,
     FaceDirectionEvidence,
+    LocalPortalRunPair,
     PortalSide,
     TransitionPortal,
     TriangleGeometryKey,
@@ -28,6 +32,7 @@ from domain.wall_conformance.design_topology import (
 from domain.wall_conformance.profile_placement import (
     FaceDirectionSample,
     WallGuide,
+    aggregate_face_direction,
 )
 
 
@@ -301,6 +306,19 @@ class _TerminalRunSelection:
     values: tuple[tuple[PlanPoint, ...], tuple[float, ...]] | None
     ambiguous: bool
     non_injective: bool
+
+
+@dataclass(frozen=True)
+class _TerminalGuideCorrespondence:
+    result: tuple[WallGuide, GuideStationMapping] | None
+    ambiguous: bool
+
+
+@dataclass(frozen=True)
+class _LocalPortalRunChain:
+    source_run: _GuideRun
+    source_values: tuple[tuple[PlanPoint, ...], tuple[float, ...]]
+    target_run: _GuideRun
 
 
 @dataclass(frozen=True)
@@ -1152,6 +1170,7 @@ def _candidate_has_local_strike_overlap(
     topology: DesignTopologyIndex,
     portal: TransitionPortal,
     active_triangles: set[int],
+    local_edge_runs: tuple[tuple[EdgeGeometryKey, ...], ...] = (),
 ) -> bool:
     """Prune only candidates outside the active Face-derived strike slab."""
     evidence_by_triangle = {
@@ -1172,16 +1191,25 @@ def _candidate_has_local_strike_overlap(
         for triangle_index in active_triangles
         for vertex_index in surface.triangles[triangle_index].vertex_indices
     )
-    portal_values = tuple(
+    if not active_values:
+        return False
+    candidate_values = (
+        tuple(
+            vertex[0] * strike[0] + vertex[1] * strike[1]
+            for edge_key in edge_keys
+            for vertex in edge_key
+        )
+        for edge_keys in local_edge_runs
+    ) if local_edge_runs else (tuple(
         point.x * strike[0] + point.y * strike[1]
         for point in portal.points
-    )
-    if not active_values or not portal_values:
-        return False
-    return (
-        min(max(active_values), max(portal_values))
-        - max(min(active_values), min(portal_values))
+    ),)
+    return any(
+        values
+        and min(max(active_values), max(values))
+        - max(min(active_values), min(values))
         > _GEOMETRY_TOLERANCE
+        for values in candidate_values
     )
 
 
@@ -1218,8 +1246,20 @@ def _ordered_local_connection_candidates(
             else connection.target_portal_id
         )
         portal = portal_by_id[portal_id]
+        local_edge_runs = tuple(
+            (
+                pair.source_edge_keys
+                if downstream
+                else pair.target_edge_keys
+            )
+            for pair in connection.local_run_pairs
+        )
         if not _candidate_has_local_strike_overlap(
-            surface, topology, portal, active_triangles
+            surface,
+            topology,
+            portal,
+            active_triangles,
+            local_edge_runs,
         ):
             continue
         distance = min(
@@ -1379,6 +1419,285 @@ def _resolve_run_vertices(
             return None
         resolved.append(matches[0])
     return tuple(resolved)
+
+
+def _run_edge_keys(
+    surface: TriangleSurface,
+    run: _GuideRun,
+) -> tuple[EdgeGeometryKey, ...]:
+    vertices = _resolve_run_vertices(surface, run)
+    if vertices is None:
+        return ()
+    return tuple(
+        tuple(sorted((
+            (
+                surface.vertices[first].x,
+                surface.vertices[first].y,
+                surface.vertices[first].z,
+            ),
+            (
+                surface.vertices[second].x,
+                surface.vertices[second].y,
+                surface.vertices[second].z,
+            ),
+        )))
+        for first, second in zip(vertices, vertices[1:])
+    )
+
+
+def _run_subspan_for_edge_keys(
+    surface: TriangleSurface,
+    run: _GuideRun,
+    edge_keys: frozenset[EdgeGeometryKey],
+) -> _GuideRun | None:
+    """Return the continuous parent-run envelope carrying exact edge keys."""
+    run_edges = _run_edge_keys(surface, run)
+    matched = tuple(
+        index for index, edge_key in enumerate(run_edges)
+        if edge_key in edge_keys
+    )
+    if not matched:
+        return None
+    first_edge = min(matched)
+    last_edge = max(matched)
+    points = run.points[first_edge:last_edge + 2]
+    vertices = _resolve_run_vertices(surface, run)
+    if vertices is None:
+        return None
+    active_triangles: set[int] = set()
+    for edge_index in range(first_edge, last_edge + 1):
+        edge_vertices = {vertices[edge_index], vertices[edge_index + 1]}
+        active_triangles.update(
+            triangle_index
+            for triangle_index in run.face_triangle_indices
+            if edge_vertices.issubset(
+                set(surface.triangles[triangle_index].vertex_indices)
+            )
+        )
+    if not active_triangles:
+        return None
+    return _GuideRun(
+        run.portal_id,
+        run.face_component_index,
+        run.side,
+        run.source_kind,
+        points,
+        tuple(sorted(active_triangles)),
+        False,
+    )
+
+
+def _local_pair_order_compatible(
+    surface: TriangleSurface,
+    source_run: _GuideRun,
+    target_run: _GuideRun,
+    pairs: tuple[LocalPortalRunPair, ...],
+) -> bool:
+    """Require disjoint pair intervals to retain one portal-chain order."""
+    source_edges = _run_edge_keys(surface, source_run)
+    target_edges = _run_edge_keys(surface, target_run)
+    records: list[tuple[int, int, int, int]] = []
+    for pair in pairs:
+        source_indices = tuple(
+            index for index, edge_key in enumerate(source_edges)
+            if edge_key in pair.source_edge_keys
+        )
+        target_indices = tuple(
+            index for index, edge_key in enumerate(target_edges)
+            if edge_key in pair.target_edge_keys
+        )
+        if not source_indices or not target_indices:
+            return False
+        records.append((
+            min(source_indices), max(source_indices),
+            min(target_indices), max(target_indices),
+        ))
+    records.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+    if any(
+        second[0] <= first[1]
+        for first, second in zip(records, records[1:])
+    ):
+        return False
+    target_increasing = all(
+        second[2] > first[3]
+        for first, second in zip(records, records[1:])
+    )
+    target_decreasing = all(
+        second[3] < first[2]
+        for first, second in zip(records, records[1:])
+    )
+    return len(records) == 1 or target_increasing or target_decreasing
+
+
+def _source_portal_correspondence_chains(
+    surface: TriangleSurface,
+    connection: CorridorConnection,
+    source_run: _GuideRun,
+    target_runs: tuple[_GuideRun, ...],
+    station_by_vertex: dict[int, float],
+    station_interval: tuple[float, float],
+    assessment: PlanPolygon,
+) -> tuple[_LocalPortalRunChain, ...]:
+    """Resolve provenance-local source/target chains before injectivity."""
+    if not connection.local_run_pairs:
+        return ()
+    source_vertices = _resolve_run_vertices(surface, source_run)
+    if source_vertices is None or any(
+        vertex not in station_by_vertex for vertex in source_vertices
+    ):
+        return ()
+    source_values = tuple(
+        station_by_vertex[vertex] for vertex in source_vertices
+    )
+    monotone_candidates = _monotone_station_candidates(
+        source_run.points, source_values, station_interval
+    )
+    chains: dict[
+        tuple[tuple[tuple[float, float], ...], tuple[tuple[float, float], ...]],
+        _LocalPortalRunChain,
+    ] = {}
+    for candidate in monotone_candidates:
+        monotone_run = _target_correspondence_run(
+            source_run, candidate.points
+        )
+        monotone_edge_keys = frozenset(_run_edge_keys(surface, monotone_run))
+        candidate_pairs = tuple(
+            pair
+            for pair in connection.local_run_pairs
+            if set(pair.source_edge_keys).issubset(monotone_edge_keys)
+        )
+        if not candidate_pairs:
+            continue
+        assessment_local_pairs = tuple(
+            pair
+            for pair in candidate_pairs
+            if (
+                pair_run := _run_subspan_for_edge_keys(
+                    surface,
+                    monotone_run,
+                    frozenset(pair.source_edge_keys),
+                )
+            ) is not None
+            and clip_datamine_line_by_polygon(
+                PlanLineString(pair_run.points),
+                assessment,
+                _GEOMETRY_TOLERANCE,
+            )
+        )
+        candidate_pairs = assessment_local_pairs or candidate_pairs
+        for target_run in target_runs:
+            target_edge_keys = frozenset(_run_edge_keys(surface, target_run))
+            local_pairs = tuple(
+                pair for pair in candidate_pairs
+                if set(pair.target_edge_keys).issubset(target_edge_keys)
+            )
+            if not local_pairs or not _local_pair_order_compatible(
+                surface, monotone_run, target_run, local_pairs
+            ):
+                continue
+            local_source = _run_subspan_for_edge_keys(
+                surface,
+                monotone_run,
+                frozenset(
+                    edge_key
+                    for pair in local_pairs
+                    for edge_key in pair.source_edge_keys
+                ),
+            )
+            local_target = _run_subspan_for_edge_keys(
+                surface,
+                target_run,
+                frozenset(
+                    edge_key
+                    for pair in local_pairs
+                    for edge_key in pair.target_edge_keys
+                ),
+            )
+            if (
+                local_source is None
+                or local_target is None
+            ):
+                continue
+            values = _run_station_values(
+                surface,
+                local_source,
+                station_by_vertex,
+                station_interval,
+            )
+            if values is None or (
+                min(values[1][-1], station_interval[1])
+                - max(values[1][0], station_interval[0])
+                <= _GEOMETRY_TOLERANCE
+            ):
+                continue
+            chain = _LocalPortalRunChain(
+                local_source, values, local_target
+            )
+            key = (
+                tuple(map(_point_key, local_source.points)),
+                tuple(map(_point_key, local_target.points)),
+            )
+            chains.setdefault(key, chain)
+    resolved = tuple(chains[key] for key in sorted(chains))
+    if len(resolved) <= 1:
+        return resolved
+    assessment_local = tuple(
+        chain
+        for chain in resolved
+        if clip_datamine_line_by_polygon(
+            PlanLineString(chain.source_run.points),
+            assessment,
+            _GEOMETRY_TOLERANCE,
+        )
+    )
+    return assessment_local or resolved
+
+
+def _provenance_compatible_target_runs(
+    surface: TriangleSurface,
+    connection: CorridorConnection,
+    source_run: _GuideRun,
+    source_fraction_start: float,
+    source_fraction_end: float,
+    target_runs: tuple[_GuideRun, ...],
+) -> tuple[_GuideRun, ...]:
+    """Keep only target runs paired with the active exact source edges."""
+    if not connection.local_run_pairs:
+        return target_runs
+
+    source_edge_keys = _run_edge_keys(surface, source_run)
+    source_chainages = _guide_chainages(source_run.points)
+    if not source_edge_keys or source_chainages[-1] <= _GEOMETRY_TOLERANCE:
+        return ()
+    active_start = source_fraction_start * source_chainages[-1]
+    active_end = source_fraction_end * source_chainages[-1]
+    active_source_edge_keys = frozenset(
+        edge_key
+        for edge_key, edge_start, edge_end in zip(
+            source_edge_keys,
+            source_chainages,
+            source_chainages[1:],
+        )
+        if min(edge_end, active_end) - max(edge_start, active_start)
+        > _GEOMETRY_TOLERANCE
+    )
+    compatible_pairs = tuple(
+        pair
+        for pair in connection.local_run_pairs
+        if active_source_edge_keys.intersection(pair.source_edge_keys)
+    )
+    if not compatible_pairs:
+        return ()
+    compatible_target_edge_keys = frozenset(
+        edge_key
+        for pair in compatible_pairs
+        for edge_key in pair.target_edge_keys
+    )
+    return tuple(
+        run
+        for run in target_runs
+        if compatible_target_edge_keys.intersection(_run_edge_keys(surface, run))
+    )
 
 
 def _vertex_distances_from_set(
@@ -1927,6 +2246,194 @@ def _crop_terminal_guide_by_station(
     return guide, mapping
 
 
+def _ray_run_intersections(
+    origin: PlanPoint,
+    direction: tuple[float, float],
+    points: tuple[PlanPoint, ...],
+) -> tuple[tuple[tuple[float, PlanPoint], ...], bool]:
+    """Return every forward ray hit on one ordered run without picking one."""
+    chainages = _guide_chainages(points)
+    hits: list[tuple[float, PlanPoint]] = []
+    collinear = False
+    for index, (first, second) in enumerate(zip(points, points[1:])):
+        segment = (second.x - first.x, second.y - first.y)
+        offset = (first.x - origin.x, first.y - origin.y)
+        denominator = (
+            direction[0] * segment[1] - direction[1] * segment[0]
+        )
+        if abs(denominator) <= _GEOMETRY_TOLERANCE:
+            if abs(
+                offset[0] * direction[1] - offset[1] * direction[0]
+            ) <= _GEOMETRY_TOLERANCE:
+                projections = tuple(
+                    (point.x - origin.x) * direction[0]
+                    + (point.y - origin.y) * direction[1]
+                    for point in (first, second)
+                )
+                if max(projections) >= -_GEOMETRY_TOLERANCE:
+                    collinear = True
+            continue
+        ray_distance = (
+            offset[0] * segment[1] - offset[1] * segment[0]
+        ) / denominator
+        segment_fraction = (
+            offset[0] * direction[1] - offset[1] * direction[0]
+        ) / denominator
+        if ray_distance < -_GEOMETRY_TOLERANCE or not (
+            -_GEOMETRY_TOLERANCE
+            <= segment_fraction
+            <= 1.0 + _GEOMETRY_TOLERANCE
+        ):
+            continue
+        segment_fraction = max(0.0, min(1.0, segment_fraction))
+        chainage = chainages[index] + segment_fraction * (
+            chainages[index + 1] - chainages[index]
+        )
+        point = PlanPoint(
+            origin.x + max(0.0, ray_distance) * direction[0],
+            origin.y + max(0.0, ray_distance) * direction[1],
+        )
+        if not any(
+            abs(chainage - current_chainage) <= _GEOMETRY_TOLERANCE
+            and hypot(
+                point.x - current_point.x, point.y - current_point.y
+            ) <= _GEOMETRY_TOLERANCE
+            for current_chainage, current_point in hits
+        ):
+            hits.append((chainage, point))
+    return tuple(sorted(hits, key=lambda item: item[0])), collinear
+
+
+def _segments_properly_cross(
+    first: tuple[PlanPoint, PlanPoint],
+    second: tuple[PlanPoint, PlanPoint],
+) -> bool:
+    a, b = first
+    c, d = second
+    first_vector = (b.x - a.x, b.y - a.y)
+    second_vector = (d.x - c.x, d.y - c.y)
+    denominator = (
+        first_vector[0] * second_vector[1]
+        - first_vector[1] * second_vector[0]
+    )
+    if abs(denominator) <= _GEOMETRY_TOLERANCE:
+        return False
+    offset = (c.x - a.x, c.y - a.y)
+    first_fraction = (
+        offset[0] * second_vector[1] - offset[1] * second_vector[0]
+    ) / denominator
+    second_fraction = (
+        offset[0] * first_vector[1] - offset[1] * first_vector[0]
+    ) / denominator
+    return (
+        _GEOMETRY_TOLERANCE
+        < first_fraction
+        < 1.0 - _GEOMETRY_TOLERANCE
+        and _GEOMETRY_TOLERANCE
+        < second_fraction
+        < 1.0 - _GEOMETRY_TOLERANCE
+    )
+
+
+def _face_ray_terminal_guide(
+    upper: WallGuide,
+    lower_points: tuple[PlanPoint, ...],
+    samples: tuple[FaceDirectionSample, ...],
+    assessment: PlanPolygon,
+) -> _TerminalGuideCorrespondence:
+    """Resolve one ordered Lower subspan using only local Design Face rays."""
+    upper_chainages = upper.cumulative_chainages_m
+    support_fractions = tuple(sorted({
+        0.0,
+        1.0,
+        *(
+            chainage / upper.length_m
+            for chainage in upper_chainages[1:-1]
+        ),
+        *(sample.station_fraction for sample in samples),
+    }))
+    hits: list[tuple[float, PlanPoint, float]] = []
+    for fraction in support_fractions:
+        origin = upper.point_at(fraction * upper.length_m)
+        try:
+            direction = aggregate_face_direction(
+                samples, fraction, assessment
+            ).downwall_xy
+        except ValueError:
+            return _TerminalGuideCorrespondence(None, False)
+        intersections, collinear = _ray_run_intersections(
+            origin, direction, lower_points
+        )
+        if collinear or len(intersections) > 1:
+            return _TerminalGuideCorrespondence(None, True)
+        if not intersections:
+            return _TerminalGuideCorrespondence(None, False)
+        chainage, point = intersections[0]
+        hits.append((chainage, point, fraction))
+
+    deltas = tuple(
+        second[0] - first[0] for first, second in zip(hits, hits[1:])
+    )
+    if not deltas or any(abs(delta) <= _GEOMETRY_TOLERANCE for delta in deltas):
+        return _TerminalGuideCorrespondence(None, True)
+    increasing = all(delta > _GEOMETRY_TOLERANCE for delta in deltas)
+    decreasing = all(delta < -_GEOMETRY_TOLERANCE for delta in deltas)
+    if not increasing and not decreasing:
+        return _TerminalGuideCorrespondence(None, True)
+    ray_segments = tuple(
+        (
+            upper.point_at(fraction * upper.length_m),
+            point,
+        )
+        for _chainage, point, fraction in hits
+    )
+    if any(
+        _segments_properly_cross(first, second)
+        for index, first in enumerate(ray_segments)
+        for second in ray_segments[index + 1:]
+    ):
+        return _TerminalGuideCorrespondence(None, True)
+
+    oriented_points = lower_points
+    oriented_hits = hits
+    if decreasing:
+        total = _guide_chainages(lower_points)[-1]
+        oriented_points = tuple(reversed(lower_points))
+        oriented_hits = [
+            (total - chainage, point, fraction)
+            for chainage, point, fraction in hits
+        ]
+    start_chainage = oriented_hits[0][0]
+    end_chainage = oriented_hits[-1][0]
+    parent_chainages = _guide_chainages(oriented_points)
+    node_chainages = sorted({
+        start_chainage,
+        end_chainage,
+        *(chainage for chainage in parent_chainages[1:-1]
+          if start_chainage < chainage < end_chainage),
+        *(chainage for chainage, _point, _fraction in oriented_hits[1:-1]),
+    })
+    if len(node_chainages) < 2:
+        return _TerminalGuideCorrespondence(None, True)
+    guide = WallGuide(
+        tuple(_point_at_chainage(oriented_points, value) for value in node_chainages),
+        "lower",
+    )
+    hit_chainages = tuple(item[0] for item in oriented_hits)
+    hit_fractions = tuple(item[2] for item in oriented_hits)
+    station_fractions = tuple(
+        _station_at_chainage(hit_chainages, hit_fractions, chainage)
+        for chainage in node_chainages
+    )
+    return _TerminalGuideCorrespondence(
+        (guide, GuideStationMapping(
+            guide.cumulative_chainages_m,
+            station_fractions,
+        )),
+        False,
+    )
+
+
 def _crop_points_by_station(
     points: tuple[PlanPoint, ...],
     stations: tuple[float, ...],
@@ -2445,6 +2952,7 @@ def _extract_wall_sectors_propagated(
         ] = []
         leaf_station_map: dict[int, float] | None = None
         mapping_failed = False
+        stopped_span_correspondence = False
 
         for layer_index, component_index in enumerate(components):
             station_map, issue = _transport_layer_station(
@@ -2516,23 +3024,52 @@ def _extract_wall_sectors_propagated(
                     surface, topology, source_runs,
                     seed_triangles or incoming_triangles, face_adjacency,
                 )
-                target_runs = _portal_runs(
-                    surface, topology, target_portal, "upstream", face_adjacency
-                )
-                target_run, target_ambiguous = _select_local_run(
-                    surface, topology, target_runs,
-                    set(target_portal.adjacent_face_triangle_indices),
-                    face_adjacency,
-                )
-                if source_ambiguous or target_ambiguous:
-                    codes.add("ambiguous_portal_span_correspondence")
-                if source_run is None or target_run is None:
+                if source_run is None:
                     codes.add("ambiguous_portal_triangle_provenance")
                     mapping_failed = True
                     break
-                source_values = _run_station_values(
-                    surface, source_run, station_map
+                target_parent_runs = _portal_runs(
+                    surface,
+                    topology,
+                    target_portal,
+                    "upstream",
+                    face_adjacency,
                 )
+                target_run = None
+                target_ambiguous = False
+                if connection.local_run_pairs:
+                    source_active_start = max(active_start, incoming_start)
+                    source_active_end = min(active_end, incoming_end)
+                    local_chains = _source_portal_correspondence_chains(
+                        surface,
+                        connection,
+                        source_run,
+                        target_parent_runs,
+                        station_map,
+                        (source_active_start, source_active_end),
+                        assessment,
+                    )
+                    if source_ambiguous or len(local_chains) > 1:
+                        codes.add("ambiguous_portal_span_correspondence")
+                        stopped_span_correspondence = True
+                        mapping_failed = True
+                        break
+                    if not local_chains:
+                        codes.add("missing_portal_span_correspondence")
+                        stopped_span_correspondence = True
+                        mapping_failed = True
+                        break
+                    local_chain = local_chains[0]
+                    source_run = local_chain.source_run
+                    source_values = local_chain.source_values
+                    target_run = local_chain.target_run
+                else:
+                    source_values = _run_station_values(
+                        surface,
+                        source_run,
+                        station_map,
+                        (active_start, active_end),
+                    )
                 if source_values is None:
                     codes.add("non_injective_portal_station_mapping")
                     mapping_failed = True
@@ -2574,6 +3111,35 @@ def _extract_wall_sectors_propagated(
                     source_stations[0],
                     source_stations[-1],
                 )
+                if local_source_run is None:
+                    codes.add("non_injective_portal_station_mapping")
+                    mapping_failed = True
+                    break
+                if target_run is None:
+                    target_runs = _provenance_compatible_target_runs(
+                        surface,
+                        connection,
+                        source_ordered_run,
+                        source_fraction_start,
+                        source_fraction_end,
+                        target_parent_runs,
+                    )
+                    if not target_runs:
+                        codes.add("missing_portal_span_correspondence")
+                        stopped_span_correspondence = True
+                        mapping_failed = True
+                        break
+                    target_run, target_ambiguous = _select_local_run(
+                        surface, topology, target_runs,
+                        set(target_portal.adjacent_face_triangle_indices),
+                        face_adjacency,
+                    )
+                if source_ambiguous or target_ambiguous:
+                    codes.add("ambiguous_portal_span_correspondence")
+                if target_run is None:
+                    codes.add("ambiguous_portal_triangle_provenance")
+                    mapping_failed = True
+                    break
                 target_points, target_reversed = _orient_target_run(
                     source_points, target_run
                 )
@@ -2600,7 +3166,7 @@ def _extract_wall_sectors_propagated(
                     target_support_start,
                     target_support_end,
                 )
-                if local_source_run is None or next_run is None:
+                if next_run is None:
                     codes.add("non_injective_portal_station_mapping")
                     mapping_failed = True
                     break
@@ -2653,7 +3219,99 @@ def _extract_wall_sectors_propagated(
             else:
                 leaf_station_map = station_map
 
-        if mapping_failed or leaf_station_map is None or not fragment_station_data:
+        if mapping_failed:
+            if stopped_span_correspondence and fragment_station_data:
+                absolute_intervals = _merge_intervals(tuple(
+                    (start, end) for _fragment, _station, start, end
+                    in fragment_station_data
+                ))
+                if absolute_intervals:
+                    assessed_start = min(start for start, _end in absolute_intervals)
+                    assessed_end = max(end for _start, end in absolute_intervals)
+                    span = assessed_end - assessed_start
+                    upper_guide = _crop_guide_by_station(
+                        upper_run.points,
+                        upper_stations,
+                        assessed_start,
+                        assessed_end,
+                        "upper",
+                    )
+                    if upper_guide is not None and span > _GEOMETRY_TOLERANCE:
+                        intervals = tuple(StationInterval(
+                            max(0.0, (start - assessed_start) / span),
+                            min(1.0, (end - assessed_start) / span),
+                        ) for start, end in absolute_intervals)
+                        samples = tuple(sorted((
+                            FaceDirectionSample(
+                                fragment.representative_point,
+                                max(0.0, min(
+                                    1.0,
+                                    (station - assessed_start) / span,
+                                )),
+                                fragment.downwall_xy,
+                                fragment.geometric_weight,
+                                "face",
+                                fragment.source_id,
+                            )
+                            for fragment, station, _start, _end
+                            in fragment_station_data
+                        ), key=lambda sample: (
+                            sample.station_fraction,
+                            sample.point.x,
+                            sample.point.y,
+                            sample.source_id,
+                        )))
+                        normalized_states = tuple(CorridorSpanState(
+                            state.face_component_index,
+                            state.incoming_portal_id,
+                            state.outgoing_portal_id,
+                            (state.station_start - assessed_start) / span,
+                            (state.station_end - assessed_start) / span,
+                            state.active_triangle_keys,
+                        ) for state in states)
+                        sectors.append(WallSector(
+                            "",
+                            upper_guide,
+                            None,
+                            None,
+                            samples,
+                            intervals,
+                            False,
+                            None,
+                            False,
+                            tuple(
+                                topology.face_components[index].component_id
+                                for index in components
+                            ),
+                            tuple(sorted({
+                                upper_run.portal_id,
+                                *(
+                                    portal_id
+                                    for connection in connections
+                                    for portal_id in (
+                                        connection.source_portal_id,
+                                        connection.target_portal_id,
+                                    )
+                                ),
+                            })),
+                            tuple(
+                                connection.connection_id
+                                for connection in connections
+                            ),
+                            tuple(sorted(
+                                fragment.fragment_id
+                                for fragment, _station, _start, _end
+                                in fragment_station_data
+                            )),
+                            normalized_states,
+                            tuple(correspondences),
+                            WallSectorDiagnostics(tuple(sorted(codes))),
+                            upper_portal_id=upper_run.portal_id,
+                        ))
+                        sector_hypotheses.append(signature)
+            extraction_codes.update(codes)
+            continue
+        if leaf_station_map is None or not fragment_station_data:
             extraction_codes.update(codes)
             continue
 
@@ -2828,11 +3486,14 @@ def _extract_wall_sectors_propagated(
             "ambiguous_external_lower_guide",
             "ambiguous_downstream_extent",
             "ambiguous_portal_span_correspondence",
+            "missing_portal_span_correspondence",
             "ambiguous_portal_triangle_provenance",
             "non_injective_station_mapping",
             "non_injective_portal_station_mapping",
             "non_injective_lower_correspondence",
             "non_injective_downstream_extent",
+            "ambiguous_face_ray_lower_correspondence",
+            "missing_face_ray_lower_correspondence",
             "local_non_manifold_topology",
             "abrupt_local_direction_break",
             "missing_downstream_extent",
@@ -2840,6 +3501,7 @@ def _extract_wall_sectors_propagated(
         }
 
         for partition_start, partition_end, has_lower in partitions:
+            partition_codes = set(codes)
             span = partition_end - partition_start
             upper_guide = _crop_guide_by_station(
                 upper_run.points, upper_stations,
@@ -2875,13 +3537,33 @@ def _extract_wall_sectors_propagated(
                 sample.station_fraction, sample.point.x, sample.point.y,
                 sample.source_id,
             )))
-            lower_result = (
+            station_lower_result = (
                 _crop_terminal_guide_by_station(
                     lower_values[0], lower_values[1],
                     partition_start, partition_end, "lower",
                 )
                 if has_lower and lower_values is not None else None
             )
+            lower_correspondence = (
+                _face_ray_terminal_guide(
+                    upper_guide,
+                    lower_values[0],
+                    samples,
+                    assessment,
+                )
+                if station_lower_result is not None
+                and lower_values is not None else None
+            )
+            lower_result = (
+                lower_correspondence.result
+                if lower_correspondence is not None else None
+            )
+            if lower_correspondence is not None and lower_result is None:
+                partition_codes.add(
+                    "ambiguous_face_ray_lower_correspondence"
+                    if lower_correspondence.ambiguous
+                    else "missing_face_ray_lower_correspondence"
+                )
             extent_result = (
                 _crop_terminal_guide_by_station(
                     extent_values[0], extent_values[1],
@@ -2897,7 +3579,7 @@ def _extract_wall_sectors_propagated(
             downstream_mapping = (
                 extent_result[1] if extent_result is not None else None
             )
-            supported = bool(samples) and not (critical & codes) and (
+            supported = bool(samples) and not (critical & partition_codes) and (
                 lower_guide is not None or downstream_extent is not None
             )
             normalized_states = tuple(CorridorSpanState(
@@ -2929,7 +3611,7 @@ def _extract_wall_sectors_propagated(
                 _correspondences_for_partition(
                     tuple(correspondences), partition_start, partition_end
                 ),
-                WallSectorDiagnostics(tuple(sorted(codes))),
+                WallSectorDiagnostics(tuple(sorted(partition_codes))),
                 lower_mapping,
                 downstream_mapping,
                 upper_run.portal_id,
@@ -2937,6 +3619,7 @@ def _extract_wall_sectors_propagated(
                 extent_run.portal_id if downstream_extent is not None else None,
             ))
             sector_hypotheses.append(signature)
+            extraction_codes.update(partition_codes)
         extraction_codes.update(codes)
 
     produced_hypotheses = set(sector_hypotheses)

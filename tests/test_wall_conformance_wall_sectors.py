@@ -6,13 +6,17 @@ from pathlib import Path
 
 import pytest
 
+from domain.geometry.operations import clip_datamine_line_by_polygon
 from domain.geometry.surfaces import (
     SurfaceTriangle,
     SurfaceVertex,
     TriangleSurface,
 )
-from domain.geometry.types import PlanPoint, PlanPolygon
-from domain.wall_conformance.design_topology import build_design_topology_index
+from domain.geometry.types import PlanLineString, PlanPoint, PlanPolygon
+from domain.wall_conformance.design_topology import (
+    LocalPortalRunPair,
+    build_design_topology_index,
+)
 from domain.wall_conformance.models import SurfaceRoleMapping
 from domain.wall_conformance import wall_sectors as wall_sector_module
 from domain.wall_conformance.wall_sectors import extract_wall_sectors
@@ -141,6 +145,60 @@ def _curved_layered_with_folded_global_projection() -> TriangleSurface:
             )
             builder.triangle(
                 (a, d, b), role, f"curved:{role}:{segment_index}:1"
+            )
+    return builder.surface()
+
+
+def _mixed_parent_portal_surface(*, two_local_pairs: bool) -> TriangleSurface:
+    builder = _MeshBuilder()
+    strike_points = (
+        (
+            (18.0, 0.0),
+            (12.0, 1.0),
+            (12.0, 5.0),
+            (6.0, 6.0),
+            (6.0, 10.0),
+            (0.0, 11.0),
+        )
+        if two_local_pairs
+        else (
+            (12.0, 0.0),
+            (6.0, 1.0),
+            (6.0, 9.0),
+            (0.0, 10.0),
+        )
+    )
+    for layer_index, role in enumerate(("face", "berm", "face")):
+        first_offset = 4.0 * layer_index
+        second_offset = first_offset + 4.0
+        for segment_index, (first, second) in enumerate(
+            zip(strike_points, strike_points[1:])
+        ):
+            a = builder.vertex(
+                first[0] + first_offset,
+                first[1],
+                40.0 - first[0] - first_offset,
+            )
+            b = builder.vertex(
+                second[0] + first_offset,
+                second[1],
+                40.0 - second[0] - first_offset,
+            )
+            c = builder.vertex(
+                first[0] + second_offset,
+                first[1],
+                40.0 - first[0] - second_offset,
+            )
+            d = builder.vertex(
+                second[0] + second_offset,
+                second[1],
+                40.0 - second[0] - second_offset,
+            )
+            builder.triangle(
+                (a, c, d), role, f"mixed:{role}:{segment_index}:0"
+            )
+            builder.triangle(
+                (a, d, b), role, f"mixed:{role}:{segment_index}:1"
             )
     return builder.surface()
 
@@ -369,6 +427,272 @@ def test_curved_portals_defer_global_projection_fold_to_local_station_mapping() 
     assert sector.supported
     assert len(sector.face_component_ids) == 2
     assert sector.connection_ids == (connection.connection_id,)
+
+
+def test_unique_mixed_parent_runs_assemble_one_continuous_sector() -> None:
+    surface = _mixed_parent_portal_surface(two_local_pairs=False)
+    topology = build_design_topology_index(surface, ROLE_MAPPING)
+    result = extract_wall_sectors(
+        surface,
+        topology,
+        _rectangle(6.5, 2.0, 17.5, 8.0),
+    )
+
+    assert len(topology.corridor_connections) == 1
+    assert topology.corridor_connections[0].status == "compatible"
+    assert len(result.sectors) == 1
+    sector = result.sectors[0]
+    assert sector.supported
+    assert len(sector.face_component_ids) == 2
+    assert sector.connection_ids == (
+        topology.corridor_connections[0].connection_id,
+    )
+
+
+def test_competing_mixed_parent_runs_do_not_choose_arbitrary_sector() -> None:
+    surface = _mixed_parent_portal_surface(two_local_pairs=True)
+    topology = build_design_topology_index(surface, ROLE_MAPPING)
+    result = extract_wall_sectors(
+        surface,
+        topology,
+        _rectangle(6.5, 0.5, 29.5, 10.5),
+    )
+
+    assert len(topology.corridor_connections) == 1
+    assert topology.corridor_connections[0].status == "ambiguous"
+    assert result.sectors
+    assert all(not sector.supported for sector in result.sectors)
+    assert any(
+        "ambiguous_portal_span_correspondence" in sector.diagnostics.codes
+        or "ambiguous_external_upper_guide" in sector.diagnostics.codes
+        for sector in result.sectors
+    )
+
+
+def _portal_span_provenance_fixture():
+    surface = _layered(
+        ("face", "berm", "face"), y_values=(0.0, 5.0, 10.0)
+    )
+    topology = build_design_topology_index(surface, ROLE_MAPPING)
+    connection = topology.corridor_connections[0]
+    portal_by_id = {portal.portal_id: portal for portal in topology.portals}
+    adjacency = wall_sector_module._surface_face_adjacency(surface, topology)
+    source_run = wall_sector_module._portal_runs(
+        surface,
+        topology,
+        portal_by_id[connection.source_portal_id],
+        "downstream",
+        adjacency,
+    )[0]
+    target_run = wall_sector_module._portal_runs(
+        surface,
+        topology,
+        portal_by_id[connection.target_portal_id],
+        "upstream",
+        adjacency,
+    )[0]
+    assert len(source_run.points) == 3
+    assert len(target_run.points) == 3
+    target_runs = (
+        replace(target_run, points=target_run.points[:2]),
+        replace(target_run, points=target_run.points[1:]),
+    )
+    source_edges = wall_sector_module._run_edge_keys(surface, source_run)
+    target_edges = tuple(
+        wall_sector_module._run_edge_keys(surface, run)[0]
+        for run in target_runs
+    )
+    return surface, connection, source_run, target_runs, source_edges, target_edges
+
+
+def _folded_source_station_fixture():
+    (
+        surface, connection, source_run, target_runs, source_edges, target_edges,
+    ) = _portal_span_provenance_fixture()
+    source_vertices = wall_sector_module._resolve_run_vertices(
+        surface, source_run
+    )
+    assert source_vertices is not None
+    station_by_vertex = dict(zip(
+        source_vertices, (0.0, 1.0, 0.0), strict=True
+    ))
+    source_edge_runs = tuple(
+        wall_sector_module._run_subspan_for_edge_keys(
+            surface, source_run, frozenset((edge_key,))
+        )
+        for edge_key in source_edges
+    )
+    assert all(run is not None for run in source_edge_runs)
+    return (
+        surface,
+        connection,
+        source_run,
+        target_runs,
+        source_edges,
+        target_edges,
+        station_by_vertex,
+        source_edge_runs,
+    )
+
+
+def test_outside_assessment_source_span_survives_active_provenance() -> None:
+    (
+        surface, connection, source_run, target_runs,
+        source_edges, target_edges, station_by_vertex, source_edge_runs,
+    ) = _folded_source_station_fixture()
+    connection = replace(connection, local_run_pairs=(
+        LocalPortalRunPair((source_edges[0],), (target_edges[0],)),
+    ))
+    active_run = source_edge_runs[0]
+    assert active_run is not None
+    outside_assessment = _rectangle(100.0, 100.0, 101.0, 101.0)
+    assert not clip_datamine_line_by_polygon(
+        PlanLineString(active_run.points), outside_assessment
+    )
+
+    chains = wall_sector_module._source_portal_correspondence_chains(
+        surface,
+        connection,
+        source_run,
+        target_runs,
+        station_by_vertex,
+        (0.0, 1.0),
+        outside_assessment,
+    )
+
+    assert len(chains) == 1
+    assert wall_sector_module._run_edge_keys(
+        surface, chains[0].source_run
+    ) == (source_edges[0],)
+    assert wall_sector_module._run_edge_keys(
+        surface, chains[0].target_run
+    ) == (target_edges[0],)
+
+
+def test_source_provenance_preserves_two_active_physical_chains() -> None:
+    (
+        surface, connection, source_run, target_runs,
+        source_edges, target_edges, station_by_vertex, source_edge_runs,
+    ) = _folded_source_station_fixture()
+    connection = replace(connection, local_run_pairs=(
+        LocalPortalRunPair((source_edges[0],), (target_edges[0],)),
+        LocalPortalRunPair((source_edges[1],), (target_edges[1],)),
+    ))
+
+    chains = wall_sector_module._source_portal_correspondence_chains(
+        surface,
+        connection,
+        source_run,
+        target_runs,
+        station_by_vertex,
+        (0.0, 1.0),
+        _rectangle(-1.0, -1.0, 20.0, 20.0),
+    )
+
+    assert len(chains) == 2
+
+
+def test_outside_assessment_span_without_active_provenance_is_missing() -> None:
+    (
+        surface, connection, source_run, target_runs,
+        source_edges, target_edges, station_by_vertex, source_edge_runs,
+    ) = _folded_source_station_fixture()
+    connection = replace(connection, local_run_pairs=(
+        LocalPortalRunPair((source_edges[1],), (target_edges[1],)),
+    ))
+    active_run = source_edge_runs[0]
+    inactive_run = source_edge_runs[1]
+    assert active_run is not None
+    assert inactive_run is not None
+    assert not clip_datamine_line_by_polygon(
+        PlanLineString(inactive_run.points),
+        _rectangle(100.0, 100.0, 101.0, 101.0),
+    )
+
+    chains = wall_sector_module._source_portal_correspondence_chains(
+        surface,
+        connection,
+        active_run,
+        target_runs,
+        station_by_vertex,
+        (0.0, 1.0),
+        _rectangle(100.0, 100.0, 101.0, 101.0),
+    )
+
+    assert chains == ()
+
+
+def test_portal_span_provenance_reduces_global_target_runs_to_one() -> None:
+    (
+        surface, connection, source_run, target_runs, source_edges, target_edges,
+    ) = _portal_span_provenance_fixture()
+    connection = replace(connection, local_run_pairs=(
+        LocalPortalRunPair((source_edges[0],), (target_edges[0],)),
+        LocalPortalRunPair((source_edges[1],), (target_edges[1],)),
+    ))
+
+    compatible = wall_sector_module._provenance_compatible_target_runs(
+        surface, connection, source_run, 0.0, 0.49, target_runs
+    )
+
+    assert compatible == (target_runs[0],)
+
+
+def test_portal_span_provenance_preserves_physical_ambiguity() -> None:
+    (
+        surface, connection, source_run, target_runs, source_edges, target_edges,
+    ) = _portal_span_provenance_fixture()
+    connection = replace(connection, local_run_pairs=(
+        LocalPortalRunPair((source_edges[0],), (target_edges[0],)),
+        LocalPortalRunPair((source_edges[0],), (target_edges[1],)),
+    ))
+
+    compatible = wall_sector_module._provenance_compatible_target_runs(
+        surface, connection, source_run, 0.0, 0.49, target_runs
+    )
+
+    assert compatible == target_runs
+
+
+def test_portal_span_provenance_reports_no_compatible_target(
+    monkeypatch,
+) -> None:
+    (
+        surface, connection, source_run, target_runs, source_edges, target_edges,
+    ) = _portal_span_provenance_fixture()
+    connection = replace(connection, local_run_pairs=(
+        LocalPortalRunPair((source_edges[1],), (target_edges[0],)),
+    ))
+
+    compatible = wall_sector_module._provenance_compatible_target_runs(
+        surface, connection, source_run, 0.0, 0.49, target_runs
+    )
+
+    assert compatible == ()
+
+    monkeypatch.setattr(
+        wall_sector_module,
+        "_provenance_compatible_target_runs",
+        lambda *_args: (),
+    )
+    result = _extract(
+        _layered(("face", "berm", "face")),
+        _rectangle(1.0, 1.0, 11.0, 9.0),
+    )
+
+    assert len(result.sectors) == 1
+    assert not result.sectors[0].supported
+    assert (
+        "missing_portal_span_correspondence"
+        in result.sectors[0].diagnostics.codes
+    )
+    assert (
+        "ambiguous_portal_span_correspondence"
+        not in result.sectors[0].diagnostics.codes
+    )
+    assert not result.supported_sectors
+    assert "missing_portal_span_correspondence" in result.diagnostics.codes
+    assert "ambiguous_portal_span_correspondence" not in result.diagnostics.codes
 
 
 def test_three_bench_wall_traverses_two_platforms() -> None:
@@ -810,6 +1134,87 @@ def test_partial_long_portal_overlap_transports_only_matching_target_subspan(
     )
 
 
+def _replace_portal_run_stations(
+    monkeypatch,
+    folded_values: tuple[float, ...],
+) -> list[
+    tuple[
+        tuple[float, float] | None,
+        tuple[tuple[PlanPoint, ...], tuple[float, ...]] | None,
+    ]
+]:
+    original = wall_sector_module._run_station_values
+    observations = []
+
+    def run_station_values_in_active_band(
+        surface, run, station_by_vertex, station_interval=None,
+    ):
+        vertices = wall_sector_module._resolve_run_vertices(surface, run)
+        assert vertices is not None
+        assert len(vertices) == len(folded_values)
+        folded_station_by_vertex = dict(station_by_vertex)
+        folded_station_by_vertex.update(zip(vertices, folded_values, strict=True))
+        assert original(surface, run, folded_station_by_vertex) is None
+        result = original(
+            surface, run, folded_station_by_vertex, station_interval
+        )
+        observations.append((station_interval, result))
+        return result
+
+    monkeypatch.setattr(
+        wall_sector_module, "_run_station_values",
+        run_station_values_in_active_band,
+    )
+    return observations
+
+
+def test_portal_transport_uses_unique_folded_run_inside_active_band(
+    monkeypatch,
+) -> None:
+    observations = _replace_portal_run_stations(
+        monkeypatch, (0.0, 0.4, 0.8, 0.6, 0.5)
+    )
+    result = _extract(
+        _layered(
+            ("face", "berm", "face"),
+            y_values=(0.0, 10.0, 20.0, 30.0, 40.0),
+        ),
+        _rectangle(1.0, 1.0, 3.0, 9.0),
+    )
+
+    assert observations
+    assert all(interval is not None for interval, _result in observations)
+    assert all(value is not None for _interval, value in observations)
+    assert len(result.sectors) == 1
+    assert result.sectors[0].supported
+    assert "non_injective_portal_station_mapping" not in (
+        result.sectors[0].diagnostics.codes
+    )
+
+
+def test_portal_transport_rejects_two_folded_runs_inside_active_band(
+    monkeypatch,
+) -> None:
+    observations = _replace_portal_run_stations(
+        monkeypatch, (0.0, 0.4, 0.8, 0.2, 0.0)
+    )
+    result = _extract(
+        _layered(
+            ("face", "berm", "face"),
+            y_values=(0.0, 10.0, 20.0, 30.0, 40.0),
+        ),
+        _rectangle(1.0, 1.0, 3.0, 9.0),
+    )
+
+    assert observations
+    assert all(interval is not None for interval, _result in observations)
+    assert all(value is None for _interval, value in observations)
+    assert not any(sector.supported for sector in result.sectors)
+    assert "non_injective_portal_station_mapping" in (
+        result.diagnostics.codes
+    )
+
+
 def test_one_concave_assessment_over_two_distant_bands_extracts_two_sectors() -> None:
     surface = _huge_face_two_bands()
     area = PlanPolygon((
@@ -1159,6 +1564,78 @@ def _terminal_test_run(
         portal_id, 0, "downstream", source_kind, points,
         triangle_indices, False,
     ), vertex_indices
+
+
+def test_face_rays_replace_wrong_station_crop_with_unique_lower_subspan() -> None:
+    upper = wall_sector_module.WallGuide(
+        (PlanPoint(0.0, 0.0), PlanPoint(0.2, 0.0)), "upper"
+    )
+    lower_points = (
+        PlanPoint(5.0, 1.0),
+        PlanPoint(5.0, 5.0),
+        PlanPoint(3.0, 8.0),
+        PlanPoint(1.0, 10.0),
+        PlanPoint(-1.0, 10.0),
+    )
+    station_crop = wall_sector_module._crop_terminal_guide_by_station(
+        lower_points,
+        (0.0, 0.2, 0.5, 0.8, 1.0),
+        0.0,
+        0.05,
+        "lower",
+    )
+    assert station_crop is not None
+    assert all(point.x == pytest.approx(5.0) for point in station_crop[0].points)
+
+    samples = (
+        wall_sector_module.FaceDirectionSample(
+            PlanPoint(0.1, 0.1), 0.5, (0.0, 1.0), 1.0, "face", "face:0"
+        ),
+    )
+    correspondence = wall_sector_module._face_ray_terminal_guide(
+        upper,
+        lower_points,
+        samples,
+        _rectangle(-2.0, -1.0, 6.0, 11.0),
+    )
+
+    assert not correspondence.ambiguous
+    assert correspondence.result is not None
+    guide, mapping = correspondence.result
+    expected_points = (
+        PlanPoint(0.0, 10.0),
+        PlanPoint(0.1, 10.0),
+        PlanPoint(0.2, 10.0),
+    )
+    for point, expected in zip(guide.points, expected_points, strict=True):
+        assert point.x == pytest.approx(expected.x)
+        assert point.y == pytest.approx(expected.y)
+    assert mapping.station_fractions == pytest.approx((0.0, 0.5, 1.0))
+
+
+def test_face_rays_reject_two_distinct_lower_subspans() -> None:
+    upper = wall_sector_module.WallGuide(
+        (PlanPoint(0.0, 0.0), PlanPoint(0.2, 0.0)), "upper"
+    )
+    samples = (
+        wall_sector_module.FaceDirectionSample(
+            PlanPoint(0.1, 0.1), 0.5, (0.0, 1.0), 1.0, "face", "face:0"
+        ),
+    )
+    correspondence = wall_sector_module._face_ray_terminal_guide(
+        upper,
+        (
+            PlanPoint(-1.0, 2.0),
+            PlanPoint(1.0, 2.0),
+            PlanPoint(1.0, 4.0),
+            PlanPoint(-1.0, 4.0),
+        ),
+        samples,
+        _rectangle(-2.0, -1.0, 2.0, 5.0),
+    )
+
+    assert correspondence.result is None
+    assert correspondence.ambiguous
 
 
 def test_two_local_lower_runs_are_ambiguous_and_critical(monkeypatch) -> None:

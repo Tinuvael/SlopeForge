@@ -254,6 +254,14 @@ class TransitionPortal:
 
 
 @dataclass(frozen=True)
+class LocalPortalRunPair:
+    """Exact local edge spans supporting one parent-portal connection."""
+
+    source_edge_keys: tuple[EdgeGeometryKey, ...]
+    target_edge_keys: tuple[EdgeGeometryKey, ...]
+
+
+@dataclass(frozen=True)
 class CorridorConnection:
     """One plausible local continuation candidate, not a validated wall."""
 
@@ -274,6 +282,7 @@ class CorridorConnection:
     strike_overlap_m: float
     order_compatible: bool
     validated_wall_continuation: bool = False
+    local_run_pairs: tuple[LocalPortalRunPair, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -390,6 +399,13 @@ class DesignTopologyIndex:
                     connection.strike_overlap_m,
                     connection.order_compatible,
                     connection.validated_wall_continuation,
+                    tuple(
+                        (
+                            pair.source_edge_keys,
+                            pair.target_edge_keys,
+                        )
+                        for pair in connection.local_run_pairs
+                    ),
                 )
                 for connection in self.corridor_connections
             ),
@@ -894,6 +910,231 @@ def _platform_portal_neighbours(
     }
 
 
+def _local_side_runs(
+    surface: TriangleSurface,
+    portal: TransitionPortal,
+    wanted_side: PortalSide,
+) -> tuple[TransitionPortal, ...]:
+    """Return maximal positive-length runs from stored edge-side evidence.
+
+    The returned portals are immutable, calculation-local views.  Their
+    synthetic ids exist only to keep separate runs distinct while platform
+    neighbourhood is evaluated; corridor provenance continues to use the
+    parent portal ids.
+    """
+    count = len(portal.edge_provenance)
+    if count == 0:
+        return ()
+    closed = portal.points[0] == portal.points[-1]
+    wanted = tuple(
+        edge.provisional_side == wanted_side
+        for edge in portal.edge_provenance
+    )
+    starts = [
+        index
+        for index, selected in enumerate(wanted)
+        if selected and (
+            (not closed and index == 0)
+            or not wanted[(index - 1) % count]
+        )
+    ]
+    if closed and all(wanted):
+        starts = [0]
+
+    runs: list[TransitionPortal] = []
+    for start in starts:
+        indices: list[int] = []
+        index = start
+        while 0 <= index < count and wanted[index] and index not in indices:
+            indices.append(index)
+            index = (index + 1) % count if closed else index + 1
+        points = [portal.points[indices[0]]]
+        points.extend(portal.points[edge_index + 1] for edge_index in indices)
+        length = fsum(
+            hypot(second.x - first.x, second.y - first.y)
+            for first, second in zip(points, points[1:])
+        )
+        if length <= _GEOMETRY_TOLERANCE:
+            continue
+        provenance = tuple(
+            portal.edge_provenance[edge_index] for edge_index in indices
+        )
+        face_keys = {edge.face_triangle_key for edge in provenance}
+        platform_keys = {
+            edge.platform_triangle_key
+            for edge in provenance
+            if edge.platform_triangle_key is not None
+        }
+        runs.append(TransitionPortal(
+            f"{portal.portal_id}/local:{wanted_side}:{start}",
+            tuple(points),
+            portal.face_component_index,
+            portal.platform_component_index,
+            wanted_side,
+            portal.source_kind,
+            provenance,
+            tuple(
+                triangle_index
+                for triangle_index in portal.adjacent_face_triangle_indices
+                if _triangle_geometry_key(surface, triangle_index) in face_keys
+            ),
+            tuple(
+                triangle_index
+                for triangle_index
+                in portal.adjacent_platform_triangle_indices
+                if _triangle_geometry_key(surface, triangle_index)
+                in platform_keys
+            ),
+            portal.direction_support,
+        ))
+    return tuple(runs)
+
+
+def _platform_local_connection_candidates(
+    surface: TriangleSurface,
+    component: PlatformComponent,
+    portals: tuple[TransitionPortal, ...],
+    platform_adjacency: dict[int, set[int]],
+    roles: tuple[str, ...],
+) -> tuple[CorridorConnection, ...]:
+    """Evaluate all structural local-run neighbours in one platform pass."""
+    parent_by_local_id: dict[str, TransitionPortal] = {}
+    local_runs: list[TransitionPortal] = []
+    for portal in portals:
+        for side in ("downstream", "upstream"):
+            for run in _local_side_runs(surface, portal, side):
+                local_runs.append(run)
+                parent_by_local_id[run.portal_id] = portal
+    if not local_runs:
+        return ()
+    local_by_id = {run.portal_id: run for run in local_runs}
+    parent_neighbour_pairs = _platform_portal_neighbours(
+        surface,
+        component,
+        portals,
+        platform_adjacency,
+        roles,
+    )
+    parent_by_id = {portal.portal_id: portal for portal in portals}
+    whole_side_candidates: list[CorridorConnection] = []
+    whole_side_pairs: set[tuple[str, str]] = set()
+    for first_id, second_id in sorted(parent_neighbour_pairs):
+        first = parent_by_id[first_id]
+        second = parent_by_id[second_id]
+        if first.provisional_side == "downstream" and (
+            second.provisional_side == "upstream"
+        ):
+            source, target = first, second
+        elif second.provisional_side == "downstream" and (
+            first.provisional_side == "upstream"
+        ):
+            source, target = second, first
+        else:
+            continue
+        if source.face_component_index == target.face_component_index:
+            continue
+        whole_side_pairs.add((first_id, second_id))
+        whole_side_candidates.append(_connection_candidate(
+            source, target, component.canonical_index
+        ))
+    neighbour_pairs = _platform_portal_neighbours(
+        surface,
+        component,
+        tuple(local_runs),
+        platform_adjacency,
+        roles,
+    )
+    grouped: dict[tuple[str, str], list[CorridorConnection]] = defaultdict(list)
+    for first_id, second_id in sorted(neighbour_pairs):
+        first = local_by_id[first_id]
+        second = local_by_id[second_id]
+        if first.provisional_side == "downstream" and (
+            second.provisional_side == "upstream"
+        ):
+            source, target = first, second
+        elif second.provisional_side == "downstream" and (
+            first.provisional_side == "upstream"
+        ):
+            source, target = second, first
+        else:
+            continue
+        source_parent = parent_by_local_id[source.portal_id]
+        target_parent = parent_by_local_id[target.portal_id]
+        if source_parent.face_component_index == target_parent.face_component_index:
+            continue
+        if (
+            source_parent.provisional_side not in {"downstream", "lateral"}
+            or target_parent.provisional_side not in {"upstream", "lateral"}
+            or "lateral" not in {
+                source_parent.provisional_side,
+                target_parent.provisional_side,
+            }
+        ):
+            continue
+        parent_pair = tuple(sorted((
+            source_parent.portal_id,
+            target_parent.portal_id,
+        )))
+        if (
+            parent_pair not in parent_neighbour_pairs
+            or parent_pair in whole_side_pairs
+        ):
+            continue
+        grouped[(source_parent.portal_id, target_parent.portal_id)].append(
+            replace(
+                _connection_candidate(
+                    source, target, component.canonical_index
+                ),
+                source_portal_id=source_parent.portal_id,
+                target_portal_id=target_parent.portal_id,
+                local_run_pairs=(LocalPortalRunPair(
+                    tuple(edge.edge_key for edge in source.edge_provenance),
+                    tuple(edge.edge_key for edge in target.edge_provenance),
+                ),),
+            )
+        )
+    local_parent_candidates = tuple(
+        candidate
+        for parent_ids in sorted(grouped)
+        for candidate in (
+            _parent_connection_candidate(tuple(grouped[parent_ids])),
+        )
+        if candidate is not None
+    )
+    return tuple(whole_side_candidates) + local_parent_candidates
+
+
+def _parent_connection_candidate(
+    local_candidates: tuple[CorridorConnection, ...],
+) -> CorridorConnection | None:
+    """Collapse local evidence without selecting a final correspondence."""
+    if not local_candidates:
+        return None
+    compatible = tuple(
+        candidate
+        for candidate in local_candidates
+        if candidate.status == "compatible"
+    )
+    if not compatible:
+        return local_candidates[0]
+    witness = compatible[0]
+    if len(compatible) == 1:
+        return witness
+    return replace(
+        witness,
+        status="ambiguous",
+        reason=(
+            f"{len(compatible)} competing locally compatible run pairs; "
+            "Phase 2B correspondence required"
+        ),
+        local_run_pairs=tuple(
+            pair
+            for candidate in compatible
+            for pair in candidate.local_run_pairs
+        ),
+    )
+
+
 def _connection_candidate(
     source: TransitionPortal,
     target: TransitionPortal,
@@ -1367,27 +1608,26 @@ def build_design_topology_index(
             portal_by_id[portal_id]
             for portal_id in platform_component.portal_ids
         )
-        neighbour_pairs = _platform_portal_neighbours(
+        local_connections = _platform_local_connection_candidates(
             surface,
             platform_component,
             component_portals,
             platform_adjacency,
             roles,
         )
-        for first_id, second_id in sorted(neighbour_pairs):
-            first = portal_by_id[first_id]
-            second = portal_by_id[second_id]
-            if first.provisional_side == "downstream" and second.provisional_side == "upstream":
-                source, target = first, second
-            elif second.provisional_side == "downstream" and first.provisional_side == "upstream":
-                source, target = second, first
-            else:
-                continue
-            if source.face_component_index == target.face_component_index:
-                continue
-            connections.append(_connection_candidate(
-                source, target, platform_component.canonical_index
-            ))
+        connections.extend(local_connections)
+        diagnostics.extend(
+            TopologyDiagnostic(
+                "ambiguous_local_run_correspondence",
+                "Parent portals contain competing compatible local run pairs",
+                related_ids=(
+                    connection.source_portal_id,
+                    connection.target_portal_id,
+                ),
+            )
+            for connection in local_connections
+            if connection.status == "ambiguous"
+        )
 
     connections.sort(key=lambda connection: (
         connection.platform_component_index,
@@ -1399,13 +1639,13 @@ def build_design_topology_index(
         for index, connection in enumerate(connections)
     ]
 
-    compatible = [
+    plausible = [
         connection for connection in connections
-        if connection.status == "compatible"
+        if connection.status in {"compatible", "ambiguous"}
     ]
     successors: dict[str, list[str]] = defaultdict(list)
     predecessors: dict[str, list[str]] = defaultdict(list)
-    for connection in compatible:
+    for connection in plausible:
         successors[connection.source_portal_id].append(connection.connection_id)
         predecessors[connection.target_portal_id].append(connection.connection_id)
     ambiguous_ids = {
@@ -1461,6 +1701,7 @@ __all__ = [
     "FaceComponent",
     "FaceDirectionEvidence",
     "FaceDirectionSupport",
+    "LocalPortalRunPair",
     "PlatformComponent",
     "PortalEdgeProvenance",
     "PortalSide",
