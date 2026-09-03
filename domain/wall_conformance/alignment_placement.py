@@ -632,6 +632,64 @@ def _shift_segments(
     )
 
 
+def _local_design_run(
+    component: tuple[SectionSegment, ...],
+    supported_triangle_indices: set[int],
+) -> tuple[SectionSegment, ...]:
+    """Select the physical 1D wall run containing Assessment Face seeds.
+
+    A site-wide Design TIN can remain endpoint-connected through unrelated pit
+    walls.  In section space, a semantic Face that rises with physical ``+U``
+    is the boundary between the assessed downwall run and such remote geometry.
+    Berm and Road segments do not create boundaries of their own.
+    """
+    seed_segments = tuple(
+        segment
+        for segment in component
+        if segment.semantic_role == "face"
+        and segment.source_triangle_index in supported_triangle_indices
+    )
+    if not seed_segments:
+        raise ValueError("Connected Design section contains no supporting Face")
+
+    minimum_u = min(segment.u_min for segment in component)
+    semantic = build_design_section(_shift_segments(component, minimum_u))
+    rising_face_triangle_indices = {
+        triangle_index
+        for element in semantic.elements
+        if element.role == "face"
+        and element.vertical_change > _SECTION_TOLERANCE
+        for triangle_index in element.source_triangle_indices
+    }
+    if any(
+        segment.source_triangle_index in rising_face_triangle_indices
+        for segment in seed_segments
+    ):
+        raise ValueError("Assessment-supported Design Face rises with +U")
+
+    traversable = tuple(
+        segment
+        for segment in component
+        if not (
+            segment.semantic_role == "face"
+            and segment.source_triangle_index in rising_face_triangle_indices
+        )
+    )
+    seed_set = set(seed_segments)
+    candidates = tuple(
+        local_component
+        for local_component in _section_components(traversable)
+        if seed_set.intersection(local_component)
+    )
+    if not candidates:
+        raise ValueError("No local Design wall run contains the supporting Face")
+    if len(candidates) > 1 or not seed_set.issubset(candidates[0]):
+        raise ValueError(
+            "Supporting Face evidence crosses a reverse-slope Design Face"
+        )
+    return candidates[0]
+
+
 def _profile_from_placement(
     placement: AlignmentProfilePlacement,
     design_surface: TriangleSurface,
@@ -666,7 +724,7 @@ def _profile_from_placement(
         raise ValueError("No connected Design section contains the supporting Face")
     if len(candidates) > 1:
         raise ValueError("Supporting Face evidence resolves to multiple Design sections")
-    component = candidates[0]
+    component = _local_design_run(candidates[0], supported)
     face_segments = tuple(
         segment for segment in component if segment.semantic_role == "face"
     )

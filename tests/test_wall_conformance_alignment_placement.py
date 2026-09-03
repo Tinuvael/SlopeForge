@@ -83,6 +83,27 @@ def _straight_surface(*, actual_offset: float = 0.0) -> TriangleSurface:
     )
 
 
+def _surface_with_connected_remote_wall() -> TriangleSurface:
+    return _strip_surface(
+        (
+            (0.0, 0.0, (0.0, 1.0)),
+            (12.0, 0.0, (0.0, 1.0)),
+        ),
+        (
+            (-2.0, 20.0),
+            (0.0, 20.0),
+            (4.0, 10.0),
+            (7.0, 10.0),
+            (11.0, 0.0),
+            (14.0, 0.0),
+            (16.0, 5.0),  # reverse-slope Face separates the remote wall
+            (20.0, 5.0),
+            (24.0, -5.0),
+        ),
+        ("berm", "face", "berm", "face", "road", "face", "berm", "face"),
+    )
+
+
 def _straight_alignment(*, reverse: bool = False) -> WallAlignment:
     points = (
         PlanPoint(0.0, 2.0),
@@ -232,6 +253,40 @@ def test_multi_bench_design_remains_one_semantic_vertical_section() -> None:
         for profile in result.profiles
     )
     assert all(profile.alignment.origin.z == pytest.approx(20.0) for profile in result.profiles)
+
+
+def test_local_design_run_stops_at_reverse_face_without_assessment_clipping() -> None:
+    result = build_alignment_profile_sections(
+        alignment=WallAlignment((PlanPoint(0.0, 2.5), PlanPoint(12.0, 2.5))),
+        design_surface=_surface_with_connected_remote_wall(),
+        assessment_polygon=_polygon(
+            (-1.0, 2.0), (13.0, 2.0), (13.0, 3.0), (-1.0, 3.0)
+        ),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    assert len(result.profiles) == 5
+    assert all(
+        profile.design_section.topology_signature == "FACE-BERM-FACE-ROAD"
+        for profile in result.profiles
+    )
+    assert all(
+        max(segment.u_max for segment in profile.design_segments)
+        == pytest.approx(14.0)
+        for profile in result.profiles
+    )
+    assert all(
+        {element.role for element in profile.design_section.elements}
+        == {"face", "berm", "road"}
+        for profile in result.profiles
+    )
+    assert all(
+        element.vertical_change <= 1e-5
+        for profile in result.profiles
+        for element in profile.design_section.elements
+        if element.role == "face"
+    )
 
 
 def test_missing_face_support_omits_stations_with_deterministic_diagnostics() -> None:
