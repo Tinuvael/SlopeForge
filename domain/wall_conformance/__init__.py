@@ -38,6 +38,15 @@ from .profile_sections import (
     build_v2_profile_sections,
     profile_trace_to_alignment,
 )
+from .alignment_placement import (
+    AlignmentPlacementDiagnostic,
+    AlignmentProfilePlacement,
+    AlignmentProfilePlacementResult,
+    AlignmentProfileSectionResult,
+    WallAlignment,
+    build_alignment_profile_sections,
+    place_profiles_from_alignment,
+)
 
 
 def build_transverse_profiles(*args, **kwargs) -> WallProfileSet:
@@ -80,4 +89,11 @@ __all__ = [
     "build_design_variants",
     "enforce_profile_engineering_invariants",
     "profile_vertical_order_issue",
+    "AlignmentPlacementDiagnostic",
+    "AlignmentProfilePlacement",
+    "AlignmentProfilePlacementResult",
+    "AlignmentProfileSectionResult",
+    "WallAlignment",
+    "build_alignment_profile_sections",
+    "place_profiles_from_alignment",
 ]
