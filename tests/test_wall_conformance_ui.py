@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
+from math import hypot
 from types import SimpleNamespace
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QTableWidget
 from PySide6.QtCore import QRectF
 
 from domain.geometry.surfaces import SurfaceTriangle, SurfaceVertex, TriangleSurface
@@ -16,7 +18,7 @@ from ui.pages import wall_conformance_tab as module
 from application.services.wall_conformance import (
     DesignSemanticInspection, SurfaceAttributeValueCount,
 )
-from domain.wall_conformance import SurfaceRoleMapping
+from domain.wall_conformance import AlignmentPlacementDiagnostic, SurfaceRoleMapping
 from domain.wall_conformance.models import (
     DesignSection,
     DesignSectionElement,
@@ -42,6 +44,15 @@ def test_profile_plot_uses_equal_metric_scale() -> None:
     assert 400.0 / (u_max - u_min) == pytest.approx(
         200.0 / (z_max - z_min)
     )
+
+
+def test_profile_plot_keeps_equal_scale_but_allocates_spare_u_range_rightward() -> None:
+    u_min, u_max, z_min, z_max = module.WallProfilePlot._equal_aspect_bounds(
+        QRectF(0.0, 0.0, 400.0, 200.0), 0.0, 10.0, 0.0, 10.0
+    )
+
+    assert 400.0 / (u_max - u_min) == pytest.approx(200.0 / (z_max - z_min))
+    assert abs(u_min) < abs(u_max - 10.0)
 
 
 def test_selected_profile_plot_prepends_display_only_upstream_context() -> None:
@@ -79,13 +90,14 @@ def test_selected_profile_plot_prepends_display_only_upstream_context() -> None:
 def _representative_element(role, start_u, end_u, start_dz, end_dz):
     width = abs(end_u - start_u)
     height = abs(end_dz - start_dz)
+    angle = 65.0 if role == "face" else None
     return RepresentativeElement(
         role, start_u, start_dz, end_u, end_dz, width, width, (width, width),
-        height, (height, height), None, None,
+        height, (height, height), angle, (angle, angle) if angle is not None else None,
     )
 
 
-def test_representative_plot_and_summary_show_context_separately(monkeypatch) -> None:
+def test_representative_plot_and_schedule_show_context_separately(monkeypatch) -> None:
     _app()
     context = _representative_element("road", -12.0, 0.0, 1.0, 0.0)
     face = _representative_element("face", 0.0, 5.0, 0.0, -10.0)
@@ -112,12 +124,58 @@ def test_representative_plot_and_summary_show_context_separately(monkeypatch) ->
     tab = _tab(monkeypatch)
     tab.result = SimpleNamespace(profile_sections=profile_set)
     tab.variant_selector.addItem(tab._variant_context_label(variant))
-    tab._update_representative_summary()
+    tab._show_representative_details()
     assert tab.variant_selector.currentText() == "Road context"
-    assert "Upstream context · Road · Width 12.0 m" in tab.representative_summary.text()
-    assert "Road 1" not in tab.representative_summary.text()
+    assert tab.details_title.text() == "Representative Design"
+    detail_text = [label.text() for label in tab.details_content.findChildren(module.QLabel)]
+    assert "Upstream Road" in detail_text
+    assert "W 12.0 m" in detail_text
+    assert "H / A" in detail_text
+    assert any("H 10.0 m · A 65.0°" in text for text in detail_text)
+    assert "Lower toe" in detail_text
+    assert tab.details_metadata.toolTip() == "FACE"
     tab.deleteLater()
     plot.deleteLater()
+
+
+def test_profile_schedule_uses_compact_design_geometry_rows(monkeypatch) -> None:
+    _app()
+    origin = SurfaceVertex(0.0, 0.0, 20.0)
+    crest = SectionPoint(0.0, 20.0, 0.0, 0.0)
+    berm_end = SectionPoint(3.0, 20.0, 3.0, 0.0)
+    toe = SectionPoint(8.0, 10.0, 8.0, 0.0)
+    profile = TransverseProfile(
+        WallAlignmentSample(71.7, origin, (1.0, 0.0), (0.0, 1.0)),
+        (),
+        (),
+        DesignSection(
+            (
+                DesignSectionElement("berm", crest, berm_end, (1,)),
+                DesignSectionElement("face", berm_end, toe, (2,)),
+            )
+        ),
+    )
+    tab = _tab(monkeypatch)
+    tab.profile_selector.addItem("Profile 1")
+    tab.profile_selector.setCurrentIndex(1)
+    tab._show_profile_details(profile)
+
+    labels = [label.text() for label in tab.details_content.findChildren(module.QLabel)]
+    assert "Design" in labels
+    assert "Berm 1" in labels
+    assert "Face 1" in labels
+    assert "H / A" in labels
+    assert "Lower toe" in labels
+    assert "Chainage" not in labels
+    assert "Assessment span" not in labels
+    assert any("H 10.0 m · A" in label for label in labels)
+    assert any("U 8.0 m · Z 10.0 m" in label for label in labels)
+    assert tab.details_rows.rowStretch(tab._detail_stretch_row) == 1
+    assert all(
+        tab.details_rows.rowStretch(row) == 0
+        for row in range(tab._detail_stretch_row)
+    )
+    tab.deleteLater()
 
 
 def _app():
@@ -200,8 +258,11 @@ def test_calculation_and_plan_click_keep_selection_synchronized(monkeypatch):
     assert tab.profile_selector.currentIndex() == 2
     assert tab.plan._selected_index == 1
     assert "Profile 2" in tab.profile_summary.text()
-    assert "Chainage" in tab.profile_summary.text()
-    assert "+U / profile direction is Design-Face-derived" in tab.profile_vectors.toolTip()
+    assert tab.details_title.text() == "Profile 2"
+    assert tab.details_metadata.text().startswith("Ch.")
+    assert "Design" in [label.text() for label in tab.details_content.findChildren(module.QLabel)]
+    assert tab.plan._direction_annotation is not None
+    assert tab.plan.view._direction_annotation is not None
     tab.deleteLater()
     _app().sendPostedEvents()
 
@@ -258,6 +319,9 @@ def test_legends_render_at_compact_minimum_width(monkeypatch):
     assert tab.profile_plot.minimumWidth() == 340
     assert tab.plan.legend.wordWrap()
     assert tab.plan.legend.sizePolicy().horizontalPolicy().name == "Ignored"
+    assert tab.profile_legend.wordWrap()
+    assert tab.profile_legend.sizePolicy().horizontalPolicy().name == "Ignored"
+    assert "Skipped station" not in tab.plan.legend.text()
     tab.deleteLater()
     _app().sendPostedEvents()
 
@@ -392,6 +456,8 @@ def test_initial_alignment_workflow_and_clear_preserve_assessment(monkeypatch):
     assert tab.plan.wall_alignment is None
     assert not tab.calculate_button.isEnabled()
     _complete_alignment(tab)
+    assert tab.set_alignment_button.text() == "Edit Wall Alignment"
+    assert "2 vertices" in tab.alignment_metadata.text()
     assert tab.calculate_button.isEnabled()
     tab.calculate()
     assert tab.result is not None
@@ -399,7 +465,189 @@ def test_initial_alignment_workflow_and_clear_preserve_assessment(monkeypatch):
     assert tab.plan.wall_alignment is None
     assert tab.result is None
     assert not tab.calculate_button.isEnabled()
+    assert tab.set_alignment_button.text() == "Set Wall Alignment"
     assert tab.plan._area_item is not None
+    tab.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_two_pane_workspace_uses_matching_canvas_hosts_and_wider_plan(monkeypatch):
+    tab = _tab(monkeypatch)
+    tab.resize(1600, 860)
+    tab.show()
+    _app().processEvents()
+
+    assert tab.splitter.count() == 2
+    assert tab.plan.minimumWidth() == 480
+    assert tab.plan.maximumWidth() == 720
+    assert tab.splitter.sizes()[0] in range(580, 641)
+    assert tab.splitter.sizes()[1] > tab.splitter.sizes()[0]
+    assert isinstance(tab.plan.plan_canvas, module.WallCanvasHost)
+    assert isinstance(tab.profile_canvas, module.WallCanvasHost)
+    assert tab.plan.legend.parentWidget() is tab.plan.plan_header
+    assert tab.profile_legend.parentWidget() is tab.profile_header
+    assert tab.plan.plan_header.parentWidget() is tab.plan.plan_canvas
+    assert tab.profile_header.parentWidget() is tab.profile_canvas
+    assert tab.details_schedule.parentWidget() is tab.profile_canvas.drawing_body
+    assert tab.details_schedule.isHidden()
+    tab.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_result_status_variant_elision_and_representative_schedule(monkeypatch):
+    tab = _tab(monkeypatch)
+    tab.resize(1600, 860)
+    tab.show()
+    _complete_alignment(tab)
+    tab.calculate()
+    _app().processEvents()
+
+    assert "profiles" in tab.status.text()
+    assert "coverage" in tab.status.text()
+    assert "FACE-BERM" not in tab.variant_selector.currentText()
+    assert tab.variant_selector.itemData(0, module.Qt.ItemDataRole.ToolTipRole)
+    assert tab.details_title.text() == "Representative Design"
+    assert not tab.details_schedule.isHidden()
+    assert 260 <= tab.details_schedule.width() <= 320
+    assert tab.profile_canvas.drawing_body.layout().count() == 2
+    assert tab.profile_canvas.drawing_body.layout().itemAt(0).widget() is tab.profile_plot
+    assert tab.profile_canvas.drawing_body.layout().itemAt(1).widget() is tab.details_schedule
+    assert tab.details_schedule.x() == tab.profile_plot.geometry().right() + 1
+    assert tab.details_schedule.height() == tab.profile_plot.height()
+    assert (
+        tab.details_scroll.verticalScrollBarPolicy()
+        == module.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
+    assert (
+        tab.details_scroll.horizontalScrollBarPolicy()
+        == module.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    assert not tab.findChildren(QTableWidget)
+    bounds = tab.profile_plot._equal_aspect_bounds(
+        tab.profile_plot.plot_rect(), 0.0, 10.0, 0.0, 20.0
+    )
+    assert tab.profile_plot.plot_rect().width() / (bounds[1] - bounds[0]) == pytest.approx(
+        tab.profile_plot.plot_rect().height() / (bounds[3] - bounds[2])
+    )
+    assert tab.details_schedule.background_color() == tab.profile_plot._colors()["background"]
+    tab.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_profile_schedule_visibility_changes_only_the_drawing_body_width(monkeypatch):
+    tab = _tab(monkeypatch)
+    tab.resize(1600, 860)
+    tab.show()
+    _complete_alignment(tab)
+    tab.calculate()
+    _app().processEvents()
+
+    before = tab.profile_plot.geometry()
+    tab._clear_details()
+    _app().processEvents()
+    assert tab.profile_plot.width() > before.width()
+    tab._show_representative_details()
+    _app().processEvents()
+    assert tab.profile_plot.width() == before.width()
+    assert tab.profile_canvas.canvas is tab.profile_canvas.drawing_body
+    assert tab.profile_canvas.drawing_body.profile_plot is tab.profile_plot
+    tab.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_profile_legend_is_a_widget_and_selected_u_annotation_does_not_fit_scene(monkeypatch):
+    tab = _tab(monkeypatch)
+    tab.resize(1600, 860)
+    tab.show()
+    _complete_alignment(tab)
+    tab.calculate()
+    _app().processEvents()
+
+    assert "DESIGN" in tab.profile_legend.text()
+    assert "ACTUAL" in tab.profile_legend.text()
+    assert tab.profile_legend.parentWidget() is tab.profile_header
+    assert not hasattr(module.WallProfilePlot, "_draw_legend_row")
+    before = tab.plan.scene.itemsBoundingRect()
+    before_scrollbars = (
+        tab.plan.view.horizontalScrollBar().minimum(),
+        tab.plan.view.horizontalScrollBar().maximum(),
+        tab.plan.view.verticalScrollBar().minimum(),
+        tab.plan.view.verticalScrollBar().maximum(),
+    )
+    tab._select_profile(1)
+    after = tab.plan.scene.itemsBoundingRect()
+    assert tab.plan._direction_annotation is not None
+    assert after == before
+    assert (
+        tab.plan.view.horizontalScrollBar().minimum(),
+        tab.plan.view.horizontalScrollBar().maximum(),
+        tab.plan.view.verticalScrollBar().minimum(),
+        tab.plan.view.verticalScrollBar().maximum(),
+    ) == before_scrollbars
+    first_start, first_end = tab.plan.view.direction_annotation_screen_points()
+    first_length = hypot(first_end.x() - first_start.x(), first_end.y() - first_start.y())
+    tab.plan.view.scale(1.6, 1.6)
+    second_start, second_end = tab.plan.view.direction_annotation_screen_points()
+    second_length = hypot(second_end.x() - second_start.x(), second_end.y() - second_start.y())
+    assert first_length == pytest.approx(22.0, abs=1.0)
+    assert second_length == pytest.approx(first_length, abs=1.0)
+    tab.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_profile_annotation_does_not_change_equal_aspect_framing():
+    plot = module.WallProfilePlot()
+    full = QRectF(0.0, 0.0, 900.0, 500.0)
+    bounds = plot._equal_aspect_bounds(full, 0.0, 10.0, 0.0, 20.0)
+
+    assert full.width() / (bounds[1] - bounds[0]) == pytest.approx(
+        full.height() / (bounds[3] - bounds[2])
+    )
+    assert bounds[0] <= 0.0 <= bounds[1]
+    assert bounds[0] <= 10.0 <= bounds[1]
+    assert bounds[2] <= 0.0 <= bounds[3]
+    assert bounds[2] <= 20.0 <= bounds[3]
+    plot.deleteLater()
+
+
+def test_profile_schedule_stays_beside_plot_after_resize(monkeypatch):
+    tab = _tab(monkeypatch)
+    tab.resize(1366, 768)
+    tab.show()
+    _complete_alignment(tab)
+    tab.calculate()
+    tab._select_profile(1)
+    _app().processEvents()
+
+    assert tab.details_title.text() == "Profile 1"
+    first = tab.details_schedule.geometry()
+    tab.resize(1920, 1080)
+    _app().processEvents()
+    second = tab.details_schedule.geometry()
+    assert second.x() == tab.profile_plot.geometry().right() + 1
+    assert second.top() == tab.profile_plot.geometry().top()
+    assert second.bottom() == tab.profile_plot.geometry().bottom()
+    assert second.x() >= first.x()
+    tab.deleteLater()
+    _app().sendPostedEvents()
+
+
+def test_skipped_station_marker_and_tooltip_are_presentation_only(monkeypatch):
+    tab = _tab(monkeypatch)
+    _complete_alignment(tab)
+    tab.calculate()
+    before_extent = tab.plan.scene.itemsBoundingRect()
+    diagnostic = AlignmentPlacementDiagnostic(
+        "insufficient_face_support", "Insufficient Design Face support", 1, 5.0
+    )
+    tab.result = replace(tab.result, diagnostics=(diagnostic,))
+    tab.plan.set_result(tab.result)
+
+    assert len(tab.plan._skipped_annotations) == 1
+    assert "Profile skipped" in tab.plan._skipped_annotations[0][1]
+    assert tab.plan.scene.itemsBoundingRect() == before_extent
+    assert "Skipped station" in tab.plan.legend.text()
+    assert "1 skipped" in tab._result_status_text()
     tab.deleteLater()
     _app().sendPostedEvents()
 

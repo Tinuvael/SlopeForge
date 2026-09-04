@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QVBoxLayout,
@@ -34,6 +35,153 @@ from ui.widgets.design_system import set_status_role
 from ui.widgets.plan_view import PlanView
 
 
+def _canvas_palette() -> dict[str, QColor]:
+    app = QApplication.instance()
+    if app is not None and app.property("slopeforgeTheme") == "dark":
+        return {
+            "background": QColor("#252c36"),
+            "border": QColor("#4a5665"),
+            "annotation_background": QColor(37, 44, 54, 232),
+            "annotation_border": QColor(87, 103, 120, 190),
+        }
+    return {
+        "background": QColor("#f8fafc"),
+        "border": QColor("#d7dde6"),
+        "annotation_background": QColor(248, 250, 252, 232),
+        "annotation_border": QColor(183, 194, 207, 195),
+    }
+
+
+class WallCanvasHost(QFrame):
+    """Shared framed viewer with a compact local header and drawing surface."""
+
+    _CANVAS_INSET = 4
+    _ANNOTATION_MARGIN = 10
+
+    def __init__(self, canvas: QWidget, header=None, parent=None):
+        super().__init__(parent)
+        self.canvas = canvas
+        self.header = header
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.canvas.setParent(self)
+        if self.header is not None:
+            self.header.setParent(self)
+
+    def _layout_children(self) -> None:
+        bounds = self.contentsRect()
+        inset = self._CANVAS_INSET
+        header_height = 0
+        if self.header is not None:
+            header_height = self.header.height() or self.header.sizeHint().height()
+            self.header.setGeometry(
+                bounds.left() + inset,
+                bounds.top() + inset,
+                max(1, bounds.width() - 2 * inset),
+                header_height,
+            )
+        self.canvas.setGeometry(
+            bounds.left() + inset,
+            bounds.top() + inset + header_height,
+            max(1, bounds.width() - 2 * inset),
+            max(1, bounds.height() - 2 * inset - header_height),
+        )
+
+    def refresh_layout(self) -> None:
+        self._layout_children()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        colors = _canvas_palette()
+        rect = self.rect().adjusted(0, 0, -1, -1)
+        painter.setPen(QPen(colors["border"], 1))
+        painter.setBrush(QBrush(colors["background"]))
+        painter.drawRoundedRect(rect, 5, 5)
+        if self.header is not None:
+            divider_y = self._CANVAS_INSET + self.header.height()
+            painter.setPen(QPen(colors["border"], 1))
+            painter.drawLine(
+                self._CANVAS_INSET,
+                divider_y,
+                max(self._CANVAS_INSET, self.width() - self._CANVAS_INSET),
+                divider_y,
+            )
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._layout_children()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._layout_children()
+
+
+class WallProfileSchedule(QFrame):
+    """Right-hand technical schedule sharing the profile drawing background."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setMinimumWidth(260)
+        self.setMaximumWidth(320)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+
+    @staticmethod
+    def background_color() -> QColor:
+        return _canvas_palette()["background"]
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        colors = _canvas_palette()
+        painter.fillRect(self.rect(), self.background_color())
+        painter.setPen(QPen(colors["border"], 1))
+        painter.drawLine(0, 0, 0, max(0, self.height() - 1))
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            self.update()
+
+
+class WallProfileDrawingBody(QWidget):
+    """One drawing body: metric section plot at left, schedule at right."""
+
+    def __init__(self, profile_plot, schedule, parent=None):
+        super().__init__(parent)
+        self.profile_plot = profile_plot
+        self.schedule = schedule
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self.profile_plot, 1)
+        layout.addWidget(self.schedule, 0)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.schedule.isHidden():
+            return
+        preferred_width = min(320, max(260, self.width() // 3))
+        # Keep a useful metric viewport where possible; only a very narrow host
+        # lets the schedule contract below its normal drawing-schedule width.
+        available_width = max(1, self.width() - 340)
+        self.schedule.setFixedWidth(min(preferred_width, available_width))
+
+
+class WallProfileDrawingHost(WallCanvasHost):
+    """Profile viewer frame whose drawing body owns plot and schedule side by side."""
+
+    def __init__(self, profile_plot, header, schedule, parent=None):
+        self.profile_plot = profile_plot
+        self.schedule = schedule
+        self.drawing_body = WallProfileDrawingBody(profile_plot, schedule)
+        super().__init__(self.drawing_body, header, parent)
+
+
 class WallConformancePlanWidget(QWidget):
     profile_selected = Signal(int)
     alignment_completed = Signal(object)
@@ -43,6 +191,7 @@ class WallConformancePlanWidget(QWidget):
         super().__init__(parent)
         self.scene = QGraphicsScene(self)
         self.view = PlanView(self.scene)
+        self.view.setFrameShape(QFrame.Shape.NoFrame)
         self.view.scene_clicked.connect(self._handle_scene_click)
         self.view.scene_double_clicked.connect(self._complete_draft_from_double_click)
         self.view.escape_requested.connect(self.cancel_alignment_drawing)
@@ -55,31 +204,41 @@ class WallConformancePlanWidget(QWidget):
         self._draft_alignment_points = []
         self._drawing_alignment = False
         self._profiles = ()
+        self._diagnostics = ()
         self._profile_items = []
         self._area_item = None
         self._alignment_item = None
         self._draft_alignment_item = None
+        self._direction_annotation = None
+        self._skipped_annotations = []
         self._selected_index = -1
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
+        self.plan_header = QWidget()
+        self.plan_header.setFixedHeight(58)
+        header_layout = QVBoxLayout(self.plan_header)
+        header_layout.setContentsMargins(8, 5, 8, 4)
+        header_layout.setSpacing(1)
         bar = QHBoxLayout()
+        bar.setContentsMargins(0, 0, 0, 0)
         title = QLabel(tr("Plan / transverse profiles"))
         title.setObjectName("EngineeringSectionTitle")
         bar.addWidget(title)
         bar.addStretch()
         fit = QPushButton(tr("Fit"))
-        fit.clicked.connect(self.view.fit_to_extent)
+        fit.clicked.connect(self._fit_to_engineering_extent)
         bar.addWidget(fit)
-        root.addLayout(bar)
+        header_layout.addLayout(bar)
         self.legend = QLabel()
         self.legend.setObjectName("MutedText")
         self.legend.setWordWrap(True)
         self.legend.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
         )
-        root.addWidget(self.legend)
-        root.addWidget(self.view, 1)
+        header_layout.addWidget(self.legend)
+        self.plan_canvas = WallCanvasHost(self.view, self.plan_header)
+        root.addWidget(self.plan_canvas, 1)
         self._apply_theme()
 
     @staticmethod
@@ -98,6 +257,7 @@ class WallConformancePlanWidget(QWidget):
                 "draft_alignment": QColor("#79b9ee"),
                 "profile": QColor("#718096"),
                 "selected": QColor("#f0c66e"),
+                "skipped": QColor("#ef8b7d"),
             }
         return {
             "background": QColor("#f8fafc"),
@@ -107,23 +267,28 @@ class WallConformancePlanWidget(QWidget):
             "draft_alignment": QColor("#4f78a8"),
             "profile": QColor("#94a3b8"),
             "selected": QColor("#d97706"),
+            "skipped": QColor("#c2410c"),
         }
 
     def _legend_html(self) -> str:
         colors = self._colors()
         def swatch(key):
             return f'<span style="color:{colors[key].name()}">&#9632;</span>'
-        return (
+        items = (
             f"{swatch('area')} {tr('Assessment area')} · "
             f"{swatch('alignment')} {tr('Wall Alignment')} · "
             f"{swatch('profile')} {tr('Profiles')} · "
             f"{swatch('selected')} {tr('Selected profile')}"
         )
+        if self._skipped_annotations:
+            items += f" · {swatch('skipped')} {tr('Skipped station')}"
+        return items
 
     def _apply_theme(self):
         colors = self._colors()
         self.legend.setText(self._legend_html())
         self.scene.setBackgroundBrush(QBrush(colors["background"]))
+        self.view.setBackgroundBrush(QBrush(colors["background"]))
         if self._area_item is not None:
             self._area_item.setPen(self._cosmetic_pen(colors["area"], 2.0))
             self._area_item.setBrush(QBrush(colors["area_fill"]))
@@ -135,6 +300,13 @@ class WallConformancePlanWidget(QWidget):
             )
         for index, item in enumerate(self._profile_items):
             item.setPen(self._profile_pen(index == self._selected_index))
+        self._update_selected_direction_annotation()
+        self._skipped_annotations = [
+            (point, tooltip, colors["skipped"])
+            for point, tooltip, _color in self._skipped_annotations
+        ]
+        self.view.set_skipped_annotations(self._skipped_annotations)
+        self.plan_canvas.update()
         self.view.viewport().update()
 
     def changeEvent(self, event):
@@ -182,7 +354,7 @@ class WallConformancePlanWidget(QWidget):
     def set_assessment_polygon(self, assessment_polygon: PlanPolygon) -> None:
         self._assessment_polygon = assessment_polygon
         self._refresh_scene()
-        self.view.fit_to_extent()
+        self._fit_to_engineering_extent()
 
     def set_wall_alignment(self, alignment: WallAlignment | None) -> None:
         self._wall_alignment = alignment
@@ -253,8 +425,9 @@ class WallConformancePlanWidget(QWidget):
     def set_result(self, diagnostic_result) -> None:
         self._profiles = diagnostic_result.profile_sections.profiles
         self._selected_index = -1
+        self._diagnostics = tuple(getattr(diagnostic_result, "diagnostics", ()) or ())
         self._refresh_scene()
-        self.view.fit_to_extent()
+        self._fit_to_engineering_extent()
 
     def _refresh_scene(self) -> None:
         self.scene.clear()
@@ -262,6 +435,9 @@ class WallConformancePlanWidget(QWidget):
         self._area_item = None
         self._alignment_item = None
         self._draft_alignment_item = None
+        self._direction_annotation = None
+        self._skipped_annotations = []
+        self.view.set_skipped_annotations(())
         colors = self._colors()
         self.scene.setBackgroundBrush(QBrush(colors["background"]))
         if self._assessment_polygon is not None:
@@ -300,10 +476,14 @@ class WallConformancePlanWidget(QWidget):
                     first.x(), first.y(), second.x(), second.y(), self._profile_pen(False)
                 )
             )
-        self.view.fit_to_extent()
+        self._add_skipped_station_markers()
+        self._update_selected_direction_annotation()
+        self.legend.setText(self._legend_html())
+        self._fit_to_engineering_extent()
 
     def clear_result(self) -> None:
         self._profiles = ()
+        self._diagnostics = ()
         self._selected_index = -1
         self._refresh_scene()
 
@@ -314,6 +494,67 @@ class WallConformancePlanWidget(QWidget):
             self._selected_index = index
         for item_index, item in enumerate(self._profile_items):
             item.setPen(self._profile_pen(item_index == self._selected_index))
+        self._update_selected_direction_annotation()
+
+    def _update_selected_direction_annotation(self) -> None:
+        if not 0 <= self._selected_index < len(self._profiles):
+            self._direction_annotation = None
+            self.view.set_direction_annotation(None, None)
+            return
+        profile = self._profiles[self._selected_index]
+        interval = profile.assessment_u_interval
+        if interval is None:
+            self._direction_annotation = None
+            self.view.set_direction_annotation(None, None)
+            return
+        origin = profile.alignment.origin
+        nx, ny = profile.alignment.normal_xy
+        midpoint = (interval[0] + interval[1]) / 2.0
+        scene_point = QPointF(
+            origin.x + nx * midpoint,
+            -(origin.y + ny * midpoint),
+        )
+        self._direction_annotation = (scene_point, (nx, ny))
+        self.view.set_direction_annotation(
+            scene_point, (nx, ny), self._colors()["selected"]
+        )
+
+    def _add_skipped_station_markers(self) -> None:
+        if self._wall_alignment is None:
+            return
+        seen = set()
+        for diagnostic in getattr(self, "_diagnostics", ()):
+            chainage = getattr(diagnostic, "chainage_m", None)
+            if chainage is None or chainage in seen:
+                continue
+            seen.add(chainage)
+            point, _ = self._wall_alignment.point_and_tangent_at(chainage)
+            self._skipped_annotations.append((
+                QPointF(point.x, -point.y),
+                tr("Profile skipped")
+                + "\n"
+                + str(getattr(diagnostic, "message", "")),
+                self._colors()["skipped"],
+            ))
+        self.view.set_skipped_annotations(self._skipped_annotations)
+
+    def _fit_to_engineering_extent(self) -> None:
+        """Fit only engineering geometry; cosmetic markers must not move the view."""
+        items = [
+            item for item in (
+                self._area_item,
+                self._alignment_item,
+                self._draft_alignment_item,
+                *self._profile_items,
+            ) if item is not None
+        ]
+        if not items:
+            return
+        rect = items[0].sceneBoundingRect()
+        for item in items[1:]:
+            rect = rect.united(item.sceneBoundingRect())
+        margin = max(min(max(rect.width(), rect.height()) * 0.03, 100.0), 1.0)
+        self.view.fit_to_rect(rect.adjusted(-margin, -margin, margin, margin))
 
     @staticmethod
     def _distance_to_segment(px, py, ax, ay, bx, by) -> float:
@@ -369,16 +610,26 @@ class WallProfilePlot(QWidget):
         return bool(app is not None and app.property("slopeforgeTheme") == "dark")
 
     @staticmethod
-    def _equal_aspect_bounds(plot: QRectF, u_min, u_max, z_min, z_max):
-        """Expand bounds so one screen pixel represents one metre on both axes."""
+    def _equal_aspect_bounds(
+        plot: QRectF, u_min, u_max, z_min, z_max, *, left_extra_u_fraction=0.35
+    ):
+        """Keep equal metric scale with a modest bias toward right-side note space."""
         scale = min(
             plot.width() / max(u_max - u_min, 1e-12),
             plot.height() / max(z_max - z_min, 1e-12),
         )
-        u_center, z_center = (u_min + u_max) / 2.0, (z_min + z_max) / 2.0
-        u_half = plot.width() / scale / 2.0
-        z_half = plot.height() / scale / 2.0
-        return u_center - u_half, u_center + u_half, z_center - z_half, z_center + z_half
+        required_u_span = plot.width() / scale
+        required_z_span = plot.height() / scale
+        # Extra horizontal range is display-only. A modest rightward bias
+        # preserves naturally quiet note space without compressing the plot.
+        extra_u = max(0.0, required_u_span - (u_max - u_min))
+        extra_z = max(0.0, required_z_span - (z_max - z_min))
+        return (
+            u_min - extra_u * left_extra_u_fraction,
+            u_max + extra_u * (1.0 - left_extra_u_fraction),
+            z_min - extra_z / 2.0,
+            z_max + extra_z / 2.0,
+        )
 
     @classmethod
     def _colors(cls):
@@ -487,40 +738,15 @@ class WallProfilePlot(QWidget):
             design.append((tr("Unknown"), "unknown"))
         return tuple(design), ((tr("Survey"), "actual"),)
 
-    @staticmethod
-    def _draw_legend_row(painter, rect: QRectF, entries, colors) -> None:
-        """Distribute legend entries across the available width without clipping."""
-        if not entries:
-            return
-        slot_width = rect.width() / len(entries)
-        metrics = painter.fontMetrics()
-        for index, (label, color_key) in enumerate(entries):
-            slot = QRectF(
-                rect.left() + index * slot_width,
-                rect.top(),
-                slot_width,
-                rect.height(),
-            )
-            line_width = min(24.0, max(12.0, slot.width() * 0.28))
-            text_width = max(1, slot.width() - line_width - 8)
-            text = metrics.elidedText(label, Qt.TextElideMode.ElideRight, int(text_width))
-            line_left = slot.left() + 4
-            line_y = slot.center().y()
-            painter.setPen(QPen(colors[color_key], 3))
-            painter.drawLine(
-                QPointF(line_left, line_y), QPointF(line_left + line_width, line_y)
-            )
-            painter.setPen(colors["text"])
-            painter.drawText(
-                QRectF(
-                    line_left + line_width + 4,
-                    slot.top(),
-                    text_width,
-                    slot.height(),
-                ),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                text,
-            )
+    def plot_rect(self) -> QRectF:
+        """Drawing-grid bounds used by both painting and annotation placement."""
+        left, top, right, bottom = 62, 34, 22, 46
+        return QRectF(
+            left,
+            top,
+            max(1, self.width() - left - right),
+            max(1, self.height() - top - bottom),
+        )
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -528,8 +754,6 @@ class WallProfilePlot(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         colors = self._colors()
         painter.fillRect(self.rect(), colors["background"])
-        painter.setPen(QPen(colors["border"], 1))
-        painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
         points = self._points()
         if not points:
@@ -537,13 +761,8 @@ class WallProfilePlot(QWidget):
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, tr("No profile selected"))
             return
 
-        left, top, right, bottom = 62, 104, 22, 46
-        plot = QRectF(
-            left,
-            top,
-            max(1, self.width() - left - right),
-            max(1, self.height() - top - bottom),
-        )
+        left = 62
+        plot = self.plot_rect()
         u_values = [point.u for point in points]
         z_values = [point.z for point in points]
         u_min, u_max = min(u_values), max(u_values)
@@ -554,12 +773,16 @@ class WallProfilePlot(QWidget):
         if abs(z_max - z_min) < 1e-9:
             z_min -= 1.0
             z_max += 1.0
-        u_pad = (u_max - u_min) * 0.06
-        z_pad = (z_max - z_min) * 0.08
+        u_pad = (u_max - u_min) * 0.025
+        z_pad = (z_max - z_min) * 0.04
         u_min, u_max = u_min - u_pad, u_max + u_pad
         z_min, z_max = z_min - z_pad, z_max + z_pad
         u_min, u_max, z_min, z_max = self._equal_aspect_bounds(
-            plot, u_min, u_max, z_min, z_max
+            plot,
+            u_min,
+            u_max,
+            z_min,
+            z_max,
         )
 
         def map_point(point):
@@ -602,33 +825,7 @@ class WallProfilePlot(QWidget):
         painter.drawText(QRectF(-plot.height() / 2, -12, plot.height(), 24), Qt.AlignmentFlag.AlignCenter, vertical_axis)
         painter.restore()
 
-        title = tr("Representative Design Profile") if self.mode == "overview" else tr("Transverse section")
-        painter.drawText(QRectF(plot.left(), 5, plot.width(), 20), Qt.AlignmentFlag.AlignLeft, title)
-        if self.mode == "selected":
-            chainage = self.profile.alignment.chainage_m
-            painter.drawText(QRectF(plot.left(), 5, plot.width(), 20), Qt.AlignmentFlag.AlignRight, tr("Chainage %1 m").replace("%1", f"{chainage:.1f}"))
         design, actual = self._geometry()
-        group_title = tr("REPRESENTATIVE DESIGN") if self.mode == "overview" else tr("DESIGN")
-        painter.drawText(QRectF(plot.left(), 27, plot.width(), 18), Qt.AlignmentFlag.AlignLeft, group_title)
-        design_entries = [(tr(role.title()), role) for role in ("face", "berm", "road") if any(s.semantic_role == role for s in design)]
-        if any(s.semantic_role == "unknown" for s in design):
-            design_entries.append((tr("Unknown"), "unknown"))
-        actual_label = tr("All profiles") if self.mode == "overview" else tr("Selected profile")
-        actual_entries = ((actual_label, "actual"),)
-        self._draw_legend_row(
-            painter,
-            QRectF(plot.left(), 44, plot.width(), 20),
-            design_entries,
-            colors,
-        )
-        painter.drawText(QRectF(plot.left(), 65, plot.width(), 18), Qt.AlignmentFlag.AlignLeft, tr("ACTUAL SURVEY"))
-        self._draw_legend_row(
-            painter,
-            QRectF(plot.left(), 81, plot.width(), 20),
-            actual_entries,
-            colors,
-        )
-
         def draw_segments(segments, color, base_width, semantic=False):
             for segment in segments:
                 width = base_width
@@ -663,22 +860,16 @@ class WallConformanceTab(QWidget):
 
         setup = QFrame()
         setup.setObjectName("CriterionCard")
+        setup.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         setup_layout = QVBoxLayout(setup)
         setup_layout.setContentsMargins(10, 8, 10, 8)
         setup_layout.setSpacing(6)
 
         title_row = QHBoxLayout()
-        title = QLabel(tr("Wall conformance diagnostic"))
+        title = QLabel(tr("Wall conformance"))
         title.setObjectName("EngineeringSectionTitle")
         title_row.addWidget(title)
         title_row.addStretch()
-        self.set_alignment_button = QPushButton(tr("Set Wall Alignment"))
-        self.set_alignment_button.clicked.connect(self._begin_alignment_drawing)
-        title_row.addWidget(self.set_alignment_button)
-        self.clear_alignment_button = QPushButton(tr("Clear"))
-        self.clear_alignment_button.clicked.connect(self._clear_wall_alignment)
-        self.clear_alignment_button.setEnabled(False)
-        title_row.addWidget(self.clear_alignment_button)
         self.calculate_button = QPushButton(tr("Calculate profiles"))
         self.calculate_button.setProperty("role", "primary")
         self.calculate_button.clicked.connect(self.calculate)
@@ -686,7 +877,7 @@ class WallConformanceTab(QWidget):
         setup_layout.addLayout(title_row)
 
         datasets = QGridLayout()
-        datasets.setHorizontalSpacing(18)
+        datasets.setHorizontalSpacing(12)
         datasets.setVerticalSpacing(2)
         self.design_title = QLabel(tr("DESIGN"))
         self.actual_title = QLabel(tr("ACTUAL"))
@@ -707,15 +898,30 @@ class WallConformanceTab(QWidget):
         setup_layout.addLayout(datasets)
 
         controls = QHBoxLayout()
-        controls.addWidget(QLabel(tr("Profile spacing")))
+        controls.setSpacing(6)
+        controls.addWidget(QLabel(tr("Spacing")))
         self.spacing = QDoubleSpinBox()
         self.spacing.setRange(0.5, 50.0)
         self.spacing.setDecimals(1)
         self.spacing.setSingleStep(0.5)
         self.spacing.setValue(3.0)
         self.spacing.setSuffix(" m")
+        self.spacing.setMaximumWidth(110)
         controls.addWidget(self.spacing)
-        controls.addStretch()
+        self.alignment_metadata = QLabel(tr("Wall Alignment · not set"))
+        self.alignment_metadata.setObjectName("MutedText")
+        self.alignment_metadata.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
+        )
+        controls.addSpacing(10)
+        controls.addWidget(self.alignment_metadata, 1)
+        self.set_alignment_button = QPushButton(tr("Set Wall Alignment"))
+        self.set_alignment_button.clicked.connect(self._begin_alignment_drawing)
+        controls.addWidget(self.set_alignment_button)
+        self.clear_alignment_button = QPushButton(tr("Clear"))
+        self.clear_alignment_button.clicked.connect(self._clear_wall_alignment)
+        self.clear_alignment_button.setEnabled(False)
+        controls.addWidget(self.clear_alignment_button)
         setup_layout.addLayout(controls)
 
         mapping_row = QHBoxLayout()
@@ -739,6 +945,11 @@ class WallConformanceTab(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
         self.plan = WallConformancePlanWidget()
+        self.plan.setMinimumWidth(480)
+        self.plan.setMaximumWidth(720)
+        self.plan.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
+        )
         self.plan.set_assessment_polygon(self.assessment_polygon)
         self.plan.profile_selected.connect(lambda index: self._select_profile(index + 1))
         self.plan.alignment_completed.connect(self._wall_alignment_completed)
@@ -748,30 +959,98 @@ class WallConformanceTab(QWidget):
         profile_host = QWidget()
         profile_layout = QVBoxLayout(profile_host)
         profile_layout.setContentsMargins(0, 0, 0, 0)
-        profile_layout.setSpacing(6)
+        profile_layout.setSpacing(0)
+        self.profile_header = QWidget()
+        self.profile_header.setFixedHeight(58)
+        profile_header_layout = QVBoxLayout(self.profile_header)
+        profile_header_layout.setContentsMargins(8, 5, 8, 4)
+        profile_header_layout.setSpacing(1)
         selector_row = QHBoxLayout()
+        selector_row.setContentsMargins(0, 0, 0, 0)
+        profile_title = QLabel(tr("Transverse section"))
+        profile_title.setObjectName("EngineeringSectionTitle")
+        selector_row.addWidget(profile_title)
+        selector_row.addSpacing(10)
         selector_row.addWidget(QLabel(tr("Profile")))
         self.profile_selector = QComboBox()
-        self.profile_selector.setMinimumWidth(180)
+        self.profile_selector.setMinimumWidth(150)
+        self.profile_selector.setMaximumWidth(220)
         self.profile_selector.currentIndexChanged.connect(self._select_profile)
         selector_row.addWidget(self.profile_selector)
+        self.variant_label = QLabel(tr("Variant"))
+        self.variant_label.setVisible(False)
+        selector_row.addWidget(self.variant_label)
         self.variant_selector = QComboBox()
+        self.variant_selector.setMinimumWidth(185)
+        self.variant_selector.setMaximumWidth(270)
         self.variant_selector.currentIndexChanged.connect(self._select_variant)
         self.variant_selector.setVisible(False)
         selector_row.addWidget(self.variant_selector)
         self.profile_summary = QLabel("—")
         self.profile_summary.setObjectName("SummaryValue")
         selector_row.addWidget(self.profile_summary)
-        self.profile_vectors = QLabel("")
-        self.profile_vectors.setObjectName("MutedText")
-        self.profile_vectors.setToolTip(
-            tr("+U / profile direction is derived from the Design Face.")
-        )
-        selector_row.addWidget(self.profile_vectors)
         selector_row.addStretch()
-        profile_layout.addLayout(selector_row)
+        profile_header_layout.addLayout(selector_row)
         self.profile_plot = WallProfilePlot()
-        profile_layout.addWidget(self.profile_plot, 1)
+        self.profile_legend = QLabel()
+        self.profile_legend.setObjectName("MutedText")
+        self.profile_legend.setWordWrap(True)
+        self.profile_legend.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.profile_legend.hide()
+        profile_header_layout.addWidget(self.profile_legend)
+        self.details_schedule = WallProfileSchedule()
+        self.details_schedule.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
+        )
+        details_layout = QVBoxLayout(self.details_schedule)
+        details_layout.setContentsMargins(10, 8, 10, 8)
+        details_layout.setSpacing(3)
+        self.details_title = QLabel(tr("Representative Design"))
+        self.details_title.setObjectName("SummaryValue")
+        details_layout.addWidget(self.details_title)
+        self.details_metadata = QLabel()
+        self.details_metadata.setObjectName("MutedText")
+        self.details_metadata.setWordWrap(True)
+        self.details_metadata.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        details_layout.addWidget(self.details_metadata)
+        self.details_scroll = QScrollArea()
+        self.details_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.details_scroll.setWidgetResizable(True)
+        self.details_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.details_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.details_scroll.setAutoFillBackground(False)
+        self.details_scroll.viewport().setAutoFillBackground(False)
+        self.details_scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: 0; }"
+            "QScrollArea::viewport { background: transparent; }"
+            "QScrollArea > QWidget > QWidget { background: transparent; }"
+        )
+        self.details_content = QWidget()
+        self.details_content.setAutoFillBackground(False)
+        self.details_content.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
+        )
+        self.details_rows = QGridLayout(self.details_content)
+        self.details_rows.setContentsMargins(0, 0, 0, 0)
+        self.details_rows.setHorizontalSpacing(8)
+        self.details_rows.setVerticalSpacing(3)
+        self.details_rows.setColumnStretch(0, 1)
+        self.details_rows.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self._detail_stretch_row = None
+        self.details_scroll.setWidget(self.details_content)
+        details_layout.addWidget(self.details_scroll, 1)
+        self.profile_canvas = WallProfileDrawingHost(
+            self.profile_plot, self.profile_header, self.details_schedule
+        )
+        self.profile_canvas.setMinimumWidth(self.profile_plot.minimumWidth())
+        profile_layout.addWidget(self.profile_canvas, 1)
+        self.details_schedule.hide()
         for escape_source in (
             self,
             self.plan.view,
@@ -779,18 +1058,23 @@ class WallConformanceTab(QWidget):
             self.profile_plot,
         ):
             escape_source.installEventFilter(self)
-        self.representative_summary = QLabel()
-        self.representative_summary.setObjectName("MutedText")
-        self.representative_summary.setWordWrap(True)
-        profile_layout.addWidget(self.representative_summary)
         splitter.addWidget(profile_host)
-        splitter.setStretchFactor(0, 45)
-        splitter.setStretchFactor(1, 55)
-        splitter.setSizes([480, 520])
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([600, 810])
         self.splitter = splitter
+        self._splitter_initialised = False
         root.addWidget(splitter, 1)
         self._refresh_dataset_metadata()
         self._refresh_calculation_availability()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._splitter_initialised or self.splitter.width() <= 0:
+            return
+        target_width = min(600, max(480, self.splitter.width() - 340))
+        self.splitter.setSizes([target_width, max(1, self.splitter.width() - target_width)])
+        self._splitter_initialised = True
 
     @staticmethod
     def _dataset_text(dataset) -> str:
@@ -800,7 +1084,7 @@ class WallConformanceTab(QWidget):
         source_format = str(getattr(dataset, "source_format", "") or tr("Unknown")).upper()
         triangles = int(getattr(dataset, "triangle_count", 0) or 0)
         return (
-            tr("Active revision R%1 · %2 · %3 triangles")
+            tr("R%1 · %2 · %3 triangles")
             .replace("%1", str(revision))
             .replace("%2", source_format)
             .replace("%3", f"{triangles:,}")
@@ -839,7 +1123,11 @@ class WallConformanceTab(QWidget):
             for role in ("face", "berm", "road")
             if assignments[role]
         )
-        prefix = tr("Design semantics: default mapping") if fallback else tr("Design semantics: %1").replace("%1", mapping.attribute_name)
+        prefix = (
+            tr("Design semantics · default mapping")
+            if fallback
+            else tr("Design semantics · %1").replace("%1", mapping.attribute_name)
+        )
         self.semantic_mapping.setText(f"{prefix} · {detail}")
         self.edit_semantics.setEnabled(bool(getattr(self.service.surface_service, "storage_available", True)))
 
@@ -877,11 +1165,12 @@ class WallConformanceTab(QWidget):
         self.profile_selector.clear()
         self.variant_selector.clear()
         self.variant_selector.setVisible(False)
+        self.variant_label.setVisible(False)
         self.profile_plot.set_profile(None)
+        self._update_profile_legend()
         self.plan.clear_result()
         self.profile_summary.setText("—")
-        self.profile_vectors.setText("")
-        self.representative_summary.clear()
+        self._clear_details()
 
     def _begin_alignment_drawing(self) -> None:
         self.plan.begin_alignment_drawing()
@@ -891,11 +1180,13 @@ class WallConformanceTab(QWidget):
     def _wall_alignment_completed(self, alignment: WallAlignment) -> None:
         self._clear_calculated_result()
         self.clear_alignment_button.setEnabled(True)
-        self.status.setText(
+        self.set_alignment_button.setText(tr("Edit Wall Alignment"))
+        self.alignment_metadata.setText(
             tr("Wall Alignment · %1 vertices · %2 m")
             .replace("%1", str(len(alignment.points)))
             .replace("%2", f"{alignment.length_m:.1f}")
         )
+        self.status.setText(self.alignment_metadata.text())
         set_status_role(self.status, "success")
         self._refresh_calculation_availability()
 
@@ -903,17 +1194,20 @@ class WallConformanceTab(QWidget):
         if self.plan.wall_alignment is None:
             self._refresh_calculation_availability()
         else:
-            self.status.setText(
+            self.alignment_metadata.setText(
                 tr("Wall Alignment · %1 vertices · %2 m")
                 .replace("%1", str(len(self.plan.wall_alignment.points)))
                 .replace("%2", f"{self.plan.wall_alignment.length_m:.1f}")
             )
+            self.status.setText(self.alignment_metadata.text())
             set_status_role(self.status, "info")
 
     def _clear_wall_alignment(self) -> None:
         self.plan.set_wall_alignment(None)
         self._clear_calculated_result()
         self.clear_alignment_button.setEnabled(False)
+        self.set_alignment_button.setText(tr("Set Wall Alignment"))
+        self.alignment_metadata.setText(tr("Wall Alignment · not set"))
         self._refresh_calculation_availability()
 
     def _edit_design_semantics(self) -> None:
@@ -953,8 +1247,9 @@ class WallConformanceTab(QWidget):
             self.result = None
             self.profile_selector.clear()
             self.profile_summary.setText("—")
-            self.profile_vectors.setText("")
             self.profile_plot.set_profile(None)
+            self._update_profile_legend()
+            self._clear_details()
             self.status.setText(str(exc))
             set_status_role(self.status, "error")
             self._refresh_dataset_metadata()
@@ -979,35 +1274,38 @@ class WallConformanceTab(QWidget):
         self.variant_selector.clear()
         for index, variant in enumerate(self.result.profile_sections.design_variants, start=1):
             self.variant_selector.addItem(
-                tr("Variant %1 · %2 · %3 · %4 profiles")
+                tr("%1 · %2 · %3 profiles")
                 .replace("%1", str(index))
                 .replace("%2", self._variant_context_label(variant))
-                .replace("%3", variant.signature)
-                .replace("%4", str(len(variant.profile_indices)))
+                .replace("%3", str(len(variant.profile_indices)))
+            )
+            self.variant_selector.setItemData(
+                index - 1, variant.signature, Qt.ItemDataRole.ToolTipRole
             )
         self.variant_selector.blockSignals(False)
-        self.variant_selector.setVisible(self.variant_selector.count() > 1)
+        has_variants = self.variant_selector.count() > 0
+        self.variant_selector.setVisible(has_variants)
+        self.variant_label.setVisible(has_variants)
         count = len(self.result.profile_sections.profiles)
-        self.status.setText(
-            tr("Calculated %1 transverse profiles from the active Project surfaces.")
-            .replace("%1", str(count))
-        )
+        self.status.setText(self._result_status_text())
         set_status_role(self.status, "success")
         if count:
             self.profile_selector.setCurrentIndex(0)
             self._select_profile(0)
         else:
             self.profile_summary.setText(tr("No profiles"))
-            self.profile_vectors.setText("")
             self.profile_plot.set_profile(None)
+            self._update_profile_legend()
             self.plan.set_selected_profile(-1)
+            self._clear_details()
 
     def _select_profile(self, index: int) -> None:
         if self.result is None:
             self.plan.set_selected_profile(-1)
             self.profile_plot.set_profile(None)
+            self._update_profile_legend()
             self.profile_summary.setText("—")
-            self.profile_vectors.setText("")
+            self._clear_details()
             return
         if index == 0:
             self.profile_selector.blockSignals(True)
@@ -1017,6 +1315,7 @@ class WallConformanceTab(QWidget):
             self.profile_plot.set_overview(
                 self.result.profile_sections, max(0, self.variant_selector.currentIndex())
             )
+            self._update_profile_legend()
             variant = self.result.profile_sections.design_variants[
                 max(0, self.variant_selector.currentIndex())
             ]
@@ -1029,8 +1328,7 @@ class WallConformanceTab(QWidget):
                 .replace("%1", str(coverage))
                 .replace("%2", str(len(variant.profile_indices)))
             )
-            self.profile_vectors.setText("")
-            self._update_representative_summary()
+            self._show_representative_details()
             return
         profile_index = index - 1
         if not 0 <= profile_index < len(self.result.profile_sections.profiles):
@@ -1042,13 +1340,9 @@ class WallConformanceTab(QWidget):
         profile = self.result.profile_sections.profiles[profile_index]
         self.plan.set_selected_profile(profile_index)
         self.profile_plot.set_profile(profile)
-        self.representative_summary.clear()
-        tx, ty = profile.alignment.tangent_xy
-        nx, ny = profile.alignment.normal_xy
+        self._update_profile_legend()
         self.profile_summary.setText(
-            tr("Profile %1 · Chainage %2 m")
-            .replace("%1", str(profile_index + 1))
-            .replace("%2", f"{profile.alignment.chainage_m:.1f}")
+            tr("Profile %1").replace("%1", str(profile_index + 1))
         )
         if not profile.actual_segments:
             self.profile_summary.setText(
@@ -1056,57 +1350,244 @@ class WallConformanceTab(QWidget):
                 + " · "
                 + tr("No survey data in Design elevation range")
             )
-        self.profile_vectors.setText(tr("Direction details"))
-        self.profile_vectors.setToolTip(
-            tr("+U / profile direction is Design-Face-derived: ")
-            + f"({nx:.3f}, {ny:.3f}) · "
-            + tr("Perpendicular section-plane direction: ")
-            + f"({tx:.3f}, {ty:.3f})"
-        )
+        self._show_profile_details(profile)
 
     def _select_variant(self, index: int) -> None:
         if self.result is not None and self.profile_selector.currentIndex() == 0:
             self._select_profile(0)
 
-    def _update_representative_summary(self) -> None:
+    def _update_profile_legend(self) -> None:
+        design, actual = self.profile_plot._geometry()
+        if self.profile_plot.mode == "empty" or not design and not actual:
+            self.profile_legend.clear()
+            self.profile_legend.hide()
+            return
+        colors = WallProfilePlot._colors()
+
+        def swatch(key):
+            return f'<span style="color:{colors[key].name()}">&#9632;</span>'
+
+        design_roles = [
+            role for role in ("face", "berm", "road", "unknown")
+            if any(getattr(segment, "semantic_role", None) == role for segment in design)
+        ]
+        parts = []
+        if design_roles:
+            parts.append(
+                "<b>" + tr("DESIGN") + "</b>"
+                + " "
+                + "  ".join(
+                    f"{swatch(role)} {tr(role.title())}" for role in design_roles
+                )
+            )
+        if actual:
+            actual_label = (
+                tr("All profiles")
+                if self.profile_plot.mode == "overview"
+                else tr("Selected profile")
+            )
+            parts.append(f"<b>{tr('ACTUAL')}</b> {swatch('actual')} {actual_label}")
+        self.profile_legend.setText(" · ".join(parts))
+        self.profile_legend.setVisible(bool(parts))
+
+    def _result_status_text(self) -> str:
+        sections = self.result.profile_sections
+        profile_count = len(sections.profiles)
+        skipped = self._skipped_diagnostics()
+        total = len(sections.placement_result.station_chainages_m)
+        parts = [tr("%1 profiles").replace("%1", str(profile_count))]
+        if skipped:
+            parts.append(tr("%1 skipped").replace("%1", str(len(skipped))))
+        if total:
+            parts.append(
+                tr("%1% coverage").replace(
+                    "%1", str(round(100 * profile_count / total))
+                )
+            )
+        return " · ".join(parts)
+
+    def _skipped_diagnostics(self):
+        seen = set()
+        skipped = []
+        for diagnostic in getattr(self.result, "diagnostics", ()):
+            chainage = getattr(diagnostic, "chainage_m", None)
+            station = getattr(diagnostic, "station_index", None)
+            key = (station, chainage)
+            if (station is None and chainage is None) or key in seen:
+                continue
+            seen.add(key)
+            skipped.append(diagnostic)
+        return tuple(skipped)
+
+    def _clear_details(self) -> None:
+        self.details_schedule.hide()
+        self.details_title.setText(tr("Representative Design"))
+        self.details_metadata.clear()
+        self._clear_detail_rows()
+        self.profile_canvas.refresh_layout()
+
+    def _clear_detail_rows(self) -> None:
+        for row in range(self.details_rows.rowCount()):
+            self.details_rows.setRowStretch(row, 0)
+            self.details_rows.setRowMinimumHeight(row, 0)
+        while self.details_rows.count():
+            item = self.details_rows.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._detail_stretch_row = None
+
+    def _add_detail_section(self, row: int, title: str) -> int:
+        if row:
+            self.details_rows.setRowMinimumHeight(row, 6)
+            row += 1
+        label = QLabel(title)
+        label.setObjectName("SummaryValue")
+        self.details_rows.addWidget(label, row, 0, 1, 3)
+        return row + 1
+
+    def _add_detail_metric(
+        self, row: int, label_text: str, value: str, range_text: str = "", tooltip: str = ""
+    ) -> int:
+        label = QLabel(label_text)
+        label.setObjectName("MutedText")
+        value_label = QLabel(value)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        range_label = QLabel(range_text)
+        range_label.setObjectName("MutedText")
+        range_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        if tooltip:
+            for widget in (label, value_label, range_label):
+                widget.setToolTip(tooltip)
+        self.details_rows.addWidget(label, row, 0)
+        self.details_rows.addWidget(value_label, row, 1)
+        self.details_rows.addWidget(range_label, row, 2)
+        return row + 1
+
+    def _refresh_detail_schedule(self) -> None:
+        if self._detail_stretch_row is not None:
+            self.details_rows.setRowStretch(self._detail_stretch_row, 1)
+        self.details_content.adjustSize()
+        self.details_scroll.widget().updateGeometry()
+        self.profile_canvas.refresh_layout()
+
+    def _show_representative_details(self) -> None:
         variants = self.result.profile_sections.design_variants if self.result else ()
         if not variants:
-            self.representative_summary.clear()
+            self._clear_details()
             return
         variant = variants[max(0, self.variant_selector.currentIndex())]
-        lines = [
-            tr("REPRESENTATIVE DESIGN"),
-            tr("Profiles used: %1").replace("%1", str(len(variant.profile_indices))),
-        ]
+        self.details_schedule.show()
+        self.details_title.setText(tr("Representative Design"))
         context = variant.upstream_context
+        context_text = (
+            tr(context.role.title()) + " " + tr("context")
+            if context is not None
+            else tr("No context")
+        )
+        self.details_metadata.setText(
+            tr("Variant %1 · %2 profiles · %3")
+            .replace("%1", str(max(0, self.variant_selector.currentIndex()) + 1))
+            .replace("%2", str(len(variant.profile_indices)))
+            .replace("%3", context_text)
+        )
+        self.details_metadata.setToolTip(variant.signature)
+        self._clear_detail_rows()
+        row = 0
         if context is not None:
-            lines.append(
-                tr("Upstream context · %1 · Width %2 m · range %3–%4 m")
-                .replace("%1", tr(context.role.title()))
-                .replace("%2", f"{context.width_median:.1f}")
-                .replace("%3", f"{context.width_range[0]:.1f}")
-                .replace("%4", f"{context.width_range[1]:.1f}")
+            row = self._add_detail_section(row, tr("Upstream %1").replace("%1", tr(context.role.title())))
+            row = self._add_detail_metric(
+                row,
+                tr("W"),
+                f"W {context.width_median:.1f} m",
+                f"{context.width_range[0]:.1f}–{context.width_range[1]:.1f} m",
             )
         counters = {}
         for element in variant.elements:
             counters[element.role] = counters.get(element.role, 0) + 1
             name = f"{tr(element.role.title())} {counters[element.role]}"
+            row = self._add_detail_section(row, name)
             if element.role == "face" and element.angle_median is not None:
-                lines.append(
-                    tr("%1 · Height %2 m · Angle %3° · range %4–%5°")
-                    .replace("%1", name).replace("%2", f"{element.height_median:.1f}")
-                    .replace("%3", f"{element.angle_median:.1f}")
-                    .replace("%4", f"{element.angle_range[0]:.1f}")
-                    .replace("%5", f"{element.angle_range[1]:.1f}")
+                row = self._add_detail_metric(
+                    row,
+                    tr("H / A"),
+                    f"H {element.height_median:.1f} m · A {element.angle_median:.1f}°",
+                    (
+                        f"H {element.height_range[0]:.1f}–{element.height_range[1]:.1f} m"
+                        f" · A {element.angle_range[0]:.1f}–{element.angle_range[1]:.1f}°"
+                    ),
                 )
             else:
-                lines.append(
-                    tr("%1 · Width %2 m · range %3–%4 m")
-                    .replace("%1", name).replace("%2", f"{element.width_median:.1f}")
-                    .replace("%3", f"{element.width_range[0]:.1f}")
-                    .replace("%4", f"{element.width_range[1]:.1f}")
+                row = self._add_detail_metric(
+                    row, tr("W"),
+                    f"W {element.width_median:.1f} m",
+                    f"{element.width_range[0]:.1f}–{element.width_range[1]:.1f} m",
                 )
-        self.representative_summary.setText("\n".join(lines))
+        if variant.elements:
+            terminal = variant.elements[-1]
+            row = self._add_detail_section(row, tr("Lower toe"))
+            row = self._add_detail_metric(
+                row,
+                tr("U / dZ"),
+                f"U {terminal.end_u:.1f} m · dZ {terminal.end_dz:.1f} m",
+            )
+        self._detail_stretch_row = row
+        self._refresh_detail_schedule()
+
+    def _show_profile_details(self, profile) -> None:
+        self.details_schedule.show()
+        profile_number = self.profile_selector.currentIndex()
+        self.details_title.setText(tr("Profile %1").replace("%1", str(profile_number)))
+        design_section = profile.design_section
+        signature = getattr(design_section, "topology_signature", "—")
+        context = getattr(design_section, "upstream_context", None)
+        context_text = (
+            tr(context.role.title()) + " " + tr("context")
+            if context is not None
+            else tr("No context")
+        )
+        self.details_metadata.setText(
+            tr("Ch. %1 m · %2 · %3")
+            .replace("%1", f"{profile.alignment.chainage_m:.1f}")
+            .replace("%2", signature)
+            .replace("%3", context_text)
+        )
+        self.details_metadata.setToolTip(signature)
+        self._clear_detail_rows()
+        row = 0
+        row = self._add_detail_section(row, tr("Design"))
+        if context is not None:
+            row = self._add_detail_section(
+                row, tr("Upstream %1").replace("%1", tr(context.role.title()))
+            )
+            row = self._add_detail_metric(
+                row, tr("W"), f"W {context.horizontal_width:.1f} m"
+            )
+        counters = {}
+        elements = getattr(design_section, "elements", ())
+        for element in elements:
+            counters[element.role] = counters.get(element.role, 0) + 1
+            row = self._add_detail_section(
+                row, f"{tr(element.role.title())} {counters[element.role]}"
+            )
+            if element.role == "face" and element.angle_degrees is not None:
+                row = self._add_detail_metric(
+                    row,
+                    tr("H / A"),
+                    f"H {element.vertical_height:.1f} m · A {element.angle_degrees:.1f}°",
+                )
+            else:
+                row = self._add_detail_metric(
+                    row, tr("W"), f"W {element.horizontal_width:.1f} m"
+                )
+        if elements:
+            terminal = elements[-1].end
+            row = self._add_detail_section(row, tr("Lower toe"))
+            row = self._add_detail_metric(
+                row, tr("U / Z"), f"U {terminal.u:.1f} m · Z {terminal.z:.1f} m"
+            )
+        self._detail_stretch_row = row
+        self._refresh_detail_schedule()
 
     def _return_to_overview(self) -> None:
         if self.result is not None and self.profile_selector.currentIndex() > 0:

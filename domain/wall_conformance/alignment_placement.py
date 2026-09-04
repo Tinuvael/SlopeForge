@@ -1,9 +1,10 @@
 """Wall Conformance placement from an explicit longitudinal Wall Alignment.
 
 This path deliberately bypasses automatic ``WallSector`` discovery.  The
-alignment supplies chainage and local strike only.  Semantic Design Face
-triangles select the downwall sign, and the Design TIN intersection supplies
-the final Upper Crest anchor after the vertical search plane has been placed.
+alignment supplies chainage and approximate locality only.  Semantic Design
+Face triangles supply the physical downwall azimuth, and the Design TIN
+intersection supplies the final Upper Crest anchor after the vertical search
+plane has been placed.
 
 Assessment geometry is used only as a spatial support mask.  Actual geometry
 is accepted only by section assembly, after every placement decision exists.
@@ -11,7 +12,7 @@ is accepted only by section assembly, after every placement decision exists.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import ceil, fsum, hypot, isfinite
+from math import ceil, fsum, hypot, isfinite, sqrt
 
 from domain.geometry.operations import (
     point_in_polygon,
@@ -31,7 +32,11 @@ from domain.wall_conformance.models import (
     TransverseProfile,
     WallAlignmentSample,
 )
-from domain.wall_conformance.profile_placement import direction_sample_from_triangle
+from domain.wall_conformance.profile_placement import (
+    FaceDirectionSample,
+    aggregate_face_direction,
+    direction_sample_from_triangle,
+)
 from domain.wall_conformance.sections import (
     clip_section_segments_to_u_interval,
     clip_section_segments_to_z_range,
@@ -46,7 +51,6 @@ from domain.wall_conformance.semantic_sections import (
 
 _GEOMETRY_TOLERANCE = 1e-9
 _SECTION_TOLERANCE = 1e-6
-_MATERIAL_DIRECTION_FRACTION = 0.05
 
 
 def _distance(first: PlanPoint, second: PlanPoint) -> float:
@@ -286,6 +290,28 @@ class WallAlignment:
                 )
         raise AssertionError("Clamped Wall Alignment chainage was not located")
 
+    def nearest_chainage_to(self, point: PlanPoint) -> float:
+        """Project a plan point to deterministic nearest Alignment chainage."""
+        cumulative = self.cumulative_chainages_m
+        candidates = []
+        for index, (first, second) in enumerate(zip(self.points, self.points[1:])):
+            dx, dy = second.x - first.x, second.y - first.y
+            length_squared = dx * dx + dy * dy
+            fraction = (
+                ((point.x - first.x) * dx + (point.y - first.y) * dy)
+                / length_squared
+            )
+            fraction = max(0.0, min(1.0, fraction))
+            projected_x = first.x + dx * fraction
+            projected_y = first.y + dy * fraction
+            distance_squared = (
+                (point.x - projected_x) ** 2
+                + (point.y - projected_y) ** 2
+            )
+            chainage = cumulative[index] + sqrt(length_squared) * fraction
+            candidates.append((distance_squared, chainage, index))
+        return min(candidates)[1]
+
 
 @dataclass(frozen=True)
 class AlignmentPlacementDiagnostic:
@@ -303,10 +329,15 @@ class AlignmentProfilePlacement:
     station_index: int
     chainage_m: float
     alignment_point: PlanPoint
-    tangent_xy: tuple[float, float]
+    guide_tangent_xy: tuple[float, float]
+    wall_strike_xy: tuple[float, float]
     downwall_xy: tuple[float, float]
     face_downwall_xy: tuple[float, float]
     face_agreement: float
+    face_angular_dispersion_degrees: float
+    face_angular_support_degrees: float
+    face_sample_count: int
+    face_supporting_weight: float
     plan_start: PlanPoint
     plan_end: PlanPoint
     supporting_face_triangle_indices: tuple[int, ...]
@@ -338,8 +369,34 @@ class AlignmentProfileSectionResult:
 class _FaceFragment:
     triangle_index: int
     points: tuple[PlanPoint, ...]
+    representative_point: PlanPoint
     downwall_xy: tuple[float, float]
     weight: float
+
+
+def _polygon_centroid(points: tuple[PlanPoint, ...]) -> PlanPoint:
+    """Return the deterministic area centroid of a positive-area polygon."""
+    cross_terms = tuple(
+        first.x * second.y - second.x * first.y
+        for first, second in zip(points, points[1:] + points[:1])
+    )
+    scale = fsum(cross_terms)
+    if abs(scale) <= _GEOMETRY_TOLERANCE:
+        raise ValueError("Face fragment has no stable plan centroid")
+    return PlanPoint(
+        fsum(
+            (first.x + second.x) * cross
+            for first, second, cross in zip(
+                points, points[1:] + points[:1], cross_terms
+            )
+        ) / (3.0 * scale),
+        fsum(
+            (first.y + second.y) * cross
+            for first, second, cross in zip(
+                points, points[1:] + points[:1], cross_terms
+            )
+        ) / (3.0 * scale),
+    )
 
 
 def _face_fragments(
@@ -377,9 +434,11 @@ def _face_fragments(
             area_tolerance = max(1.0, plan_area) * 1e-10
             if overlap_area <= area_tolerance:
                 continue
+            canonical_clipped = _canonical_ccw(clipped)
             fragments.append(_FaceFragment(
                 triangle_index,
-                _canonical_ccw(clipped),
+                canonical_clipped,
+                _polygon_centroid(canonical_clipped),
                 direction.downwall_xy,  # type: ignore[arg-type]
                 direction.geometric_weight * overlap_area / plan_area,
             ))
@@ -409,52 +468,44 @@ def _crossing_fragments(
     return tuple(selected)
 
 
-def _direction_from_face(
+def _face_direction_samples(
     fragments: tuple[_FaceFragment, ...],
-    candidate_normal: tuple[float, float],
-) -> tuple[
-    tuple[tuple[float, float], tuple[float, float], float] | None,
-    str | None,
-]:
-    contributions = tuple(
-        (fragment, _dot(fragment.downwall_xy, candidate_normal))
-        for fragment in fragments
-    )
-    directional = tuple(
-        (fragment, projection)
-        for fragment, projection in contributions
-        if abs(projection) > _GEOMETRY_TOLERANCE
-    )
-    if not directional:
-        return None, "insufficient_face_direction"
-    positive = fsum(
-        fragment.weight * abs(projection)
-        for fragment, projection in directional
-        if projection > 0.0
-    )
-    negative = fsum(
-        fragment.weight * abs(projection)
-        for fragment, projection in directional
-        if projection < 0.0
-    )
-    total = positive + negative
-    minority = min(positive, negative)
-    if total <= _GEOMETRY_TOLERANCE:
-        return None, "insufficient_face_direction"
-    if minority > total * _MATERIAL_DIRECTION_FRACTION:
-        return None, "contradictory_face_direction"
-    sign = 1.0 if positive > negative else -1.0
-    downwall = candidate_normal[0] * sign, candidate_normal[1] * sign
-    x = fsum(fragment.downwall_xy[0] * fragment.weight for fragment, _ in directional)
-    y = fsum(fragment.downwall_xy[1] * fragment.weight for fragment, _ in directional)
-    try:
-        aggregate = _unit((x, y))
-    except ValueError:
-        return None, "contradictory_face_direction"
-    agreement = _dot(aggregate, downwall)
-    if agreement <= _GEOMETRY_TOLERANCE:
-        return None, "insufficient_face_direction"
-    return (downwall, aggregate, agreement), None
+    alignment: WallAlignment,
+    station_chainages_m: tuple[float, ...],
+) -> tuple[FaceDirectionSample, ...]:
+    """Map clipped Face evidence into deterministic requested-station bins."""
+    samples = []
+    for fragment in fragments:
+        projected_chainage = alignment.nearest_chainage_to(
+            fragment.representative_point
+        )
+        _, station_chainage = min(
+            enumerate(station_chainages_m),
+            key=lambda item: (
+                abs(item[1] - projected_chainage),
+                item[1],
+                item[0],
+            ),
+        )
+        samples.append(FaceDirectionSample(
+            fragment.representative_point,
+            max(0.0, min(1.0, station_chainage / alignment.length_m)),
+            fragment.downwall_xy,
+            fragment.weight,
+            source_id=f"triangle:{fragment.triangle_index}",
+        ))
+    return tuple(samples)
+
+
+def _wall_strike(
+    downwall_xy: tuple[float, float],
+    guide_tangent_xy: tuple[float, float],
+) -> tuple[float, float]:
+    """Derive physical strike; guide direction selects its sign only."""
+    candidate = downwall_xy[1], -downwall_xy[0]
+    if _dot(candidate, guide_tangent_xy) < 0.0:
+        return -candidate[0], -candidate[1]
+    return candidate
 
 
 def _search_extent(
@@ -515,47 +566,64 @@ def place_profiles_from_alignment(
         for index in range(interval_count + 1)
     )
     fragments = _face_fragments(design_surface, assessment_polygon, role_mapping)
+    direction_samples = _face_direction_samples(fragments, alignment, chainages)
     placements: list[AlignmentProfilePlacement] = []
     diagnostics: list[AlignmentPlacementDiagnostic] = []
     for station_index, chainage in enumerate(chainages):
         try:
-            point, tangent = alignment.point_and_tangent_at(chainage)
+            point, guide_tangent = alignment.point_and_tangent_at(chainage)
         except ValueError as exc:
             diagnostics.append(AlignmentPlacementDiagnostic(
                 "unstable_alignment_tangent", str(exc), station_index, chainage
             ))
             continue
-        support = _crossing_fragments(fragments, point, tangent)
-        if not support:
+        if not direction_samples:
             diagnostics.append(AlignmentPlacementDiagnostic(
                 "insufficient_face_support",
-                "No positive-area Design Face support crosses this Alignment station",
+                "Assessment Area contains no positive-area Design Face support",
                 station_index,
                 chainage,
             ))
             continue
-        candidate = -tangent[1], tangent[0]
-        resolved, direction_issue = _direction_from_face(support, candidate)
-        if resolved is None:
-            issue_messages = {
-                "insufficient_face_direction": (
-                    "Design Face evidence is parallel to the Alignment normal "
-                    "choice and supplies no downwall sign"
-                ),
-                "contradictory_face_direction": (
-                    "Design Face evidence does not determine one downwall normal sign"
-                ),
-            }
+        try:
+            aggregate = aggregate_face_direction(
+                direction_samples,
+                chainage / alignment.length_m,
+                assessment_polygon,
+            )
+        except ValueError:
             diagnostics.append(AlignmentPlacementDiagnostic(
-                direction_issue or "insufficient_face_direction",
-                issue_messages[
-                    direction_issue or "insufficient_face_direction"
-                ],
+                "contradictory_face_direction",
+                "Local Design Face evidence has no stable physical downwall direction",
                 station_index,
                 chainage,
             ))
             continue
-        downwall, face_downwall, agreement = resolved
+        if aggregate.angular_support_degrees >= 90.0 - _GEOMETRY_TOLERANCE:
+            diagnostics.append(AlignmentPlacementDiagnostic(
+                "contradictory_face_direction",
+                (
+                    "Local Design Face evidence does not share a common physical "
+                    "downwall hemisphere"
+                ),
+                station_index,
+                chainage,
+            ))
+            continue
+        downwall = aggregate.downwall_xy
+        wall_strike = _wall_strike(downwall, guide_tangent)
+        support = _crossing_fragments(fragments, point, wall_strike)
+        if not support:
+            diagnostics.append(AlignmentPlacementDiagnostic(
+                "insufficient_final_face_support",
+                (
+                    "The Design-Face-derived profile line crosses no "
+                    "Assessment-supported Design Face"
+                ),
+                station_index,
+                chainage,
+            ))
+            continue
         extent = _search_extent(
             point, downwall, design_surface, assessment_polygon
         )
@@ -563,10 +631,15 @@ def place_profiles_from_alignment(
             station_index,
             chainage,
             point,
-            tangent,
+            guide_tangent,
+            wall_strike,
             downwall,
-            face_downwall,
-            agreement,
+            aggregate.downwall_xy,
+            1.0,
+            aggregate.angular_dispersion_degrees,
+            aggregate.angular_support_degrees,
+            aggregate.sample_count,
+            aggregate.supporting_weight,
             PlanPoint(point.x - downwall[0] * extent, point.y - downwall[1] * extent),
             PlanPoint(point.x + downwall[0] * extent, point.y + downwall[1] * extent),
             tuple(sorted({fragment.triangle_index for fragment in support})),
@@ -838,7 +911,7 @@ def _profile_from_placement(
     provisional = WallAlignmentSample(
         placement.chainage_m,
         SurfaceVertex(placement.alignment_point.x, placement.alignment_point.y, 0.0),
-        placement.tangent_xy,
+        placement.wall_strike_xy,
         placement.downwall_xy,
     )
     all_segments = intersect_surface_with_profile(
@@ -880,7 +953,7 @@ def _profile_from_placement(
     alignment = WallAlignmentSample(
         placement.chainage_m,
         SurfaceVertex(crest_point.x, crest_point.y, crest_point.z),
-        placement.tangent_xy,
+        placement.wall_strike_xy,
         placement.downwall_xy,
     )
     shifted = _shift_segments(component, crest_point.u)

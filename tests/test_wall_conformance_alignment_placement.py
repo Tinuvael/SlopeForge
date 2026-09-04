@@ -14,6 +14,8 @@ from domain.wall_conformance import (
     place_profiles_from_alignment,
 )
 from domain.wall_conformance.alignment_placement import (
+    _crossing_fragments,
+    _face_fragments,
     _upstream_context_for_assessed_section,
 )
 from domain.wall_conformance.models import SectionPoint, SectionSegment
@@ -66,6 +68,23 @@ def _strip_surface(
                     source_attributes={"material": role},
                 ),
             ))
+    return TriangleSurface(tuple(vertices), tuple(triangles))
+
+
+def _combined_surface(*surfaces: TriangleSurface) -> TriangleSurface:
+    vertices: list[SurfaceVertex] = []
+    triangles: list[SurfaceTriangle] = []
+    for surface in surfaces:
+        offset = len(vertices)
+        vertices.extend(surface.vertices)
+        triangles.extend(
+            SurfaceTriangle(
+                tuple(index + offset for index in triangle.vertex_indices),
+                triangle.source_id,
+                triangle.source_attributes,
+            )
+            for triangle in surface.triangles
+        )
     return TriangleSurface(tuple(vertices), tuple(triangles))
 
 
@@ -174,9 +193,65 @@ def test_straight_alignment_stations_by_true_chainage_at_bounded_spacing() -> No
     ) <= 3.0
     for placement in result.placements:
         assert placement.downwall_xy == pytest.approx((0.0, 1.0))
-        assert placement.tangent_xy[0] * placement.downwall_xy[0] + (
-            placement.tangent_xy[1] * placement.downwall_xy[1]
+        assert placement.wall_strike_xy[0] * placement.downwall_xy[0] + (
+            placement.wall_strike_xy[1] * placement.downwall_xy[1]
         ) == pytest.approx(0.0)
+        assert placement.guide_tangent_xy == pytest.approx((1.0, 0.0))
+
+
+def test_skewed_manual_alignment_does_not_rotate_design_face_profile() -> None:
+    alignment = WallAlignment((PlanPoint(0.0, 1.0), PlanPoint(12.0, 7.0)))
+    result = place_profiles_from_alignment(
+        alignment=alignment,
+        design_surface=_straight_surface(),
+        assessment_polygon=_assessment(),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    assert result.supported
+    for placement in result.placements:
+        expected_point, guide_tangent = alignment.point_and_tangent_at(
+            placement.chainage_m
+        )
+        manual_normal = -guide_tangent[1], guide_tangent[0]
+        assert placement.alignment_point == expected_point
+        assert placement.guide_tangent_xy == pytest.approx(guide_tangent)
+        assert placement.downwall_xy == pytest.approx((0.0, 1.0))
+        assert placement.face_downwall_xy == pytest.approx((0.0, 1.0))
+        assert placement.wall_strike_xy == pytest.approx((1.0, 0.0))
+        assert abs(
+            manual_normal[0] * placement.downwall_xy[0]
+            + manual_normal[1] * placement.downwall_xy[1]
+        ) < 0.9
+
+
+def test_kinked_manual_alignment_changes_locality_but_not_profile_azimuth() -> None:
+    alignment = WallAlignment((
+        PlanPoint(0.0, 2.0),
+        PlanPoint(3.0, 3.2),
+        PlanPoint(6.0, 1.1),
+        PlanPoint(9.0, 3.4),
+        PlanPoint(12.0, 2.0),
+    ))
+    result = place_profiles_from_alignment(
+        alignment=alignment,
+        design_surface=_straight_surface(),
+        assessment_polygon=_assessment(),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=1.5,
+    )
+
+    assert result.supported
+    assert len({
+        tuple(round(value, 3) for value in placement.guide_tangent_xy)
+        for placement in result.placements
+    }) > 3
+    assert all(
+        placement.downwall_xy == pytest.approx((0.0, 1.0))
+        and placement.wall_strike_xy == pytest.approx((1.0, 0.0))
+        for placement in result.placements
+    )
 
 
 def _curved_fixture() -> tuple[TriangleSurface, WallAlignment, PlanPolygon]:
@@ -261,6 +336,14 @@ def test_face_not_alignment_order_chooses_physical_downwall_sign() -> None:
 
     assert _placement_signature(reverse) == _placement_signature(forward)
     assert all(item.downwall_xy == pytest.approx((0.0, 1.0)) for item in reverse.placements)
+    assert all(item.guide_tangent_xy == pytest.approx((1.0, 0.0))
+               for item in forward.placements)
+    assert all(item.guide_tangent_xy == pytest.approx((-1.0, 0.0))
+               for item in reverse.placements)
+    assert all(item.wall_strike_xy == pytest.approx((1.0, 0.0))
+               for item in forward.placements)
+    assert all(item.wall_strike_xy == pytest.approx((-1.0, 0.0))
+               for item in reverse.placements)
 
 
 def test_multi_bench_design_remains_one_semantic_vertical_section() -> None:
@@ -281,6 +364,113 @@ def test_multi_bench_design_remains_one_semantic_vertical_section() -> None:
     # The Assessment interval is the same exact U interval used for the
     # clipped displayed/evaluated section and the Plan overlay.
     assert all(profile.assessment_u_interval is not None for profile in result.profiles)
+
+
+def test_all_local_face_tiers_contribute_but_road_has_no_direction_authority() -> None:
+    design = _straight_surface()
+    contradictory_road = _strip_surface(
+        ((0.0, 0.0, (0.0, 1.0)), (12.0, 0.0, (0.0, 1.0))),
+        ((0.0, 0.0), (11.0, 1000.0)),
+        ("road",),
+    )
+    common = dict(
+        alignment=_straight_alignment(),
+        assessment_polygon=_assessment(),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    face_only = place_profiles_from_alignment(design_surface=design, **common)
+    with_road = place_profiles_from_alignment(
+        design_surface=_combined_surface(design, contradictory_road), **common
+    )
+
+    assert _placement_signature(with_road) == _placement_signature(face_only)
+    assert all(placement.face_sample_count >= 4 for placement in face_only.placements)
+    assert all(
+        len(placement.supporting_face_triangle_indices) >= 2
+        for placement in face_only.placements
+    )
+    assert tuple(
+        (
+            placement.face_angular_dispersion_degrees,
+            placement.face_angular_support_degrees,
+        )
+        for placement in with_road.placements
+    ) == tuple(
+        (
+            placement.face_angular_dispersion_degrees,
+            placement.face_angular_support_degrees,
+        )
+        for placement in face_only.placements
+    )
+
+
+def test_contradictory_local_face_directions_are_rejected_deterministically() -> None:
+    downwall_positive = _strip_surface(
+        ((0.0, 0.0, (0.0, 1.0)), (12.0, 0.0, (0.0, 1.0))),
+        ((0.0, 20.0), (4.0, 10.0)),
+        ("face",),
+    )
+    downwall_negative = _strip_surface(
+        ((0.0, 0.0, (0.0, 1.0)), (12.0, 0.0, (0.0, 1.0))),
+        ((0.0, 10.0), (4.0, 20.0)),
+        ("face",),
+    )
+    result = place_profiles_from_alignment(
+        alignment=WallAlignment((PlanPoint(0.0, 2.0), PlanPoint(12.0, 2.0))),
+        design_surface=_combined_surface(downwall_positive, downwall_negative),
+        assessment_polygon=_polygon(
+            (-1.0, 0.0), (13.0, 0.0), (13.0, 4.0), (-1.0, 4.0)
+        ),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    assert result.placements == ()
+    assert tuple(diagnostic.code for diagnostic in result.diagnostics) == (
+        "contradictory_face_direction",
+    ) * 5
+
+
+def test_final_face_seeds_are_crossed_by_design_derived_profile_line() -> None:
+    design = _strip_surface(
+        tuple(
+            (x, 0.0, (0.0, 1.0))
+            for x in (0.0, 4.0, 8.0, 12.0)
+        ),
+        ((0.0, 20.0), (4.0, 10.0), (7.0, 10.0), (11.0, 0.0)),
+        ("face", "berm", "face"),
+    )
+    alignment = WallAlignment((PlanPoint(0.0, 1.0), PlanPoint(12.0, 7.0)))
+    assessment = _assessment()
+    result = place_profiles_from_alignment(
+        alignment=alignment,
+        design_surface=design,
+        assessment_polygon=assessment,
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+    fragments = _face_fragments(design, assessment, ROLE_MAPPING)
+
+    assert result.supported
+    differs_from_guide_seed = False
+    for placement in result.placements:
+        final_seeds = {
+            fragment.triangle_index
+            for fragment in _crossing_fragments(
+                fragments, placement.alignment_point, placement.wall_strike_xy
+            )
+        }
+        guide_seeds = {
+            fragment.triangle_index
+            for fragment in _crossing_fragments(
+                fragments, placement.alignment_point, placement.guide_tangent_xy
+            )
+        }
+        assert set(placement.supporting_face_triangle_indices) == final_seeds
+        differs_from_guide_seed |= final_seeds != guide_seeds
+    assert differs_from_guide_seed
 
 
 def test_local_design_run_stops_at_reverse_face_then_clips_to_assessment() -> None:
