@@ -9,9 +9,14 @@ from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.wall_conformance import (
     SurfaceRoleMapping,
     WallAlignment,
+    build_design_section,
     build_alignment_profile_sections,
     place_profiles_from_alignment,
 )
+from domain.wall_conformance.alignment_placement import (
+    _upstream_context_for_assessed_section,
+)
+from domain.wall_conformance.models import SectionPoint, SectionSegment
 
 
 ROLE_MAPPING = SurfaceRoleMapping(
@@ -80,6 +85,26 @@ def _straight_surface(*, actual_offset: float = 0.0) -> TriangleSurface:
         stations,
         sections,
         ("berm", "face", "berm", "face"),
+    )
+
+
+def _surface_with_upper_context(*, upper_role: str, include_road: bool = False):
+    sections = (
+        ((-4.0, 20.0), (-2.0, 20.0), (0.0, 20.0), (4.0, 10.0),
+         (7.0, 10.0), (11.0, 0.0))
+        if include_road
+        else ((-2.0, 20.0), (0.0, 20.0), (4.0, 10.0),
+              (7.0, 10.0), (11.0, 0.0))
+    )
+    roles = (
+        ("road", upper_role, "face", "berm", "face")
+        if include_road
+        else (upper_role, "face", "berm", "face")
+    )
+    return _strip_surface(
+        ((0.0, 0.0, (0.0, 1.0)), (12.0, 0.0, (0.0, 1.0))),
+        sections,
+        roles,
     )
 
 
@@ -253,9 +278,12 @@ def test_multi_bench_design_remains_one_semantic_vertical_section() -> None:
         for profile in result.profiles
     )
     assert all(profile.alignment.origin.z == pytest.approx(20.0) for profile in result.profiles)
+    # The Assessment interval is the same exact U interval used for the
+    # clipped displayed/evaluated section and the Plan overlay.
+    assert all(profile.assessment_u_interval is not None for profile in result.profiles)
 
 
-def test_local_design_run_stops_at_reverse_face_without_assessment_clipping() -> None:
+def test_local_design_run_stops_at_reverse_face_then_clips_to_assessment() -> None:
     result = build_alignment_profile_sections(
         alignment=WallAlignment((PlanPoint(0.0, 2.5), PlanPoint(12.0, 2.5))),
         design_surface=_surface_with_connected_remote_wall(),
@@ -267,18 +295,14 @@ def test_local_design_run_stops_at_reverse_face_without_assessment_clipping() ->
     )
 
     assert len(result.profiles) == 5
+    assert all(profile.assessment_u_interval == pytest.approx((2.0, 3.0))
+               for profile in result.profiles)
+    assert all(profile.design_section.topology_signature == "FACE"
+               for profile in result.profiles)
     assert all(
-        profile.design_section.topology_signature == "FACE-BERM-FACE-ROAD"
-        for profile in result.profiles
-    )
-    assert all(
-        max(segment.u_max for segment in profile.design_segments)
-        == pytest.approx(14.0)
-        for profile in result.profiles
-    )
-    assert all(
-        {element.role for element in profile.design_section.elements}
-        == {"face", "berm", "road"}
+        (min(segment.u_min for segment in profile.design_segments),
+         max(segment.u_max for segment in profile.design_segments))
+        == pytest.approx((2.0, 3.0))
         for profile in result.profiles
     )
     assert all(
@@ -286,6 +310,192 @@ def test_local_design_run_stops_at_reverse_face_without_assessment_clipping() ->
         for profile in result.profiles
         for element in profile.design_section.elements
         if element.role == "face"
+    )
+
+
+def test_assessment_interval_clips_partial_multi_bench_design_and_actual() -> None:
+    result = build_alignment_profile_sections(
+        alignment=_straight_alignment(),
+        design_surface=_straight_surface(),
+        actual_surface=_straight_surface(actual_offset=0.5),
+        assessment_polygon=_polygon(
+            (-1.0, 2.0), (13.0, 2.0), (13.0, 8.0), (-1.0, 8.0)
+        ),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    assert len(result.profiles) == 5
+    for profile in result.profiles:
+        assert profile.assessment_u_interval == pytest.approx((2.0, 8.0))
+        assert profile.design_section.topology_signature == "FACE-BERM-FACE"
+        assert min(segment.u_min for segment in profile.design_segments) == pytest.approx(2.0)
+        assert max(segment.u_max for segment in profile.design_segments) == pytest.approx(8.0)
+        # Design-elevation clipping can trim Actual further, but it may not
+        # introduce any section geometry outside the same Assessment interval.
+        assert min(segment.u_min for segment in profile.actual_segments) >= 2.0
+        assert max(segment.u_max for segment in profile.actual_segments) <= 8.0
+
+
+def test_assessment_boundary_at_face_keeps_only_immediate_upper_berm_context() -> None:
+    result = build_alignment_profile_sections(
+        alignment=_straight_alignment(),
+        design_surface=_surface_with_upper_context(upper_role="berm", include_road=True),
+        assessment_polygon=_polygon(
+            (-1.0, 0.0), (13.0, 0.0), (13.0, 8.0), (-1.0, 8.0)
+        ),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    for profile in result.profiles:
+        context = profile.design_section.upstream_context
+        assert profile.assessment_u_interval == pytest.approx((0.0, 8.0))
+        assert context is not None
+        assert context.role == "berm"
+        assert (context.start.u, context.end.u) == pytest.approx((-2.0, 0.0))
+        assert all(segment.u_min >= 0.0 for segment in profile.design_segments)
+        assert "road" not in profile.design_section.topology_signature.lower()
+
+
+def test_assessment_boundary_at_face_keeps_immediate_upper_road_context() -> None:
+    result = build_alignment_profile_sections(
+        alignment=_straight_alignment(),
+        design_surface=_surface_with_upper_context(upper_role="road"),
+        assessment_polygon=_polygon(
+            (-1.0, 0.0), (13.0, 0.0), (13.0, 4.0), (-1.0, 4.0)
+        ),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    assert all(
+        profile.design_section.upstream_context is not None
+        and profile.design_section.upstream_context.role == "road"
+        for profile in result.profiles
+    )
+
+
+def test_partial_face_and_assessed_upper_platform_do_not_create_context() -> None:
+    inside_face = build_alignment_profile_sections(
+        alignment=_straight_alignment(),
+        design_surface=_surface_with_upper_context(upper_role="berm"),
+        assessment_polygon=_polygon(
+            (-1.0, 2.0), (13.0, 2.0), (13.0, 8.0), (-1.0, 8.0)
+        ),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+    inside_berm = build_alignment_profile_sections(
+        alignment=_straight_alignment(),
+        design_surface=_surface_with_upper_context(upper_role="berm"),
+        assessment_polygon=_polygon(
+            (-1.0, -1.0), (13.0, -1.0), (13.0, 8.0), (-1.0, 8.0)
+        ),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    assert all(profile.design_section.upstream_context is None for profile in inside_face.profiles)
+    assert all(profile.design_section.upstream_context is None for profile in inside_berm.profiles)
+
+
+def test_noncontiguous_or_face_predecessor_never_becomes_context() -> None:
+    evaluated = build_design_section((
+        SectionSegment(
+            SectionPoint(0.0, 20.0, 0.0, 0.0),
+            SectionPoint(4.0, 10.0, 4.0, 0.0),
+            2,
+            "face",
+        ),
+    ))
+    gapped_berm = (
+        SectionSegment(SectionPoint(-2.0, 20.0, -2.0, 0.0), SectionPoint(-1.0, 20.0, -1.0, 0.0), 1, "berm"),
+        SectionSegment(SectionPoint(0.0, 20.0, 0.0, 0.0), SectionPoint(4.0, 10.0, 4.0, 0.0), 2, "face"),
+    )
+    upstream_face = (
+        SectionSegment(SectionPoint(-2.0, 25.0, -2.0, 0.0), SectionPoint(0.0, 20.0, 0.0, 0.0), 1, "face"),
+        SectionSegment(SectionPoint(0.0, 20.0, 0.0, 0.0), SectionPoint(4.0, 10.0, 4.0, 0.0), 2, "face"),
+    )
+
+    assert _upstream_context_for_assessed_section(evaluated, gapped_berm, (0.0, 4.0)) is None
+    assert _upstream_context_for_assessed_section(evaluated, upstream_face, (0.0, 4.0)) is None
+
+
+def test_assessment_interval_can_start_downwall_of_crest_without_rezeroing() -> None:
+    result = build_alignment_profile_sections(
+        alignment=_straight_alignment(),
+        design_surface=_straight_surface(),
+        assessment_polygon=_polygon(
+            (-1.0, 6.0), (13.0, 6.0), (13.0, 10.0), (-1.0, 10.0)
+        ),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    assert all(profile.alignment.origin.z == pytest.approx(20.0) for profile in result.profiles)
+    assert all(profile.assessment_u_interval == pytest.approx((6.0, 10.0))
+               for profile in result.profiles)
+    assert all(min(segment.u_min for segment in profile.design_segments) == pytest.approx(6.0)
+               for profile in result.profiles)
+
+
+def test_assessment_interval_retains_negative_u_upstream_of_crest() -> None:
+    result = build_alignment_profile_sections(
+        alignment=_straight_alignment(),
+        design_surface=_straight_surface(),
+        assessment_polygon=_polygon(
+            (-1.0, -1.0), (13.0, -1.0), (13.0, 3.0), (-1.0, 3.0)
+        ),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    assert all(profile.assessment_u_interval == pytest.approx((-1.0, 3.0))
+               for profile in result.profiles)
+    assert all(min(segment.u_min for segment in profile.design_segments) == pytest.approx(-1.0)
+               for profile in result.profiles)
+
+
+def _concave_assessment(*, upper_interval: tuple[float, float]) -> PlanPolygon:
+    lower_start, lower_end = 1.0, 3.0
+    upper_start, upper_end = upper_interval
+    return _polygon(
+        (-1.0, lower_start), (13.0, lower_start), (13.0, lower_end),
+        (1.0, lower_end), (1.0, upper_start), (13.0, upper_start),
+        (13.0, upper_end), (-1.0, upper_end),
+    )
+
+
+def test_concave_assessment_uses_only_interval_with_supported_face() -> None:
+    result = build_alignment_profile_sections(
+        alignment=_straight_alignment(),
+        design_surface=_straight_surface(),
+        assessment_polygon=_concave_assessment(upper_interval=(5.0, 6.0)),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    # The second interval lies on a Berm. Profile 2 crosses both intervals
+    # but retains only the one with the Assessment-supported Face.
+    profile = result.profiles[1]
+    assert profile.assessment_u_interval == pytest.approx((1.0, 3.0))
+    assert max(segment.u_max for segment in profile.design_segments) == pytest.approx(3.0)
+
+
+def test_ambiguous_concave_supported_face_intervals_are_rejected() -> None:
+    result = build_alignment_profile_sections(
+        alignment=_straight_alignment(),
+        design_surface=_straight_surface(),
+        assessment_polygon=_concave_assessment(upper_interval=(8.0, 9.0)),
+        role_mapping=ROLE_MAPPING,
+        spacing_m=3.0,
+    )
+
+    assert any(
+        diagnostic.code == "design_section_assembly_failed"
+        and "multiple supported Design Face intervals" in diagnostic.message
+        for diagnostic in result.diagnostics
     )
 
 

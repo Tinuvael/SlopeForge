@@ -90,74 +90,70 @@ def _range(values):
     return (min(values), max(values))
 
 
+def _representative_element(
+    elements: list[DesignSectionElement], origins: list[float],
+) -> RepresentativeElement:
+    """Summarise one consistently positioned semantic element."""
+    start_u = [element.start.u for element in elements]
+    end_u = [element.end.u for element in elements]
+    start_dz = [element.start.z - origin for element, origin in zip(elements, origins)]
+    end_dz = [element.end.z - origin for element, origin in zip(elements, origins)]
+    widths = [element.horizontal_width for element in elements]
+    heights = [element.vertical_height for element in elements]
+    angles = [
+        element.angle_degrees
+        for element in elements
+        if element.angle_degrees is not None
+    ]
+    return RepresentativeElement(
+        role=elements[0].role,
+        start_u=median(start_u),
+        start_dz=median(start_dz),
+        end_u=median(end_u),
+        end_dz=median(end_dz),
+        width_median=median(widths),
+        width_mean=mean(widths),
+        width_range=_range(widths),
+        height_median=median(heights),
+        height_range=_range(heights),
+        angle_median=median(angles) if angles else None,
+        angle_range=_range(angles) if angles else None,
+    )
+
+
 def build_design_variants(
     profiles: tuple[TransverseProfile, ...],
 ) -> tuple[DesignVariant, ...]:
-    grouped: dict[str, list[tuple[int, TransverseProfile]]] = defaultdict(list)
+    grouped: dict[
+        tuple[str, str | None], list[tuple[int, TransverseProfile]]
+    ] = defaultdict(list)
     for index, profile in enumerate(profiles):
         if profile.design_section and profile.design_section.elements:
-            grouped[profile.design_section.topology_signature].append((index, profile))
+            context = profile.design_section.upstream_context
+            grouped[(
+                profile.design_section.topology_signature,
+                context.role if context is not None else None,
+            )].append((index, profile))
     variants = []
-    for signature, members in sorted(grouped.items(), key=lambda item: (-len(item[1]), item[0])):
+    for (signature, context_role), members in sorted(
+        grouped.items(), key=lambda item: (-len(item[1]), item[0][0], item[0][1] or "")
+    ):
         representative = []
         element_count = len(members[0][1].design_section.elements)
         for position in range(element_count):
             elements = [profile.design_section.elements[position] for _, profile in members]
             origins = [profile.alignment.origin.z for _, profile in members]
-            start_u = [element.start.u for element in elements]
-            end_u = [element.end.u for element in elements]
-            start_dz = [element.start.z - origin for element, origin in zip(elements, origins)]
-            end_dz = [element.end.z - origin for element, origin in zip(elements, origins)]
-            widths = [element.horizontal_width for element in elements]
-            heights = [element.vertical_height for element in elements]
-            angles = [element.angle_degrees for element in elements if element.angle_degrees is not None]
-            representative.append(RepresentativeElement(
-                role=elements[0].role,
-                start_u=median(start_u), start_dz=median(start_dz),
-                end_u=median(end_u), end_dz=median(end_dz),
-                width_median=median(widths), width_mean=mean(widths), width_range=_range(widths),
-                height_median=median(heights), height_range=_range(heights),
-                angle_median=median(angles) if angles else None,
-                angle_range=_range(angles) if angles else None,
-            ))
-        contexts = [
-            profile.design_section.upstream_context
-            for _, profile in members
-            if profile.design_section.upstream_context is not None
-        ]
+            representative.append(_representative_element(elements, origins))
         representative_context = None
-        if contexts:
-            roles = {context.role for context in contexts}
-            if len(roles) == 1:
-                origins = [
-                    profile.alignment.origin.z
-                    for _, profile in members
-                    if profile.design_section.upstream_context is not None
-                ]
-                representative_context = RepresentativeElement(
-                    role=contexts[0].role,
-                    start_u=median(context.start.u for context in contexts),
-                    start_dz=median(
-                        context.start.z - origin
-                        for context, origin in zip(contexts, origins)
-                    ),
-                    end_u=0.0,
-                    end_dz=median(
-                        context.end.z - origin
-                        for context, origin in zip(contexts, origins)
-                    ),
-                    width_median=median(context.horizontal_width for context in contexts),
-                    width_mean=mean(context.horizontal_width for context in contexts),
-                    width_range=_range(
-                        [context.horizontal_width for context in contexts]
-                    ),
-                    height_median=median(context.vertical_height for context in contexts),
-                    height_range=_range(
-                        [context.vertical_height for context in contexts]
-                    ),
-                    angle_median=None,
-                    angle_range=None,
-                )
+        if context_role is not None:
+            contexts = [
+                profile.design_section.upstream_context
+                for _, profile in members
+            ]
+            representative_context = _representative_element(
+                contexts,
+                [profile.alignment.origin.z for _, profile in members],
+            )
         variants.append(DesignVariant(
             signature,
             tuple(index for index, _ in members),

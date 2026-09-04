@@ -5,12 +5,12 @@ from typing import Any
 
 from domain.geometry.types import PlanPolygon
 from domain.wall_conformance import (
+    AlignmentPlacementDiagnostic,
+    AlignmentProfileSectionResult,
     PROTOTYPE_DESIGN_ROLE_MAPPING,
-    ProfileSectionAssemblyError,
-    ProfileSectionDiagnostic,
     SurfaceRoleMapping,
-    WallProfileSet,
-    build_v2_profile_sections,
+    WallAlignment,
+    build_alignment_profile_sections,
     semantic_value_token,
 )
 
@@ -28,11 +28,12 @@ class WallConformanceDiagnosticSettings:
 class WallConformanceDiagnosticResult:
     design_dataset: Any
     actual_dataset: Any
-    profile_set: WallProfileSet
+    wall_alignment: WallAlignment
+    profile_sections: AlignmentProfileSectionResult
     settings: WallConformanceDiagnosticSettings
     role_mapping: SurfaceRoleMapping
     mapping_is_fallback: bool
-    diagnostics: tuple[ProfileSectionDiagnostic, ...] = ()
+    diagnostics: tuple[AlignmentPlacementDiagnostic, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -120,9 +121,14 @@ class WallConformanceDiagnosticService:
         self,
         site_id: int,
         assessment_polygon: PlanPolygon,
+        wall_alignment: WallAlignment,
         settings: WallConformanceDiagnosticSettings | None = None,
     ) -> WallConformanceDiagnosticResult:
         settings = settings or WallConformanceDiagnosticSettings()
+        if wall_alignment is None:
+            raise WallConformanceUnavailableError(
+                "Define a Wall Alignment before calculating profiles."
+            )
         design_dataset, actual_dataset = self.current_datasets(site_id)
         if design_dataset is None:
             raise WallConformanceUnavailableError(
@@ -153,23 +159,30 @@ class WallConformanceDiagnosticService:
 
         role_mapping, mapping_is_fallback = self.mapping_for_dataset(design_dataset)
         try:
-            assembly_result = build_v2_profile_sections(
-                design_surface,
-                actual_surface,
-                assessment_polygon,
-                role_mapping,
-                requested_spacing_m=settings.spacing_m,
+            assembly_result = build_alignment_profile_sections(
+                alignment=wall_alignment,
+                design_surface=design_surface,
+                actual_surface=actual_surface,
+                assessment_polygon=assessment_polygon,
+                role_mapping=role_mapping,
+                spacing_m=settings.spacing_m,
             )
-        except ProfileSectionAssemblyError as exc:
+        except ValueError as exc:
             raise WallConformanceUnavailableError(
                 "No usable Design wall profiles could be assembled for this "
-                "Assessment Area. Check the Assessment Area coverage and Design "
+                "Assessment Area. Check the Wall Alignment coverage and Design "
                 "surface semantics."
             ) from exc
+        if not assembly_result.profiles:
+            raise WallConformanceUnavailableError(
+                "No usable Design wall profiles could be assembled for this "
+                "Wall Alignment. Check its coverage and Design surface semantics."
+            )
         return WallConformanceDiagnosticResult(
             design_dataset=design_dataset,
             actual_dataset=actual_dataset,
-            profile_set=assembly_result.profile_set,
+            wall_alignment=wall_alignment,
+            profile_sections=assembly_result,
             settings=settings,
             role_mapping=role_mapping,
             mapping_is_fallback=mapping_is_fallback,

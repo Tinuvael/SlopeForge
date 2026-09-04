@@ -27,7 +27,8 @@ from application.services.wall_conformance import (
     WallConformanceDiagnosticService,
     WallConformanceDiagnosticSettings,
 )
-from domain.geometry.types import PlanPolygon
+from domain.geometry.types import PlanPoint, PlanPolygon
+from domain.wall_conformance import WallAlignment
 from domain.wall_conformance.models import SectionPoint
 from ui.widgets.design_system import set_status_role
 from ui.widgets.plan_view import PlanView
@@ -35,20 +36,29 @@ from ui.widgets.plan_view import PlanView
 
 class WallConformancePlanWidget(QWidget):
     profile_selected = Signal(int)
+    alignment_completed = Signal(object)
+    alignment_drawing_cancelled = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scene = QGraphicsScene(self)
         self.view = PlanView(self.scene)
-        self.view.scene_clicked.connect(self._select_nearest_profile)
-        # Read-only section selection uses the PlanView's existing left-click
-        # domain-coordinate signal. Middle-drag remains available for panning.
+        self.view.scene_clicked.connect(self._handle_scene_click)
+        self.view.scene_double_clicked.connect(self._complete_draft_from_double_click)
+        self.view.escape_requested.connect(self.cancel_alignment_drawing)
+        self.view.workflow_key_requested.connect(self._handle_workflow_key)
+        # The existing signal is used for both profile selection and alignment
+        # drawing. Middle-drag remains available for navigation.
         self.view.set_polygon_drawing_mode(True)
+        self._assessment_polygon = None
+        self._wall_alignment = None
+        self._draft_alignment_points = []
+        self._drawing_alignment = False
         self._profiles = ()
         self._profile_items = []
         self._area_item = None
-        self._crest_items = []
-        self._toe_items = []
+        self._alignment_item = None
+        self._draft_alignment_item = None
         self._selected_index = -1
 
         root = QVBoxLayout(self)
@@ -84,8 +94,8 @@ class WallConformancePlanWidget(QWidget):
                 "background": QColor("#252c36"),
                 "area": QColor("#5aa7e8"),
                 "area_fill": QColor(90, 167, 232, 26),
-                "crest": QColor("#8bd39a"),
-                "toe": QColor("#79b9ee"),
+                "alignment": QColor("#8bd39a"),
+                "draft_alignment": QColor("#79b9ee"),
                 "profile": QColor("#718096"),
                 "selected": QColor("#f0c66e"),
             }
@@ -93,8 +103,8 @@ class WallConformancePlanWidget(QWidget):
             "background": QColor("#f8fafc"),
             "area": QColor("#1261a0"),
             "area_fill": QColor(18, 97, 160, 22),
-            "crest": QColor("#2f855a"),
-            "toe": QColor("#4f78a8"),
+            "alignment": QColor("#2f855a"),
+            "draft_alignment": QColor("#4f78a8"),
             "profile": QColor("#94a3b8"),
             "selected": QColor("#d97706"),
         }
@@ -105,8 +115,7 @@ class WallConformancePlanWidget(QWidget):
             return f'<span style="color:{colors[key].name()}">&#9632;</span>'
         return (
             f"{swatch('area')} {tr('Assessment area')} · "
-            f"{swatch('crest')} {tr('Design upper crest')} · "
-            f"{swatch('toe')} {tr('Design lower toe')} · "
+            f"{swatch('alignment')} {tr('Wall Alignment')} · "
             f"{swatch('profile')} {tr('Profiles')} · "
             f"{swatch('selected')} {tr('Selected profile')}"
         )
@@ -118,11 +127,12 @@ class WallConformancePlanWidget(QWidget):
         if self._area_item is not None:
             self._area_item.setPen(self._cosmetic_pen(colors["area"], 2.0))
             self._area_item.setBrush(QBrush(colors["area_fill"]))
-        for item in self._crest_items:
-            item.setPen(self._cosmetic_pen(colors["crest"], 3.0))
-        toe_pen = self._cosmetic_pen(colors["toe"], 2.0, Qt.PenStyle.DashLine)
-        for item in self._toe_items:
-            item.setPen(toe_pen)
+        if self._alignment_item is not None:
+            self._alignment_item.setPen(self._cosmetic_pen(colors["alignment"], 3.0))
+        if self._draft_alignment_item is not None:
+            self._draft_alignment_item.setPen(
+                self._cosmetic_pen(colors["draft_alignment"], 2.0, Qt.PenStyle.DashLine)
+            )
         for index, item in enumerate(self._profile_items):
             item.setPen(self._profile_pen(index == self._selected_index))
         self.view.viewport().update()
@@ -169,38 +179,114 @@ class WallConformancePlanWidget(QWidget):
             path.lineTo(QPointF(point.x, -point.y))
         return path
 
-    def set_result(self, assessment_polygon: PlanPolygon, diagnostic_result) -> None:
+    def set_assessment_polygon(self, assessment_polygon: PlanPolygon) -> None:
+        self._assessment_polygon = assessment_polygon
+        self._refresh_scene()
+        self.view.fit_to_extent()
+
+    def set_wall_alignment(self, alignment: WallAlignment | None) -> None:
+        self._wall_alignment = alignment
+        self._draft_alignment_points = []
+        self._drawing_alignment = False
+        self._refresh_scene()
+
+    @property
+    def wall_alignment(self) -> WallAlignment | None:
+        return self._wall_alignment
+
+    @property
+    def drawing_alignment(self) -> bool:
+        return self._drawing_alignment
+
+    def begin_alignment_drawing(self) -> None:
+        self._draft_alignment_points = []
+        self._drawing_alignment = True
+        self.view.setFocus()
+        self._refresh_scene()
+
+    def cancel_alignment_drawing(self) -> None:
+        if not self._drawing_alignment:
+            return
+        self._draft_alignment_points = []
+        self._drawing_alignment = False
+        self._refresh_scene()
+        self.alignment_drawing_cancelled.emit()
+
+    def _handle_workflow_key(self, key: str) -> None:
+        if not self._drawing_alignment:
+            return
+        if key == "enter":
+            self.complete_alignment_drawing()
+        elif key == "back" and self._draft_alignment_points:
+            self._draft_alignment_points.pop()
+            self._refresh_scene()
+
+    def _handle_scene_click(self, x: float, y: float) -> None:
+        if self._drawing_alignment:
+            self._draft_alignment_points.append(PlanPoint(x, y))
+            self._refresh_scene()
+            return
+        self._select_nearest_profile(x, y)
+
+    def _complete_draft_from_double_click(self, x: float, y: float) -> None:
+        if not self._drawing_alignment:
+            return
+        point = PlanPoint(x, y)
+        if not self._draft_alignment_points or self._draft_alignment_points[-1] != point:
+            self._draft_alignment_points.append(point)
+        self.complete_alignment_drawing()
+
+    def complete_alignment_drawing(self) -> WallAlignment | None:
+        if not self._drawing_alignment:
+            return self._wall_alignment
+        try:
+            alignment = WallAlignment(tuple(self._draft_alignment_points))
+        except ValueError:
+            return None
+        self._wall_alignment = alignment
+        self._draft_alignment_points = []
+        self._drawing_alignment = False
+        self._refresh_scene()
+        self.alignment_completed.emit(alignment)
+        return alignment
+
+    def set_result(self, diagnostic_result) -> None:
+        self._profiles = diagnostic_result.profile_sections.profiles
+        self._selected_index = -1
+        self._refresh_scene()
+        self.view.fit_to_extent()
+
+    def _refresh_scene(self) -> None:
         self.scene.clear()
         self._profile_items = []
         self._area_item = None
-        self._crest_items = []
-        self._toe_items = []
-        self._profiles = diagnostic_result.profile_set.profiles
-        self._selected_index = -1
+        self._alignment_item = None
+        self._draft_alignment_item = None
         colors = self._colors()
         self.scene.setBackgroundBrush(QBrush(colors["background"]))
-
-        area_path = self._polygon_path(assessment_polygon)
-        self._area_item = self.scene.addPath(
-            area_path,
-            self._cosmetic_pen(colors["area"], 2.0),
-            QBrush(colors["area_fill"]),
-        )
-        for crest in diagnostic_result.profile_set.crest_lines:
-            self._crest_items.append(self.scene.addPath(
-                self._line_path(crest.points),
-                self._cosmetic_pen(colors["crest"], 3.0),
-            ))
-        toe_pen = self._cosmetic_pen(colors["toe"], 2.0, Qt.PenStyle.DashLine)
-        for toe in diagnostic_result.profile_set.toe_lines:
-            self._toe_items.append(
-                self.scene.addPath(self._line_path(toe.points), toe_pen)
+        if self._assessment_polygon is not None:
+            self._area_item = self.scene.addPath(
+                self._polygon_path(self._assessment_polygon),
+                self._cosmetic_pen(colors["area"], 2.0),
+                QBrush(colors["area_fill"]),
+            )
+        if self._wall_alignment is not None:
+            self._alignment_item = self.scene.addPath(
+                self._line_path(self._wall_alignment.points),
+                self._cosmetic_pen(colors["alignment"], 3.0),
+            )
+        if self._draft_alignment_points:
+            self._draft_alignment_item = self.scene.addPath(
+                self._line_path(self._draft_alignment_points),
+                self._cosmetic_pen(colors["draft_alignment"], 2.0, Qt.PenStyle.DashLine),
             )
 
         for profile in self._profiles:
             origin = profile.alignment.origin
             nx, ny = profile.alignment.normal_xy
-            lower, upper = profile.assessment_u_interval or (0.0, 0.0)
+            if profile.assessment_u_interval is None:
+                continue
+            lower, upper = profile.assessment_u_interval
             first = QPointF(
                 origin.x + nx * lower,
                 -(origin.y + ny * lower),
@@ -217,14 +303,9 @@ class WallConformancePlanWidget(QWidget):
         self.view.fit_to_extent()
 
     def clear_result(self) -> None:
-        self.scene.clear()
         self._profiles = ()
-        self._profile_items = []
-        self._area_item = None
-        self._crest_items = []
-        self._toe_items = []
         self._selected_index = -1
-        self._apply_theme()
+        self._refresh_scene()
 
     def set_selected_profile(self, index: int) -> None:
         if not 0 <= index < len(self._profile_items):
@@ -257,12 +338,16 @@ class WallConformancePlanWidget(QWidget):
         for index, profile in enumerate(self._profiles):
             origin = profile.alignment.origin
             nx, ny = profile.alignment.normal_xy
-            lower, upper = profile.assessment_u_interval or (0.0, 0.0)
+            if profile.assessment_u_interval is None:
+                continue
+            lower, upper = profile.assessment_u_interval
             ax = origin.x + nx * lower
             ay = origin.y + ny * lower
             bx = origin.x + nx * upper
             by = origin.y + ny * upper
             candidates.append((self._distance_to_segment(x, y, ax, ay, bx, by), index))
+        if not candidates:
+            return
         distance, index = min(candidates)
         if distance <= self._scene_tolerance():
             self.profile_selected.emit(index)
@@ -353,7 +438,17 @@ class WallProfilePlot(QWidget):
 
     def _geometry(self):
         if self.mode == "selected" and self.profile is not None:
-            design = tuple(s for s in self.profile.design_segments if s.semantic_role != "ignore")
+            context = getattr(self.profile.design_section, "upstream_context", None)
+            design = (
+                *((
+                    SimpleNamespace(
+                        start=context.start,
+                        end=context.end,
+                        semantic_role=context.role,
+                    ),
+                ) if context is not None else ()),
+                *(s for s in self.profile.design_segments if s.semantic_role != "ignore"),
+            )
             return design, self.profile.actual_segments
         if self.mode != "overview" or not self.profile_set.design_variants:
             return (), ()
@@ -577,6 +672,13 @@ class WallConformanceTab(QWidget):
         title.setObjectName("EngineeringSectionTitle")
         title_row.addWidget(title)
         title_row.addStretch()
+        self.set_alignment_button = QPushButton(tr("Set Wall Alignment"))
+        self.set_alignment_button.clicked.connect(self._begin_alignment_drawing)
+        title_row.addWidget(self.set_alignment_button)
+        self.clear_alignment_button = QPushButton(tr("Clear"))
+        self.clear_alignment_button.clicked.connect(self._clear_wall_alignment)
+        self.clear_alignment_button.setEnabled(False)
+        title_row.addWidget(self.clear_alignment_button)
         self.calculate_button = QPushButton(tr("Calculate profiles"))
         self.calculate_button.setProperty("role", "primary")
         self.calculate_button.clicked.connect(self.calculate)
@@ -637,7 +739,10 @@ class WallConformanceTab(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
         self.plan = WallConformancePlanWidget()
+        self.plan.set_assessment_polygon(self.assessment_polygon)
         self.plan.profile_selected.connect(lambda index: self._select_profile(index + 1))
+        self.plan.alignment_completed.connect(self._wall_alignment_completed)
+        self.plan.alignment_drawing_cancelled.connect(self._wall_alignment_drawing_cancelled)
         splitter.addWidget(self.plan)
 
         profile_host = QWidget()
@@ -685,6 +790,7 @@ class WallConformanceTab(QWidget):
         self.splitter = splitter
         root.addWidget(splitter, 1)
         self._refresh_dataset_metadata()
+        self._refresh_calculation_availability()
 
     @staticmethod
     def _dataset_text(dataset) -> str:
@@ -699,6 +805,13 @@ class WallConformanceTab(QWidget):
             .replace("%2", source_format)
             .replace("%3", f"{triangles:,}")
         )
+
+    @staticmethod
+    def _variant_context_label(variant) -> str:
+        context = variant.upstream_context
+        if context is None:
+            return tr("No upstream context")
+        return tr("%1 context").replace("%1", tr(context.role.title()))
 
     def _refresh_dataset_metadata(self) -> None:
         try:
@@ -730,24 +843,90 @@ class WallConformanceTab(QWidget):
         self.semantic_mapping.setText(f"{prefix} · {detail}")
         self.edit_semantics.setEnabled(bool(getattr(self.service.surface_service, "storage_available", True)))
 
+    def _refresh_calculation_availability(self) -> None:
+        try:
+            design, actual = self.service.current_datasets(self.site_id)
+        except Exception as exc:
+            self.calculate_button.setEnabled(False)
+            self.status.setText(str(exc))
+            set_status_role(self.status, "error")
+            return
+        storage_available = bool(
+            getattr(self.service.surface_service, "storage_available", True)
+        )
+        if not storage_available:
+            self.calculate_button.setEnabled(False)
+            self.status.setText(tr("Shared file storage is unavailable for this connection."))
+            set_status_role(self.status, "info")
+            return
+        if design is None or actual is None:
+            self.calculate_button.setEnabled(False)
+            missing = tr("Design surface") if design is None else tr("Actual survey")
+            self.status.setText(tr("%1 is not configured for this Project.").replace("%1", missing))
+            set_status_role(self.status, "info")
+            return
+        if self.plan.wall_alignment is None:
+            self.calculate_button.setEnabled(False)
+            self.status.setText(tr("Define a Wall Alignment to calculate profiles."))
+            set_status_role(self.status, "info")
+            return
+        self.calculate_button.setEnabled(True)
+
+    def _clear_calculated_result(self) -> None:
+        self.result = None
+        self.profile_selector.clear()
+        self.variant_selector.clear()
+        self.variant_selector.setVisible(False)
+        self.profile_plot.set_profile(None)
+        self.plan.clear_result()
+        self.profile_summary.setText("—")
+        self.profile_vectors.setText("")
+        self.representative_summary.clear()
+
+    def _begin_alignment_drawing(self) -> None:
+        self.plan.begin_alignment_drawing()
+        self.status.setText(tr("Draw Wall Alignment: click vertices, then press Enter or double-click to finish. Esc cancels."))
+        set_status_role(self.status, "info")
+
+    def _wall_alignment_completed(self, alignment: WallAlignment) -> None:
+        self._clear_calculated_result()
+        self.clear_alignment_button.setEnabled(True)
+        self.status.setText(
+            tr("Wall Alignment · %1 vertices · %2 m")
+            .replace("%1", str(len(alignment.points)))
+            .replace("%2", f"{alignment.length_m:.1f}")
+        )
+        set_status_role(self.status, "success")
+        self._refresh_calculation_availability()
+
+    def _wall_alignment_drawing_cancelled(self) -> None:
+        if self.plan.wall_alignment is None:
+            self._refresh_calculation_availability()
+        else:
+            self.status.setText(
+                tr("Wall Alignment · %1 vertices · %2 m")
+                .replace("%1", str(len(self.plan.wall_alignment.points)))
+                .replace("%2", f"{self.plan.wall_alignment.length_m:.1f}")
+            )
+            set_status_role(self.status, "info")
+
+    def _clear_wall_alignment(self) -> None:
+        self.plan.set_wall_alignment(None)
+        self._clear_calculated_result()
+        self.clear_alignment_button.setEnabled(False)
+        self._refresh_calculation_availability()
+
     def _edit_design_semantics(self) -> None:
         from ui.dialogs.design_surface_semantics_dialog import DesignSurfaceSemanticsDialog
 
         try:
             dialog = DesignSurfaceSemanticsDialog(self.service, self.site_id, self)
             if dialog.exec():
-                self.result = None
-                self.profile_selector.clear()
-                self.variant_selector.clear()
-                self.variant_selector.setVisible(False)
-                self.profile_plot.set_profile(None)
-                self.plan.clear_result()
-                self.profile_summary.setText("—")
-                self.profile_vectors.setText("")
-                self.representative_summary.clear()
+                self._clear_calculated_result()
                 self._refresh_dataset_metadata()
                 self.status.setText(tr("Design surface semantics saved. Calculate profiles again."))
                 set_status_role(self.status, "success")
+                self._refresh_calculation_availability()
         except Exception as exc:
             self.status.setText(str(exc))
             set_status_role(self.status, "error")
@@ -767,6 +946,7 @@ class WallConformanceTab(QWidget):
             self.result = self.service.calculate_current(
                 self.site_id,
                 self.assessment_polygon,
+                self.plan.wall_alignment,
                 self._settings(),
             )
         except Exception as exc:
@@ -781,14 +961,14 @@ class WallConformanceTab(QWidget):
             return
         finally:
             QApplication.restoreOverrideCursor()
-            self.calculate_button.setEnabled(True)
+            self._refresh_calculation_availability()
 
         self._refresh_dataset_metadata()
-        self.plan.set_result(self.assessment_polygon, self.result)
+        self.plan.set_result(self.result)
         self.profile_selector.blockSignals(True)
         self.profile_selector.clear()
         self.profile_selector.addItem(tr("Overview · All actual profiles"))
-        for index, profile in enumerate(self.result.profile_set.profiles, start=1):
+        for index, profile in enumerate(self.result.profile_sections.profiles, start=1):
             self.profile_selector.addItem(
                 tr("Profile %1 · Ch. %2 m")
                 .replace("%1", str(index))
@@ -797,16 +977,17 @@ class WallConformanceTab(QWidget):
         self.profile_selector.blockSignals(False)
         self.variant_selector.blockSignals(True)
         self.variant_selector.clear()
-        for index, variant in enumerate(self.result.profile_set.design_variants, start=1):
+        for index, variant in enumerate(self.result.profile_sections.design_variants, start=1):
             self.variant_selector.addItem(
-                tr("Variant %1 · %2 · %3 profiles")
+                tr("Variant %1 · %2 · %3 · %4 profiles")
                 .replace("%1", str(index))
-                .replace("%2", variant.signature)
-                .replace("%3", str(len(variant.profile_indices)))
+                .replace("%2", self._variant_context_label(variant))
+                .replace("%3", variant.signature)
+                .replace("%4", str(len(variant.profile_indices)))
             )
         self.variant_selector.blockSignals(False)
         self.variant_selector.setVisible(self.variant_selector.count() > 1)
-        count = len(self.result.profile_set.profiles)
+        count = len(self.result.profile_sections.profiles)
         self.status.setText(
             tr("Calculated %1 transverse profiles from the active Project surfaces.")
             .replace("%1", str(count))
@@ -834,13 +1015,13 @@ class WallConformanceTab(QWidget):
             self.profile_selector.blockSignals(False)
             self.plan.set_selected_profile(-1)
             self.profile_plot.set_overview(
-                self.result.profile_set, max(0, self.variant_selector.currentIndex())
+                self.result.profile_sections, max(0, self.variant_selector.currentIndex())
             )
-            variant = self.result.profile_set.design_variants[
+            variant = self.result.profile_sections.design_variants[
                 max(0, self.variant_selector.currentIndex())
             ]
             coverage = sum(
-                bool(self.result.profile_set.profiles[i].actual_segments)
+                bool(self.result.profile_sections.profiles[i].actual_segments)
                 for i in variant.profile_indices
             )
             self.profile_summary.setText(
@@ -852,13 +1033,13 @@ class WallConformanceTab(QWidget):
             self._update_representative_summary()
             return
         profile_index = index - 1
-        if not 0 <= profile_index < len(self.result.profile_set.profiles):
+        if not 0 <= profile_index < len(self.result.profile_sections.profiles):
             return
         if self.profile_selector.currentIndex() != index:
             self.profile_selector.blockSignals(True)
             self.profile_selector.setCurrentIndex(index)
             self.profile_selector.blockSignals(False)
-        profile = self.result.profile_set.profiles[profile_index]
+        profile = self.result.profile_sections.profiles[profile_index]
         self.plan.set_selected_profile(profile_index)
         self.profile_plot.set_profile(profile)
         self.representative_summary.clear()
@@ -888,7 +1069,7 @@ class WallConformanceTab(QWidget):
             self._select_profile(0)
 
     def _update_representative_summary(self) -> None:
-        variants = self.result.profile_set.design_variants if self.result else ()
+        variants = self.result.profile_sections.design_variants if self.result else ()
         if not variants:
             self.representative_summary.clear()
             return
@@ -897,6 +1078,15 @@ class WallConformanceTab(QWidget):
             tr("REPRESENTATIVE DESIGN"),
             tr("Profiles used: %1").replace("%1", str(len(variant.profile_indices))),
         ]
+        context = variant.upstream_context
+        if context is not None:
+            lines.append(
+                tr("Upstream context · %1 · Width %2 m · range %3–%4 m")
+                .replace("%1", tr(context.role.title()))
+                .replace("%2", f"{context.width_median:.1f}")
+                .replace("%3", f"{context.width_range[0]:.1f}")
+                .replace("%4", f"{context.width_range[1]:.1f}")
+            )
         counters = {}
         for element in variant.elements:
             counters[element.role] = counters.get(element.role, 0) + 1

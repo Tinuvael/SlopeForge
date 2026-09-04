@@ -22,6 +22,8 @@ from domain.geometry.surfaces import SurfaceVertex, TriangleSurface
 from domain.geometry.types import PlanPoint, PlanPolygon
 from domain.wall_conformance.invariants import profile_vertical_order_issue
 from domain.wall_conformance.models import (
+    DesignSection,
+    DesignSectionElement,
     DesignVariant,
     SectionPoint,
     SectionSegment,
@@ -632,6 +634,142 @@ def _shift_segments(
     )
 
 
+def _assessment_profile_intervals(
+    alignment: WallAlignmentSample,
+    assessment_polygon: PlanPolygon,
+) -> tuple[tuple[float, float], ...]:
+    """Return every finite Assessment interval on this final profile line.
+
+    ``alignment`` is already crest-anchored, so each returned U value is in
+    the coordinate system stored on ``TransverseProfile``.  Polygon vertices
+    on the line are included to retain a deterministic boundary for collinear
+    edges; only midpoint-inside spans become evaluated intervals.
+    """
+    origin = alignment.origin
+    nx, ny = alignment.normal_xy
+    intersections: list[float] = []
+    for first, second in zip(assessment_polygon.ring, assessment_polygon.ring[1:]):
+        ex, ey = second.x - first.x, second.y - first.y
+        ox, oy = first.x - origin.x, first.y - origin.y
+        denominator = nx * ey - ny * ex
+        if abs(denominator) > _GEOMETRY_TOLERANCE:
+            line_u = (ox * ey - oy * ex) / denominator
+            edge_fraction = (ox * ny - oy * nx) / denominator
+            if -_GEOMETRY_TOLERANCE <= edge_fraction <= 1.0 + _GEOMETRY_TOLERANCE:
+                intersections.append(line_u)
+            continue
+        for point in (first, second):
+            offset_x, offset_y = point.x - origin.x, point.y - origin.y
+            if abs(offset_x * ny - offset_y * nx) <= _GEOMETRY_TOLERANCE:
+                intersections.append(offset_x * nx + offset_y * ny)
+    ordered = []
+    for value in sorted(intersections):
+        if not ordered or abs(value - ordered[-1]) > _SECTION_TOLERANCE:
+            ordered.append(value)
+    return tuple(
+        (start, end)
+        for start, end in zip(ordered, ordered[1:])
+        if end - start > _SECTION_TOLERANCE
+        and point_in_polygon(
+            PlanPoint(
+                origin.x + (start + end) * nx / 2.0,
+                origin.y + (start + end) * ny / 2.0,
+            ),
+            assessment_polygon,
+        )
+    )
+
+
+def _select_assessment_interval(
+    intervals: tuple[tuple[float, float], ...],
+    seed_segments: tuple[SectionSegment, ...],
+) -> tuple[float, float]:
+    """Choose the unique Assessment interval containing a Face support seed."""
+    supported = tuple(
+        interval
+        for interval in intervals
+        if any(
+            min(segment.u_max, interval[1])
+            - max(segment.u_min, interval[0]) > _SECTION_TOLERANCE
+            for segment in seed_segments
+        )
+    )
+    if not supported:
+        raise ValueError(
+            "Assessment Area does not contain the supported Design Face "
+            "portion for this profile"
+        )
+    if len(supported) > 1:
+        raise ValueError(
+            "Assessment Area contains multiple supported Design Face intervals "
+            "for this profile"
+        )
+    return supported[0]
+
+
+def _points_are_contiguous(first: SectionPoint, second: SectionPoint) -> bool:
+    return (
+        abs(first.u - second.u) <= _SECTION_TOLERANCE
+        and abs(first.z - second.z) <= _SECTION_TOLERANCE
+        and hypot(first.x - second.x, first.y - second.y) <= _SECTION_TOLERANCE
+    )
+
+
+def _upstream_context_for_assessed_section(
+    evaluated: DesignSection,
+    local_run: tuple[SectionSegment, ...],
+    interval: tuple[float, float],
+) -> DesignSectionElement | None:
+    """Return one contiguous Berm/Road immediately before the first Face.
+
+    The returned element is presentation context only.  It is selected from
+    the existing local physical run after the evaluated geometry is clipped,
+    so it cannot cross a disconnected component or a reverse-face boundary.
+    """
+    first_face = next(
+        (element for element in evaluated.elements if element.role == "face"),
+        None,
+    )
+    if first_face is None:
+        return None
+    full = build_design_section(local_run)
+    full_face_index = next(
+        (
+            index
+            for index, element in enumerate(full.elements)
+            if element.role == "face"
+            and element.start.u - _SECTION_TOLERANCE
+            <= first_face.start.u
+            <= element.end.u + _SECTION_TOLERANCE
+            and set(element.source_triangle_indices).intersection(
+                first_face.source_triangle_indices
+            )
+        ),
+        None,
+    )
+    if full_face_index is None:
+        return None
+    full_face = full.elements[full_face_index]
+    # A boundary through a Face remains a partial assessed Face; it does not
+    # create a fictional upper Berm/Road context.
+    if abs(first_face.start.u - full_face.start.u) > _SECTION_TOLERANCE:
+        return None
+    preceding = (
+        full.elements[full_face_index - 1]
+        if full_face_index > 0
+        else full.upstream_context
+    )
+    if preceding is None or preceding.role not in {"berm", "road"}:
+        return None
+    if not _points_are_contiguous(preceding.end, full_face.start):
+        return None
+    # If the Assessment already contains any part of this element, it is
+    # evaluated geometry, not extra upstream context.
+    if preceding.end.u > interval[0] + _SECTION_TOLERANCE:
+        return None
+    return preceding
+
+
 def _local_design_run(
     component: tuple[SectionSegment, ...],
     supported_triangle_indices: set[int],
@@ -695,6 +833,7 @@ def _profile_from_placement(
     design_surface: TriangleSurface,
     actual_surface: TriangleSurface | None,
     role_mapping: SurfaceRoleMapping,
+    assessment_polygon: PlanPolygon,
 ) -> TransverseProfile:
     provisional = WallAlignmentSample(
         placement.chainage_m,
@@ -745,18 +884,27 @@ def _profile_from_placement(
         placement.downwall_xy,
     )
     shifted = _shift_segments(component, crest_point.u)
-    downstream_u = max(segment.u_max for segment in shifted)
-    if downstream_u <= _SECTION_TOLERANCE:
-        raise ValueError("Design section has no positive downwall extent")
-    evaluated = build_design_section(shifted)
+    seed_segments = tuple(
+        segment
+        for segment in shifted
+        if segment.semantic_role == "face"
+        and segment.source_triangle_index in supported
+    )
+    interval = _select_assessment_interval(
+        _assessment_profile_intervals(alignment, assessment_polygon),
+        seed_segments,
+    )
+    evaluated_design_segments = clip_section_segments_to_u_interval(
+        shifted, *interval
+    )
+    evaluated = build_design_section(evaluated_design_segments)
     if not evaluated.elements:
-        raise ValueError("Design intersection produced no semantic wall section")
+        raise ValueError("Assessment Area clips away the Design wall section")
     actual_segments: tuple[SectionSegment, ...] = ()
     if actual_surface is not None:
         actual_segments = clip_section_segments_to_u_interval(
             intersect_surface_with_profile(actual_surface, alignment),
-            0.0,
-            downstream_u,
+            *interval,
         )
         design_points = tuple(
             point
@@ -770,9 +918,13 @@ def _profile_from_placement(
         )
     profile = TransverseProfile(
         alignment,
-        shifted,
+        evaluated_design_segments,
         actual_segments,
-        evaluated,
+        DesignSection(
+            evaluated.elements,
+            _upstream_context_for_assessed_section(evaluated, shifted, interval),
+        ),
+        assessment_u_interval=interval,
     )
     issue = profile_vertical_order_issue(profile)
     if issue is not None:
@@ -806,6 +958,7 @@ def build_alignment_profile_sections(
                 design_surface,
                 actual_surface,
                 role_mapping,
+                assessment_polygon,
             ))
         except ValueError as exc:
             diagnostics.append(AlignmentPlacementDiagnostic(
